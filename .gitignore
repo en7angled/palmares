@@ -1,0 +1,53 @@
+# Haskell
+dist
+dist-*
+dist-newstyle/
+cabal-dev
+.cabal
+.cabal-fmt*
+*.o
+*.hi
+*.hie
+.hie/
+*.chi
+*.chs.h
+*.dyn_o
+*.dyn_hi
+.hpc
+.hsenv
+.cabal-sandbox/
+cabal.sandbox.config
+*.prof
+*.aux
+*.hp
+*.eventlog
+.stack-work/
+cabal.project.local
+cabal.project.local~
+.HTF/
+.ghc.environment.*
+compiled
+
+# Nix / direnv
+.direnv
+result
+result-*
+
+# Secrets — never commit, never bake into an image
+.env
+.env.*
+!.env.example
+operation.prv
+*.prv
+*.skey
+*.vkey
+config/config_atlas.json
+config/*.prv
+
+# Local state
+db/
+*.DS_STORE
+.DS_Store
+*.link
+.pre-commit-config.yaml
+node_modules

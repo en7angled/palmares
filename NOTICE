@@ -1,0 +1,12 @@
+Palmares
+Copyright 2026 Marius Georgescu
+
+This product includes software developed as part of the Decentralized Belt System
+(https://github.com/en7angled/Decentralized-Belt-System), Copyright (c) 2025 Marius Georgescu,
+originally released under the MIT License. Portions of src/lib/ and src/exe/ are derived
+from that work and are redistributed here under the Apache License, Version 2.0 by the
+copyright holder. The original MIT license text is retained in
+licenses/LICENSE.decentralized-belt-system.MIT.
+
+This product includes third-party software under its own licenses; see the dependency
+pins in cabal.project and the generated license report.

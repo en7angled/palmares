@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Fast pre-push gate. Seconds, not minutes: the full `cabal build all && cabal test` runs in CI and
+# locally via `cabal test`, not here. This hook only catches what is cheap and irreversible once public.
+# Enable once per clone: git config core.hooksPath .githooks   (git never propagates hooks)
+# Bypass: git push --no-verify
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+fail=0
+
+# 1. The secret set must be ignored by BOTH ignore files (the two leaks this project inherited).
+for f in .env .env.local operation.prv config/config_atlas.json x.skey x.vkey; do
+  git check-ignore -q "$f" || { echo "pre-push: NOT git-ignored: $f"; fail=1; }
+done
+
+# 2. Nothing credential-shaped in what is about to be pushed.
+if git diff --cached --name-only >/dev/null 2>&1; then
+  if git grep -I -nE 'ed25519_sk1[0-9a-z]{50,}|(maestro|blockfrost)[a-z_]*(key|token)[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9]{16,}' -- ':!*.example' ':!.githooks/*' 2>/dev/null; then
+    echo "pre-push: secret-shaped content staged (see matches above)"; fail=1
+  fi
+fi
+
+# 3. A tracked .env or key file is always a mistake.
+if git ls-files | grep -E '(^|/)\.env$|\.skey$|\.vkey$|operation\.prv$' ; then
+  echo "pre-push: a secret file is tracked"; fail=1
+fi
+
+[ "$fail" -eq 0 ] || { echo "pre-push: FAILED"; exit 1; }
+echo "pre-push: ok"

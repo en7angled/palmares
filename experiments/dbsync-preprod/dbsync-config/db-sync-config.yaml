@@ -1,0 +1,161 @@
+# Explorer DB Node configuration
+#
+# PROVENANCE: this file is cardano-db-sync's shipped config/preprod-config.yaml at tag 13.7.1.0,
+#   https://raw.githubusercontent.com/IntersectMBO/cardano-db-sync/13.7.1.0/config/preprod-config.yaml
+#   sha256 e87a19a15a1da6c8687f9f59d334e3066b01134dbf3b868f2464e3f3a86a8093 (fetched 2026-10-19)
+# with EXACTLY three deltas, per synthesis D-5. The entire logging section below is upstream's,
+# verbatim and unpruned, because it is parsed as iohk-monitoring's `Representation` record and a
+# hand-trimmed copy is a silent-failure surface.
+#   1. NodeConfigFile repointed at our pinned node config set (same bind mount as the node).
+#   2. top-level `ipfs_gateway` (two gateways).
+#   3. `insert_options`.
+# Nothing else. No `ledger_backend` (default "inmemory"; "lsm" is documented as crashing on
+# Raspberry Pi). No `disable_epoch` (does not exist at 13.7.1.0). No `RequiresNetworkMagic`
+# (not a db-sync key). No `remove_jsonb_from_schema` (already the default).
+
+NetworkName: preprod
+
+EnableLogMetrics: False
+EnableLogging: True
+
+# The default port is 8080
+# PrometheusPort: 8080
+
+# The config file for the node we are connecting to. If this is not the correct
+# config, it will likely lead to db-sync throwing up weird error messages from
+# the consensus layer.
+# The path to the node config file is relative to this config file.
+#
+# DELTA 1. ./node-config is bind-mounted read-only at /node-config in BOTH the node and this
+# container, so db-sync replays the ledger against byte-identical genesis files. config.json
+# references the four genesis files by BARE FILENAME, so they must sit beside it — they do.
+NodeConfigFile: /node-config/config.json
+
+# DELTA 2. `ipfs_gateway` is a TOP-LEVEL option, undocumented in configuration.md. Verified in
+# source: `o .:? "ipfs_gateway" .!= ["https://ipfs.io/ipfs"]`, Config/Types.hs#L441 @13.7.1.0.
+# CIP-108/CIP-119 anchors are frequently ipfs://; with an EMPTY list they fail OCFErrNoIpfsGateway.
+# Two gateways so the anchor-coverage number is not hostage to one host.
+ipfs_gateway:
+  - "https://ipfs.io/ipfs"
+  - "https://cloudflare-ipfs.com/ipfs"
+
+# DELTA 3. Verified in source @13.7.1.0 (Config/Types.hs):
+#   L455  "only_governance" -> OnlyGovInsertPreset
+#   L858  onlyGovInsertOptions = disableAllInsertOptions { ledger = Enable, governance = True,
+#                                                          pool_stats = True }   <- shelley DISABLED
+#   L467-478  preset is only the BASE; `parseOverrides` lets every explicit key below win.
+#             (configuration.md's prose "overrides all other properties" is misleading; the code
+#             disagrees with it.)
+#   L648  `shelley` is an OBJECT with a required boolean `enable` — not the "enable"/"disable" text
+#         the other switches use.
+#   L761  `offchain_vote_data` is TEXT.
+# Do NOT hand-roll the equivalent key set: with no `preset` the base is `def`, which has metadata
+# and rewards ENABLED, and `sioRewards` is `pure (sioRewards baseOptions)` — unsettable from JSON.
+insert_options:
+  preset: "only_governance"
+  offchain_vote_data: "enable"   # db-sync fetches + blake2b-verifies every anchor; we build no fetcher
+  shelley:
+    enable: true                 # D-4: stake_deregistration/pool_update, needed by F1 check 12.
+                                 # Flipping this after the sync starts costs a FULL re-sync.
+  # `ledger` stays "enable" (inherited from the preset): with "disable", drep_distr and
+  # gov_action_proposal.{ratified,enacted,expired,dropped}_epoch are left empty/null.
+
+# ------------------------------------------------------------------------------
+# Logging configuration follows. UPSTREAM, VERBATIM — do not prune.
+
+# global filter; messages must have at least this severity to pass:
+minSeverity: Info
+
+# global file rotation settings:
+rotation:
+  rpLogLimitBytes: 5000000
+  rpKeepFilesNum:  10
+  rpMaxAgeHours:   24
+
+# these backends are initialized:
+setupBackends:
+  - AggregationBK
+  - KatipBK
+  # - EditorBK
+  # - EKGViewBK
+
+# if not indicated otherwise, then messages are passed to these backends:
+defaultBackends:
+  - KatipBK
+
+# if wanted, the GUI is listening on this port:
+# hasGUI: 12787
+
+# if wanted, the EKG interface is listening on this port:
+# hasEKG: 12788
+
+# here we set up outputs of logging in 'katip':
+setupScribes:
+  - scKind: StdoutSK
+    scName: stdout
+    scFormat: ScText
+    scRotation: null
+
+# if not indicated otherwise, then log output is directed to this:
+defaultScribes:
+  - - StdoutSK
+    - stdout
+
+# more options which can be passed as key-value pairs:
+options:
+  cfokey:
+    value: "Release-1.0.0"
+  mapSubtrace:
+    benchmark:
+      contents:
+        - GhcRtsStats
+        - MonotonicClock
+      subtrace: ObservableTrace
+    '#ekgview':
+      contents:
+      - - tag: Contains
+          contents: 'cardano.epoch-validation.benchmark'
+        - - tag: Contains
+            contents: .monoclock.basic.
+      - - tag: Contains
+          contents: 'cardano.epoch-validation.benchmark'
+        - - tag: Contains
+            contents: diff.RTS.cpuNs.timed.
+      - - tag: StartsWith
+          contents: '#ekgview.#aggregation.cardano.epoch-validation.benchmark'
+        - - tag: Contains
+            contents: diff.RTS.gcNum.timed.
+      subtrace: FilterTrace
+    'cardano.epoch-validation.utxo-stats':
+      # Change the `subtrace` value to `Neutral` in order to log
+      # `UTxO`-related messages during epoch validation.
+      subtrace: NoTrace
+    '#messagecounters.aggregation':
+      subtrace: NoTrace
+    '#messagecounters.ekgview':
+      subtrace: NoTrace
+    '#messagecounters.switchboard':
+      subtrace: NoTrace
+    '#messagecounters.katip':
+      subtrace: NoTrace
+    '#messagecounters.monitoring':
+      subtrace: NoTrace
+    'cardano.#messagecounters.aggregation':
+      subtrace: NoTrace
+    'cardano.#messagecounters.ekgview':
+      subtrace: NoTrace
+    'cardano.#messagecounters.switchboard':
+      subtrace: NoTrace
+    'cardano.#messagecounters.katip':
+      subtrace: NoTrace
+    'cardano.#messagecounters.monitoring':
+      subtrace: NoTrace
+  mapBackends:
+    cardano.epoch-validation.benchmark:
+      - AggregationBK
+    '#aggregation.cardano.epoch-validation.benchmark':
+      - EKGViewBK
+  mapSeverity:
+    db-sync-node.Subscription: Error
+    db-sync-node.Mux: Error
+    db-sync-node: Info

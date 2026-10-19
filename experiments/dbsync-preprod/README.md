@@ -110,3 +110,18 @@ runs **`V2LSM`**. Whether db-sync tolerates a node config carrying the `V2LSM` b
 `LedgerDB.Backend` to `V2LSM` in `node-config/config.json`, `docker compose up -d --force-recreate
 cardano-db-sync`, confirm it does not die in its first 60 s, then revert the file and re-verify
 `SOURCES.sha256`. Do it *after* the headline numbers are recorded, never during.
+
+## No sampler is needed (and that is deliberate)
+
+An earlier attempt added an hourly `measure.sh` loop. It is gone, because it measured nothing new:
+
+- **Peak memory** comes from cgroup v2's `/sys/fs/cgroup/memory.peak`, which the kernel maintains as a
+  **cumulative high-water mark** for the container's whole lifetime. One read at the end is exactly as
+  accurate as 48 hourly reads — and strictly better than sampling, which can miss a spike between samples.
+  (It resets if a container restarts, so `measure.sh` also reports `RestartCount` and `OOMKilled`.)
+- **The per-epoch timing curve** is already in db-sync's own log, which `measure.sh` tails and which
+  `docker compose logs` keeps in full.
+- **Table sizes** are a `pg_total_relation_size` query that is only meaningful once the sync is done.
+
+So: run `./measure.sh` whenever you want a snapshot row, and once more when it reaches tip. Nothing has
+to stay running alongside the experiment.

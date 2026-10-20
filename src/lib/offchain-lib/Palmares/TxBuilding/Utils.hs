@@ -8,7 +8,7 @@ import Data.Text.IO qualified
 import GeniusYield.TxBuilder.Class (enclosingSlotFromTime', slotToBeginTime)
 import GeniusYield.TxBuilder.Errors (GYTxMonadException (GYApplicationException))
 import GeniusYield.TxBuilder.Query.Class (GYTxQueryMonad)
-import GeniusYield.Types (GYAddress, GYAssetClass (..), GYDatum, GYExtendedPaymentSigningKey, GYNetworkId (..), GYOutDatum (..), GYPaymentKeyHash, GYSlot, GYTokenName, GYTxOutRef, GYUTxO, GYValue, mintingPolicyIdFromCurrencySymbol, paymentKeyHash, tokenNameFromPlutus, txOutRefToPlutus, utxoOutDatum, utxoValue, valueToPlutus)
+import GeniusYield.Types (GYAddress, GYAssetClass (..), GYDatum, GYExtendedPaymentSigningKey, GYMintingPolicyId, GYNetworkId (..), GYOutDatum (..), GYPaymentKeyHash, GYSlot, GYTokenName, GYTxOutRef, GYUTxO, GYValue, mintingPolicyIdFromCurrencySymbol, paymentKeyHash, tokenNameFromPlutus, txOutRefToPlutus, utxoOutDatum, utxoValue, valueAssetClass, valueToPlutus)
 import GeniusYield.Types.Address (addressFromPaymentKeyHash)
 import GeniusYield.Types.Datum (datumToPlutus')
 import GeniusYield.Types.Key (extendedPaymentSigningKeyToApi, paymentVerificationKeyFromApi)
@@ -51,6 +51,16 @@ extractNFTAssetClass v =
         (Right mpid, Just tn') -> Just (GYToken mpid tn')
         _ -> Nothing
     _ -> Nothing
+
+-- | A protocol state UTxO is authentic iff its value carries exactly one of the NFT named by
+-- (or derived from) its own datum, under OUR minting policy. Address + parseable datum is not
+-- enough: anyone can pay a forged datum to a script address, and 2 ADA plus a hand-crafted
+-- inline datum poisoned the projections for free (inherited fix #3).
+authenticateStateUTxO :: GYMintingPolicyId -> GYAssetClass -> GYValue -> Bool
+authenticateStateUTxO ourPolicy ac v =
+  case ac of
+    GYToken pid _ -> pid == ourPolicy && valueAssetClass v ac == 1
+    GYLovelace -> False
 
 pPOSIXTimeFromGYSlot :: (GYTxQueryMonad m) => GYSlot -> m POSIXTime
 pPOSIXTimeFromGYSlot = (timeToPlutus <$>) . slotToBeginTime

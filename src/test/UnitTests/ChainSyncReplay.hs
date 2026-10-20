@@ -1,26 +1,23 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Pure tests for the chain-sync replay/rollback ordering (F-02/F-05/F-07) and for the Kupo
--- value conversion the projection depends on. The classify + deletion-sequencing cases drove
--- the rank datums; they come back with the new projections.
+-- | Pure tests for the chain-sync replay/rollback ordering (F-02/F-05/F-07), the Kupo value
+-- conversion the projection depends on (F-06), and the state-UTxO authentication guard
+-- (inherited fix #3). The classify + deletion-sequencing cases drove the rank datums; they come
+-- back with the new projections.
 module UnitTests.ChainSyncReplay (chainSyncReplayTests) where
 
-import Data.ByteString qualified as BS
 import Data.Either (isLeft, isRight)
 import Data.Map qualified as Map
+import Data.Text (Text)
 import GeniusYield.Types
-  ( GYAddress,
-    GYNetworkId (GYTestnetPreview),
-    GYOutDatum (GYOutDatumInline),
-    addressFromScriptHash,
-    datumFromPlutusData,
-    unsafeSlotFromInteger,
+  ( GYAssetClass (GYLovelace),
+    GYMintingPolicyId,
     valueFromLovelace,
+    valueSingleton,
   )
 import Palmares.ChainSync.KupoAtlas (AtlasMatch (..), toGYAssetClass)
 import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..))
-import PlutusLedgerApi.V1.Value (AssetClass (..), CurrencySymbol (..), TokenName (..))
-import PlutusTx.Builtins (toBuiltin)
+import Palmares.TxBuilding.Utils (authenticateStateUTxO)
 import Palmares.Storage
   ( OnchainMatchEvent (..),
     onchainMatchEventCreatedOutputIndex,
@@ -64,20 +61,42 @@ valueConversionTests =
     ]
 
 ------------------------------------------------------------------------------------------------
--- Fixtures for the classify + deletion-sequencing tests (F-33 item 2 and 3, design spec §7).
---
--- These drive the REAL 'projectChainEvent' (Ingestion.hs) on synthetic 'AtlasMatch' values, at
--- no DB and no live provider: 'projectChainEvent' is 'MonadError GYTxMonadException'-polymorphic
--- and depends only on a 'GYNetworkId' and pure validator-hash constants, so it runs purely via
--- 'runExceptT'. Both a 'Rank' and a 'Promotion' onchain datum decode at the ranks-validator
--- address (see 'rankFromGYOutDatum' / TxBuilding.Utils) as a *bare* 'OnchainRank' — no CIP-68
--- wrapper — so no ambiguous metadata map is needed to build a valid fixture.
+-- Inherited fix #3: a parseable datum at a script address proves nothing. 2 ADA plus a
+-- hand-crafted inline datum poisoned the projections for free, so a state UTxO counts as
+-- protocol state only when its value carries exactly one of the NFT its own datum names,
+-- under our minting policy. These cases are the guard itself; wiring it into
+-- 'projectChainEvent's branches lands with the Ingestion rewrite.
 ------------------------------------------------------------------------------------------------
 
--- | Test-only network id; the specific choice does not matter as long as it's used consistently
--- to both build the fixture address and to invoke 'projectChainEvent'.
-testNetworkId :: GYNetworkId
-testNetworkId = GYTestnetPreview
+ac :: Text -> GYAssetClass
+ac t = either (error "bad fixture") id (toGYAssetClass t)
+
+-- 56 hex chars = the 28-byte script hash GYMintingPolicyId's IsString instance requires; 58 would `error`.
+ourPolicy :: GYMintingPolicyId
+ourPolicy = "c0ffee00000000000000000000000000000000000000000000000001"
+
+acX, acY, acForeign :: GYAssetClass
+acX = ac "c0ffee00000000000000000000000000000000000000000000000001.5801" -- id X under our policy
+acY = ac "c0ffee00000000000000000000000000000000000000000000000001.5902" -- id Y under our policy
+acForeign = ac "deadbeef000000000000000000000000000000000000000000000002.5801" -- someone else's policy
+
+authenticationTests :: TestTree
+authenticationTests =
+  testGroup
+    "state-UTxO authentication (inherited fix #3)"
+    [ testCase "a datum's own NFT, under our policy, authenticates" $
+        authenticateStateUTxO ourPolicy acX (valueSingleton acX 1 <> valueFromLovelace 2_000_000) @?= True,
+      testCase "no NFT in the value is not authentic (the free-dust forgery)" $
+        authenticateStateUTxO ourPolicy acX (valueFromLovelace 2_000_000) @?= False,
+      testCase "a datum naming id X in a UTxO holding NFT Y is not authentic" $
+        authenticateStateUTxO ourPolicy acX (valueSingleton acY 1 <> valueFromLovelace 2_000_000) @?= False,
+      testCase "the right token name under someone else's policy is not authentic" $
+        authenticateStateUTxO ourPolicy acForeign (valueSingleton acForeign 1) @?= False,
+      testCase "two copies of the NFT is not authentic" $
+        authenticateStateUTxO ourPolicy acX (valueSingleton acX 2) @?= False,
+      testCase "GYLovelace as the claimed id is never authentic" $
+        authenticateStateUTxO ourPolicy GYLovelace (valueFromLovelace 2_000_000) @?= False
+    ]
 
 chainSyncReplayTests :: TestTree
 chainSyncReplayTests =
@@ -90,5 +109,6 @@ chainSyncReplayTests =
         map (\e -> (onchainMatchEventCreatedTxIndex e, onchainMatchEventCreatedOutputIndex e))
           (replayOrder [ev 5 2 0, ev 5 1 3, ev 5 1 0])
           @?= [(1, 0), (1, 3), (2, 0)],
-      valueConversionTests
+      valueConversionTests,
+      authenticationTests
     ]

@@ -88,20 +88,8 @@ getProfileStateDatumAndValue :: (GYTxQueryMonad m) => GYAssetClass -> m (CIP68Da
 getProfileStateDatumAndValue profileRefAC =
   getStateOrThrow profileRefAC profileAndValueFromUTxO ProfileNotFound DatumParseError
 
--- | Query all UTxOs at a validator script address and parse their inline datums.
-getAllParsedDatumsAtValidator :: (GYTxQueryMonad m) => GYNetworkId -> GYScriptHash -> (GYDatum -> Maybe a) -> m [a]
-getAllParsedDatumsAtValidator nid scriptHash parser = do
-  let addr = addressFromScriptHash nid scriptHash
-  allDatums <- fmap snd <$> utxosAtAddressesWithDatums [addr]
-  return $ mapMaybe parser (catMaybes allDatums)
 
-getAllOnchainProfiles :: (GYTxQueryMonad m) => GYNetworkId -> m [CIP68Datum Onchain.OnchainProfile]
-getAllOnchainProfiles nid = getAllParsedDatumsAtValidator nid profilesValidatorHashGY profileDatumFromDatum
 
-getAllProfiles :: (GYTxQueryMonad m) => GYNetworkId -> m [Profile]
-getAllProfiles nid = do
-  allProfiles <- getAllOnchainProfiles nid
-  mapM profileDatumToProfile allProfiles
 
 ------------------------------------------------------------------------------------------------
 
@@ -177,13 +165,6 @@ getAchievementDatumAndValue :: (GYTxQueryMonad m) => GYAssetClass -> m (CIP68Dat
 getAchievementDatumAndValue achievementAC =
   getStateOrThrow achievementAC achievementAndValueFromUTxO AchievementNotFound DatumParseError
 
--- | Get all achievements at the achievements validator address.
-getAllAchievements :: (GYTxQueryMonad m) => GYNetworkId -> m [Achievement]
-getAllAchievements nid = do
-  allDatums <- getAllParsedDatumsAtValidator nid achievementsValidatorHashGY achievementDatumFromDatum
-  catMaybes <$> mapM safeConvert allDatums
-  where
-    safeConvert datum = catchError (Just <$> onchainAchievementToAchievement datum) (const $ return Nothing)
 
 -- | Find profile reference NFT AssetClasses for User NFTs held at the given addresses.
 -- Scans UTxO values for tokens whose Plutus token name starts with the CIP-67 user prefix,

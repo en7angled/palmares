@@ -14,8 +14,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # NOTE: `libblst-dev` is deliberately absent. It does not exist in the arm64 Ubuntu archive —
-      # measured, not assumed: a probe run on ubuntu-24.04-arm failed with
+      # The -dev packages below are not a wish list: every pkg-config dependency the frozen plan
+      # forces has to be here, because the freeze pins the flag and leaves the solver no fallback.
+      # `grep -E '\+(pkg-config|pkgconfig|use-pkg-config)' cabal.project.freeze` is the check —
+      # today it names digest and zlib (zlib1g-dev), lzma (liblzma-dev), postgresql-libpq (libpq-dev).
+      # liblzma-dev was added after a real run failed with
+      #   rejecting: lzma:+pkgconfig (conflict: pkg-config package liblzma>=5.2.2, not found)
+      #
+      # `libblst-dev` is deliberately absent: it does not exist in the arm64 Ubuntu archive —
+      # measured, not assumed, from a probe run that failed with
       # "E: Unable to locate package libblst-dev". blst is built from source in the next step.
       - name: System libraries for plutus-tx / cardano-crypto
         run: |
@@ -23,7 +30,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential pkg-config libffi-dev libgmp-dev \
             libssl-dev libtinfo-dev libsystemd-dev zlib1g-dev libpq-dev liblmdb-dev \
-            libsodium-dev libsecp256k1-dev
+            liblzma-dev libsodium-dev libsecp256k1-dev
+          # fail loudly here rather than inside the solver's backjumping output
+          for pc in zlib liblzma libpq libsodium libsecp256k1; do
+            pkg-config --exists "$pc" || { echo "pkg-config package missing: $pc"; exit 1; }
+          done
 
       - name: blst from source
         run: |

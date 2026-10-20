@@ -4,16 +4,23 @@
 module Palmares.DomainTypes.Transfer.Filters
   ( ProfileFilter (..),
     AchievementFilter (..),
-    ActivityFilter (..),
     profileFilterFromParams,
     achievementFilterFromParams,
-    activityFilterFromParams,
     DRepFilter (..),
     emptyDRepFilter,
+    drepFilterFromParams,
     GovActionFilter (..),
     emptyGovActionFilter,
     VoteFilter (..),
     emptyVoteFilter,
+    GovActivityFilter (..),
+    emptyGovActivityFilter,
+    DelegationFilter (..),
+    emptyDelegationFilter,
+    SPOFilter (..),
+    emptySPOFilter,
+    TreasuryWithdrawalFilter (..),
+    emptyTreasuryWithdrawalFilter,
   )
 where
 
@@ -21,12 +28,7 @@ import Data.Text (Text)
 import Data.Int (Int64)
 import Data.Time (UTCTime)
 import Palmares.DomainTypes.Core.Types qualified as Core
--- The Belt System's PascalCase ActivityEventType (ProfileCreated | AchievementAwarded |
--- AchievementAccepted) still lives in Transfer.OrderBy and still backs the inherited /activity
--- feed. Palmares.DomainTypes.Core.Types now exports the snake_case GOVERNANCE one of the same
--- name, so the inherited name is hidden here until T-API-15 replaces that feed and deletes it.
-import Palmares.DomainTypes.Core.Types hiding (ActivityEventType)
-import Palmares.DomainTypes.Transfer.OrderBy (ActivityEventType)
+import Palmares.DomainTypes.Core.Types
 import GeniusYield.Types (GYTime)
 
 optionalNonEmpty :: [a] -> Maybe [a]
@@ -54,13 +56,6 @@ data AchievementFilter = AchievementFilter
     achievementFilterIsAccepted :: Maybe Bool, -- ^ Acceptance status
     achievementFilterDateInterval :: (Maybe GYTime, Maybe GYTime), -- ^ Date range (from, to) inclusive
     achievementFilterTextSearch :: Maybe Text -- ^ Free-text search
-  }
-
--- | Optional filters for the activity-feed endpoint.
-data ActivityFilter = ActivityFilter
-  { activityFilterEventType :: Maybe ActivityEventType, -- ^ Restrict to this event type
-    activityFilterActor :: Maybe ProfileRefAC, -- ^ Filter by the acting profile
-    activityFilterSince :: Maybe GYTime -- ^ Only return events after this timestamp
   }
 
 -- | Build profile filter from query params (single source of truth for list handlers).
@@ -94,19 +89,6 @@ achievementFilterFromParams achievementIds awardedToRefs awardedByRefs isAccepte
       achievementFilterDateInterval = (fromTime, toTime),
       achievementFilterTextSearch = q
     }
-
--- | Build activity filter from query params.
-activityFilterFromParams :: Maybe ActivityEventType -> Maybe ProfileRefAC -> Maybe GYTime -> Maybe ActivityFilter
-activityFilterFromParams eventType actor since =
-  case (eventType, actor, since) of
-    (Nothing, Nothing, Nothing) -> Nothing
-    _ ->
-      Just
-        ActivityFilter
-          { activityFilterEventType = eventType,
-            activityFilterActor = actor,
-            activityFilterSince = since
-          }
 
 -- ---------------------------------------------------------------------------------------------
 
@@ -252,3 +234,170 @@ emptyVoteFilter =
       voteFilterToEpoch = Nothing,
       voteFilterQ = Nothing
     }
+
+drepFilterFromParams ::
+  [Core.DRepStatus] ->
+  [Core.AnchorStatus] ->
+  Maybe Bool ->
+  Maybe Int64 ->
+  Maybe Int64 ->
+  Maybe Int ->
+  Maybe Double ->
+  Maybe Double ->
+  Maybe UTCTime ->
+  Maybe UTCTime ->
+  Maybe Int ->
+  Maybe Core.GovActionId ->
+  Maybe Core.GovActionId ->
+  Maybe Text ->
+  Maybe Int ->
+  Maybe Text ->
+  DRepFilter
+drepFilterFromParams
+  status
+  anchorStatus
+  hasScript
+  minPower
+  maxPower
+  minDelegators
+  minPart
+  minRat
+  regBefore
+  regAfter
+  minAge
+  votedOn
+  notVotedOn
+  lang
+  activeEpoch
+  q =
+    DRepFilter
+      { drepFilterStatus = status,
+        drepFilterAnchorStatus = anchorStatus,
+        drepFilterHasScript = hasScript,
+        drepFilterMinVotingPower = minPower,
+        drepFilterMaxVotingPower = maxPower,
+        drepFilterMinDelegators = minDelegators,
+        drepFilterMinParticipationRate = minPart,
+        drepFilterMinRationaleRate = minRat,
+        drepFilterRegisteredBefore = regBefore,
+        drepFilterRegisteredAfter = regAfter,
+        drepFilterMinAgeDays = minAge,
+        drepFilterVotedOn = votedOn,
+        drepFilterNotVotedOn = notVotedOn,
+        drepFilterLanguage = lang,
+        drepFilterActiveInEpoch = activeEpoch,
+        drepFilterQ = q
+      }
+
+-- | Every filter @GET \/delegations@ accepts.
+--
+-- @delegationFilterIsCurrent@ is a 'Bool' and not a 'Maybe Bool', unlike
+-- @\/drep\/{id}\/delegators@'s: there, @is_current=false@ drops the clause and WIDENS to the
+-- history; here it is a two-way filter and @false@ returns only the 344 addresses whose stake
+-- account closed. Two routes, one parameter name, two meanings — spelled differently in the type
+-- so a reader of either handler can see which one they have. The default is 'True', which is what
+-- makes the unfiltered page a snapshot rather than an archive.
+--
+-- The @drep_id@ parameter lands in TWO fields because a 'Core.DRepId' can be either a credential
+-- or one of the two reserved ledger options, and those match different columns. Both empty is "any
+-- target"; either non-empty contributes one OR-arm to a single clause, so sending a credential and
+-- @drep_always_abstain@ together means "either".
+data DelegationFilter = DelegationFilter
+  { -- | 28-byte credential hashes, hex, resolved by the handler through 'Core.drepIdHex'.
+    delegationFilterDrepHex :: [Text],
+    -- | @always_abstain@ / @always_no_confidence@, matched against @vote_delegation.target_kind@.
+    delegationFilterReservedTargets :: [Text],
+    delegationFilterStakeAddresses :: [Text],
+    delegationFilterIsCurrent :: Bool,
+    delegationFilterFrom :: Maybe UTCTime,
+    delegationFilterTo :: Maybe UTCTime,
+    -- | Lovelace. 'Int64' and not 'Integer' because it is bound into SQL and persistent has no
+    -- @PersistField Integer@.
+    delegationFilterMinLovelace :: Maybe Int64
+  }
+  deriving stock (Show, Eq)
+
+-- | The filter with nothing set: every current delegation, newest first.
+emptyDelegationFilter :: DelegationFilter
+emptyDelegationFilter =
+  DelegationFilter
+    { delegationFilterDrepHex = [],
+      delegationFilterReservedTargets = [],
+      delegationFilterStakeAddresses = [],
+      delegationFilterIsCurrent = True,
+      delegationFilterFrom = Nothing,
+      delegationFilterTo = Nothing,
+      delegationFilterMinLovelace = Nothing
+    }
+
+-- | Every filter @GET \/spos@ accepts.
+--
+-- There is no @q@, and that is a cut rather than an omission (C-10): an SPO row is a direct
+-- @pool_stat@ \/ @pool_hash@ read, @ticker@ is null throughout F1 because
+-- @off_chain_pool_data@ has 0 rows, and there is therefore no text column to match. An exact id
+-- lookup is what @\/search@ is for.
+data SPOFilter = SPOFilter
+  { spoFilterMinVotingPower :: Maybe Int64,
+    spoFilterMinVotesCast :: Maybe Int,
+    -- | Had voting power in this epoch. Reads @pool_stat@ at that epoch, so it answers "was this
+    -- pool counted then" rather than "is it counted now".
+    spoFilterActiveInEpoch :: Maybe Int
+  }
+  deriving stock (Show, Eq)
+
+-- | The filter with nothing set: the whole current distribution, most powerful first.
+emptySPOFilter :: SPOFilter
+emptySPOFilter =
+  SPOFilter
+    { spoFilterMinVotingPower = Nothing,
+      spoFilterMinVotesCast = Nothing,
+      spoFilterActiveInEpoch = Nothing
+    }
+
+-- | Every filter @GET \/treasury-withdrawals@ accepts. Same conventions as the others: an empty
+-- repeatable list is no filter, and across parameters the clauses are AND'd.
+data TreasuryWithdrawalFilter = TreasuryWithdrawalFilter
+  { withdrawalFilterGovActionIds :: [Core.GovActionId],
+    -- | Stake addresses, bech32, as the response publishes them.
+    withdrawalFilterBeneficiaries :: [Text],
+    withdrawalFilterEnactedFromEpoch :: Maybe Int,
+    withdrawalFilterEnactedToEpoch :: Maybe Int,
+    withdrawalFilterMinAmount :: Maybe Int64,
+    withdrawalFilterMaxAmount :: Maybe Int64
+  }
+  deriving stock (Show, Eq)
+
+-- | The filter with nothing set: all 83 preprod withdrawals.
+emptyTreasuryWithdrawalFilter :: TreasuryWithdrawalFilter
+emptyTreasuryWithdrawalFilter =
+  TreasuryWithdrawalFilter
+    { withdrawalFilterGovActionIds = [],
+      withdrawalFilterBeneficiaries = [],
+      withdrawalFilterEnactedFromEpoch = Nothing,
+      withdrawalFilterEnactedToEpoch = Nothing,
+      withdrawalFilterMinAmount = Nothing,
+      withdrawalFilterMaxAmount = Nothing
+    }
+
+-- | Every filter @GET \/activity@ accepts. Same conventions as the other governance filters: an
+-- empty repeatable list is no filter rather than "match nothing", values OR within a parameter and
+-- AND across parameters.
+--
+-- No time or epoch range, and no @order_by@: position in this feed is the CURSOR. A @from@/@to@
+-- pair would be a second way to say the same thing, and the two would disagree at the boundary
+-- slot - which is the one place a feed must not disagree with itself.
+data GovActivityFilter = GovActivityFilter
+  { govActivityFilterEventTypes :: [Core.ActivityEventType],
+    govActivityFilterSources :: [Core.ActivitySource],
+    -- | Matched against @actor_id@ AS GIVEN, and additionally against its hex credential form when
+    -- the value decodes as one (@drep1y...@, @cc_cold1...@, @pool1...@). The column holds a hex
+    -- credential for the DRep and committee arms and a bech32 stake address for the delegation and
+    -- proposal arms, so neither "always decode" nor "never decode" serves the whole feed, and a 400
+    -- on a value that does not decode would reject every stake address.
+    govActivityFilterActors :: [Text]
+  }
+  deriving stock (Show, Eq)
+
+-- | The filter with nothing set: the whole feed, newest first.
+emptyGovActivityFilter :: GovActivityFilter
+emptyGovActivityFilter = GovActivityFilter [] [] []

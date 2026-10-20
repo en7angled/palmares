@@ -13,6 +13,7 @@
 module Palmares.WebAPI.Errors
   ( mkServantErr,
     mkServantErrBody,
+    errorCodeFromParserMessage,
     genericErrorMessage,
   )
 where
@@ -20,8 +21,9 @@ where
 import Data.Aeson (encode)
 import Data.ByteString.Lazy (ByteString)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Network.HTTP.Types.Header (hContentType)
-import Palmares.WebAPI.Envelope (ApiError (..), ErrorCode (..))
+import Palmares.WebAPI.Envelope (ApiError (..), ErrorCode (..), errorCodeFromText)
 import Servant
 
 -- | Build a 'ServerError' for an HTTP status code with the given JSON body.
@@ -48,6 +50,28 @@ mkServantErrBody status body =
 mkServantErr :: Int -> ErrorCode -> ServerError
 mkServantErr status code = mkServantErrBody status (encode (ApiError code (genericErrorMessage code)))
 
+-- | The 'ErrorCode' inside the message a @FromHttpApiData@ parser failed with.
+--
+-- Every @parseUrlPiece@ and @parseQueryParam@ in this codebase returns the error CODE as its
+-- message, so that the code survives the trip out through servant and back into an error
+-- formatter. What does NOT survive is the message being the WHOLE string: servant hands the two
+-- failure sites over differently —
+--
+--   * a CAPTURE's message arrives verbatim, @\"invalid_drep_id\"@;
+--   * a QUERY PARAMETER's is wrapped, @\"Error parsing query parameter drep_id failed:
+--     invalid_drep_id\"@.
+--
+-- So the code is read from after the last colon. MEASURED, by the smoke suite:
+-- @\/delegations?drep_id=nonsense@ and @\/treasury-withdrawals?gov_action_id=nope@ both answered
+-- @invalid_parameter@ while the identical mistake on @\/drep\/{id}@ answered @invalid_drep_id@ —
+-- a true answer that told a client nothing, from the one of the two cases nobody had exercised.
+--
+-- A message with no colon is returned unchanged by 'T.takeWhileEnd', so the capture case reads
+-- exactly as it did before. Anything unrecognised is 'InvalidParameter', which is true of it.
+errorCodeFromParserMessage :: String -> ErrorCode
+errorCodeFromParserMessage =
+  errorCodeFromText . T.strip . T.takeWhileEnd (/= ':') . T.pack
+
 -- | Generic, non-sensitive client-facing message for an error code.
 --
 -- Total over 'ErrorCode' on purpose: a new code with no message would otherwise silently inherit
@@ -61,7 +85,7 @@ genericErrorMessage = \case
   OffsetTooLarge -> "The offset is beyond the allowed range"
   LimitTooLarge -> "The limit is beyond the allowed range"
   InvalidCursor -> "The cursor is not one this endpoint issued"
-  BothCursorsGiven -> "Use either a cursor or an offset, not both"
+  BothCursorsGiven -> "Give either `before` or `since`, not both"
   InvalidDrepId -> "Not a DRep identifier"
   InvalidGovActionId -> "Not a governance action identifier"
   InvalidAssetClass -> "Not an asset class"

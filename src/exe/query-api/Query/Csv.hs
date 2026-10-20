@@ -22,10 +22,13 @@ import Data.Time.Format.ISO8601 (iso8601Show)
 import Numeric (showFFloat)
 import Palmares.DomainTypes.Core.Types (ChainPoint (..), DRepId (..), GovActionId (..))
 import Palmares.DomainTypes.Transfer.QueryResponses
-  ( DRepSummary (..),
+  ( DelegationRecord (..),
     DelegatorRow (..),
+    DRepSummary (..),
     GovActionLifecycle (..),
     GovActionSummary (..),
+    SPOSummary (..),
+    TreasuryWithdrawalRecord (..),
     VoteAnchor (..),
     VoteRecord (..),
   )
@@ -242,4 +245,77 @@ instance ToNamedRecord VoteRecord where
         "anchor_status" .= maybe "" (jsonTag . voteAnchorStatus) (voteRecordAnchor v),
         "voting_power" .= mnum (voteRecordVotingPower v),
         "voting_power_epoch" .= mnum (voteRecordVotingPowerEpoch v)
+      ]
+
+instance DefaultOrdered DelegationRecord where
+  headerOrder _ =
+    header ["stake_address", "target", "target_name", "lovelace", "delegated_at", "epoch", "is_current"]
+
+-- | A delegation row. @at@ is flattened to its timestamp and epoch, as 'DelegatorRow' does: a cell
+-- cannot hold a nested chain point.
+instance ToNamedRecord DelegationRecord where
+  toNamedRecord r =
+    namedRecord
+      [ "stake_address" .= safeCell (delegationStakeAddress r),
+        "target" .= safeCell (unDRepId (delegationTarget r)),
+        "target_name" .= mtext (delegationTargetName r),
+        "lovelace" .= mnum (delegationLovelace r),
+        "delegated_at" .= T.pack (iso8601Show (chainPointTime (delegationAt r))),
+        "epoch" .= num (chainPointEpoch (delegationAt r)),
+        "is_current" .= bool (delegationIsCurrent r)
+      ]
+
+instance DefaultOrdered SPOSummary where
+  headerOrder _ =
+    header
+      [ "pool_id",
+        "ticker",
+        "voting_power",
+        "voting_power_epoch",
+        "delegator_count",
+        "votes_cast",
+        "participation_rate"
+      ]
+
+-- | A stake pool row. Every column travels, including the two that are null throughout F1
+-- (@ticker@, @participation_rate@): a consumer diffing the CSV against the JSON should not find
+-- the shapes disagreeing.
+instance ToNamedRecord SPOSummary where
+  toNamedRecord s =
+    namedRecord
+      [ "pool_id" .= safeCell (spoPoolId s),
+        "ticker" .= mtext (spoTicker s),
+        "voting_power" .= num (spoVotingPower s),
+        "voting_power_epoch" .= num (spoVotingPowerEpoch s),
+        "delegator_count" .= num (spoDelegatorCount s),
+        "votes_cast" .= num (spoVotesCast s),
+        "participation_rate" .= mrate (spoParticipationRate s)
+      ]
+
+instance DefaultOrdered TreasuryWithdrawalRecord where
+  headerOrder _ =
+    header
+      [ "gov_action_id",
+        "gov_action_title",
+        "beneficiary",
+        "amount",
+        "enacted_epoch",
+        "paid_heuristic"
+      ]
+
+-- | A withdrawal row. @enacted_at@ is omitted and @enacted_epoch@ kept: the chain point is
+-- epoch-only by construction, so the epoch IS the value and a column of one-field objects would be
+-- noise.
+--
+-- @paid_heuristic@ is 'Maybe' and an absent value is an empty cell rather than @false@: "we have no
+-- basis to guess" and "we guess it was not paid" are different statements.
+instance ToNamedRecord TreasuryWithdrawalRecord where
+  toNamedRecord w =
+    namedRecord
+      [ "gov_action_id" .= safeCell (unGovActionId (withdrawalGovActionId w)),
+        "gov_action_title" .= mtext (withdrawalGovActionTitle w),
+        "beneficiary" .= safeCell (withdrawalBeneficiary w),
+        "amount" .= num (withdrawalAmount w),
+        "enacted_epoch" .= mnum (withdrawalEnactedEpoch w),
+        "paid_heuristic" .= maybe "" bool (withdrawalPaidHeuristic w)
       ]

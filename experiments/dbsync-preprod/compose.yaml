@@ -99,6 +99,16 @@ services:
       - wal_compression=on
       - -c
       - synchronous_commit=off
+    # Docker's default /dev/shm is 64 MB, and PostgreSQL puts PARALLEL query memory there
+    # (dynamic_shared_memory_type=posix). A parallel hash join sizes its segment off work_mem, so
+    # with work_mem=32MB two gather workers over a wide plan ask for 16 MB each and a plan with
+    # several hash nodes exhausts 64 MB. MEASURED: GET /activity failed with
+    #   53100: could not resize shared memory segment "/PostgreSQL.2430491254" to 16777216 bytes:
+    #   No space left on device
+    # while /dev/shm showed 2.2 MB of 64 MB in use — the segments are requested and released fast
+    # enough that the gauge never shows the peak. 256 MB leaves room for max_parallel_workers=8.
+    # This belongs in the infra spec next to the tuning above: the Pi will hit it identically.
+    shm_size: 256mb
     volumes:
       - postgres:/var/lib/postgresql/data
     healthcheck:

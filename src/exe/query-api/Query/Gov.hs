@@ -92,6 +92,50 @@ module Query.Gov
     voteSortSpec,
     voteWhere,
     listVotes,
+    -- * Delegations
+    delegationSortSpec,
+    delegationOuterSortSpec,
+    delegationFrom,
+    delegationWhere,
+    delegationIsCurrentExpr,
+    listDelegations,
+
+    -- * The committee
+    getCommittee,
+
+    -- * SPOs
+    spoSortSpec,
+    spoFrom,
+    spoWhere,
+    listSPOs,
+
+    -- * Treasury withdrawals
+    withdrawalSortSpec,
+    withdrawalFrom,
+    withdrawalWhere,
+    listTreasuryWithdrawals,
+
+    -- * GET /search
+    searchActionId,
+    searchQuery,
+
+    -- * GET \/activity
+    parseCursor,
+    FeedDir (..),
+    activityWindows,
+    activityWhere,
+    listActivity,
+
+    -- * The page composites
+    drepStatusExpr,
+    effectiveDRepStatus,
+    registeredDRepStatuses,
+    DRepFacets (..),
+    drepFacetsSql,
+    drepFacetsQuery,
+    DashboardTotals (..),
+    dashboardTotalsQuery,
+    listEpochParticipation,
   )
 where
 
@@ -101,6 +145,8 @@ import Control.Exception (SomeException, try)
 import Control.Monad (forever)
 import Data.Aeson (FromJSON, eitherDecodeStrict)
 import Data.ByteString.Char8 qualified as BS8
+import Data.Char (isDigit, isHexDigit)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -112,6 +158,7 @@ import Database.Persist.Sql
     PersistValue,
     Single (..),
     SqlPersistT,
+    rawExecute,
     rawSql,
     runSqlPoolWithIsolation,
     toPersistValue,
@@ -119,42 +166,66 @@ import Database.Persist.Sql
 import Deriving.Aeson
 import Network.HTTP.Types.Header (Header)
 import Network.Wai (Middleware, mapResponseHeaders)
+import Palmares.DomainTypes.Core.Ids (anyVoterIdHex, parseGovActionIdCip129)
 import Palmares.DomainTypes.Core.Types
   ( AnchorStatus,
     DRepStatus (..),
     GovActionId (..),
+    GovActionState,
+    GovActionType,
+    SearchKind (..),
     Vote (..),
     VoterRole (..),
   )
-import Palmares.DomainTypes.Transfer.Filters (DRepFilter (..), GovActionFilter (..), VoteFilter (..))
+import Palmares.DomainTypes.Transfer.Filters
+  ( DRepFilter (..),
+    DelegationFilter (..),
+    GovActionFilter (..),
+    GovActivityFilter (..),
+    SPOFilter (..),
+    TreasuryWithdrawalFilter (..),
+    VoteFilter (..),
+  )
 import Palmares.DomainTypes.Transfer.OrderBy
-  ( DRepsOrderBy (..),
+  ( DelegationsOrderBy (..),
     DelegatorsOrderBy (..),
+    DRepsOrderBy (..),
     GovActionsOrderBy (..),
     SortOrder (..),
+    SPOsOrderBy (..),
+    TreasuryWithdrawalsOrderBy (..),
     VotesOrderBy (..),
   )
 import Data.Int (Int64)
 import Palmares.DomainTypes.Transfer.QueryResponses
-  ( AnchorContent,
+  ( ActivityCursor (..),
+    ActivityRow (..),
+    AnchorContent,
+    CommitteeResponse,
+    DelegationRecord,
+    DelegatorRow,
+    DelegatorStats,
     DRepMetrics,
     DRepSummary,
     DRepUpdateRow,
-    DelegatorRow,
-    DelegatorStats,
     EpochParamsSummary (..),
+    EpochParticipationPoint,
     EpochPowerPoint,
     GovActionAnchorContent,
     GovActionSummary,
+    PowerBucket,
     ProposerSummary,
+    SearchResults,
+    SPOSummary,
     SyncStatus (..),
+    TreasuryWithdrawalRecord,
     TreasuryWithdrawalRow,
     VoteRecord,
     VoteTally,
   )
 import Palmares.Metrics.Catalog (lookupMetricSql)
 import Palmares.Utils (jsonTag)
-import Palmares.WebAPI.Envelope (ErrorCode (..), Page (..))
+import Palmares.WebAPI.Envelope (Cursor (..), ErrorCode (..), Page (..))
 import Query.Common (Limit, Offset, SortSpec (..), likePat, orderClause)
 import System.Environment (lookupEnv)
 import System.IO (hPutStrLn, stderr)
@@ -162,7 +233,32 @@ import Text.Read (readMaybe)
 
 -- | Run a governance read in one @RepeatableRead@ transaction. See rule 1 in the module header.
 runGovRead :: ConnectionPool -> SqlPersistT IO a -> IO a
-runGovRead pool act = runSqlPoolWithIsolation act pool RepeatableRead
+runGovRead pool act =
+  runSqlPoolWithIsolation (setReadTimeout >> act) pool RepeatableRead
+  where
+    -- Interpolated, not bound: SET's argument is not a value expression, so a placeholder there is
+    -- at best driver-specific. 'readTimeoutMs' is a compile-time constant of this module, so there
+    -- is nothing a caller could put in it.
+    setReadTimeout =
+      rawExecute ("SET LOCAL statement_timeout = " <> T.pack (show readTimeoutMs)) []
+
+-- | The ceiling on one read, in milliseconds.
+--
+-- WITHOUT it a pathological query has no end: the client waits until it gives up, and the pool
+-- connection stays busy for as long as PostgreSQL keeps working — which it does even after the
+-- client disconnects. MEASURED, and this is why it exists rather than as a precaution: a
+-- @\/votes?voter_role=constitutional_committee@ page over preprod's 3,243,802 committee votes was
+-- still running after 166 seconds, and every abandoned attempt left ANOTHER backend grinding, so
+-- three aborted requests had three full scans competing for a container limited to 0.75 of a CPU.
+-- A query that is cancelled frees its connection; one that is abandoned does not.
+--
+-- 30 seconds, and a read that needs longer is a defect to fix rather than a wait to serve: the
+-- slowest legitimate page measured in this service is the activity ladder's last rung at 4.6 s.
+-- The cancellation arrives as SQLSTATE 57014 and 'QueryAppMonad.runRead' already turns any
+-- SqlError into a 503 @db_unavailable@ — the honest answer for "not now", and a definite one,
+-- which is the point.
+readTimeoutMs :: Int64
+readTimeoutMs = 30_000
 
 -- | Run a statement that projects exactly one @row_to_json(...)::text@ column and decode each row.
 --
@@ -503,17 +599,13 @@ drepWhere f =
             )
           ]
 
-    -- The default. See DRepFilter's haddock for why it is not "every credential".
-    effectiveStatus
-      | null (drepFilterStatus f) = [DRepActive, DRepInactive]
-      | otherwise = drepFilterStatus f
+    -- The default, and the facet statement's own status predicate. See 'effectiveDRepStatus'.
+    effectiveStatus = effectiveDRepStatus f
 
     -- status is not a column: it is `registration_status` and `is_active` composed, and the
-    -- composition lives HERE in one expression rather than in both the projection and the filter,
-    -- so a page cannot show a status the filter would have excluded.
-    statusExpr =
-      "(CASE WHEN d.registration_status = 'retired' THEN 'retired' \
-      \      WHEN d.is_active THEN 'active' ELSE 'inactive' END)"
+    -- composition lives in ONE expression, 'drepStatusExpr', rather than in the projection, the
+    -- filter and the facet, so none of the three can show a status another would have excluded.
+    statusExpr = drepStatusExpr
 
     votedClause wanted = maybe [] $ \(GovActionId gid) ->
       let (txHex, ix) = T.breakOn "#" gid
@@ -555,9 +647,9 @@ listDReps f (ob, so) (lim, off) = do
 drepProjection :: Text
 drepProjection =
   " encode(d.drep_raw, 'hex') AS hex, \
-  \ d.has_script, \
-  \ (CASE WHEN d.registration_status = 'retired' THEN 'retired' \
-  \       WHEN d.is_active THEN 'active' ELSE 'inactive' END) AS status, \
+  \ d.has_script, "
+    <> drepStatusExpr
+    <> " AS status, \
   \ d.is_active, d.active_until_epoch, d.given_name, d.image_url AS image_url, d.language, \
   \ a.verdict AS anchor_status, \
   \ (d.first_cert_time AT TIME ZONE 'UTC') AS registered_at, \
@@ -1252,3 +1344,1186 @@ voteProjection =
   \      END AS anchor, \
   \ p.amount AS voting_power, \
   \ CASE WHEN p.amount IS NULL THEN NULL ELSE w.last_votable_epoch END AS voting_power_epoch "
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /search
+
+-- | The @(tx_hash_hex, index)@ a pasted governance-action id names, or @("", -1)@ for anything
+-- that is not one.
+--
+-- Both published forms are accepted — the canonical @\<tx_hash\>#\<index\>@ and the CIP-129
+-- @gov_action1…@ — which is the same pair @FromHttpApiData GovActionId@ accepts. A bare 64-hex
+-- transaction hash deliberately is NOT one of them: a transaction can carry several proposals, so
+-- the hash alone does not name an action.
+--
+-- The miss is a BOUND VALUE and not a branch in the SQL. That keeps one statement with one
+-- placeholder list for every query, and @-1@ cannot collide: a @GovActionIx@ is unsigned.
+searchActionId :: Text -> (Text, Int64)
+searchActionId t = case T.splitOn "#" t of
+  [h, i] | T.length h == 64, T.all isHexDigit h, Just n <- readMaybe (T.unpack i) -> (T.toLower h, n)
+  _ -> case parseGovActionIdCip129 t of
+    Right (h, ix) -> (h, fromIntegral ix)
+    Left _ -> ("", -1)
+
+-- | The whole command palette in ONE statement: one round trip, one @RepeatableRead@ snapshot, one
+-- @row_to_json@ column, decoded by 'SearchResults'' own 'FromJSON'.
+--
+-- __Four CTEs, one per group, and nothing conditional in the text.__ Each is gated by a bound
+-- BOOLEAN rather than by assembling the statement from the requested @kinds@: a statement whose
+-- shape depends on the request is a statement whose placeholder list can drift from its binds, and
+-- @WHERE false@ collapses to a one-time filter anyway. MEASURED warm: all four groups 28.7 ms,
+-- @kinds=drep@ alone 25.9 ms, @kinds=spo@ alone 7.1 ms — the gate really does skip the arm.
+--
+-- Each CTE is referenced TWICE, by its count and by its page, so PostgreSQL materialises it and the
+-- group's total and its items come from one evaluation of one predicate. That is F-17's rule again:
+-- a count over a different pass than the rows is a total that disagrees with them.
+--
+-- __An id paste is matched by EQUALITY after a checksum-verified decode, never by a prefix.__
+-- 'anyVoterIdHex' resolves @drep1y…@, @drep1…@, @cc_cold1…@, @cc_hot1…@, @pool1…@ and 56 hex
+-- characters to one 28-byte hash, which is why one bind serves the DRep, pool and committee arms.
+-- A partial bech32 string is not an id and is not matched as one: MEASURED, @pool1@ as a prefix
+-- matches all 686 preprod pools and @drep1@ would match every DRep, so a five-character paste would
+-- fill the palette with the whole table. A miss binds the empty string, and @decode('', 'hex')@ is
+-- the empty bytea, which no credential column can equal.
+--
+-- __The committee group is id-only, and that is the data rather than a shortcut:__ @committee_hash@
+-- has no metadata table anywhere in db-sync, so a committee member has no name to search.
+-- @spos@ matches a ticker or a metadata name, which on this database finds nothing — MEASURED,
+-- @public.off_chain_pool_data@ holds 0 rows for 686 pools and @off_chain_pool_fetch_error@ holds 0
+-- too, so db-sync's off-chain pool fetcher has never run here. The clauses stay because they name
+-- the right columns and the group fills itself the day it does.
+searchQuery :: Text -> [SearchKind] -> Int -> SqlPersistT IO SearchResults
+searchQuery q kinds lim = do
+  r <- queryJson1 searchSql binds
+  -- The outer SELECT has no FROM clause, so it returns exactly one row by construction.
+  maybe (error "Query.Gov.searchQuery: the palette statement returned no row") pure r
+  where
+    -- An empty `kinds` is every group, which is what makes the parameter optional.
+    want k = null kinds || k `elem` kinds
+    pat = likePat q
+    credHex = fromMaybe "" (anyVoterIdHex q)
+    (actionTx, actionIx) = searchActionId q
+    lim' = toPersistValue (fromIntegral lim :: Int64)
+    binds =
+      [ toPersistValue (want SearchDrep),
+        toPersistValue pat,
+        toPersistValue credHex,
+        toPersistValue (want SearchGovAction),
+        toPersistValue pat,
+        toPersistValue pat,
+        toPersistValue actionTx,
+        toPersistValue actionIx,
+        toPersistValue (want SearchSpo),
+        toPersistValue pat,
+        toPersistValue pat,
+        toPersistValue credHex,
+        toPersistValue (want SearchCommitteeMember),
+        toPersistValue credHex,
+        toPersistValue q,
+        lim',
+        lim',
+        lim',
+        lim'
+      ]
+
+-- | The palette statement. Keys are 'SearchHit''s and 'SearchResults'' wire names.
+--
+-- @DISTINCT ON@ on two of the four arms, both measured rather than defensive:
+--
+--   * @palmares.committee_member@ publishes one row per (cold credential, committee), and preprod
+--     has 110 rows for 48 cold credentials — so a @cc_cold1…@ paste would return the same member up
+--     to three times. Ordered @is_enacted DESC@ so the surviving row is the member's standing on the
+--     committee in force.
+--   * @off_chain_pool_data@ is unique on @(pool_id, pmr_id)@, not on @pool_id@, and preprod has
+--     1,208 @pool_metadata_ref@ rows for 686 pools — so the LEFT JOIN fans a pool out once the
+--     fetcher runs. Newest metadata wins, which is the shape @palmares.drep@'s own @drep_meta@ and
+--     @palmares.gov_action@'s @action_meta@ already use for the same db-sync defect.
+searchSql :: Text
+searchSql =
+  "SELECT row_to_json(x)::text FROM ( \
+  \WITH d AS ( \
+  \  SELECT d.drep_hash_id AS ord, 'drep'::text AS kind, \
+  \         encode(d.drep_raw, 'hex') AS hex, d.has_script, \
+  \         d.given_name AS title, encode(d.drep_raw, 'hex') AS subtitle, \
+  \         CASE WHEN d.has_script THEN json_build_array('script') \
+  \              ELSE json_build_array() END AS badges, \
+  \         (CASE WHEN d.registration_status = 'retired' THEN 'retired' \
+  \               WHEN d.is_active THEN 'active' ELSE 'inactive' END) AS status \
+  \  FROM palmares.drep d \
+  \  WHERE ? AND d.registration_status <> 'never_registered' \
+  \    AND (lower(d.given_name) LIKE ? OR d.drep_raw = decode(?, 'hex')) \
+  \), \
+  \g AS ( \
+  \  SELECT g.proposed_slot AS ord, 'gov_action'::text AS kind, \
+  \         encode(g.tx_hash, 'hex') AS tx_hash, g.index, \
+  \         g.title, COALESCE(left(g.abstract, 140), '') AS subtitle, \
+  \         json_build_array(lower(regexp_replace(g.action_type::text, \
+  \                                               '([a-z0-9])([A-Z])', '\\1_\\2', 'g'))) AS badges, \
+  \         g.state AS status \
+  \  FROM palmares.gov_action g \
+  \  WHERE ? AND (lower(g.title) LIKE ? OR lower(g.abstract) LIKE ? \
+  \               OR (g.tx_hash = decode(?, 'hex') AND g.index = ?)) \
+  \), \
+  \p AS ( \
+  \  SELECT DISTINCT ON (ph.id) \
+  \         ph.id AS ord, 'spo'::text AS kind, \
+  \         encode(ph.hash_raw, 'hex') AS hex, false AS has_script, \
+  \         COALESCE(o.ticker_name, o.json ->> 'name') AS title, \
+  \         encode(ph.hash_raw, 'hex') AS subtitle, \
+  \         CASE WHEN o.ticker_name IS NULL THEN json_build_array() \
+  \              ELSE json_build_array(o.ticker_name) END AS badges, \
+  \         NULL::text AS status \
+  \  FROM public.pool_hash ph \
+  \  LEFT JOIN public.off_chain_pool_data o ON o.pool_id = ph.id \
+  \  WHERE ? AND (lower(o.ticker_name) LIKE ? OR lower(o.json ->> 'name') LIKE ? \
+  \               OR ph.hash_raw = decode(?, 'hex')) \
+  \  ORDER BY ph.id, o.pmr_id DESC \
+  \), \
+  \c AS ( \
+  \  SELECT DISTINCT ON (m.committee_hash_id) \
+  \         m.committee_hash_id AS ord, 'committee_member'::text AS kind, \
+  \         encode(m.cold_hash, 'hex') AS hex, m.cold_has_script AS has_script, \
+  \         NULL::text AS title, encode(m.cold_hash, 'hex') AS subtitle, \
+  \         to_json(array_remove(ARRAY[CASE WHEN m.cold_has_script THEN 'script' END, \
+  \                                    CASE WHEN m.is_enacted THEN 'enacted' END]::text[], NULL)) AS badges, \
+  \         m.status \
+  \  FROM palmares.committee_member m \
+  \  WHERE ? AND m.cold_hash = decode(?, 'hex') \
+  \  ORDER BY m.committee_hash_id, m.is_enacted DESC, m.committee_id DESC \
+  \) \
+  \SELECT ?::text AS query, \
+  \       ((SELECT count(*) FROM d) + (SELECT count(*) FROM g) \
+  \        + (SELECT count(*) FROM p) + (SELECT count(*) FROM c))::int AS total, \
+  \       json_build_object('total', (SELECT count(*)::int FROM d), 'items', \
+  \         COALESCE((SELECT json_agg(to_json(z)) FROM ( \
+  \           SELECT kind, hex, has_script, title, subtitle, badges, status \
+  \           FROM d ORDER BY title NULLS LAST, ord LIMIT ?) z), json_build_array())) AS dreps, \
+  \       json_build_object('total', (SELECT count(*)::int FROM g), 'items', \
+  \         COALESCE((SELECT json_agg(to_json(z)) FROM ( \
+  \           SELECT kind, tx_hash, g.index, title, subtitle, badges, status \
+  \           FROM g ORDER BY ord DESC LIMIT ?) z), json_build_array())) AS gov_actions, \
+  \       json_build_object('total', (SELECT count(*)::int FROM p), 'items', \
+  \         COALESCE((SELECT json_agg(to_json(z)) FROM ( \
+  \           SELECT kind, hex, has_script, title, subtitle, badges, status \
+  \           FROM p ORDER BY title NULLS LAST, ord LIMIT ?) z), json_build_array())) AS spos, \
+  \       json_build_object('total', (SELECT count(*)::int FROM c), 'items', \
+  \         COALESCE((SELECT json_agg(to_json(z)) FROM ( \
+  \           SELECT kind, hex, has_script, title, subtitle, badges, status \
+  \           FROM c ORDER BY ord LIMIT ?) z), json_build_array())) AS committee_members, \
+  \       json_build_object('total', 0, 'items', json_build_array()) AS profiles, \
+  \       json_build_object('total', 0, 'items', json_build_array()) AS attestations \
+  \) x"
+
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * The page composites
+
+-- | The status expression, in ONE place.
+--
+-- @status@ is not a column: it is @registration_status@ and @is_active@ composed. The composition
+-- has to be byte-identical in the projection, the filter and the facet, or the sidebar counts a
+-- population the list beside it excludes. It was already written twice; the facet statement would
+-- have been the third copy.
+drepStatusExpr :: Text
+drepStatusExpr =
+  "(CASE WHEN d.registration_status = 'retired' THEN 'retired' \
+  \      WHEN d.is_active THEN 'active' ELSE 'inactive' END)"
+
+-- | The statuses a request actually selects, default included.
+--
+-- Exported because the facet statement has to re-apply EXACTLY the predicate the page applied,
+-- down to the default. A facet that assumed \"no status given\" meant \"every status\" would count
+-- the 511 retired DReps into the anchor and language facets, which the page then does not show.
+effectiveDRepStatus :: DRepFilter -> [DRepStatus]
+effectiveDRepStatus f
+  | null (drepFilterStatus f) = [DRepActive, DRepInactive]
+  | otherwise = drepFilterStatus f
+
+-- | Every status 'drepStatusExpr' can produce: the facet universe.
+--
+-- @reserved@ is absent on purpose. 'DRepStatus' carries it for the two reserved ledger options,
+-- which have no @drep_registration@ row, never enter @\/dreps@ (D-20), and therefore can never be
+-- a facet count. Measured: these three sum to 805 — 294 registered and 511 retired — against 812
+-- credentials in @drep_hash@, the other 7 being the never-registered ones 'drepWhere' excludes
+-- unconditionally.
+registeredDRepStatuses :: [DRepStatus]
+registeredDRepStatuses = [DRepActive, DRepInactive, DRepRetired]
+
+-- | The explorer's facet block, decoded from one statement.
+--
+-- Not a @QueryResponses@ DTO: these four keys are a private contract between the statement below
+-- and this decode, the way 'Freshness' is. What the WIRE calls them is
+-- 'DRepExplorerPageResponse''s business.
+data DRepFacets = DRepFacets
+  { facetStatus :: [(DRepStatus, Int)],
+    facetAnchor :: [(AnchorStatus, Int)],
+    facetLanguage :: [(Text, Int)],
+    facetPower :: [PowerBucket]
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "facet", CamelToSnake]] DRepFacets
+
+-- | The facet statement and its parameters, in placeholder order.
+--
+-- Split from 'drepFacetsQuery' as a pure function so that @UnitTests.QueryHardening@ can assert
+-- the placeholder count against the parameter count without a database — the same check it already
+-- runs over 'drepWhere'. Nine parameter groups in one bind list is precisely where an off-by-one
+-- lives, and postgresql-simple only reports it at run time.
+--
+-- __One pass of the expensive join.__ @base@ is @MATERIALIZED@ deliberately: the join behind it is
+-- this endpoint's entire cost (measured 1805 ms cold, 1006 ms warm, 805 rows), and four facet
+-- subqueries over an inlined CTE would pay for it four times. Materialized it is paid once and the
+-- aggregations run over at most 812 rows already in memory — measured, the whole statement is
+-- 391 ms warm, which is the join plus nothing.
+--
+-- Each enumerated facet DROPS ITS OWN predicate and keeps the other two. The power histogram keeps
+-- all three, because it is a range control rather than a checkbox list: its counts sum to the page
+-- total, which is also what makes them readable next to it.
+drepFacetsSql :: DRepFilter -> (Text, [PersistValue])
+drepFacetsSql f = (sql, params)
+  where
+    -- The base predicate is the request's, MINUS the three facet dimensions. Status is set to the
+    -- three real values rather than to [] because [] means "the default two" (effectiveDRepStatus).
+    (baseWhere, baseParams) =
+      drepWhere
+        f
+          { drepFilterStatus = registeredDRepStatuses,
+            drepFilterAnchorStatus = [],
+            drepFilterLanguage = Nothing
+          }
+    (statusSql, statusPs) = inFacet "status" (map jsonTag (effectiveDRepStatus f))
+    (anchorSql, anchorPs) = inFacet "anchor_status" (map jsonTag (drepFilterAnchorStatus f))
+    (langSql, langPs) = case drepFilterLanguage f of
+      Nothing -> ("TRUE", [])
+      Just l -> ("language = ?", [toPersistValue l])
+
+    -- Placeholders expanded, never bound as an array, for the reason 'drepWhere' gives. "TRUE" on
+    -- the empty list keeps the four subqueries textually identical whether or not a dimension is
+    -- filtered, so the bind list below cannot shift.
+    inFacet col vs
+      | null vs = ("TRUE", [])
+      | otherwise =
+          ( col <> " IN (" <> T.intercalate ", " (map (const "?") vs) <> ")",
+            map toPersistValue vs
+          )
+
+    params =
+      concat
+        [ baseParams,
+          -- the status facet: its own clause dropped
+          anchorPs,
+          langPs,
+          -- the anchor facet
+          statusPs,
+          langPs,
+          -- the language facet
+          statusPs,
+          anchorPs,
+          -- the histogram: all three kept
+          statusPs,
+          anchorPs,
+          langPs
+        ]
+
+    sql =
+      "WITH base AS MATERIALIZED ( SELECT "
+        <> drepStatusExpr
+        <> " AS status, a.verdict AS anchor_status, d.language, m.voting_power "
+        <> drepFrom
+        <> baseWhere
+        <> " ) SELECT row_to_json(x)::text FROM ( SELECT \
+           \ ( SELECT COALESCE(json_agg(json_build_array(status, n) ORDER BY status), '[]'::json) \
+           \     FROM ( SELECT status, count(*)::int AS n FROM base \
+           \             WHERE "
+        <> anchorSql
+        <> " AND "
+        <> langSql
+        <> " GROUP BY 1 ) q ) AS status, \
+           \ ( SELECT COALESCE(json_agg(json_build_array(anchor_status, n) \
+           \                            ORDER BY n DESC, anchor_status), '[]'::json) \
+           \     FROM ( SELECT anchor_status, count(*)::int AS n FROM base \
+           \             WHERE anchor_status IS NOT NULL AND "
+        <> statusSql
+        <> " AND "
+        <> langSql
+        <> " GROUP BY 1 ) q ) AS anchor, \
+           \ ( SELECT COALESCE(json_agg(json_build_array(language, n) \
+           \                            ORDER BY n DESC, language), '[]'::json) \
+           \     FROM ( SELECT language, count(*)::int AS n FROM base \
+           \             WHERE language IS NOT NULL AND "
+        <> statusSql
+        <> " AND "
+        <> anchorSql
+        <> " GROUP BY 1 ) q ) AS language, \
+           \ ( SELECT COALESCE(json_agg(json_build_object('lo', lo, 'hi', hi, 'count', n) \
+           \                            ORDER BY lo), '[]'::json) \
+           \     FROM ( SELECT b.lo, b.hi, count(p.voting_power)::int AS n \
+           \              FROM (VALUES (0::bigint, 1::bigint), \
+           \                           (1, 1000000000), \
+           \                           (1000000000, 10000000000), \
+           \                           (10000000000, 100000000000), \
+           \                           (100000000000, 1000000000000), \
+           \                           (1000000000000, NULL::bigint)) AS b(lo, hi) \
+           \              LEFT JOIN base p ON p.voting_power >= b.lo \
+           \                              AND (b.hi IS NULL OR p.voting_power < b.hi) \
+           \                              AND "
+        <> statusSql
+        <> " AND "
+        <> anchorSql
+        <> " AND "
+        <> langSql
+        <> " GROUP BY b.lo, b.hi ) q ) AS power \
+           \ ) x"
+
+-- | The explorer's four facet lists. 'Nothing' is unreachable: the outer @SELECT@ has no @FROM@.
+drepFacetsQuery :: DRepFilter -> SqlPersistT IO (Maybe DRepFacets)
+drepFacetsQuery f = let (sql, params) = drepFacetsSql f in queryJson1 sql params
+
+-- | Every scalar figure @\/pages\/dashboard@ publishes, from ONE statement.
+--
+-- A carrier, like 'DRepFacets': one @row_to_json@ object, one decode, and the response's own field
+-- names stay 'RestAPI''s business.
+data DashboardTotals = DashboardTotals
+  { totalsTotalActions :: Int,
+    totalsActionsInFlight :: Int,
+    totalsActionsByType :: [(GovActionType, Int)],
+    totalsActionsByState :: [(GovActionState, Int)],
+    totalsTreasuryRequestedLovelace :: Integer,
+    totalsTreasuryEnactedLovelace :: Integer,
+    totalsPowerEpoch :: Maybe Int,
+    totalsDrepPowerLovelace :: Integer,
+    totalsAlwaysAbstainLovelace :: Integer,
+    totalsAlwaysNoConfidenceLovelace :: Integer
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "totals", CamelToSnake]] DashboardTotals
+
+-- | The dashboard's scalar figures: one statement, one group per subquery, one scan per relation.
+--
+-- __The three CTEs are the design, not tidiness.__ @palmares.gov_action@ publishes @votes_cast@ as
+-- a correlated count over @public.voting_procedure@'s 3.24 M rows; measured, selecting it for all
+-- 131 actions costs __41.7 s__, while selecting the three columns this statement actually needs
+-- costs __213 ms__ because PostgreSQL prunes the view's unused targetlist. Naming the columns is
+-- what keeps that pruning available, so this statement must never grow a @SELECT *@. The whole
+-- thing measures 100 ms.
+--
+-- @ratified@ is 0 on preprod and every type and state is still emitted, through a @LEFT JOIN@ from
+-- a literal list, for the reason 'DRepMetrics' gives about its seven action types: a missing row
+-- reads as \"no such thing\" where the truth is \"none of them\".
+--
+-- The parked-stake figures are read at @sync_state.drep_distr_epoch@, INSIDE the statement, rather
+-- than at an epoch bound in from Haskell: the ledger writes the distribution one epoch behind the
+-- tip, and binding the tip would publish three zeroes for the first blocks of every epoch.
+dashboardTotalsQuery :: SqlPersistT IO (Maybe DashboardTotals)
+dashboardTotalsQuery =
+  queryJson1
+    "WITH ga AS MATERIALIZED ( \
+    \  SELECT g.state, g.action_type, g.last_votable_epoch FROM palmares.gov_action g ), \
+    \ tw AS MATERIALIZED ( \
+    \  SELECT w.amount, w.enacted_epoch FROM palmares.treasury_withdrawal w ), \
+    \ pw AS MATERIALIZED ( \
+    \  SELECT p.target_kind, p.amount FROM palmares.drep_epoch_power p \
+    \   WHERE p.epoch_no = (SELECT s.drep_distr_epoch FROM palmares.sync_state s) ) \
+    \ SELECT row_to_json(x)::text FROM ( SELECT \
+    \   (SELECT count(*)::int FROM ga) AS total_actions, \
+    \   (SELECT count(*)::int FROM ga \
+    \     WHERE ga.last_votable_epoch >= (SELECT s.epoch_no FROM palmares.sync_state s)) \
+    \     AS actions_in_flight, \
+    \   (SELECT COALESCE(json_agg(json_build_array(t.k, COALESCE(c.n, 0)) ORDER BY t.k), '[]'::json) \
+    \      FROM (VALUES ('hard_fork_initiation'), ('info_action'), ('new_committee'), \
+    \                   ('new_constitution'), ('no_confidence'), ('parameter_change'), \
+    \                   ('treasury_withdrawals')) AS t(k) \
+    \      LEFT JOIN ( SELECT lower(regexp_replace(action_type::text, \
+    \                                              '([a-z0-9])([A-Z])', '\\1_\\2', 'g')) AS k, \
+    \                         count(*)::int AS n FROM ga GROUP BY 1 ) c ON c.k = t.k) \
+    \     AS actions_by_type, \
+    \   (SELECT COALESCE(json_agg(json_build_array(t.k, COALESCE(c.n, 0)) ORDER BY t.k), '[]'::json) \
+    \      FROM (VALUES ('proposed'), ('ratified'), ('enacted'), ('expired'), ('dropped')) AS t(k) \
+    \      LEFT JOIN ( SELECT state AS k, count(*)::int AS n FROM ga GROUP BY 1 ) c ON c.k = t.k) \
+    \     AS actions_by_state, \
+    \   (SELECT COALESCE(sum(amount), 0)::bigint FROM tw) AS treasury_requested_lovelace, \
+    \   (SELECT COALESCE(sum(amount) FILTER (WHERE enacted_epoch IS NOT NULL), 0)::bigint FROM tw) \
+    \     AS treasury_enacted_lovelace, \
+    \   (SELECT s.drep_distr_epoch FROM palmares.sync_state s) AS power_epoch, \
+    \   (SELECT COALESCE(sum(amount) FILTER (WHERE target_kind = 'drep'), 0)::bigint FROM pw) \
+    \     AS drep_power_lovelace, \
+    \   (SELECT COALESCE(sum(amount) FILTER (WHERE target_kind = 'always_abstain'), 0)::bigint \
+    \      FROM pw) AS always_abstain_lovelace, \
+    \   (SELECT COALESCE(sum(amount) FILTER (WHERE target_kind = 'always_no_confidence'), 0)::bigint \
+    \      FROM pw) AS always_no_confidence_lovelace \
+    \ ) x"
+    []
+
+-- | DRep participation, epoch by epoch, over the last @n@ epochs ending at the tip.
+--
+-- __This goes around @palmares.vote@ on purpose__, and the precedent is @palmares.gov_action@'s
+-- own @votes_cast@, which goes around it for the same reason and records the same kind of
+-- measurement in its comment. @palmares.vote@ computes window functions over all 3.24 M
+-- voting-procedure rows — preprod's epoch-187 committee stress test is 3,243,802 of them — so a
+-- per-epoch aggregate through it costs __1213 ms__. Reached through
+-- @gov_idx_voting_procedure_drep@, the partial index on @drep_voter@, the identical answer costs
+-- __4.6 ms__: measured side by side, the same 19 epochs with the same voter and vote counts.
+--
+-- The denominator is the LEFT side, so an epoch in which nobody voted is a row with 0 and a rate
+-- of 0 rather than a gap — measured, epoch 311 is exactly that. The ORDER is ascending because
+-- the series is read as a chart.
+listEpochParticipation :: Int -> SqlPersistT IO [EpochParticipationPoint]
+listEpochParticipation epochs =
+  queryJson
+    "SELECT row_to_json(x)::text FROM ( \
+    \  SELECT e.epoch_no AS epoch, e.with_power AS dreps_with_power, \
+    \         COALESCE(v.voters, 0) AS dreps_voted, COALESCE(v.votes, 0) AS votes_cast, \
+    \         CASE WHEN e.with_power = 0 THEN NULL \
+    \              ELSE COALESCE(v.voters, 0)::float8 / e.with_power END AS participation_rate \
+    \  FROM ( SELECT p.epoch_no, count(*) FILTER (WHERE p.amount > 0)::int AS with_power \
+    \           FROM palmares.drep_epoch_power p \
+    \          WHERE p.target_kind = 'drep' \
+    \            AND p.epoch_no >  (SELECT s.epoch_no FROM palmares.sync_state s) - ? \
+    \            AND p.epoch_no <= (SELECT s.epoch_no FROM palmares.sync_state s) \
+    \          GROUP BY 1 ) e \
+    \  LEFT JOIN ( SELECT b.epoch_no, \
+    \                     count(DISTINCT v.drep_voter)::int AS voters, \
+    \                     count(*)::int AS votes \
+    \                FROM public.voting_procedure v \
+    \                JOIN public.tx t ON t.id = v.tx_id \
+    \                JOIN public.block b ON b.id = t.block_id \
+    \               WHERE v.drep_voter IS NOT NULL \
+    \                 AND b.epoch_no > (SELECT s.epoch_no FROM palmares.sync_state s) - ? \
+    \               GROUP BY 1 ) v ON v.epoch_no = e.epoch_no \
+    \  ORDER BY e.epoch_no ASC \
+    \) x"
+    [toPersistValue epochs, toPersistValue epochs]
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /delegations
+
+-- | The ordering each @order_by@ value means. Closed and total, as 'drepSortSpec' is.
+--
+-- @at@ sorts on the SLOT, not the timestamp: two delegations in one block share a timestamp and
+-- not a slot ordering, and the tiebreaker has to break ties rather than hide them.
+delegationSortSpec :: DelegationsOrderBy -> SortSpec
+delegationSortSpec = \case
+  DelegationsOrderByAt -> SortSpec "dv.slot_no" False tie
+  DelegationsOrderByLovelace -> SortSpec "es.amount" True tie
+  DelegationsOrderByStakeAddress -> SortSpec "dv.stake_address" False tie
+  where
+    tie = "dv.addr_id"
+
+-- | The SAME sort, named over the page subquery's own columns instead of the base tables'.
+--
+-- It exists because 'listDelegations' is the one list query built in two levels: the page is
+-- chosen and ordered in a subquery, and the DRep's name is joined on ABOVE it. __An ORDER BY
+-- inside a subquery is not preserved through a join over it__, and PostgreSQL duly returned the
+-- right five rows in hash-join order. MEASURED, by the smoke suite:
+-- @\/delegations?order_by=at&sort_order=desc@ came back 136808533, 136808622, 136809426,
+-- 136766068, 136815403 — the correct five newest delegations, in no order at all.
+--
+-- A second spec rather than a prefix parameter on the first, because the two are not a
+-- substitution: @es.amount@ inside is @lovelace@ outside, a column the subquery itself named.
+delegationOuterSortSpec :: DelegationsOrderBy -> SortSpec
+delegationOuterSortSpec = \case
+  DelegationsOrderByAt -> SortSpec "p.slot_no" False tie
+  DelegationsOrderByLovelace -> SortSpec "p.lovelace" True tie
+  DelegationsOrderByStakeAddress -> SortSpec "p.stake_address" False tie
+  where
+    tie = "p.addr_id"
+
+-- | Whether this row's delegation still counts, as ONE expression.
+--
+-- Used by the projection and by the @is_current@ filter alike, for the reason 'drepWhere'
+-- spells out for @status@: a page must not be able to show a flag the filter would have excluded.
+--
+-- __This is @palmares.live_delegation@'s own predicate, inlined, and that is a performance
+-- decision with a measurement behind it.__ The obvious shape — @LEFT JOIN palmares.live_delegation
+-- ON addr_id AND drep_hash_id@ — makes the statement walk the DISTINCT-ON over
+-- @palmares.vote_delegation@ TWICE, once for this page's rows and once inside that view, because
+-- the view computes the same \"latest certificate per address\" set. Measured: 2,929 ms for a
+-- 50-row page against 1,025 ms for this shape, and the two agree exactly — 2,304 addresses,
+-- 1,960 current, 344 not, on both.
+--
+-- The equivalence is not a coincidence and is worth stating, because the duplication is the price:
+-- @dv@ below and @live_delegation@ select the same latest row per address, so
+-- @l.drep_hash_id = dv.drep_hash_id@ is implied by @l.addr_id = dv.addr_id@ and all that
+-- @live_delegation@ adds is this deregistration check. If that view's predicate ever changes, THIS
+-- LINE must change with it.
+delegationIsCurrentExpr :: Text
+delegationIsCurrentExpr =
+  "NOT EXISTS (SELECT 1 FROM public.stake_deregistration sd \
+  \            WHERE sd.addr_id = dv.addr_id AND sd.epoch_no >= dv.epoch_no)"
+
+-- | The FROM clause the page and the count share, for F-17's reason.
+--
+-- Only the columns the filters and the orderings touch. The identity decoration — the target's
+-- credential and its published name — is joined OUTSIDE the paged subquery in 'listDelegations',
+-- which is also measured: joining @palmares.drep@ inside made the planner re-scan it once per
+-- candidate row (1,960 times, +1.37 s on a 50-row page). Neither decoration join can change
+-- cardinality, @drep_hash@ being PK-joined and @palmares.drep@ having exactly one row per
+-- @drep_hash_id@ (measured: 812 rows, 812 distinct ids), so the count stays honest.
+delegationFrom :: Text
+delegationFrom =
+  " FROM ( SELECT DISTINCT ON (addr_id) addr_id, stake_address, drep_hash_id, target_kind, \
+  \               slot_no, epoch_no, delegated_at, tx_hash \
+  \        FROM palmares.vote_delegation \
+  \        ORDER BY addr_id, slot_no DESC, tx_index DESC, cert_index DESC ) dv \
+  \ LEFT JOIN ( SELECT addr_id, amount FROM public.epoch_stake \
+  \             WHERE epoch_no = (SELECT max(epoch_no) FROM public.epoch_stake) ) es \
+  \   ON es.addr_id = dv.addr_id "
+
+-- | The @WHERE@ fragment and its parameters, in placeholder order.
+delegationWhere :: DelegationFilter -> (Text, [PersistValue])
+delegationWhere f =
+  let clauses =
+        concat
+          [ [("(" <> delegationIsCurrentExpr <> ") = ?", [toPersistValue (delegationFilterIsCurrent f)])],
+            targetClause,
+            inClause "dv.stake_address" (delegationFilterStakeAddresses f),
+            one "dv.delegated_at >= ?" (delegationFilterFrom f),
+            one "dv.delegated_at <= ?" (delegationFilterTo f),
+            one "es.amount >= ?" (delegationFilterMinLovelace f)
+          ]
+   in ("WHERE " <> T.intercalate " AND " (map fst clauses), concatMap snd clauses)
+  where
+    one sql = maybe [] (\v -> [(sql, [toPersistValue v])])
+
+    inClause col vs
+      | null vs = []
+      | otherwise =
+          [ ( col <> " IN (" <> T.intercalate ", " (map (const "?") vs) <> ")",
+              map toPersistValue vs
+            )
+          ]
+
+    -- ONE clause with up to two OR-arms, not two AND'd clauses: a client naming a credential and
+    -- `drep_always_abstain` in the same request means "either of these targets", and AND'ing them
+    -- would return nothing. Both lists empty yields no clause at all, which is "any target".
+    --
+    -- The credential arm resolves through `drep_hash` rather than comparing `dv.drep_hash_id`
+    -- directly, because the client sent an identifier and not an internal row id. `drep_hash` is
+    -- 814 rows, so the semi-join is a hashed scan and costs nothing measurable.
+    targetClause =
+      case ( delegationFilterDrepHex f,
+             delegationFilterReservedTargets f
+           ) of
+        ([], []) -> []
+        (hexes, reserved) ->
+          let arms =
+                [ ( "dv.drep_hash_id IN (SELECT h.id FROM public.drep_hash h WHERE h.raw IN ("
+                      <> T.intercalate ", " (map (const "decode(?, 'hex')") hexes)
+                      <> "))",
+                    map toPersistValue hexes
+                  )
+                  | not (null hexes)
+                ]
+                  <> [ ( "dv.target_kind IN (" <> T.intercalate ", " (map (const "?") reserved) <> ")",
+                         map toPersistValue reserved
+                       )
+                       | not (null reserved)
+                     ]
+           in [("(" <> T.intercalate " OR " (map fst arms) <> ")", concatMap snd arms)]
+
+-- | One page of delegations, with a total over the same predicate.
+--
+-- The page is selected first and decorated second, per 'delegationFrom'.
+listDelegations ::
+  DelegationFilter ->
+  (DelegationsOrderBy, SortOrder) ->
+  (Limit, Offset) ->
+  SqlPersistT IO (Page DelegationRecord)
+listDelegations f (ob, so) (lim, off) = do
+  items <-
+    queryJson
+      ( "SELECT row_to_json(x)::text FROM ( SELECT "
+          <> delegationProjection
+          <> " FROM ( SELECT dv.addr_id, dv.stake_address, dv.drep_hash_id, dv.target_kind, \
+             \               dv.slot_no, dv.epoch_no, dv.delegated_at, dv.tx_hash, \
+             \               es.amount AS lovelace, ("
+          <> delegationIsCurrentExpr
+          <> ") AS is_current "
+          <> delegationFrom
+          <> whereSql
+          <> " "
+          <> orderClause (delegationSortSpec ob) so
+          <> " LIMIT ? OFFSET ? ) p \
+             \ JOIN public.drep_hash dh ON dh.id = p.drep_hash_id \
+             \ LEFT JOIN palmares.drep d ON d.drep_hash_id = p.drep_hash_id "
+          <> orderClause (delegationOuterSortSpec ob) so
+          <> " ) x"
+      )
+      (params <> [toPersistValue lim, toPersistValue off])
+  totals <- rawSql ("SELECT count(*)::int" <> delegationFrom <> whereSql) params
+  pure (Page items (Just (case totals of (Single n : _) -> n; [] -> 0)) lim off Nothing)
+  where
+    (whereSql, params) = delegationWhere f
+
+-- | The projection list. Keys are 'DelegationRecord''s wire names, plus the three the DTO's
+-- 'FromJSON' consumes to DERIVE @target@ and does not republish.
+delegationProjection :: Text
+delegationProjection =
+  " p.stake_address, p.target_kind, \
+  \ encode(dh.raw, 'hex') AS target_hex, \
+  \ COALESCE(dh.has_script, FALSE) AS target_has_script, \
+  \ d.given_name AS target_name, \
+  \ p.lovelace, \
+  \ json_build_object('slot', p.slot_no, 'epoch', p.epoch_no, \
+  \                   'time', (p.delegated_at AT TIME ZONE 'UTC'), \
+  \                   'tx_hash', encode(p.tx_hash, 'hex')) AS at, \
+  \ p.is_current "
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /committee
+
+-- | The committee in force, with its seats, as one JSON object.
+--
+-- __Deliberately NOT read through @palmares.committee_member@, and the reason is measured.__ That
+-- view resolves each seat's hot key with a @LEFT JOIN LATERAL@ that joins @committee_hash@ INSIDE
+-- the subquery and sorts before its @LIMIT 1@; the planner answers it by building all 648,814
+-- @committee_hash@ rows and discarding all but one, once per seat. Measured, for the three current
+-- seats: 917 ms through that shape against 0.13 ms for the shape below, which takes the @LIMIT 1@
+-- on @committee_registration@ FIRST and then does a single primary-key lookup. End to end the
+-- route went from 2,701 ms to 692 ms, serving byte-identical JSON.
+--
+-- The view could not have served this route anyway: @authorized_at@ and @resigned_at@ need
+-- @committee_registration@ and @committee_de_registration@ directly, which the view does not
+-- publish. Reading @hot_hash@ and @status@ from the same two visits is strictly less work than
+-- visiting them twice — and @status@ is the view's own predicate verbatim, an existence check on
+-- @committee_de_registration@, which is what keeps the two definitions one definition. If that
+-- view's @status@ CASE gains an arm, this must gain it too.
+--
+-- @votes_cast@ reads @public.voting_procedure@ rather than @palmares.vote@, and that is the same
+-- kind of measurement: @palmares.vote@ joins @palmares.cc_cold_interval@, whose @lead()@ window
+-- runs over all 648,767 @committee_registration@ rows whatever the qual, so even an SPO-only
+-- count through it costs 1,064 ms where the direct read costs 103 ms. Counting through
+-- @voter_cold_hash@ as the plan suggested is worse still — that column is not in @palmares.vote@'s
+-- @PARTITION BY@, so it pays a full pass: 4,252 ms for one member, against 2,413 ms for the
+-- partition-column qual and 105 ms here.
+--
+-- The hot-key attribution drops @cc_cold_interval@'s interval check and keeps only
+-- @cr.tx_id \<= vp.tx_id@ — a vote cannot belong to a registration made after it. The dropped half
+-- guards against one hot key being registered under a second cold key later, and __measured, zero
+-- of preprod's 648,766 hot keys is registered to more than one cold key__. The day one is, this
+-- under-counts rotations and needs the @NOT EXISTS@ form of the interval back.
+getCommittee :: SqlPersistT IO (Maybe CommitteeResponse)
+getCommittee =
+  queryJson1
+    "SELECT row_to_json(x)::text FROM ( \
+    \  WITH cur AS ( SELECT es.committee_id, es.epoch_no FROM public.epoch_state es \
+    \                WHERE es.committee_id IS NOT NULL \
+    \                ORDER BY es.epoch_no DESC, es.id DESC LIMIT 1 ), \
+    \  votes AS ( SELECT cr.cold_key_id, count(DISTINCT vp.gov_action_proposal_id)::int AS votes_cast \
+    \             FROM public.committee_registration cr \
+    \             JOIN public.voting_procedure vp \
+    \               ON vp.committee_voter = cr.hot_key_id AND cr.tx_id <= vp.tx_id \
+    \             WHERE cr.cold_key_id IN ( SELECT cm.committee_hash_id \
+    \                                       FROM public.committee_member cm \
+    \                                       WHERE cm.committee_id = (SELECT committee_id FROM cur) ) \
+    \             GROUP BY cr.cold_key_id ) \
+    \  SELECT c.quorum_numerator::int AS quorum_numerator, \
+    \         c.quorum_denominator::int AS quorum_denominator, \
+    \         CASE WHEN ga.tx_hash IS NULL THEN NULL \
+    \              ELSE encode(ga.tx_hash, 'hex') || '#' || ga.index END AS established_by, \
+    \         cur.epoch_no AS epoch, \
+    \         COALESCE( \
+    \           ( SELECT json_agg(json_build_object( \
+    \                      'cold_hash', encode(ch.raw, 'hex'), \
+    \                      'cold_has_script', ch.has_script, \
+    \                      'hot_hash', encode(hot.raw, 'hex'), \
+    \                      'expiration_epoch', cm.expiration_epoch, \
+    \                      'status', CASE WHEN dereg.tx_id IS NOT NULL THEN 'resigned' ELSE 'active' END, \
+    \                      'votes_cast', COALESCE(v.votes_cast, 0), \
+    \                      'authorized_at', \
+    \                        CASE WHEN rb.id IS NULL THEN NULL \
+    \                             ELSE json_build_object('slot', rb.slot_no, 'epoch', rb.epoch_no, \
+    \                                    'time', (rb.\"time\" AT TIME ZONE 'UTC'), \
+    \                                    'tx_hash', encode(rtx.hash, 'hex')) END, \
+    \                      'resigned_at', \
+    \                        CASE WHEN db.id IS NULL THEN NULL \
+    \                             ELSE json_build_object('slot', db.slot_no, 'epoch', db.epoch_no, \
+    \                                    'time', (db.\"time\" AT TIME ZONE 'UTC'), \
+    \                                    'tx_hash', encode(dtx.hash, 'hex')) END) \
+    \                     ORDER BY ch.raw) \
+    \             FROM public.committee_member cm \
+    \             JOIN public.committee_hash ch ON ch.id = cm.committee_hash_id \
+    \             LEFT JOIN LATERAL ( SELECT cr.hot_key_id, cr.tx_id \
+    \                                 FROM public.committee_registration cr \
+    \                                 WHERE cr.cold_key_id = cm.committee_hash_id \
+    \                                 ORDER BY cr.tx_id DESC, cr.cert_index DESC LIMIT 1 ) reg ON TRUE \
+    \             LEFT JOIN public.committee_hash hot ON hot.id = reg.hot_key_id \
+    \             LEFT JOIN public.tx rtx ON rtx.id = reg.tx_id \
+    \             LEFT JOIN public.block rb ON rb.id = rtx.block_id \
+    \             LEFT JOIN LATERAL ( SELECT dr.tx_id \
+    \                                 FROM public.committee_de_registration dr \
+    \                                 WHERE dr.cold_key_id = cm.committee_hash_id \
+    \                                 ORDER BY dr.tx_id DESC, dr.cert_index DESC LIMIT 1 ) dereg ON TRUE \
+    \             LEFT JOIN public.tx dtx ON dtx.id = dereg.tx_id \
+    \             LEFT JOIN public.block db ON db.id = dtx.block_id \
+    \             LEFT JOIN votes v ON v.cold_key_id = cm.committee_hash_id \
+    \             WHERE cm.committee_id = cur.committee_id ), '[]'::json) AS members \
+    \  FROM cur \
+    \  JOIN public.committee c ON c.id = cur.committee_id \
+    \  LEFT JOIN palmares.gov_action ga ON ga.gov_action_id = c.gov_action_proposal_id \
+    \) x"
+    []
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /spos
+
+-- | The ordering each @order_by@ value means. Closed and total.
+--
+-- @voting_power@ sorts on the same @COALESCE@ the projection publishes and the @min_voting_power@
+-- filter compares, so a pool cannot sort as absent and read as zero. @pool_id@ sorts on
+-- @pool_hash.view@, which is the ONE place this endpoint trusts db-sync's own bech32 — verified
+-- byte-identical to 'poolIdBech32' for the top pool by power, and ordering by it is ordering by
+-- the string the response publishes rather than by raw bytes, which is what a client asked for.
+spoSortSpec :: SPOsOrderBy -> SortSpec
+spoSortSpec = \case
+  SPOsOrderByVotingPower -> SortSpec "COALESCE(ps.voting_power, 0)" False tie
+  SPOsOrderByVotesCast -> SortSpec "COALESCE(vc.votes_cast, 0)" False tie
+  SPOsOrderByPoolId -> SortSpec "ph.view" False tie
+  where
+    tie = "ph.id"
+
+-- | The FROM clause the page and the count share.
+--
+-- The vote counts are ONE pre-aggregated pass over @public.voting_procedure@ — 90 SPO vote rows
+-- behind a partial index — rather than a per-pool subquery, which over 510 pools would be 510
+-- passes. Not through @palmares.vote@: see 'getCommittee' for the 1,064 ms that costs.
+--
+-- The @off_chain_pool_data@ join has 0 rows on preprod and is here so @ticker@ fills itself if the
+-- fetcher is ever enabled. @DISTINCT ON@ because that table is one row per metadata FETCH, not per
+-- pool.
+spoFrom :: Text
+spoFrom =
+  " FROM public.pool_stat ps \
+  \ JOIN public.pool_hash ph ON ph.id = ps.pool_hash_id \
+  \ LEFT JOIN ( SELECT vp.pool_voter AS pool_hash_id, \
+  \                    count(DISTINCT vp.gov_action_proposal_id)::int AS votes_cast \
+  \             FROM public.voting_procedure vp \
+  \             WHERE vp.pool_voter IS NOT NULL \
+  \             GROUP BY vp.pool_voter ) vc ON vc.pool_hash_id = ph.id \
+  \ LEFT JOIN ( SELECT DISTINCT ON (o.pool_id) o.pool_id, o.ticker_name \
+  \             FROM public.off_chain_pool_data o \
+  \             ORDER BY o.pool_id, o.id DESC ) ocpd ON ocpd.pool_id = ph.id "
+
+-- | The @WHERE@ fragment and its parameters.
+--
+-- The epoch pin is unconditional: @pool_stat@ holds 99,872 rows across every epoch since the
+-- Shelley era, and without it the endpoint would publish one row per pool per epoch.
+spoWhere :: SPOFilter -> (Text, [PersistValue])
+spoWhere f =
+  let clauses =
+        concat
+          [ [("ps.epoch_no = (SELECT max(epoch_no) FROM public.pool_stat)", [])],
+            one "COALESCE(ps.voting_power, 0) >= ?" (spoFilterMinVotingPower f),
+            one "COALESCE(vc.votes_cast, 0) >= ?" (spoFilterMinVotesCast f),
+            -- A semi-join and not an EXISTS: pool_stat carries no index on epoch_no, so a
+            -- correlated EXISTS would scan all 99,872 rows once per candidate pool. This form
+            -- scans them once and hashes the result.
+            one
+              "ps.pool_hash_id IN (SELECT p2.pool_hash_id FROM public.pool_stat p2 \
+              \ WHERE p2.epoch_no = ? AND p2.voting_power > 0)"
+              (spoFilterActiveInEpoch f)
+          ]
+   in ("WHERE " <> T.intercalate " AND " (map fst clauses), concatMap snd clauses)
+  where
+    one sql = maybe [] (\v -> [(sql, [toPersistValue v])])
+
+-- | One page of stake pools, with a total over the same predicate.
+listSPOs :: SPOFilter -> (SPOsOrderBy, SortOrder) -> (Limit, Offset) -> SqlPersistT IO (Page SPOSummary)
+listSPOs f (ob, so) (lim, off) = do
+  items <-
+    queryJson
+      ( "SELECT row_to_json(x)::text FROM ( SELECT "
+          <> spoProjection
+          <> spoFrom
+          <> whereSql
+          <> " "
+          <> orderClause (spoSortSpec ob) so
+          <> " LIMIT ? OFFSET ? ) x"
+      )
+      (params <> [toPersistValue lim, toPersistValue off])
+  totals <- rawSql ("SELECT count(*)::int" <> spoFrom <> whereSql) params
+  pure (Page items (Just (case totals of (Single n : _) -> n; [] -> 0)) lim off Nothing)
+  where
+    (whereSql, params) = spoWhere f
+
+-- | The projection list. @hash@ is consumed by 'SPOSummary''s 'FromJSON' to derive @pool_id@ and
+-- is not republished.
+--
+-- @participation_rate@ is a literal NULL: see 'SPOSummary' for why a number with no catalog
+-- formula is not published here.
+spoProjection :: Text
+spoProjection =
+  " encode(ph.hash_raw, 'hex') AS hash, \
+  \ NULLIF(ocpd.ticker_name, '') AS ticker, \
+  \ COALESCE(ps.voting_power, 0) AS voting_power, \
+  \ ps.epoch_no AS voting_power_epoch, \
+  \ ps.number_of_delegators::int AS delegator_count, \
+  \ COALESCE(vc.votes_cast, 0) AS votes_cast, \
+  \ NULL::float8 AS participation_rate "
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /treasury-withdrawals
+
+-- | The ordering each @order_by@ value means. Closed and total.
+--
+-- The tiebreaker is TWO columns, unlike every other sort spec here, and it has to be: the
+-- @palmares.treasury_withdrawal@ view does not publish @treasury_withdrawal.id@, so no single
+-- column identifies a row. @(gov_action_id, stake_address_id)@ does — measured, 83 rows and 83
+-- distinct pairs — and without both, the 82 rows sharing @enacted_epoch IS NULL@ would come back
+-- in any order on any page.
+--
+-- @NULLS LAST@ on @enacted_epoch@ because an un-enacted withdrawal has no enactment epoch, not a
+-- low one. On preprod that means the whole default page is decided by the tiebreaker.
+withdrawalSortSpec :: TreasuryWithdrawalsOrderBy -> SortSpec
+withdrawalSortSpec = \case
+  TreasuryWithdrawalsOrderByAmount -> SortSpec "w.amount" False tie
+  TreasuryWithdrawalsOrderByEnactedEpoch -> SortSpec "w.enacted_epoch" True tie
+  where
+    tie = "w.gov_action_id ASC, w.stake_address_id"
+
+-- | The FROM clause the page and the count share.
+--
+-- The join to @palmares.gov_action@ is what supplies the action's identity and title, and going
+-- through the view rather than @off_chain_vote_gov_action_data@ directly is the point: that table
+-- carries db-sync 13.7.x's duplicate child rows, and joining it raw turns 83 withdrawals into 86.
+-- The view's own @DISTINCT ON@ pins it. Measured: 83 rows and 3 titles through the view, 86 rows
+-- through the raw join.
+withdrawalFrom :: Text
+withdrawalFrom =
+  " FROM palmares.treasury_withdrawal w \
+  \ JOIN palmares.gov_action g ON g.gov_action_id = w.gov_action_id "
+
+-- | The @WHERE@ fragment and its parameters.
+withdrawalWhere :: TreasuryWithdrawalFilter -> (Text, [PersistValue])
+withdrawalWhere f =
+  let clauses =
+        concat
+          [ inClause
+              "encode(g.tx_hash, 'hex') || '#' || g.index"
+              (map unGovActionId (withdrawalFilterGovActionIds f)),
+            inClause "w.stake_address" (withdrawalFilterBeneficiaries f),
+            one "w.enacted_epoch >= ?" (withdrawalFilterEnactedFromEpoch f),
+            one "w.enacted_epoch <= ?" (withdrawalFilterEnactedToEpoch f),
+            one "w.amount >= ?" (withdrawalFilterMinAmount f),
+            one "w.amount <= ?" (withdrawalFilterMaxAmount f)
+          ]
+   in ( if null clauses then "" else "WHERE " <> T.intercalate " AND " (map fst clauses),
+        concatMap snd clauses
+      )
+  where
+    one sql = maybe [] (\v -> [(sql, [toPersistValue v])])
+
+    inClause col vs
+      | null vs = []
+      | otherwise =
+          [ ( col <> " IN (" <> T.intercalate ", " (map (const "?") vs) <> ")",
+              map toPersistValue vs
+            )
+          ]
+
+-- | One page of treasury withdrawals, with a total over the same predicate.
+listTreasuryWithdrawals ::
+  TreasuryWithdrawalFilter ->
+  (TreasuryWithdrawalsOrderBy, SortOrder) ->
+  (Limit, Offset) ->
+  SqlPersistT IO (Page TreasuryWithdrawalRecord)
+listTreasuryWithdrawals f (ob, so) (lim, off) = do
+  items <-
+    queryJson
+      ( "SELECT row_to_json(x)::text FROM ( SELECT "
+          <> withdrawalProjection
+          <> withdrawalFrom
+          <> whereSql
+          <> " "
+          <> orderClause (withdrawalSortSpec ob) so
+          <> " LIMIT ? OFFSET ? ) x"
+      )
+      (params <> [toPersistValue lim, toPersistValue off])
+  totals <- rawSql ("SELECT count(*)::int" <> withdrawalFrom <> whereSql) params
+  pure (Page items (Just (case totals of (Single n : _) -> n; [] -> 0)) lim off Nothing)
+  where
+    (whereSql, params) = withdrawalWhere f
+
+-- | The projection list. @tx_hash@ and @index@ are consumed by the DTO's 'FromJSON' to derive
+-- @gov_action_id@.
+--
+-- @enacted_at@ is an epoch-boundary chain point with no slot and no transaction hash, because the
+-- ledger pays a withdrawal at an epoch boundary and there is nothing to point at. The same shape
+-- 'listWithdrawals' publishes, so the list and the per-action view agree.
+withdrawalProjection :: Text
+withdrawalProjection =
+  " encode(g.tx_hash, 'hex') AS tx_hash, g.index, \
+  \ g.title AS gov_action_title, \
+  \ w.stake_address AS beneficiary, \
+  \ w.amount, w.enacted_epoch, \
+  \ CASE WHEN w.enacted_epoch IS NULL THEN NULL \
+  \      ELSE json_build_object( \
+  \             'slot', NULL, 'epoch', w.enacted_epoch, 'tx_hash', NULL, \
+  \             'time', (SELECT (min(b.time) AT TIME ZONE 'UTC') FROM public.block b \
+  \                       WHERE b.epoch_no = w.enacted_epoch)) END AS enacted_at, \
+  \ w.paid_heuristic "
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /activity
+
+-- | Read a cursor back from its wire form, @\<sort_slot\>:\<tx_index\>:\<arm\>:\<item_index\>@.
+--
+-- The inverse of 'renderCursor', and the round trip is a unit test. A client never constructs one:
+-- it echoes back the @next_cursor@ it was handed, so the only cursors this sees are ones this
+-- service rendered — or ones somebody edited, which is why every component is validated instead of
+-- being read with @read@ and allowed to fail in a thread.
+--
+-- @tx_index@ ACCEPTS A LEADING MINUS, and that is not defensive: the five epoch-boundary arms carry
+-- @tx_index = -1@ and the treasury-enactment arm carries @-2@ (they have no transaction at all), so
+-- a parser that rejected a negative component would refuse to page past the first ratified action.
+parseCursor :: Text -> Either ErrorCode ActivityCursor
+parseCursor t = case T.splitOn ":" t of
+  [a, b, c, d] -> ActivityCursor <$> num a <*> num b <*> num c <*> num d
+  _ -> Left InvalidCursor
+  where
+    -- Spelled out rather than left to `readMaybe` alone, which is Haskell's Read and therefore
+    -- accepts a good deal more than an integer: a test found it taking " 1" (leading space), and it
+    -- takes "(1)" and "1 " too. A cursor is a token this service ISSUED, so a client that got one
+    -- back in a different spelling never constructed it legitimately, and accepting variants
+    -- invites it to build its own. Digits, with an optional leading minus, and nothing else.
+    num x
+      | T.null digitsOf || not (T.all isDigit digitsOf) = Left InvalidCursor
+      | otherwise = maybe (Left InvalidCursor) Right (readMaybe (T.unpack x) :: Maybe Int64)
+      where
+        digitsOf = fromMaybe x (T.stripPrefix "-" x)
+
+-- | The projection list. Keys are 'ActivityRow''s wire names.
+--
+-- The four cursor components travel as columns, not as a concatenated string: 'ActivityRow''s
+-- 'FromJSON' assembles them through 'renderCursor', so the wire format has exactly one definition
+-- (D-31). A @||@ in SQL would be a second one, in another language, with no test between them.
+activityProjection :: Text
+activityProjection =
+  " sort_slot, tx_index, arm, item_index, event_type, source, \
+  \ json_build_object('slot', slot_no, 'epoch', epoch_no, \
+  \                   'time', (block_time AT TIME ZONE 'UTC'), \
+  \                   'tx_hash', tx_hash) AS at, \
+  \ actor_id, target_id "
+
+-- | The slot spans a page is attempted over, narrowest first. A span is a LOWER bound on
+-- @sort_slot@, in slots, counted back from the cursor (or from the tip on a first page).
+--
+-- __Why a page is windowed at all, measured.__ @palmares.activity@ is eleven arms over 3.9 M rows,
+-- 3.24 M of them votes, and @ORDER BY … DESC LIMIT 50@ with no lower bound makes PostgreSQL build
+-- every one of those rows before the top-N sort discards all but 50: 4.6 s. The same page under the
+-- first rung is 0.89 s, because the bound reaches the vote and committee arms' @block@ joins and
+-- they read only that slot range. The window is the difference between a feed and a report.
+--
+-- __Why a ladder and not one span.__ A fixed 5-day span would report "end of feed" on any quieter
+-- stretch of chain, which is a wrong answer, not a slow one. So a short page widens instead of
+-- being published: 5 days, 50 days, 500 days, then no lower bound at all. The last rung is what
+-- makes the endpoint TOTAL — it can always reach the genesis end — and it is the 4.6 s page, paid
+-- by a client that has scrolled past everything else rather than on every request.
+--
+-- Climbing the ladder is CHEAP where it actually happens, which is the other half of the measured
+-- case for it. A filter that matches little prunes most of the eleven arms to a one-time false
+-- qual, so all four rungs together cost less than one unfiltered page: @event_type=\
+-- committee_resigned@, which matches nothing on preprod, is 74 ms over the whole ladder, and
+-- @event_type=gov_action_proposed@ fills its page in 21 ms.
+activityWindows :: [Int64]
+activityWindows = [432_000, 4_320_000, 43_200_000]
+
+-- | Which way a page travels. @Older@ is the scroll, @Newer@ is the catch-up poll.
+--
+-- The direction decides THREE things together — the keyset comparison, the @ORDER BY@, and which
+-- end of the window the cursor pins — and getting any one of them out of step with the other two
+-- silently pages wrongly rather than failing. One value chooses all three.
+data FeedDir = Older | Newer
+  deriving stock (Show, Eq)
+
+-- | The cursor's four columns, in order, as @palmares.activity@ names them.
+--
+-- ONE list, used by both the keyset row comparison and the @ORDER BY@. A keyset predicate and an
+-- order that disagree do not fail — they return the wrong end of the range and still look like a
+-- page — so the two are generated from the same source rather than written out twice.
+cursorCols :: [Text]
+cursorCols = ["sort_slot", "tx_index", "arm", "item_index"]
+
+-- | The @WHERE@ fragment and its parameters: the filters, the keyset predicate, then the window.
+--
+-- @lo@ and @hi@ are the window's bounds on @sort_slot@. @hi@ is absent only on the ladder's last
+-- rung travelling 'Older'; @lo@ is absent on every rung but the last.
+activityWhere ::
+  GovActivityFilter ->
+  FeedDir ->
+  Maybe ActivityCursor ->
+  (Maybe Int64, Maybe Int64) ->
+  (Text, [PersistValue])
+activityWhere f dir mcur (lo, hi) =
+  let clauses =
+        concat
+          [ inClause "event_type" (map jsonTag (govActivityFilterEventTypes f)),
+            inClause "source" (map jsonTag (govActivityFilterSources f)),
+            actorClause (govActivityFilterActors f),
+            keyset mcur,
+            window
+          ]
+   in ( if null clauses then "" else "WHERE " <> T.intercalate " AND " (map fst clauses),
+        concatMap snd clauses
+      )
+  where
+    inClause col vs
+      | null vs = []
+      | otherwise =
+          [ (col <> " IN (" <> T.intercalate ", " (map (const "?") vs) <> ")", map toPersistValue vs)
+          ]
+
+    -- Each requested actor contributes its value AS GIVEN and, when it decodes as a credential,
+    -- its hex form too — one IN list, one to two entries per actor. Not a 400 on a value that does
+    -- not decode: `actor_id` holds a bech32 STAKE ADDRESS on the delegation and proposal arms, so
+    -- rejecting undecodable values would refuse every delegator in the feed.
+    actorClause vs
+      | null vs = []
+      | otherwise =
+          let cands = concatMap (\v -> v : maybe [] pure (anyVoterIdHex v)) vs
+           in [ ( "actor_id IN (" <> T.intercalate ", " (map (const "?") cands) <> ")",
+                  map toPersistValue cands
+                )
+              ]
+
+    -- A ROW comparison, which is PostgreSQL's own lexicographic ordering over the tuple and
+    -- therefore cannot disagree with the ORDER BY beside it. Spelled out as nested ORs it would be
+    -- six clauses that have to be read carefully to see they say the same thing.
+    keyset Nothing = []
+    keyset (Just (ActivityCursor sl tx arm item)) =
+      [ ( "(" <> T.intercalate ", " cursorCols <> ") " <> cmp <> " (?, ?, ?, ?)",
+          map toPersistValue [sl, tx, arm, item]
+        )
+      ]
+      where
+        cmp = case dir of Older -> "<"; Newer -> ">"
+
+    -- The window, as SCALAR bounds on sort_slot. The upper bound duplicates what the row
+    -- comparison above already says, and it is not redundant to the PLANNER: a ROW comparison is
+    -- opaque to it, so it cannot be pushed into the eleven arms, while `sort_slot <= ?` is and is
+    -- what makes the vote arm read one slot range instead of all 3.24 M rows.
+    --
+    -- BOTH bounds are bound VALUES, including on a first page, where the upper bound is the chain
+    -- tip that 'listActivity' reads first. Writing it as the scalar subquery
+    -- `(SELECT max(slot_no) FROM public.block)` instead was MEASURED and is 4× worse: the first
+    -- page took 3.7-4.4 s against 0.9 s for a cursor page of the same shape, because an InitPlan's
+    -- value is unknown while the plan is chosen, so the arms are planned against a default
+    -- selectivity guess. The extra round trip costs 2.5 ms and buys the same plan on every page.
+    window =
+      [("sort_slot >= ?", [toPersistValue v]) | Just v <- [lo]]
+        <> [("sort_slot <= ?", [toPersistValue v]) | Just v <- [hi]]
+
+-- | One page of the governance feed, newest first.
+--
+-- __Keyset, not offset, and the total is deliberately absent.__ @total@ is @null@ on every page
+-- because counting the feed means a pass over all eleven arms — 3.9 M rows, of which 3.24 M are
+-- the vote arm — and a feed is the one endpoint a client scrolls. F-17's rule says a total must
+-- come from the same pass as the rows; a keyset page cannot give one, so it publishes none rather
+-- than one that disagrees. @offset@ travels as 0 and is not a parameter: on a cursor feed an offset
+-- would be a second, conflicting way to say where you are.
+--
+-- __A short page ends the feed.__ @next_cursor@ is the last row's cursor only when the page came
+-- back full; fewer rows than asked for means the predicate is exhausted, and handing out a cursor
+-- there would make a client poll forever for rows that cannot exist.
+-- __Widening is safe because it is idempotent.__ A wider window returns the same newest rows plus
+-- older ones, in the same order, so re-running a short page at the next rung cannot change what the
+-- client has already seen. Only a page that came back FULL is published without widening.
+-- __@since@ needs no ladder.__ Travelling 'Newer' both bounds are known from the start — the
+-- client's cursor below, the chain tip above — so one statement answers it. A catch-up poll asks
+-- for a narrow range by construction, and even a client returning after a month gets a range the
+-- LIMIT caps. MEASURED: a @since@ page over the newest 5 days is 0.9 s, the same as the equivalent
+-- @before@ page, because it is the same plan with the bounds swapped.
+listActivity ::
+  GovActivityFilter ->
+  FeedDir ->
+  Maybe ActivityCursor ->
+  Limit ->
+  SqlPersistT IO (Page ActivityRow)
+listActivity f dir mcur lim = do
+  -- NO PARALLEL WORKERS for this endpoint, and it is faster that way as well as safer.
+  --
+  -- PostgreSQL puts a parallel plan's shared memory in /dev/shm, sized from work_mem, and a plan
+  -- over eleven arms asks for several 16 MB segments at once. On a container the tmpfs counts
+  -- against the cgroup's memory limit, so the request fails as ENOSPC long before /dev/shm looks
+  -- full. MEASURED: GET /activity?actor=… returned 503 with
+  --   53100: could not resize shared memory segment … to 16777216 bytes: No space left on device
+  -- while /dev/shm showed 1 MB of 256 MB used and the container 886 MB of its 2 GB. Raising
+  -- shm_size alone does not fix it, because the wall is the cgroup, and the 2 GB limit and
+  -- work_mem=32MB are the infra spec's own numbers — the Pi will run exactly these.
+  --
+  -- A feed page returns at most 100 rows from index-bounded arms, so there is nothing to
+  -- parallelise. MEASURED with the workers off: a first page 875 -> 393 ms, an actor-filtered page
+  -- 913 -> 433 ms, and the ladder's unbounded rung unchanged at 4.6 s. SET LOCAL scopes it to this
+  -- transaction, so the ladder's four statements share it and no other endpoint is affected.
+  rawExecute "SET LOCAL max_parallel_workers_per_gather = 0" []
+  -- Where the cursor pins the window depends on the direction: travelling Older it is the upper
+  -- bound (the tip, on a first page); travelling Newer it is the lower bound and the tip is the
+  -- upper one. So the tip is read only when it is the bound actually needed — travelling Older
+  -- from a cursor, the round trip would be for nothing.
+  hi <- case (dir, mcur) of
+    (Older, Just c) -> pure (cursorSortSlot c)
+    _ -> tipSlot
+  -- An ACTOR-filtered request skips the ladder and runs the last rung directly. Measured, and the
+  -- rule is about `actor` specifically rather than about "is anything filtered":
+  --
+  --   * event_type is a CONSTANT in each arm's target list, so a filter on it collapses nine or ten
+  --     of the eleven arms to a one-time false qual. The whole ladder is then cheaper than one
+  --     unfiltered page: event_type=gov_action_proposed fills a page in 15 ms and
+  --     event_type=committee_resigned, which matches nothing on preprod, answers in 10 ms. The
+  --     ladder costs these nothing, so they keep it.
+  --   * source prunes NOTHING today — every arm publishes 'governance', and 'attestation' arrives
+  --     with the attestation schema. So ?source=governance IS the unfiltered feed, and a rule that
+  --     sent any filtered request to the last rung made that request 8.3 s instead of 1.0 s. That
+  --     measurement is why this reads `actor` and not `hasFilter`.
+  --   * actor prunes nothing either, but an actor's events are genuinely sparse, so every rung
+  --     comes back short and the ladder pays for all four before reaching the one that answers.
+  --     MEASURED on a DRep with 18 events: 10.3 s up the ladder, 7.2 s straight to the last rung.
+  --
+  -- 7.2 s is slow for a timeline, and the honest answer is that /activity is not where an actor's
+  -- own record belongs: /votes?voter_id=, /dreps/{id}/updates and /dreps/{id}/delegators serve it
+  -- from indexed columns instead of from eleven arms' computed actor_id text.
+  case dir of
+    Newer -> onePage (cursorSortSlot <$> mcur, Just hi)
+    Older
+      | null (govActivityFilterActors f) -> go hi activityWindows
+      | otherwise -> onePage (Nothing, Just hi)
+  where
+    go hi [] = onePage (Nothing, Just hi)
+    go hi (w : ws) = do
+      p <- onePage (Just (hi - w), Just hi)
+      if length (pageItems p) >= lim then pure p else go hi ws
+
+    onePage bounds = do
+      let (whereSql, params) = activityWhere f dir mcur bounds
+      items <-
+        queryJson
+          ( "SELECT row_to_json(x)::text FROM ( SELECT "
+              <> activityProjection
+              <> " FROM palmares.activity "
+              <> whereSql
+              <> " ORDER BY "
+              <> T.intercalate ", " (map (<> (" " <> ord)) cursorCols)
+              <> " LIMIT ? ) x"
+          )
+          (params <> [toPersistValue (fromIntegral lim :: Int64)])
+      pure (Page items Nothing lim 0 (next items))
+
+    ord = case dir of Older -> "DESC"; Newer -> "ASC"
+
+    next rows
+      | length rows < lim = Nothing
+      | otherwise = Just (Cursor (activityRowCursor (last rows)))
+
+-- | The chain tip's slot, for the first page's window. @0@ on an empty chain, which windows the
+-- feed to nothing — correct, because an empty chain has no events.
+tipSlot :: SqlPersistT IO Int64
+tipSlot = do
+  r <- rawSql "SELECT max(slot_no)::bigint FROM public.block" []
+  pure (case r of (Single (Just n) : _) -> n; _ -> 0)

@@ -56,3 +56,35 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS gov_idx_reward_rest_type ON public.rewar
 -- them free, and stating them keeps the list readable as "what the views need".
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_drep_distr_hash_id_epoch_no ON public.drep_distr (hash_id, epoch_no);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_committee_member_committee_id ON public.committee_member (committee_id);
+
+-- palmares.activity's five epoch-boundary arms and Query.Gov.listWithdrawals all ask for "the
+-- first block of epoch N". MEASURED without this: 632 ms for epoch 320 and 287 ms for epoch 165 —
+-- a block_pkey walk until the scan reaches that epoch, so the cost is worst at the tip. It is
+-- memoized per distinct epoch, but the expiry arm alone asks for 31 distinct epochs, which is how
+-- one page of the feed reached 37 seconds in that arm.
+--
+-- `time` is INCLUDEd because every one of those arms needs the timestamp as well as the slot, and
+-- a heap visit per epoch is the whole remaining cost. min(slot_no), min(time) is WORSE than the
+-- ORDER BY form (1,179 ms: PostgreSQL splits it into two index walks), which is why the views use
+-- ORDER BY b.slot_no LIMIT 1 and this index serves exactly that.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS gov_idx_block_epoch_slot
+  ON public.block (epoch_no, slot_no) INCLUDE ("time");
+
+-- palmares.activity's vote arm and its committee-authorisation arm, both measured on a 50-row page
+-- of the feed. The two together took 1,150 ms of a 1,347 ms page and neither was the vote scan:
+--
+--   * `(tx_id)` — the committee arm had NO index on its transaction, so a 5-day slot window could
+--     not be walked block -> tx -> committee_registration. PostgreSQL read all 648,767 rows as a
+--     Parallel Seq Scan and returned 0: 389 ms to find nothing.
+--   * `(hot_key_id, tx_id, cert_index)` — palmares.cc_cold_interval's window function orders by
+--     exactly these three columns, and `gov_idx_committee_reg_hot` stops at two, so the view paid
+--     an Incremental Sort over all 648,767 rows to hash-join 28 vote rows: 760 ms. The qual on
+--     hot_key_id is on the PARTITION BY column, so with the full key the planner can probe the
+--     view per voter instead of building it.
+--
+-- MEASURED end to end, GET /activity?limit=50: 2.03 s before, 0.89 s after. The same page with no
+-- lower bound at all (the ladder's last rung) went 8.4 s to 4.6 s.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS gov_idx_committee_reg_tx
+  ON public.committee_registration (tx_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS gov_idx_committee_reg_hot_asc
+  ON public.committee_registration (hot_key_id, tx_id, cert_index);

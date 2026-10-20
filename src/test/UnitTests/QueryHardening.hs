@@ -10,17 +10,34 @@
 module UnitTests.QueryHardening (queryHardeningTests) where
 
 import Data.Csv (DefaultOrdered (..), FromNamedRecord (..), ToNamedRecord (..), decodeByName, header, namedRecord, (.:), (.=))
+import Data.List (nub)
 import Data.Proxy (Proxy (..))
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Palmares.DomainTypes.Core.Types (AnchorStatus (..), DRepStatus (..), GovActionId (..))
-import Palmares.DomainTypes.Transfer.Filters (DRepFilter (..), emptyDRepFilter)
+import Palmares.DomainTypes.Transfer.Filters
+  ( DRepFilter (..),
+    GovActivityFilter (..),
+    emptyDRepFilter,
+    emptyGovActivityFilter,
+  )
 import Palmares.DomainTypes.Transfer.OrderBy (DRepsOrderBy (..), SortOrder (..))
 import Palmares.WebAPI.CSV (CSV, safeCell)
-import Palmares.WebAPI.Envelope (ErrorCode (..), Page (..))
+import Palmares.WebAPI.Envelope (ErrorCode (..), Page (..), errorCodeFromText)
+import Palmares.WebAPI.Errors (errorCodeFromParserMessage, genericErrorMessage)
+import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.Utils (escapeLikePattern)
 import Query.Common
-import Query.Gov (drepSortSpec, drepWhere)
+import Palmares.DomainTypes.Transfer.QueryResponses (ActivityCursor (..), renderCursor)
+import Query.Gov
+  ( FeedDir (..),
+    activityWhere,
+    activityWindows,
+    drepFacetsSql,
+    drepSortSpec,
+    drepWhere,
+    parseCursor,
+  )
 import Servant (Accept (..), MimeRender (..))
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -39,7 +56,7 @@ instance FromNamedRecord Row where
   parseNamedRecord r = Row <$> r .: "cell"
 
 queryHardeningTests :: TestTree
-queryHardeningTests = testGroup "query hardening" [boundsTests, csvTests]
+queryHardeningTests = testGroup "query hardening" [boundsTests, csvTests, cursorTests, errorCodeTests]
 
 boundsTests :: TestTree
 boundsTests =
@@ -140,6 +157,27 @@ boundsTests =
             emptyDRepFilter {drepFilterVotedOn = Just (GovActionId (T.replicate 64 "a" <> "#0"))},
             emptyDRepFilter {drepFilterNotVotedOn = Just (GovActionId (T.replicate 64 "b" <> "#1"))}
           ],
+      -- Nine parameter groups in one bind list, and postgresql-simple only reports a mismatch at
+      -- run time, with a count rather than a name. Same check as the one above, over the facet
+      -- statement the DRep explorer page serves.
+      testCase "the facet statement's placeholder count matches its parameter count" $
+        mapM_
+          ( \f ->
+              let (sql, ps) = drepFacetsSql f
+               in assertEqual (T.unpack (T.takeEnd 240 sql)) (T.count "?" sql) (length ps)
+          )
+          [ emptyDRepFilter,
+            emptyDRepFilter {drepFilterStatus = [DRepRetired]},
+            emptyDRepFilter {drepFilterAnchorStatus = [AnchorValid, AnchorInline]},
+            emptyDRepFilter {drepFilterLanguage = Just "en-us"},
+            emptyDRepFilter
+              { drepFilterStatus = [DRepActive],
+                drepFilterAnchorStatus = [AnchorValid],
+                drepFilterLanguage = Just "en-us",
+                drepFilterQ = Just "abc",
+                drepFilterMinDelegators = Just 3
+              }
+          ],
       testCase "inverted ranges are 400s, not empty pages" $
         ( checkRanges (Just t2) (Just t1) Nothing Nothing,
           checkRanges Nothing Nothing (Just 320) (Just 300),
@@ -168,3 +206,140 @@ csvTests =
         mimeRender (Proxy @CSV) (Page [Row "x", Row "y"] (Just 2) 2 0 Nothing)
           @?= "cell\r\nx\r\ny\r\n"
     ]
+
+cursorTests :: TestTree
+cursorTests =
+  testGroup
+    "the activity cursor"
+    [ -- The wire format has one definition ('renderCursor') and one inverse ('parseCursor'), in
+      -- two different modules and two different libraries. This is the only thing that holds them
+      -- together.
+      testCase "render and parse are inverses, negative tx_index included" $
+        map (parseCursor . renderCursor) cursors @?= map Right cursors,
+      -- The five epoch-boundary arms carry tx_index = -1 and the treasury-enactment arm -2. A
+      -- parser that rejected a leading minus would refuse to page past the first ratified action,
+      -- and it would do it with a 400 that named no cause.
+      testCase "the two epoch-boundary tx_index values parse" $
+        map parseCursor ["100:-1:7:42", "100:-2:11:42"]
+          @?= [Right (ActivityCursor 100 (-1) 7 42), Right (ActivityCursor 100 (-2) 11 42)],
+      testCase "anything that is not four integers is an invalid_cursor 400" $
+        map
+          parseCursor
+          [ "",
+            "1:2:3",
+            "1:2:3:4:5",
+            "a:2:3:4",
+            "1:2:3:x",
+            "1::3:4",
+            " 1:2:3:4",
+            "(1):2:3:4",
+            "1 :2:3:4",
+            "1:2:3:4 ",
+            "-:2:3:4",
+            "1:2:3:0x4"
+          ]
+          @?= replicate 12 (Left InvalidCursor),
+      -- A cursor page MUST carry a scalar upper bound beside the row comparison: the row
+      -- comparison is opaque to the planner, so without it the window reaches no arm and the page
+      -- is the 4.6 s unbounded one. This is the assertion that would catch its removal.
+      testCase "a windowed cursor page binds both scalar bounds and the row comparison" $
+        let (sql, ps) =
+              activityWhere emptyGovActivityFilter Older (Just (ActivityCursor 9 8 7 6)) (Just (9 - 432000), Just 9)
+         in ( T.count "?" sql == length ps,
+              T.isInfixOf "(sort_slot, tx_index, arm, item_index) < (?, ?, ?, ?)" sql,
+              T.isInfixOf "sort_slot >= ?" sql,
+              T.isInfixOf "sort_slot <= ?" sql
+            )
+              @?= (True, True, True, True),
+      -- The last rung drops the LOWER bound only. The upper bound stays, because it is the one
+      -- the planner can push into the eleven arms; without it the rung is unbounded in both
+      -- directions and the arms read the whole chain.
+      testCase "the last rung drops the lower bound and keeps the upper one" $
+        let (sql, ps) = activityWhere emptyGovActivityFilter Older (Just (ActivityCursor 9 8 7 6)) (Nothing, Just 9)
+         in (T.count "?" sql == length ps, T.isInfixOf "sort_slot >=" sql, T.isInfixOf "sort_slot <= ?" sql, length ps)
+              @?= (True, False, True, 5),
+      -- The direction decides the keyset comparison AND the ORDER BY together. If they ever
+      -- disagree the feed returns the wrong end of the range and still looks like a page.
+      testCase "since reverses the keyset comparison and pins the cursor as the LOWER bound" $
+        let (sql, ps) = activityWhere emptyGovActivityFilter Newer (Just (ActivityCursor 9 8 7 6)) (Just 9, Just 100)
+         in ( T.count "?" sql == length ps,
+              T.isInfixOf "(sort_slot, tx_index, arm, item_index) > (?, ?, ?, ?)" sql,
+              T.isInfixOf "sort_slot >= ?" sql,
+              T.isInfixOf "sort_slot <= ?" sql
+            )
+              @?= (True, True, True, True),
+      -- Every filter combination, since postgresql-simple counts placeholders lexically and only
+      -- complains at run time.
+      testCase "every activity filter shape binds as many values as it has placeholders" $
+        mapM_
+          ( \(f, mc, mw) ->
+              let (sql, ps) = activityWhere f Older mc mw
+               in assertEqual (T.unpack sql) (T.count "?" sql) (length ps)
+          )
+          [ (emptyGovActivityFilter, Nothing, (Nothing, Nothing)),
+            (emptyGovActivityFilter, Nothing, (Nothing, Just 100)),
+            (emptyGovActivityFilter, Nothing, (Just 1, Just 100)),
+            (actorFilter, Nothing, (Nothing, Just 100)),
+            (actorFilter, Just (ActivityCursor 1 2 3 4), (Just 1, Just 100))
+          ],
+      -- An actor that decodes as a credential is matched in BOTH forms, because actor_id holds hex
+      -- on the DRep and committee arms and a bech32 stake address on the delegation arm.
+      testCase "a bech32 DRep id is matched as itself and as its hex credential" $
+        let (_, ps) = activityWhere actorFilter Older Nothing (Nothing, Just 100) in length ps @?= 3,
+      testCase "a stake address is matched as itself alone, not rejected" $
+        let f = emptyGovActivityFilter {govActivityFilterActors = ["stake_test1uq"]}
+            (_, ps) = activityWhere f Older Nothing (Nothing, Just 100)
+         in length ps @?= 2,
+      testCase "the ladder widens strictly and ends before the unbounded rung" $
+        (and (zipWith (<) activityWindows (drop 1 activityWindows)), length activityWindows)
+          @?= (True, 3)
+    ]
+  where
+    cursors =
+      [ ActivityCursor 0 0 1 0,
+        ActivityCursor 136821634 0 4 2,
+        ActivityCursor 136689360 13 2 3244711,
+        ActivityCursor 1 (-1) 7 42,
+        ActivityCursor 1 (-2) 11 42
+      ]
+    actorFilter =
+      emptyGovActivityFilter
+        { govActivityFilterActors = ["drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg"]
+        }
+
+errorCodeTests :: TestTree
+errorCodeTests =
+  testGroup
+    "the error code vocabulary"
+    [ -- The code is the contract a client branches on, and it crosses the wire twice: out of a
+      -- FromHttpApiData parser as a message, and back in through the error formatter. If the two
+      -- spellings ever drift, every parse failure collapses to invalid_parameter and still looks
+      -- like a working 400.
+      testCase "every code round-trips through its own wire tag" $
+        map (errorCodeFromText . jsonTag) codes @?= codes,
+      -- servant passes a CAPTURE's parser message through verbatim...
+      testCase "a bare code, as a failing capture sends it" $
+        map errorCodeFromParserMessage ["invalid_drep_id", "invalid_gov_action_id", "invalid_cursor"]
+          @?= [InvalidDrepId, InvalidGovActionId, InvalidCursor],
+      -- ...and WRAPS a query parameter's. This is the case that was silently answering
+      -- invalid_parameter on /delegations?drep_id= and /treasury-withdrawals?gov_action_id=.
+      testCase "a wrapped code, as a failing query parameter sends it" $
+        map
+          errorCodeFromParserMessage
+          [ "Error parsing query parameter drep_id failed: invalid_drep_id",
+            "Error parsing query parameter gov_action_id failed: invalid_gov_action_id"
+          ]
+          @?= [InvalidDrepId, InvalidGovActionId],
+      -- A parser that did not return a code of ours still has to produce a valid body.
+      testCase "anything else is invalid_parameter" $
+        map errorCodeFromParserMessage ["", "could not parse: Int", "boom", ":", "not_a_code"]
+          @?= replicate 5 InvalidParameter,
+      -- genericErrorMessage is total over the enum; this is what catches a new code added without
+      -- one, which would otherwise inherit no wording at all.
+      testCase "every code has a non-empty human message" $
+        filter (T.null . genericErrorMessage) codes @?= [],
+      testCase "no two codes share a message" $
+        length (nub (map genericErrorMessage codes)) @?= length codes - 1
+    ]
+  where
+    codes = [minBound .. maxBound] :: [ErrorCode]

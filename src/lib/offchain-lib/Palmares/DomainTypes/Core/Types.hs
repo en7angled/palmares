@@ -590,3 +590,14 @@ instance ToSchema CommitteeMemberStatus where
 
 instance ToParamSchema CommitteeMemberStatus where
   toParamSchema = jsonEnumParamSchema
+
+-- | The 28 raw bytes behind a credential hash the @palmares@ views published as hex.
+--
+-- 'Nothing' when it is not 28 bytes of hex, which cannot happen for a value read out of a @raw@
+-- column — so a decoder that gets 'Nothing' has found a view and a DTO disagreeing. Factored out
+-- of 'drepIdFromHex' and 'voterIdFor', which did the same decode privately, because 'SPOSummary'
+-- and 'CommitteeMemberSummary' need the bytes to render a @pool1…@ and a @cc_cold1…@.
+decodeHash28 :: Text -> Maybe BS.ByteString
+decodeHash28 hex = case B16.decode (TE.encodeUtf8 hex) of
+  Right raw | BS.length raw == 28 -> Just raw
+  _ -> Nothing

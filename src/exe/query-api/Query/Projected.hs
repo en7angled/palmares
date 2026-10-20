@@ -23,18 +23,12 @@ import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Database.Esqueleto.Experimental
 import Database.Esqueleto.Internal.Internal (unsafeSqlCastAs)
 import Database.Persist qualified as P
--- The Belt System's PascalCase ActivityEventType (ProfileCreated | AchievementAwarded |
--- AchievementAccepted) still lives in Transfer.OrderBy and still backs the inherited /activity
--- feed. Palmares.DomainTypes.Core.Types now exports the snake_case GOVERNANCE one of the same
--- name, so the inherited name is hidden here until T-API-15 replaces that feed and deletes it.
-import Palmares.DomainTypes.Core.Types hiding (ActivityEventType)
+import Palmares.DomainTypes.Core.Types
 import Palmares.DomainTypes.Transfer.Filters qualified as C
 import Palmares.DomainTypes.Transfer.Filters qualified as F
 import Palmares.DomainTypes.Transfer.OrderBy
 import Palmares.DomainTypes.Transfer.QueryResponses
-  ( ActivityEventDetails (..),
-    ActivityEventResponse (..),
-    SearchGroup (..),
+  (     SearchGroup (..),
     SearchHit (..),
     SearchResults (..),
     SearchTarget (..),
@@ -491,112 +485,4 @@ searchProjected q
 -- ---------------------------------------------------------------------------
 -- Activity feed (Option A: projected DB union)
 -- ---------------------------------------------------------------------------
-
--- | Paginated activity feed built from projection tables.  Fetches recent
--- rows from profiles, promotions, ranks, achievements, and membership
--- intervals, then batch-resolves actor/target display names from
--- @profile_projection@.  Merges + sorts by timestamp descending in Haskell.
-getActivityFeed ::
-  (MonadIO m, MonadReader QueryAppContext m) =>
-  GYSlotConfig ->
-  Maybe (C.Limit, C.Offset) ->
-  Maybe F.ActivityFilter ->
-  m [ActivityEventResponse]
-getActivityFeed slotCfg maybeLimitOffset maybeFilter = do
-  pool <- asks pgPool
-  let wantType et = case maybeFilter >>= C.activityFilterEventType of
-        Nothing -> True
-        Just t -> t == et
-      actorFilter = maybeFilter >>= C.activityFilterActor
-      -- `since` becomes a slot BEFORE the SQL, so the created_at_slot index is used (fix #5).
-      sinceSlot = utcToSlot slotCfg . posixSecondsToUTCTime . timeToPOSIX <$> (maybeFilter >>= C.activityFilterSince)
-  -- Intermediate type: event without resolved names.
-  -- (eventType, actorId, targetId, createdAtSlot, title, body)
-  rawEvents <-
-    liftIO $
-      runSqlPool
-        ( do
-            -- 1. Profile registrations
-            profileEvts <-
-              if wantType EvtProfileCreated
-                then do
-                  rows <- select $ do
-                    pp <- from $ table @ProfileProjection
-                    for_ actorFilter (\a -> where_ (pp ^. ProfileProjectionProfileId ==. val a))
-                    for_ sinceSlot (\s -> where_ (pp ^. ProfileProjectionCreatedAtSlot >. val s))
-                    orderBy [Database.Esqueleto.Experimental.desc (pp ^. ProfileProjectionCreatedAtSlot)]
-                    Database.Esqueleto.Experimental.limit 200
-                    pure pp
-                  pure
-                    [ ( EvtProfileCreated,
-                        profileProjectionProfileId p,
-                        Nothing,
-                        profileProjectionCreatedAtSlot p,
-                        "Profile Created" :: Text,
-                        Just $ "New " <> T.toLower (T.pack (show (profileProjectionProfileType p))) <> " profile registered"
-                      )
-                    | Entity _ p <- rows
-                    ]
-                else pure []
-
-            -- 2. Attestations
-            achEvts <-
-              if wantType EvtAchievementAwarded || wantType EvtAchievementAccepted
-                then do
-                  rows <- select $ do
-                    ap_ <- from $ table @AchievementProjection
-                    for_ actorFilter (\a -> where_ (ap_ ^. AchievementProjectionAwardedToProfileId ==. val a))
-                    for_ sinceSlot (\s -> where_ (ap_ ^. AchievementProjectionCreatedAtSlot >. val s))
-                    orderBy [Database.Esqueleto.Experimental.desc (ap_ ^. AchievementProjectionCreatedAtSlot)]
-                    Database.Esqueleto.Experimental.limit 200
-                    pure ap_
-                  pure
-                    [ ( evtType,
-                        achievementProjectionAwardedToProfileId a,
-                        Just (achievementProjectionAwardedByProfileId a),
-                        achievementProjectionCreatedAtSlot a,
-                        if achievementProjectionIsAccepted a then "Achievement Accepted" else ("Achievement Awarded" :: Text),
-                        Just $ "Achievement: " <> achievementProjectionAchievementName a
-                      )
-                    | Entity _ a <- rows,
-                      let evtType = if achievementProjectionIsAccepted a then EvtAchievementAccepted else EvtAchievementAwarded,
-                      wantType evtType
-                    ]
-                else pure []
-
-            pure $ profileEvts <> achEvts
-        )
-        pool
-
-  -- Batch-resolve profile display names (single SQL query).
-  let allPids = nub $ concatMap (\(_, actor, target, _, _, _) -> actor : maybeToList target) rawEvents
-  nameMap <-
-    liftIO $
-      runSqlPool
-        ( do
-            rows <- select $ do
-              pp <- from $ table @ProfileProjection
-              where_ (pp ^. ProfileProjectionProfileId `in_` valList allPids)
-              pure (pp ^. ProfileProjectionProfileId, pp ^. ProfileProjectionProfileName)
-            pure $ M.fromList [(unValue pid, unValue name) | (pid, name) <- rows]
-        )
-        pool
-
-  let lookupName pid = M.lookup pid nameMap
-      toResponse (evtType, actorId, targetId, slot, title, body) =
-        ActivityEventResponse
-          { activityEventEventType = evtType,
-            activityEventActorId = actorId,
-            activityEventTargetId = targetId,
-            activityEventTimestamp = timeFromPOSIX (utcTimeToPOSIXSeconds (slotToUTC slotCfg slot)),
-            activityEventDetails =
-              ActivityEventDetails
-                { activityEventDetailsTitle = title,
-                  activityEventDetailsBody = body,
-                  activityEventDetailsActorName = lookupName actorId,
-                  activityEventDetailsTargetName = targetId >>= lookupName
-                }
-          }
-      sorted = sortOn (Down . activityEventTimestamp) $ map toResponse rawEvents
-  pure $ C.legacyApplyLimits maybeLimitOffset sorted
 

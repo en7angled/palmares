@@ -39,8 +39,6 @@ module Palmares.DomainTypes.Transfer.QueryResponses
     OrganizationExplorerPageResponse (..),
     TopOrganizationResponse (..),
     topOrganizationResponse,
-    ActivityEventDetails (..),
-    ActivityEventResponse (..),
     SyncStatus (..),
     EpochParamsSummary (..),
     StatusResponse (..),
@@ -66,17 +64,32 @@ module Palmares.DomainTypes.Transfer.QueryResponses
     GovActionDetailResponse (..),
     VoteAnchor (..),
     VoteRecord (..),
+    ActivityCursor (..),
+    renderCursor,
+    ActivityRow (..),
+    DelegationRecord (..),
+    SPOSummary (..),
+    CommitteeMemberSummary (..),
+    CommitteeResponse (..),
+    TreasuryWithdrawalRecord (..),
+    PowerBucket (..),
+    DRepExplorerPageResponse (..),
+    EpochParticipationPoint (..),
+    DashboardPageResponse (..),
   )
 where
 
 import Data.Aeson (FromJSON (parseJSON), withObject, (.!=), (.:), (.:?))
+import Data.Int (Int64)
+import Data.Maybe (fromMaybe)
 import Data.Swagger (ToSchema (..), genericDeclareNamedSchema)
 import Data.Swagger.Internal.Schema ()
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Data.Time (UTCTime)
 import Deriving.Aeson
 import Palmares.DomainTypes.Core.Types qualified as Core
-import Palmares.DomainTypes.Transfer.OrderBy (ActivityEventType (..))
+import Palmares.DomainTypes.Core.Ids (ccColdIdCip129, poolIdBech32)
 import Palmares.DomainTypes.Transfer.Types qualified as T
 import GeniusYield.Types (GYTime)
 import Palmares.Utils (mkStripPrefixSchemaOptions)
@@ -220,12 +233,28 @@ organizationProfileToResponse o =
 
 -- * Unified search (snake_case JSON per backend-api-requirements §9)
 
+-- | @GET \/search@ — the command palette, six groups in one response.
+--
+-- Six FIELDS and not a map keyed by 'Core.SearchKind', because the palette renders a fixed set of
+-- sections: a map would let a group vanish from the response and the screen would silently lose a
+-- section rather than show an empty one. @profiles@ and @attestations@ serve @{total: 0, items: []}@
+-- in Plan A; Plan B fills them over the attestation schema.
+--
+-- There is no @stake_addresses@ group. The design named @stake_address@ as a searchable kind and it
+-- is DROPPED rather than added: the only stake address the governance surface publishes is
+-- @palmares.gov_action.return_address@, which is a field on an action and not an entity with a page,
+-- so a hit of that kind would open nothing.
 data SearchResults = SearchResults
   { searchResultsQuery :: Text,
+    -- | Across all six groups and over the whole match, not over the page: the groups are capped at
+    -- @limit_per_group@, so a total taken from the items would read 30 for a corpus of 300.
     searchResultsTotal :: Int,
-    searchResultsPractitioners :: SearchGroup,
-    searchResultsOrganizations :: SearchGroup,
-    searchResultsAchievements :: SearchGroup
+    searchResultsDreps :: SearchGroup,
+    searchResultsGovActions :: SearchGroup,
+    searchResultsSpos :: SearchGroup,
+    searchResultsCommitteeMembers :: SearchGroup,
+    searchResultsProfiles :: SearchGroup,
+    searchResultsAttestations :: SearchGroup
   }
   deriving stock (Generic)
   deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "searchResults", CamelToSnake]] SearchResults
@@ -243,6 +272,7 @@ data SearchGroup = SearchGroup
 instance ToSchema SearchGroup where
   declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "searchGroup")
 
+-- | One palette row. @target@ is what a router maps to a route.
 data SearchHit = SearchHit
   { searchHitId :: Text,
     searchHitTitle :: Text,
@@ -252,13 +282,61 @@ data SearchHit = SearchHit
     searchHitTarget :: SearchTarget
   }
   deriving stock (Generic)
-  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "searchHit", CamelToSnake]] SearchHit
+  deriving (ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "searchHit", CamelToSnake]] SearchHit
 
 instance ToSchema SearchHit where
   declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "searchHit")
 
+-- | Decode a @\/search@ row, deriving the published identifier from the hash the views give as hex.
+--
+-- Hand-written for the reason 'DRepSummary' and 'GovActionSummary' are: the identifier is DERIVED,
+-- and deriving it here is what stops a row reaching a client with an id its router cannot resolve.
+-- Three of the four kinds collapse into one 'Core.voterIdFor' call — @drep1y…@, @cc_cold1…@ and
+-- @pool1…@ are all 28-byte credentials and the role picks the encoding — so only a governance
+-- action, keyed by @(tx_hash, index)@ rather than by a credential, needs its own arm.
+--
+-- @title@ falls back to that identifier, and MEASURED that is the common case rather than an edge:
+-- 64 of preprod's 805 searchable DRep credentials carry a published name, 7 of its 131 governance
+-- actions carry a title, no pool carries off-chain metadata at all, and a committee member has no
+-- name anywhere in db-sync. A hit with an empty title would render as a blank row.
+instance FromJSON SearchHit where
+  parseJSON = withObject "SearchHit" $ \o -> do
+    kind <- o .: "kind"
+    hitId <- case kind of
+      Core.SearchGovAction -> do
+        txHex <- o .: "tx_hash"
+        ix <- o .: "index"
+        maybe
+          (fail ("SearchHit: not a proposal id: " <> show (txHex :: Text) <> "#" <> show (ix :: Int)))
+          (pure . Core.unGovActionId . fst)
+          (Core.govActionIdForms txHex ix)
+      _ -> do
+        role <- maybe (fail ("SearchHit: " <> show kind <> " is not served by Plan A")) pure (roleOf kind)
+        hex <- o .: "hex"
+        hasScript <- o .:? "has_script" .!= False
+        maybe
+          (fail ("SearchHit: not a credential: " <> show (hex :: Text)))
+          pure
+          (Core.voterIdFor role hasScript hex)
+    SearchHit hitId
+      <$> (fromMaybe hitId <$> o .:? "title")
+      <*> o .: "subtitle"
+      <*> o .: "badges"
+      <*> o .:? "status"
+      <*> pure (SearchTarget kind hitId)
+    where
+      -- Total on purpose. `profile` and `attestation` serve empty in Plan A, so no row can carry
+      -- one; a partial function here would turn a Plan B projection bug into a crash.
+      roleOf k = case k of
+        Core.SearchDrep -> Just Core.DRep
+        Core.SearchSpo -> Just Core.SPO
+        Core.SearchCommitteeMember -> Just Core.ConstitutionalCommittee
+        _ -> Nothing
+
+-- | Where a hit goes. 'Core.SearchKind' and not 'Text', so the @kinds@ parameter and the routed
+-- kind are the same closed type and a projection cannot emit a tag the router has no route for.
 data SearchTarget = SearchTarget
-  { searchTargetKind :: Text,
+  { searchTargetKind :: Core.SearchKind,
     searchTargetId :: Text
   }
   deriving stock (Generic)
@@ -374,33 +452,6 @@ topOrganizationResponse org count =
     }
 
 -- * Activity feed (§ activity endpoint)
-
--- | Human-readable context for an activity event.
-data ActivityEventDetails = ActivityEventDetails
-  { activityEventDetailsTitle :: Text,
-    activityEventDetailsBody :: Maybe Text,
-    activityEventDetailsActorName :: Maybe Text,
-    activityEventDetailsTargetName :: Maybe Text
-  }
-  deriving stock (Generic)
-  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "activityEventDetails", CamelToSnake]] ActivityEventDetails
-
-instance ToSchema ActivityEventDetails where
-  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "activityEventDetails")
-
--- | Single activity feed item.
-data ActivityEventResponse = ActivityEventResponse
-  { activityEventEventType :: ActivityEventType,
-    activityEventActorId :: Core.ProfileRefAC,
-    activityEventTargetId :: Maybe Core.ProfileRefAC,
-    activityEventTimestamp :: GYTime,
-    activityEventDetails :: ActivityEventDetails
-  }
-  deriving stock (Generic)
-  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "activityEvent", CamelToSnake]] ActivityEventResponse
-
-instance ToSchema ActivityEventResponse where
-  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "activityEvent")
 
 -- | Derive the thumbnail URL shown in API responses from an image URI.
 -- Today mirrors @image_uri@; may later resolve cached or CDN URLs.
@@ -1144,3 +1195,508 @@ instance FromJSON VoteRecord where
       <*> o .:? "anchor"
       <*> o .:? "voting_power"
       <*> o .:? "voting_power_epoch"
+
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * The page composites
+
+-- | One bucket of the DRep voting-power histogram.
+--
+-- Half-open, @[lo, hi)@, with @hi = null@ on the open top bucket. Half-open because inclusive
+-- edges double-count: a DRep holding exactly 1e9 lovelace would appear in two buckets and the
+-- counts would no longer sum to the page total. Fixed decade edges rather than edges computed from
+-- the data, because a histogram whose edges move with the filter cannot be compared between two
+-- requests, which is the only thing anyone does with one.
+data PowerBucket = PowerBucket
+  { powerBucketLo :: Integer,
+    -- | Exclusive. @null@ on the top bucket.
+    powerBucketHi :: Maybe Integer,
+    powerBucketCount :: Int
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "powerBucket", CamelToSnake]] PowerBucket
+
+instance ToSchema PowerBucket where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "powerBucket")
+
+-- | @GET \/pages\/drep-explorer@: one page of @GET \/dreps@ plus the facet counts its sidebar
+-- renders.
+--
+-- @items@, @total@, @limit@ and @offset@ are the page envelope's four fields, flattened, which is
+-- the shape every page composite in this module already uses. The rows are 'listDReps'' rows and
+-- @total@ is 'listDReps'' total: this endpoint ADDS facets to that list, it never re-derives it.
+--
+-- Each of the three enumerated facets is counted over the request's filter set __with its own
+-- predicate removed__, so the sidebar can offer \"Retired (511)\" while @status=active@ is
+-- applied. They therefore sum to every registered credential — measured, 805 — and not to the 294
+-- the list shows.
+--
+-- @power_buckets@ is deliberately NOT a facet in that sense. It is a range control rather than a
+-- checkbox list, so it is counted over the filter set AS APPLIED and its counts sum to @total@.
+--
+-- @reserved@ never appears in @status_facets@: the two reserved ledger options hold stake but no
+-- credential, never enter @\/dreps@ (D-20), and are published by @\/pages\/dashboard@'s
+-- parked-stake figures instead.
+data DRepExplorerPageResponse = DRepExplorerPageResponse
+  { drepExplorerItems :: [DRepSummary],
+    drepExplorerTotal :: Int,
+    drepExplorerLimit :: Int,
+    drepExplorerOffset :: Int,
+    -- | The epoch the facets and every metric in @items@ are measured at.
+    drepExplorerEpoch :: Int,
+    drepExplorerStatusFacets :: [(Core.DRepStatus, Int)],
+    drepExplorerAnchorFacets :: [(Core.AnchorStatus, Int)],
+    -- | CIP-119 @language@ tags as the metadata published them, which includes the empty tag four
+    -- preprod DReps publish. Not an enum and not normalised: the tag is whatever the DRep wrote,
+    -- and rewriting it here would publish a value nobody signed.
+    drepExplorerLanguageFacets :: [(Text, Int)],
+    drepExplorerPowerBuckets :: [PowerBucket]
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "drepExplorer", CamelToSnake]] DRepExplorerPageResponse
+
+instance ToSchema DRepExplorerPageResponse where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "drepExplorer")
+
+-- | One epoch of DRep participation.
+--
+-- @dreps_voted@ counts DISTINCT DReps and @votes_cast@ counts votes; the two differ by re-votes —
+-- measured on preprod epoch 313, 17 DReps cast 31 votes. The rate is
+-- @dreps_voted \/ dreps_with_power@ and is @null@ only when no DRep held power that epoch. Zero is
+-- a real reading and epoch 311 has it: 177 DReps with power, none voted.
+data EpochParticipationPoint = EpochParticipationPoint
+  { epochParticipationEpoch :: Int,
+    -- | The denominator: DReps the ledger's stake distribution gave non-zero power that epoch.
+    epochParticipationDrepsWithPower :: Int,
+    epochParticipationDrepsVoted :: Int,
+    epochParticipationVotesCast :: Int,
+    epochParticipationParticipationRate :: Maybe Double
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "epochParticipation", CamelToSnake]] EpochParticipationPoint
+
+instance ToSchema EpochParticipationPoint where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "epochParticipation")
+
+-- | @GET \/pages\/dashboard@: the registry's front page, in one snapshot.
+--
+-- Every figure here is measured, and the figures that cannot be measured yet are __absent rather
+-- than zero__: @attestation_count@ and @claimed_profile_count@ arrive with Plan B as new optional
+-- fields, and @recent_activity@ with @GET \/activity@, by the same rule 'DRepDetailResponse'
+-- applies to @votes@ and @timeline@. A counter published as a literal @0@ is not a measurement of
+-- anything.
+--
+-- @total_dreps@ is the universe @\/dreps@ lists by default — the REGISTERED DReps, active plus
+-- inactive — and @retired_dreps@ is published beside it rather than inside it. Measured on
+-- preprod: 294 registered against 511 retired, which is why the two are never summed.
+--
+-- The treasury pair is two numbers because the honest answer needs both: 83 withdrawals are
+-- RECORDED on preprod and none has been enacted, so a single field called @withdrawn@ would be
+-- either @0@ — true, and reads as \"no treasury activity\" — or the requested total, which is a
+-- lie about the word.
+data DashboardPageResponse = DashboardPageResponse
+  { -- | The tip epoch. Every figure below is as of this epoch EXCEPT the three power figures,
+    -- which carry 'dashboardPowerEpoch': the ledger produces the DRep stake distribution one
+    -- epoch behind, so those are a different moment and say so rather than pretending otherwise.
+    dashboardEpoch :: Int,
+    dashboardTotalDreps :: Int,
+    dashboardActiveDreps :: Int,
+    dashboardInactiveDreps :: Int,
+    dashboardRetiredDreps :: Int,
+    -- | The epoch the three lovelace figures below are measured at. @null@ only when db-sync has
+    -- written no DRep stake distribution at all.
+    dashboardPowerEpoch :: Maybe Int,
+    dashboardDrepPowerLovelace :: Integer,
+    -- | Stake parked on the reserved @drep_always_abstain@ option. Read off
+    -- @palmares.drep_epoch_power@ by @target_kind@ — the one view with no DRep filter (D-20),
+    -- which is also why every other endpoint must say @target_kind = 'drep'@.
+    dashboardAlwaysAbstainLovelace :: Integer,
+    dashboardAlwaysNoConfidenceLovelace :: Integer,
+    dashboardTotalActions :: Int,
+    -- | Actions a vote can still be cast on: @last_votable_epoch >= epoch@. NOT the same as
+    -- @state = proposed@ — measured 12 against 11, the extra one being an action whose @state@
+    -- already reads @expired@ while its window is still open. @last_votable_epoch@ is the
+    -- authority on votability, as @GET \/gov-actions@ documents.
+    dashboardActionsInFlight :: Int,
+    -- | All seven types and all five states appear, even at zero: @ratified@ is 0 on preprod
+    -- because every ratified action was enacted the next epoch, and a MISSING key would read as
+    -- \"no such state\" instead.
+    dashboardActionsByType :: [(Core.GovActionType, Int)],
+    dashboardActionsByState :: [(Core.GovActionState, Int)],
+    dashboardTreasuryRequestedLovelace :: Integer,
+    dashboardTreasuryEnactedLovelace :: Integer,
+    -- | @state = proposed@ and expiring within five epochs, soonest first. The same rows
+    -- @GET \/gov-actions@ serves, from the same query.
+    dashboardClosingSoon :: [GovActionSummary],
+    -- | The same rows @GET \/dreps@ serves, from the same query, so the leaderboard cannot
+    -- disagree with the list it links to.
+    dashboardTopDrepsByPower :: [DRepSummary],
+    dashboardParticipationByEpoch :: [EpochParticipationPoint]
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "dashboard", CamelToSnake]] DashboardPageResponse
+
+instance ToSchema DashboardPageResponse where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "dashboard")
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /delegations
+
+-- | One stake address's CURRENT vote delegation, and whether it still counts.
+--
+-- One row per stake address, not one per certificate: the row is the LATEST @delegation_vote@ for
+-- that address, which is the same set @palmares.live_delegation@ is built from and the same set
+-- @\/drep\/{id}\/delegators@ serves. Measured on preprod: 2,304 addresses have ever delegated,
+-- 1,960 of them currently count and 344 do not.
+--
+-- @is_current@ is false for exactly one reason — the stake account was deregistered at or after
+-- the epoch the delegation was made in. It cannot be false because the delegation was superseded,
+-- because a superseded certificate is not the latest one and therefore is not this row.
+--
+-- @target@ is DERIVED, which is why 'FromJSON' below is hand-written: a credential target is the
+-- CIP-129 @drep1y…@ rendering computed from @(raw, has_script)@, and the two reserved ledger
+-- options are the literals 'Core.reservedDRepViews' holds. Measured: of the 1,960 current
+-- delegations, 930 name a credential, 992 @drep_always_abstain@ and 38
+-- @drep_always_no_confidence@ — so the reserved options are the majority and cannot be an
+-- afterthought.
+--
+-- @lovelace@ comes from the latest @epoch_stake@ snapshot and is @null@ for an address with no
+-- stake in it: measured, 1,052 of the 1,960 current rows carry one. @target_name@ is the DRep's
+-- CIP-119 name and is @null@ for a reserved option and for a DRep with no fetched metadata —
+-- measured, 184 of the 1,960.
+data DelegationRecord = DelegationRecord
+  { delegationStakeAddress :: Text,
+    delegationTarget :: Core.DRepId,
+    delegationTargetName :: Maybe Text,
+    delegationLovelace :: Maybe Integer,
+    delegationAt :: Core.ChainPoint,
+    delegationIsCurrent :: Bool
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "delegation", CamelToSnake]] DelegationRecord
+
+instance ToSchema DelegationRecord where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "delegation")
+
+-- | Decode a delegation row, computing @target@ from @target_kind@ and the credential pair.
+--
+-- @target_kind@ is matched exhaustively rather than defaulted: it is @palmares.vote_delegation@'s
+-- own three-way CASE, and a fourth value would mean the view changed under us. Failing here names
+-- the field, which is rule 2 in "Query.Gov".
+instance FromJSON DelegationRecord where
+  parseJSON = withObject "DelegationRecord" $ \o -> do
+    kind <- o .: "target_kind"
+    target <- case kind :: Text of
+      "drep" -> do
+        hex <- o .: "target_hex"
+        hasScript <- o .:? "target_has_script" .!= False
+        maybe
+          (fail ("DelegationRecord.target_hex is not a 28-byte credential: " <> show (hex :: Text)))
+          pure
+          (Core.drepIdFromHex hasScript hex)
+      "always_abstain" -> pure (Core.DRepId "drep_always_abstain")
+      "always_no_confidence" -> pure (Core.DRepId "drep_always_no_confidence")
+      other -> fail ("DelegationRecord: unknown target_kind " <> show other)
+    DelegationRecord
+      <$> o .: "stake_address"
+      <*> pure target
+      <*> o .:? "target_name"
+      <*> o .:? "lovelace"
+      <*> o .: "at"
+      <*> o .: "is_current"
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /spos
+
+-- | One stake pool in the current voting-power distribution.
+--
+-- The row set is @pool_stat@ at its LATEST epoch, not the set of pools that have voted. That
+-- distinction is measurable and matters: 510 pools are in the epoch-320 distribution, 45 pools
+-- have ever cast an SPO vote, and only 39 of those 45 are still in the distribution — six voters
+-- have since retired. @min_votes_cast=1@ therefore returns 39, not 45, and @\/votes?voter_role=spo@
+-- is the endpoint that answers "who voted".
+--
+-- @pool_id@ is DERIVED — hence the hand-written 'FromJSON' — for the same reason every other
+-- governance bech32 in this API is: it is computed by 'poolIdBech32' from the 28-byte hash, so a
+-- pool's id here is byte-identical to the @voter_id@ @\/votes@ publishes for the same pool.
+-- Verified against db-sync's own @pool_hash.view@ for the top pool by power: identical.
+--
+-- @ticker@ is @null@ throughout F1 and that is a configuration fact, not a gap in this code:
+-- @off_chain_pool_data@ has 0 rows because db-sync's pool-metadata fetcher is disabled. The join
+-- is here rather than a literal @NULL@ so the column fills itself the day it is enabled.
+--
+-- @participation_rate@ is @null@, always, in F1. There is no @spo_participation_rate_v1@ in the
+-- metric catalog, and this API's contract is that every published number carries the id of the
+-- formula that produced it; serving a rate with no resolvable formula would break that contract
+-- for the sake of one number. The denominator — the actions SPOs were eligible to vote on — needs
+-- a catalog entry before it can be published, which is a change to @\/metrics\/formulas@ and not
+-- to this endpoint.
+data SPOSummary = SPOSummary
+  { spoPoolId :: Text,
+    spoTicker :: Maybe Text,
+    -- | Lovelace, at 'spoVotingPowerEpoch'. Zero rather than null when the ledger recorded no
+    -- power: measured, 56 of the 510 pools are at zero and none is null.
+    spoVotingPower :: Integer,
+    spoVotingPowerEpoch :: Int,
+    spoDelegatorCount :: Int,
+    -- | DISTINCT governance actions this pool has cast a vote on, not vote rows: one preprod pool
+    -- has 8 rows across 4 actions, and counting rows would publish its record twice over.
+    spoVotesCast :: Int,
+    spoParticipationRate :: Maybe Double
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "spo", CamelToSnake]] SPOSummary
+
+instance ToSchema SPOSummary where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "spo")
+
+-- | Decode a pool row, computing @pool_id@ from the raw hash.
+instance FromJSON SPOSummary where
+  parseJSON = withObject "SPOSummary" $ \o -> do
+    hex <- o .: "hash"
+    raw <-
+      maybe (fail ("SPOSummary.hash is not a 28-byte pool hash: " <> show (hex :: Text))) pure
+        (Core.decodeHash28 hex)
+    SPOSummary
+      <$> pure (poolIdBech32 raw)
+      <*> o .:? "ticker"
+      <*> o .: "voting_power"
+      <*> o .: "voting_power_epoch"
+      <*> o .: "delegator_count"
+      <*> o .: "votes_cast"
+      <*> o .:? "participation_rate"
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /committee
+
+-- | One seat on the constitutional committee.
+--
+-- Identified by the COLD credential, which is the same choice 'VoteRecord' makes (D-24): a hot key
+-- is rotated, a cold key is the member. preprod makes the point at scale — 648,767 hot-key
+-- registrations resolve to 43 cold credentials.
+--
+-- @votes_cast@ is DISTINCT governance actions reached through those registrations, so one member's
+-- record does not split across rotations. Measured: each of the three current members has 6.
+--
+-- @cold_bech32@ is DERIVED (CIP-129 @cc_cold1…@ over the cold hash and its script bit), which is
+-- why 'FromJSON' is hand-written. Measured: all three current members are SCRIPT credentials, so a
+-- hard-coded key-type header byte would mis-identify every one of them.
+--
+-- @status@ is 'Core.CommitteeMemberStatus' — two values, and see its haddock for why not four.
+-- Expiry is published beside it as @expiration_epoch@ rather than folded in, because a member
+-- whose term ends in epoch 372 is serving today.
+data CommitteeMemberSummary = CommitteeMemberSummary
+  { committeeMemberColdHash :: Text,
+    committeeMemberColdBech32 :: Text,
+    -- | The hot credential that signs this member's votes. @null@ for a seat that has never
+    -- authorized one; measured, all three current members have one.
+    committeeMemberHotHash :: Maybe Text,
+    committeeMemberExpirationEpoch :: Int,
+    committeeMemberStatus :: Core.CommitteeMemberStatus,
+    committeeMemberVotesCast :: Int,
+    -- | When the hot key published as @hot_hash@ was authorized — the same certificate, so the
+    -- key and its date cannot disagree. Measured: all three current members, epoch 228.
+    committeeMemberAuthorizedAt :: Maybe Core.ChainPoint,
+    -- | @null@ unless the cold key has de-registered. Measured: @committee_de_registration@ has 0
+    -- rows on preprod, so this is @null@ for every member and @status@ is @active@ for all 110
+    -- seats across all 9 committees.
+    committeeMemberResignedAt :: Maybe Core.ChainPoint
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "committeeMember", CamelToSnake]] CommitteeMemberSummary
+
+instance ToSchema CommitteeMemberSummary where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "committeeMember")
+
+-- | Decode a member row, computing the CIP-129 cold id from the hash and its script bit.
+instance FromJSON CommitteeMemberSummary where
+  parseJSON = withObject "CommitteeMemberSummary" $ \o -> do
+    coldHex <- o .: "cold_hash"
+    hasScript <- o .:? "cold_has_script" .!= False
+    raw <-
+      maybe
+        (fail ("CommitteeMemberSummary.cold_hash is not a 28-byte credential: " <> show (coldHex :: Text)))
+        pure
+        (Core.decodeHash28 coldHex)
+    CommitteeMemberSummary
+      <$> pure coldHex
+      <*> pure (ccColdIdCip129 hasScript raw)
+      <*> o .:? "hot_hash"
+      <*> o .: "expiration_epoch"
+      <*> o .: "status"
+      <*> o .: "votes_cast"
+      <*> o .:? "authorized_at"
+      <*> o .:? "resigned_at"
+
+-- | @GET \/committee@: the committee in force, and its seats.
+--
+-- Its own composite, with no pagination and no @\/committees@ list: there is exactly one committee
+-- in force and it has three seats. @epoch@ is the epoch the @epoch_state@ row that names this
+-- committee belongs to, so a client can see which moment the answer is as of — measured, epoch
+-- 320 names committee 8, and @epoch_state@ has exactly one row per epoch (the plan expected
+-- rollback duplicates; there are none, and the @ORDER BY epoch_no DESC, id DESC@ stays anyway).
+--
+-- @established_by@ is the governance action that enacted it, in the canonical
+-- @\<tx_hash\>#\<index\>@ form. @null@ for the genesis committee, which no proposal created.
+data CommitteeResponse = CommitteeResponse
+  { committeeQuorumNumerator :: Int,
+    committeeQuorumDenominator :: Int,
+    committeeEstablishedBy :: Maybe Core.GovActionId,
+    committeeEpoch :: Int,
+    committeeMembers :: [CommitteeMemberSummary]
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "committee", CamelToSnake]] CommitteeResponse
+
+instance ToSchema CommitteeResponse where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "committee")
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /treasury-withdrawals
+
+-- | One treasury payment one governance action would make, across all actions.
+--
+-- The list form of 'TreasuryWithdrawalRow', which serves one action's payments inside
+-- @\/gov-action\/{id}@. Two types rather than one because this one carries the action it belongs
+-- to and that one does not need to.
+--
+-- Measured on preprod: 83 withdrawals across 82 governance actions to 19 beneficiaries, amounts
+-- from 10 to 149,000,000,000,000 lovelace, and __none has ever been enacted__ — so
+-- @enacted_epoch@, and therefore @enacted_at@, is @null@ on every row, and @paid_heuristic@ is
+-- @false@ on every row because @reward_rest@ has 0 rows of type @treasury@. Three of the 83 carry
+-- a @gov_action_title@; the rest have no fetched CIP-108 metadata.
+--
+-- @paid_heuristic@ carries its warning in its name: @reward_rest@ has no governance-action key, so
+-- matching a payment by @(stake_address, spendable_epoch)@ is ambiguous when one address receives
+-- two withdrawals in one epoch.
+data TreasuryWithdrawalRecord = TreasuryWithdrawalRecord
+  { withdrawalGovActionId :: Core.GovActionId,
+    withdrawalGovActionTitle :: Maybe Text,
+    withdrawalBeneficiary :: Text,
+    withdrawalAmount :: Integer,
+    -- | The only authoritative enactment value db-sync has.
+    withdrawalEnactedEpoch :: Maybe Int,
+    withdrawalEnactedAt :: Maybe ChainPointEpochOnly,
+    withdrawalPaidHeuristic :: Maybe Bool
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "withdrawal", CamelToSnake]] TreasuryWithdrawalRecord
+
+instance ToSchema TreasuryWithdrawalRecord where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "withdrawal")
+
+-- | Decode a withdrawal row, deriving the action id from its transaction hash and index.
+instance FromJSON TreasuryWithdrawalRecord where
+  parseJSON = withObject "TreasuryWithdrawalRecord" $ \o -> do
+    txHex <- o .: "tx_hash"
+    ix <- o .: "index"
+    (gid, _bech) <-
+      maybe (fail ("TreasuryWithdrawalRecord: not a proposal id: " <> show (txHex :: Text))) pure
+        (Core.govActionIdForms txHex (ix :: Int))
+    TreasuryWithdrawalRecord
+      <$> pure gid
+      <*> o .:? "gov_action_title"
+      <*> o .: "beneficiary"
+      <*> o .: "amount"
+      <*> o .:? "enacted_epoch"
+      <*> o .:? "enacted_at"
+      <*> o .:? "paid_heuristic"
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * The governance activity feed
+
+-- | A position in @palmares.activity@: the four components of its cursor.
+--
+-- FOUR, and not the three the design specified, because the view publishes four. @arm@ is a
+-- per-arm ordinal, constant within each of the eleven @UNION ALL@ branches, which is what makes
+-- the cursor's uniqueness STRUCTURAL: two different arms cannot share a cursor whatever their
+-- @item_index@ happens to mean, and the arms' item indexes mean different things (a @cert_index@,
+-- a @voting_procedure.id@, a @gov_action_proposal.id@).
+--
+-- A record and not a 4-tuple: four 'Int64' in a row is exactly the shape where two get swapped and
+-- the feed pages wrongly for a week before anyone notices.
+data ActivityCursor = ActivityCursor
+  { cursorSortSlot :: Int64,
+    cursorTxIndex :: Int64,
+    cursorArm :: Int64,
+    cursorItemIndex :: Int64
+  }
+  deriving stock (Show, Eq)
+
+-- | The cursor's wire form, @\<sort_slot\>:\<tx_index\>:\<arm\>:\<item_index\>@.
+--
+-- Rendered HERE and not in the projection, so the format has exactly one definition:
+-- @Query.Gov.parseCursor@ is its inverse and the round trip is a unit test. A @||@ concatenation in
+-- SQL would be a second definition of the format, in another language, with no test between them.
+--
+-- @tx_index@ is NEGATIVE for the epoch-boundary arms (-1 for the four gov-action lifecycle kinds,
+-- -2 for an enacted treasury withdrawal), so the parser must accept a leading minus. It is not an
+-- unsigned field.
+renderCursor :: ActivityCursor -> Text
+renderCursor (ActivityCursor sl tx arm item) =
+  Text.intercalate ":" (map (Text.pack . show) [sl, tx, arm, item])
+
+-- | One event in the governance feed, as @palmares.activity@ reports it.
+--
+-- __@cursor@ is a 'Text' and not the envelope's @Cursor@__ on purpose: @Palmares.WebAPI.Envelope@
+-- lives in @webapi-lib@, which this library must not depend on (see the module header). The value
+-- is the same string the envelope's @next_cursor@ carries, and a client echoes it back without
+-- reading it.
+--
+-- __There is no @title@__, although the design listed one. The view publishes no title and no
+-- names; rendering one would mean a join per arm on the page that has to stay fast, and a title
+-- derived from @event_type@ alone is that enum spelled in English - thirteen values the client
+-- already maps.
+--
+-- @actor_id@ and @target_id@ are text whose MEANING depends on @event_type@: a credential in hex, a
+-- stake address in bech32, or a governance action's row id. That is inherent to a union feed; the
+-- reader dispatches on the kind.
+data ActivityRow = ActivityRow
+  { activityRowCursor :: Text,
+    activityRowEventType :: Core.ActivityEventType,
+    activityRowSource :: Core.ActivitySource,
+    -- | @slot@ and @tx_hash@ are null TOGETHER for the five epoch-boundary kinds: they happen in
+    -- the ledger at an epoch boundary, with no transaction to point at.
+    activityRowAt :: Core.ChainPoint,
+    activityRowActorId :: Maybe Text,
+    activityRowTargetId :: Maybe Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "activityRow", CamelToSnake]] ActivityRow
+
+instance ToSchema ActivityRow where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "activityRow")
+
+-- | Decode a @palmares.activity@ row, assembling the cursor from its four components.
+--
+-- Hand-written for the same reason 'VoteRecord''s is: the wire field is DERIVED, not stored. The
+-- view publishes four numbers, the cursor is their rendering, so the projection stays a list of
+-- columns and the format stays in one place.
+instance FromJSON ActivityRow where
+  parseJSON = withObject "ActivityRow" $ \o -> do
+    cur <-
+      ActivityCursor
+        <$> o .: "sort_slot"
+        <*> o .: "tx_index"
+        <*> o .: "arm"
+        <*> o .: "item_index"
+    ActivityRow (renderCursor cur)
+      <$> o .: "event_type"
+      <*> o .: "source"
+      <*> o .: "at"
+      <*> o .:? "actor_id"
+      <*> o .:? "target_id"

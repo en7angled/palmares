@@ -67,6 +67,29 @@ BEGIN
   -- `arm` is closed over the eleven arms, and every row has one.
   ASSERT (SELECT count(*) FROM palmares.activity WHERE arm IS NULL OR arm < 1 OR arm > 11) = 0;
 
+  -- The vote arm is written off the BASE TABLES rather than off palmares.vote, for the pushdown
+  -- reason the view header gives. That makes it a second definition of the same seven published
+  -- values, and this is the assertion that keeps the two from drifting: every column, row for row,
+  -- over all 3.24 M vote rows. It is what proved the four-correlated-subqueries form and the
+  -- four-LEFT-JOINs form identical when the arm was rewritten for speed.
+  ASSERT (
+    SELECT count(*) FROM (
+      SELECT a.sort_slot, a.epoch_no, a.block_time, a.tx_hash, a.actor_id, a.target_id,
+             v.vote_slot, v.vote_epoch, v.cast_at, encode(v.vote_tx_hash, 'hex') AS v_tx,
+             encode(v.voter_id_hash, 'hex') AS v_id, v.gov_action_id::text AS v_action
+      FROM palmares.activity a
+      JOIN palmares.vote v ON v.voting_procedure_id = a.item_index
+      WHERE a.arm = 2
+    ) q
+    WHERE sort_slot IS DISTINCT FROM vote_slot
+       OR epoch_no IS DISTINCT FROM vote_epoch
+       OR block_time IS DISTINCT FROM cast_at
+       OR tx_hash IS DISTINCT FROM v_tx
+       OR actor_id IS DISTINCT FROM v_id
+       OR target_id IS DISTINCT FROM v_action
+  ) = 0,
+    'the vote arm and palmares.vote publish the same chain point, identity and target';
+
   RAISE NOTICE 'activity ok: % rows, % duplicate cursors, % kinds present (% unreachable on preprod: committee_resigned, treasury_withdrawal_enacted)',
     n_rows, n_dups, (SELECT count(DISTINCT event_type) FROM palmares.activity), 2;
 END $$;

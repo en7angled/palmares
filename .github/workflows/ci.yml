@@ -115,6 +115,30 @@ jobs:
           cabal run -v0 exe:admin -- write-metrics-doc
           git diff --exit-code docs/metrics.md
 
+#           git diff --exit-code docs/metrics.md
+# in the existing `haskell` job (keep one blank line between the two steps).
+
+      # docs/generated/swagger/query-swagger-api.json is generated from the SERVED API type and
+      # committed, so the routes and the frontend's `gen:api` input cannot drift apart. Regenerate
+      # and diff, exactly as the metric doc above.
+      #
+      # --write-swagger-only writes the file from the pure apiSwagger value and exits before any
+      # config, pool or schema wiring, which is what makes this runnable here: no Postgres service,
+      # no DSN, no port. It is a step in this job rather than a job of its own because the binary
+      # is already built and cached here; a separate job would pay for a second cold build.
+      - name: Swagger document is not stale
+        run: |
+          set -euo pipefail
+          cabal run -v0 exe:query-api -- --write-swagger-only
+          git diff --exit-code docs/generated/swagger/
+
+      # The diff above catches the document falling behind the code. It cannot catch the two
+      # agreeing on something wrong, so the contract's load-bearing facts are asserted by value:
+      # the path set, the 24 error codes a client branches on, and the parameters that must exist
+      # or must not. Runs on the file the step above just regenerated.
+      - name: Swagger contract holds
+        run: bash scripts/check_swagger.sh
+
   # F1 check 3, over the seeded db-sync skeleton rather than the real synced database, so it
   # blocks merges without needing preprod. The against-preprod run is the one that SIGNS check 3
   # — the skeleton has empty tables, so it proves the statements parse and are self-consistent,

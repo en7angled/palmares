@@ -449,21 +449,52 @@ JOIN public.drep_hash h ON h.id = c.drep_hash_id
 UNION ALL
 
 -- (2) Votes. Every row, not just final ones: a re-vote is an event that happened.
+--
+-- NOT `FROM palmares.vote`. That view computes three window functions, and although PostgreSQL
+-- drops their computation when nothing selects them, the view still cannot be pulled up — so NO
+-- qual reaches these joins. A slot bound lands as a filter above a sequential scan of all
+-- 3,244,711 voting_procedure rows on every page. MEASURED: a 50-row page of palmares.activity took
+-- 253 SECONDS that way.
+--
+-- The credential is resolved by four LEFT JOINs and ONE COALESCE, not by four correlated
+-- subqueries. That is the second measurement, and it is the one that matters at this scale: the
+-- subquery form evaluates its scalar SELECTs once per row BEFORE the sort, so 3.24 M rows pay for
+-- the 50 the LIMIT keeps — 39.8 s for an unwindowed newest-50 page, of which 36.1 s was this arm
+-- and 34.5 s of that was the per-row credential lookups. Written as joins the same page is 8.4 s,
+-- and under the API's 5-day window it is 0.6 s. The COALESCE chain needs no CASE on voter_role
+-- because exactly one of drep_voter, pool_voter and committee_voter is non-null per row, and the
+-- two forms were checked row for row: 0 disagreements over all 3,244,711 rows.
+--
+-- palmares.vote itself is unchanged and keeps its own hash join, which is the right shape for its
+-- full-corpus consumers — that is the 87 s to 5.7 s win T-API-11 measured. The identity published
+-- here is identical: COALESCE(cold, hot) is exactly palmares.vote.voter_id_hash (D-24), and the
+-- cold credential still comes from palmares.cc_cold_interval, so the "registration in force at
+-- this transaction" rule has one definition. sql/checks/060_activity.sql asserts this arm's count
+-- equals palmares.vote's, row for row.
 SELECT
   'vote_cast',
   'governance',
-  v.vote_slot,
-  v.tx_index,
+  b.slot_no,
+  tx.block_index,
   2,
-  -- NOT v.vote_index: voting_procedure.index repeats massively in this data (see the header).
-  v.voting_procedure_id,
-  v.vote_slot,
-  v.vote_epoch,
-  v.cast_at,
-  encode(v.vote_tx_hash, 'hex'),
-  encode(v.voter_id_hash, 'hex'),
-  v.gov_action_id::text
-FROM palmares.vote v
+  -- NOT voting_procedure.index: it repeats massively in this data (see the header).
+  v.id,
+  b.slot_no,
+  b.epoch_no,
+  b.time,
+  encode(tx.hash, 'hex'),
+  encode(COALESCE(cold.cold_raw, dh.raw, ph.hash_raw, ch.raw), 'hex'),
+  v.gov_action_proposal_id::text
+FROM public.voting_procedure v
+JOIN public.tx ON tx.id = v.tx_id
+JOIN public.block b ON b.id = tx.block_id
+LEFT JOIN palmares.cc_cold_interval cold
+  ON cold.hot_key_id = v.committee_voter
+ AND cold.from_tx <= v.tx_id
+ AND (cold.to_tx IS NULL OR cold.to_tx > v.tx_id)
+LEFT JOIN public.drep_hash dh ON dh.id = v.drep_voter
+LEFT JOIN public.pool_hash ph ON ph.id = v.pool_voter
+LEFT JOIN public.committee_hash ch ON ch.id = v.committee_voter
 
 UNION ALL
 
@@ -564,7 +595,7 @@ SELECT
 FROM palmares.gov_action g
 JOIN LATERAL (
   SELECT b.slot_no AS first_slot, b.time AS first_time
-  FROM public.block b WHERE b.epoch_no = g.ratified_epoch ORDER BY b.id LIMIT 1
+  FROM public.block b WHERE b.epoch_no = g.ratified_epoch ORDER BY b.slot_no LIMIT 1
 ) eb ON true
 WHERE g.ratified_epoch IS NOT NULL
 
@@ -587,7 +618,7 @@ SELECT
 FROM palmares.gov_action g
 JOIN LATERAL (
   SELECT b.slot_no AS first_slot, b.time AS first_time
-  FROM public.block b WHERE b.epoch_no = g.enacted_epoch ORDER BY b.id LIMIT 1
+  FROM public.block b WHERE b.epoch_no = g.enacted_epoch ORDER BY b.slot_no LIMIT 1
 ) eb ON true
 WHERE g.enacted_epoch IS NOT NULL
 
@@ -610,7 +641,7 @@ SELECT
 FROM palmares.gov_action g
 JOIN LATERAL (
   SELECT b.slot_no AS first_slot, b.time AS first_time
-  FROM public.block b WHERE b.epoch_no = g.expired_epoch ORDER BY b.id LIMIT 1
+  FROM public.block b WHERE b.epoch_no = g.expired_epoch ORDER BY b.slot_no LIMIT 1
 ) eb ON true
 WHERE g.expired_epoch IS NOT NULL
 
@@ -643,7 +674,7 @@ SELECT
 FROM palmares.gov_action g
 JOIN LATERAL (
   SELECT b.slot_no AS first_slot, b.time AS first_time
-  FROM public.block b WHERE b.epoch_no = g.dropped_epoch ORDER BY b.id LIMIT 1
+  FROM public.block b WHERE b.epoch_no = g.dropped_epoch ORDER BY b.slot_no LIMIT 1
 ) eb ON true
 WHERE g.dropped_epoch IS NOT NULL
   AND g.ratified_epoch IS NULL
@@ -669,6 +700,6 @@ SELECT
 FROM palmares.treasury_withdrawal t
 JOIN LATERAL (
   SELECT b.slot_no AS first_slot, b.time AS first_time
-  FROM public.block b WHERE b.epoch_no = t.enacted_epoch ORDER BY b.id LIMIT 1
+  FROM public.block b WHERE b.epoch_no = t.enacted_epoch ORDER BY b.slot_no LIMIT 1
 ) eb ON true
 WHERE t.enacted_epoch IS NOT NULL;

@@ -24,8 +24,8 @@ import Query.Refresh (runRefreshThread)
 import Query.Views (applyPalmaresSchema)
 import QueryAppMonad (QueryAppContext (..))
 import RestAPI (apiSwagger, mkWebApp)
-import System.Environment (lookupEnv)
-import System.Exit (die)
+import System.Environment (getArgs, lookupEnv)
+import System.Exit (die, exitSuccess)
 import System.IO (BufferMode (LineBuffering), hSetBuffering, stdout)
 
 defaultConnStr :: String
@@ -35,6 +35,24 @@ defaultConnStr = "host=postgres user=postgres password=postgres dbname=cexplorer
 redactConnStr :: String -> String
 redactConnStr s =
   unwords [kv | kv <- words s, let k = takeWhile (/= '=') kv, k `elem` ["host", "dbname", "port"]]
+
+-- | The generated Swagger document: committed, and the frontend's @gen:api@ input.
+--
+-- ONE producer, and that is the point. It used to be written on every boot, AFTER config and pool
+-- creation, which meant CI could only obtain it by starting a server against a database.
+swaggerPath :: FilePath
+swaggerPath = "docs/generated/swagger/query-swagger-api.json"
+
+-- | @--write-swagger-only@: write the document and exit.
+--
+-- It runs before anything else and touches NOTHING — no @PG_CONN_STR@, no pool, no @palmares@
+-- schema, no port, not even the metric catalog — because 'apiSwagger' is a pure value derived from
+-- the served API type. That is exactly what makes the CI parity guard runnable: no Postgres
+-- service, no secrets, no listening socket.
+writeSwagger :: IO ()
+writeSwagger = do
+  BL8.writeFile swaggerPath (encodePretty apiSwagger)
+  putStrLn ("Wrote " <> swaggerPath)
 
 -- | Boot order is the contract, and every step before 'runSettings' is fail-closed.
 --
@@ -50,8 +68,13 @@ main = do
   -- serving requests.
   hSetBuffering stdout LineBuffering
 
-  putStrLn "Writing Swagger file ..."
-  BL8.writeFile "docs/generated/swagger/query-swagger-api.json" (encodePretty apiSwagger)
+  args <- getArgs
+  case args of
+    ["--write-swagger-only"] -> writeSwagger >> exitSuccess
+    _ -> serve
+
+serve :: IO ()
+serve = do
 
   -- Fail closed on the catalog before anything else touches the network: a malformed
   -- metric-formulas.json or a sql_file with no embed means /metrics/formulas would publish a

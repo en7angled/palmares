@@ -134,45 +134,6 @@ instance FromHttpApiData AchievementsOrderBy where
       "name" -> Right AchievementsOrderByName
       _ -> Left "Invalid order by. Use 'id', 'date', 'awarded_to', 'awarded_by', or 'name'"
 
--- | Activity event type enum for the activity feed endpoint.
--- Constructors carry an @Evt@ prefix that JSON serialization strips, so the wire
--- values are the bare event names (e.g. @"ProfileCreated"@).
-data ActivityEventType
-  = EvtProfileCreated
-  | EvtAchievementAwarded
-  | EvtAchievementAccepted
-  deriving (Show, Generic, Eq)
-  deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "Evt"]] ActivityEventType
-
-instance ToSchema ActivityEventType where
-  declareNamedSchema = genericDeclareNamedSchema activityEventTypeSchemaOptions
-    where
-      activityEventTypeSchemaOptions :: SchemaOptions
-      activityEventTypeSchemaOptions =
-        fromAesonOptions $
-          AesonTypes.defaultOptions
-            { AesonTypes.constructorTagModifier = dropPrefix "Evt"
-            }
-
-instance ToParamSchema ActivityEventType where
-  toParamSchema _ =
-    mempty
-      & type_
-        ?~ SwaggerString
-      & enum_
-        ?~ [ Aeson.String "ProfileCreated",
-             Aeson.String "AchievementAwarded",
-             Aeson.String "AchievementAccepted"
-           ]
-
-instance FromHttpApiData ActivityEventType where
-  parseQueryParam t =
-    case t of
-      "ProfileCreated" -> Right EvtProfileCreated
-      "AchievementAwarded" -> Right EvtAchievementAwarded
-      "AchievementAccepted" -> Right EvtAchievementAccepted
-      _ -> Left "Invalid event_type. Use 'ProfileCreated', 'AchievementAwarded', or 'AchievementAccepted'"
-
 -- | Newtype for wallet address URL capture (bech32 encoded).
 newtype WalletAddress = WalletAddress {unWalletAddress :: GYAddress}
 
@@ -280,4 +241,56 @@ instance ToParamSchema VotesOrderBy where
   toParamSchema = jsonEnumParamSchema
 
 instance FromHttpApiData VotesOrderBy where
+  parseQueryParam = parseJsonEnumParam "invalid_parameter"
+
+-- | @order_by@ on @GET \/delegations@. Default is @at@, descending: a delegation list read without
+-- a filter is a feed of what just moved.
+data DelegationsOrderBy
+  = DelegationsOrderByAt
+  | DelegationsOrderByLovelace
+  | DelegationsOrderByStakeAddress
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[ConstructorTagModifier '[StripPrefix "DelegationsOrderBy", CamelToSnake]] DelegationsOrderBy
+
+instance ToParamSchema DelegationsOrderBy where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData DelegationsOrderBy where
+  parseQueryParam = parseJsonEnumParam "invalid_parameter"
+
+-- | @order_by@ on @GET \/spos@. Default is @voting_power@, descending: like @\/dreps@, this list is
+-- a distribution and the question it answers first is who holds the weight.
+data SPOsOrderBy
+  = SPOsOrderByVotingPower
+  | SPOsOrderByVotesCast
+  | SPOsOrderByPoolId
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[ConstructorTagModifier '[StripPrefix "SPOsOrderBy", CamelToSnake]] SPOsOrderBy
+
+instance ToParamSchema SPOsOrderBy where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData SPOsOrderBy where
+  parseQueryParam = parseJsonEnumParam "invalid_parameter"
+
+-- | @order_by@ on @GET \/treasury-withdrawals@. Default is @enacted_epoch@, descending.
+--
+-- On preprod that ordering is entirely NULL — no withdrawal has ever been enacted — so the page
+-- is decided by the tiebreaker. That is the right default anyway, and it is the reason the
+-- tiebreaker has to be total: see 'Query.Gov.withdrawalSortSpec'.
+data TreasuryWithdrawalsOrderBy
+  = TreasuryWithdrawalsOrderByAmount
+  | TreasuryWithdrawalsOrderByEnactedEpoch
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON
+          '[ConstructorTagModifier '[StripPrefix "TreasuryWithdrawalsOrderBy", CamelToSnake]]
+          TreasuryWithdrawalsOrderBy
+
+instance ToParamSchema TreasuryWithdrawalsOrderBy where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData TreasuryWithdrawalsOrderBy where
   parseQueryParam = parseJsonEnumParam "invalid_parameter"

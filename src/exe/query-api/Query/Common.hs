@@ -9,11 +9,10 @@
 --      share a sort key;
 --   3. a user string reaching a LIKE pattern or an ORDER BY clause unescaped.
 --
--- The governance endpoints page and sort IN SQL. 'legacyApplyLimits' and
--- 'legacyApplyFilterOrderLimit' below slice a Haskell list instead, which is the F-17 bug: the
--- query fetches everything and the handler throws most of it away. They survive only because the
--- inherited profile/attestation handlers still call them, and they are named so that no new code
--- reaches for them by accident. They go when those handlers do.
+-- Every endpoint here pages and sorts IN SQL. The list-slicing shape that fetched every row and
+-- threw most of it away (the F-17 bug) is gone with the inherited /activity feed; what remains of
+-- it is 'legacyNormalizeLimitOffset', which only clamps numbers and which the inherited
+-- profile/attestation handlers still call.
 module Query.Common where
 
 import Data.Maybe (fromMaybe)
@@ -169,32 +168,6 @@ legacyNormalizeLimitOffset limit offset =
   where
     clampLimit l = max 1 (min 500 l)
 
--- | Slice a list by the given limit and offset. 'Nothing' returns all items.
---
--- The F-17 shape: the query already fetched every row. Inherited handlers only — see the module
--- header.
-legacyApplyLimits :: Maybe (Limit, Offset) -> [a] -> [a]
-legacyApplyLimits Nothing xs = xs
-legacyApplyLimits (Just (limit, offset)) xs =
-  let safeLimit = Prelude.max 0 limit
-      safeOffset = Prelude.max 0 offset
-   in Prelude.take safeLimit (Prelude.drop safeOffset xs)
-
--- | Apply optional filter, then optional ordering, then optional limit/offset.
--- Caller supplies the list and the two optional-argument list transformers.
---
--- Inherited handlers only — see the module header.
-legacyApplyFilterOrderLimit ::
-  Maybe (Limit, Offset) ->
-  Maybe f ->
-  Maybe (ob, SortOrder) ->
-  (Maybe f -> [a] -> [a]) ->
-  (Maybe (ob, SortOrder) -> [a] -> [a]) ->
-  [a] ->
-  [a]
-legacyApplyFilterOrderLimit maybeLimitOffset maybeFilter maybeOrder applyFilter applyOrder =
-  legacyApplyLimits maybeLimitOffset . applyOrder maybeOrder . applyFilter maybeFilter
-
 -- | The epoch-power series: at most 200 points, which is also the default.
 --
 -- Default equal to the ceiling, unlike every other endpoint, because the series IS the answer —
@@ -202,3 +175,12 @@ legacyApplyFilterOrderLimit maybeLimitOffset maybeFilter maybeOrder applyFilter 
 -- epochs is about two and a half years on Cardano.
 epochSeriesBounds :: PageBounds
 epochSeriesBounds = PageBounds 200 200
+
+-- | @\/search@'s per-group page.
+--
+-- Five, because that is what a command palette shows per group above a "see all" link, and twenty
+-- as the ceiling: six groups at twenty is 120 hits, which is a palette nobody scrolls. Named here
+-- rather than spelled at the call site for the reason 'PageBounds' exists — two bare integers in a
+-- handler read as neither the default nor the ceiling.
+searchGroupBounds :: PageBounds
+searchGroupBounds = PageBounds 20 5

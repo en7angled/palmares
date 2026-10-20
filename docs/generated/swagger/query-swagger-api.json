@@ -1,5 +1,58 @@
 {
     "definitions": {
+        "ActivityEventType": {
+            "enum": [
+                "drep_registered",
+                "drep_updated",
+                "drep_retired",
+                "delegation_changed",
+                "vote_cast",
+                "gov_action_proposed",
+                "gov_action_ratified",
+                "gov_action_enacted",
+                "gov_action_expired",
+                "gov_action_dropped",
+                "committee_authorized",
+                "committee_resigned",
+                "treasury_withdrawal_enacted"
+            ],
+            "type": "string"
+        },
+        "ActivityRow": {
+            "properties": {
+                "actor_id": {
+                    "type": "string"
+                },
+                "at": {
+                    "$ref": "#/definitions/ChainPoint"
+                },
+                "cursor": {
+                    "type": "string"
+                },
+                "event_type": {
+                    "$ref": "#/definitions/ActivityEventType"
+                },
+                "source": {
+                    "$ref": "#/definitions/ActivitySource"
+                },
+                "target_id": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "cursor",
+                "event_type",
+                "source",
+                "at"
+            ],
+            "type": "object"
+        },
+        "ActivitySource": {
+            "enum": [
+                "governance"
+            ],
+            "type": "string"
+        },
         "AnchorContent": {
             "properties": {
                 "given_name": {
@@ -58,6 +111,22 @@
             ],
             "type": "string"
         },
+        "ApiError": {
+            "description": "The body of every non-2xx response.",
+            "properties": {
+                "code": {
+                    "$ref": "#/definitions/ErrorCode"
+                },
+                "message": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "code",
+                "message"
+            ],
+            "type": "object"
+        },
         "ChainPoint": {
             "properties": {
                 "epoch": {
@@ -104,6 +173,89 @@
             ],
             "type": "object"
         },
+        "CommitteeMemberStatus": {
+            "description": "A committee member's standing, derived from committee_de_registration alone. Two values, not Koios's four: expiry is published beside it as expiration_epoch, because a member whose term ends in a future epoch is serving today.",
+            "enum": [
+                "active",
+                "resigned"
+            ],
+            "type": "string"
+        },
+        "CommitteeMemberSummary": {
+            "properties": {
+                "authorized_at": {
+                    "$ref": "#/definitions/ChainPoint"
+                },
+                "cold_bech32": {
+                    "type": "string"
+                },
+                "cold_hash": {
+                    "type": "string"
+                },
+                "expiration_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "hot_hash": {
+                    "type": "string"
+                },
+                "resigned_at": {
+                    "$ref": "#/definitions/ChainPoint"
+                },
+                "status": {
+                    "$ref": "#/definitions/CommitteeMemberStatus"
+                },
+                "votes_cast": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "cold_hash",
+                "cold_bech32",
+                "expiration_epoch",
+                "status",
+                "votes_cast"
+            ],
+            "type": "object"
+        },
+        "CommitteeResponse": {
+            "properties": {
+                "epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "established_by": {
+                    "type": "string"
+                },
+                "members": {
+                    "items": {
+                        "$ref": "#/definitions/CommitteeMemberSummary"
+                    },
+                    "type": "array"
+                },
+                "quorum_denominator": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "quorum_numerator": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "quorum_numerator",
+                "quorum_denominator",
+                "epoch",
+                "members"
+            ],
+            "type": "object"
+        },
         "DRepDetailResponse": {
             "properties": {
                 "anchor_content": {
@@ -144,6 +296,108 @@
                 "delegator_stats",
                 "top_delegators",
                 "updates"
+            ],
+            "type": "object"
+        },
+        "DRepExplorerPageResponse": {
+            "properties": {
+                "anchor_facets": {
+                    "items": {
+                        "items": [
+                            {
+                                "$ref": "#/definitions/AnchorStatus"
+                            },
+                            {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                            }
+                        ],
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                    },
+                    "type": "array"
+                },
+                "epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/DRepSummary"
+                    },
+                    "type": "array"
+                },
+                "language_facets": {
+                    "items": {
+                        "items": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                            }
+                        ],
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "power_buckets": {
+                    "items": {
+                        "$ref": "#/definitions/PowerBucket"
+                    },
+                    "type": "array"
+                },
+                "status_facets": {
+                    "items": {
+                        "items": [
+                            {
+                                "$ref": "#/definitions/DRepStatus"
+                            },
+                            {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                            }
+                        ],
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                    },
+                    "type": "array"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "total",
+                "limit",
+                "offset",
+                "epoch",
+                "status_facets",
+                "anchor_facets",
+                "language_facets",
+                "power_buckets"
             ],
             "type": "object"
         },
@@ -412,6 +666,168 @@
             ],
             "type": "object"
         },
+        "DashboardPageResponse": {
+            "properties": {
+                "actions_by_state": {
+                    "items": {
+                        "items": [
+                            {
+                                "$ref": "#/definitions/GovActionState"
+                            },
+                            {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                            }
+                        ],
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                    },
+                    "type": "array"
+                },
+                "actions_by_type": {
+                    "items": {
+                        "items": [
+                            {
+                                "$ref": "#/definitions/GovActionType"
+                            },
+                            {
+                                "maximum": 9223372036854775807,
+                                "minimum": -9223372036854775808,
+                                "type": "integer"
+                            }
+                        ],
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                    },
+                    "type": "array"
+                },
+                "actions_in_flight": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "active_dreps": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "always_abstain_lovelace": {
+                    "type": "integer"
+                },
+                "always_no_confidence_lovelace": {
+                    "type": "integer"
+                },
+                "closing_soon": {
+                    "items": {
+                        "$ref": "#/definitions/GovActionSummary"
+                    },
+                    "type": "array"
+                },
+                "drep_power_lovelace": {
+                    "type": "integer"
+                },
+                "epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "inactive_dreps": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "participation_by_epoch": {
+                    "items": {
+                        "$ref": "#/definitions/EpochParticipationPoint"
+                    },
+                    "type": "array"
+                },
+                "power_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "retired_dreps": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "top_dreps_by_power": {
+                    "items": {
+                        "$ref": "#/definitions/DRepSummary"
+                    },
+                    "type": "array"
+                },
+                "total_actions": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total_dreps": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "treasury_enacted_lovelace": {
+                    "type": "integer"
+                },
+                "treasury_requested_lovelace": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "epoch",
+                "total_dreps",
+                "active_dreps",
+                "inactive_dreps",
+                "retired_dreps",
+                "drep_power_lovelace",
+                "always_abstain_lovelace",
+                "always_no_confidence_lovelace",
+                "total_actions",
+                "actions_in_flight",
+                "actions_by_type",
+                "actions_by_state",
+                "treasury_requested_lovelace",
+                "treasury_enacted_lovelace",
+                "closing_soon",
+                "top_dreps_by_power",
+                "participation_by_epoch"
+            ],
+            "type": "object"
+        },
+        "DelegationRecord": {
+            "properties": {
+                "at": {
+                    "$ref": "#/definitions/ChainPoint"
+                },
+                "is_current": {
+                    "type": "boolean"
+                },
+                "lovelace": {
+                    "type": "integer"
+                },
+                "stake_address": {
+                    "type": "string"
+                },
+                "target": {
+                    "type": "string"
+                },
+                "target_name": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "stake_address",
+                "target",
+                "at",
+                "is_current"
+            ],
+            "type": "object"
+        },
         "DelegatorRow": {
             "properties": {
                 "delegated_at": {
@@ -563,6 +979,42 @@
             ],
             "type": "object"
         },
+        "EpochParticipationPoint": {
+            "description": "One epoch of DRep participation. `dreps_voted` counts voters and `votes_cast` counts votes; they differ by re-votes. The rate is null only when no DRep held power that epoch -- zero is a real reading and preprod epoch 311 has it.",
+            "properties": {
+                "dreps_voted": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "dreps_with_power": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "participation_rate": {
+                    "format": "double",
+                    "type": "number"
+                },
+                "votes_cast": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "epoch",
+                "dreps_with_power",
+                "dreps_voted",
+                "votes_cast"
+            ],
+            "type": "object"
+        },
         "EpochPowerPoint": {
             "properties": {
                 "delegator_count": {
@@ -584,6 +1036,36 @@
                 "lovelace"
             ],
             "type": "object"
+        },
+        "ErrorCode": {
+            "description": "Every reason this API refuses or fails a request, as a stable snake_case tag. Branch on this, never on the message: the message is for people and may be reworded, the code is the contract. The status each one is served with is fixed -- the 400 group is a bad request, the 404 group a well-formed request naming nothing, 429 a rate limit, the 503 group an index that is not ready yet, and internal_error a bug here.",
+            "enum": [
+                "invalid_parameter",
+                "query_too_short",
+                "query_too_long",
+                "offset_too_large",
+                "limit_too_large",
+                "invalid_cursor",
+                "both_cursors_given",
+                "invalid_drep_id",
+                "invalid_gov_action_id",
+                "invalid_asset_class",
+                "invalid_time_range",
+                "invalid_epoch_range",
+                "drep_not_found",
+                "gov_action_not_found",
+                "spo_not_found",
+                "committee_not_found",
+                "profile_not_found",
+                "attestation_not_found",
+                "dispute_not_found",
+                "rate_limited",
+                "not_ready",
+                "indexer_behind",
+                "db_unavailable",
+                "internal_error"
+            ],
+            "type": "string"
         },
         "GovActionAnchorContent": {
             "properties": {
@@ -841,7 +1323,7 @@
             "properties": {
                 "items": {
                     "items": {
-                        "$ref": "#/definitions/VoteRecord"
+                        "$ref": "#/definitions/TreasuryWithdrawalRecord"
                     },
                     "type": "array"
                 },
@@ -885,6 +1367,27 @@
             ],
             "type": "object"
         },
+        "PowerBucket": {
+            "description": "One bucket of the voting-power histogram, half-open [lo, hi) in lovelace, with `hi` null on the open top bucket. Inclusive edges would double-count a DRep sitting exactly on one, and the counts would stop summing to the page total.",
+            "properties": {
+                "count": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "hi": {
+                    "type": "integer"
+                },
+                "lo": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "lo",
+                "count"
+            ],
+            "type": "object"
+        },
         "ProposerSummary": {
             "properties": {
                 "actions_count": {
@@ -899,6 +1402,168 @@
             "required": [
                 "stake_address",
                 "actions_count"
+            ],
+            "type": "object"
+        },
+        "SPOSummary": {
+            "description": "One stake pool in the current voting-power distribution. `ticker` and `participation_rate` are null throughout F1 -- the first because db-sync's pool-metadata fetcher is disabled, the second because no spo_participation_rate_v1 exists in the metric catalog yet.",
+            "properties": {
+                "delegator_count": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "participation_rate": {
+                    "format": "double",
+                    "type": "number"
+                },
+                "pool_id": {
+                    "type": "string"
+                },
+                "ticker": {
+                    "type": "string"
+                },
+                "votes_cast": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "voting_power": {
+                    "type": "integer"
+                },
+                "voting_power_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "pool_id",
+                "voting_power",
+                "voting_power_epoch",
+                "delegator_count",
+                "votes_cast"
+            ],
+            "type": "object"
+        },
+        "SearchGroup": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/SearchHit"
+                    },
+                    "type": "array"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "total",
+                "items"
+            ],
+            "type": "object"
+        },
+        "SearchHit": {
+            "properties": {
+                "badges": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "subtitle": {
+                    "type": "string"
+                },
+                "target": {
+                    "$ref": "#/definitions/SearchTarget"
+                },
+                "title": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "title",
+                "subtitle",
+                "badges",
+                "target"
+            ],
+            "type": "object"
+        },
+        "SearchKind": {
+            "enum": [
+                "drep",
+                "gov_action",
+                "spo",
+                "committee_member",
+                "profile",
+                "attestation"
+            ],
+            "type": "string"
+        },
+        "SearchResults": {
+            "description": "Six groups, always present. `total` is across the whole match; each group's `items` is is capped at `limit_per_group`. A hit with no published text carries its identifier as its `title`.",
+            "properties": {
+                "attestations": {
+                    "$ref": "#/definitions/SearchGroup"
+                },
+                "committee_members": {
+                    "$ref": "#/definitions/SearchGroup"
+                },
+                "dreps": {
+                    "$ref": "#/definitions/SearchGroup"
+                },
+                "gov_actions": {
+                    "$ref": "#/definitions/SearchGroup"
+                },
+                "profiles": {
+                    "$ref": "#/definitions/SearchGroup"
+                },
+                "query": {
+                    "type": "string"
+                },
+                "spos": {
+                    "$ref": "#/definitions/SearchGroup"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "query",
+                "total",
+                "dreps",
+                "gov_actions",
+                "spos",
+                "committee_members",
+                "profiles",
+                "attestations"
+            ],
+            "type": "object"
+        },
+        "SearchTarget": {
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "$ref": "#/definitions/SearchKind"
+                }
+            },
+            "required": [
+                "kind",
+                "id"
             ],
             "type": "object"
         },
@@ -986,6 +1651,40 @@
                 "cast_votes_only"
             ],
             "type": "string"
+        },
+        "TreasuryWithdrawalRecord": {
+            "description": "One treasury payment a governance action would make. `enacted_epoch` is the only authoritative enactment value db-sync has; `enacted_at` is epoch-only, with slot and tx_hash always null. `paid_heuristic` is a guess from (stake_address, spendable_epoch) and is ambiguous when one address receives two withdrawals in one epoch.",
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "beneficiary": {
+                    "type": "string"
+                },
+                "enacted_at": {
+                    "$ref": "#/definitions/ChainPointEpochOnly"
+                },
+                "enacted_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "gov_action_id": {
+                    "type": "string"
+                },
+                "gov_action_title": {
+                    "type": "string"
+                },
+                "paid_heuristic": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "gov_action_id",
+                "beneficiary",
+                "amount"
+            ],
+            "type": "object"
         },
         "TreasuryWithdrawalRow": {
             "properties": {
@@ -1258,9 +1957,274 @@
             "name": "Apache-2.0"
         },
         "title": "Palmares Query API",
-        "version": "0.1.0"
+        "version": "1.0.0"
     },
     "paths": {
+        "/activity": {
+            "get": {
+                "description": "Every governance event on one timeline, newest first: DRep registrations, updates and retirements; votes; proposals; vote-delegation changes; committee hot-key authorisations and resignations; and the ledger's own epoch-boundary outcomes (ratified, enacted, expired, dropped, and a treasury withdrawal paying out). \nPaged by CURSOR, never by offset: an offset over a feed that grows at the head re-shows rows the previous page already showed. Two directions, and at most one of them per request: `before` walks backwards in time for an infinite scroll, `since` walks forwards for a catch-up poll and returns its page in ASCENDING order. Neither means newest-first from the tip. Both at once is a 400 `both_cursors_given`, because the two would name different directions for one page. \nPass back the `next_cursor` the previous page carried. A page shorter than `limit` is the end of the feed in that direction and carries no `next_cursor`. `total` is always null -- counting 3.9M union rows on every page is the cost this endpoint exists to avoid, and a count from a different pass than the rows is a count that disagrees with them. \n`offset` is not a parameter here. Servant ignores an undeclared query parameter, so `?offset=10` is served as the unpaged request it is rather than refused. \nThe five epoch-boundary kinds have `at.slot` and `at.tx_hash` null TOGETHER: they happen in the ledger at an epoch boundary with no transaction to point at. `at.epoch` and `at.time` are always present. \n`actor_id` and `target_id` are text whose meaning depends on `event_type` -- a credential in hex, a stake address in bech32, or a governance action id. `actor` matches either form, so `drep1y...` and its 56 hex characters find the same events.",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "before",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "name": "since",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "drep_registered",
+                                "drep_updated",
+                                "drep_retired",
+                                "delegation_changed",
+                                "vote_cast",
+                                "gov_action_proposed",
+                                "gov_action_ratified",
+                                "gov_action_enacted",
+                                "gov_action_expired",
+                                "gov_action_dropped",
+                                "committee_authorized",
+                                "committee_resigned",
+                                "treasury_withdrawal_enacted"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "event_type",
+                        "type": "array"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "governance"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "source",
+                        "type": "array"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "type": "string"
+                        },
+                        "name": "actor",
+                        "type": "array"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "Governance activity feed"
+            }
+        },
+        "/committee": {
+            "get": {
+                "description": "The committee the ledger is currently applying, with its quorum, the governance action that established it, and its seats inline. `epoch` is the epoch of the epoch_state row that names this committee, so a client can see which moment the answer is as of. \nEach seat is identified by its COLD credential, the identity that survives a hot-key rotation, with the signing hot key published beside it -- the same choice /votes makes. preprod shows why at scale: 648,767 hot-key registrations resolve to 43 cold credentials, and `votes_cast` counts distinct governance actions through all of a member's registrations so one record does not split across rotations. \n`status` has two values, active and resigned, not Koios's four: it is derived from committee_de_registration alone, and expiry is published beside it as `expiration_epoch` rather than folded in, because a member whose term ends in a future epoch is serving today.",
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/CommitteeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "The constitutional committee in force"
+            }
+        },
+        "/delegations": {
+            "get": {
+                "description": "One row per stake address: the delegation it currently holds, and whether that delegation still counts. Not one row per certificate -- a superseded certificate is not the latest one, so it is not a row here, and `is_current=false` means one thing only: the stake account was deregistered at or after the epoch the delegation was made in. preprod has 2,304 addresses that have ever delegated, 1,960 of which currently count. \n`is_current` DEFAULTS TO TRUE and filters both ways, which is a deliberate difference from /drep/{id}/delegators, where is_current=false widens to the history instead. \n`drep_id` accepts a credential in any form -- drep1y..., drep1..., 56 hex characters -- and also either reserved ledger option. Those two are not a special case: of the 1,960 current delegations, 992 name drep_always_abstain and 38 drep_always_no_confidence, so the reserved options hold the majority of delegated stake. \n`lovelace` is the stake the ledger counted at the latest snapshot and is null for an address with no stake in it.",
+                "parameters": [
+                    {
+                        "in": "header",
+                        "name": "Accept",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "type": "string"
+                        },
+                        "name": "drep_id",
+                        "type": "array"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "type": "string"
+                        },
+                        "name": "stake_address",
+                        "type": "array"
+                    },
+                    {
+                        "in": "query",
+                        "name": "is_current",
+                        "required": false,
+                        "type": "boolean"
+                    },
+                    {
+                        "format": "yyyy-mm-ddThh:MM:ssZ",
+                        "in": "query",
+                        "name": "from",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "format": "yyyy-mm-ddThh:MM:ssZ",
+                        "in": "query",
+                        "name": "to",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "format": "int64",
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "min_lovelace",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "enum": [
+                            "at",
+                            "lovelace",
+                            "stake_address"
+                        ],
+                        "in": "query",
+                        "name": "order_by",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8",
+                    "text/csv;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "Vote delegations"
+            }
+        },
         "/drep/{drep-id}": {
             "get": {
                 "description": "One DRep's whole public record in a single request: identity and status, every published metric with the formula ids that produced them, voting power epoch by epoch, how the delegator base moved, the top delegators, the certificate history, and the CIP-119 metadata -- the last only when its anchor hash verified, because a document that did not match its on-chain commitment is not this DRep's statement about itself.",
@@ -1283,13 +2247,22 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "DRep profile"
@@ -1376,13 +2349,22 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "A DRep's delegators"
@@ -1444,13 +2426,22 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "A DRep's voting power, epoch by epoch"
@@ -1518,13 +2509,22 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "A DRep's certificate history"
@@ -1728,13 +2728,22 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "DReps"
@@ -1762,13 +2771,22 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "Governance action"
@@ -1949,13 +2967,22 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "Governance actions"
@@ -1975,13 +3002,22 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "Health Check"
@@ -2004,16 +3040,298 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "Published metric formulas"
+            }
+        },
+        "/pages/dashboard": {
+            "get": {
+                "description": "Every headline figure in one request and one transaction: how many DReps there are and in what state, how much stake is parked on the two reserved ledger options against how much is delegated to real DReps, every governance action by type and by state, what is still votable, what closes next, the treasury's requested and enacted totals, the current power leaderboard, and DRep participation epoch by epoch. \nThe DRep counts, the leaderboard rows and the closing-soon rows are /dreps' and /gov-actions' own -- the same queries, so no figure here can disagree with the list it links to. `total_dreps` is the universe /dreps lists by default (registered = active + inactive); `retired_dreps` is published beside it, never inside it, because preprod has 511 retired against 294 registered. \n`power_epoch` is its own field because the ledger writes the DRep stake distribution one epoch behind the tip, so the three lovelace figures are a different moment from everything else and say so. \n`actions_in_flight` is `last_votable_epoch >= epoch`, which is not `state = proposed`: measured 12 against 11, the extra one being an action whose state already reads expired while its window is still open. \nThe treasury is TWO numbers because 83 withdrawals are recorded on preprod and none has been enacted, so one field called `withdrawn` would be either 0 -- true, and reads as no treasury activity -- or the requested total, which is a lie about the word.",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "top_limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "closing_soon_limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "epochs",
+                        "required": false,
+                        "type": "integer"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/DashboardPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "Dashboard page"
+            }
+        },
+        "/pages/drep-explorer": {
+            "get": {
+                "description": "One page of /dreps with the four counts its sidebar renders, in a single snapshot. The rows and the total are /dreps' own -- this endpoint adds facets to that list rather than re-deriving it -- and every parameter means exactly what it means there. \nThe three enumerated facets are counted over the applied filter set WITH THAT FACET'S OWN PREDICATE REMOVED, so the sidebar can offer `Retired (511)` while `status=active` is applied. They therefore sum to every registered credential (measured: 805) and not to the 294 the list shows. `power_buckets` is NOT a facet in that sense: it is a range control, so it follows the filter as applied and its counts sum to `total`. \n`reserved` never appears among the statuses: the two reserved ledger options hold stake but no credential, and are published by /pages/dashboard instead.",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "active",
+                                "inactive",
+                                "retired",
+                                "reserved"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "status",
+                        "type": "array"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "valid",
+                                "invalid_schema",
+                                "hash_mismatch",
+                                "oversized",
+                                "unreachable",
+                                "inline",
+                                "not_fetched"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "anchor_status",
+                        "type": "array"
+                    },
+                    {
+                        "in": "query",
+                        "name": "has_script",
+                        "required": false,
+                        "type": "boolean"
+                    },
+                    {
+                        "format": "int64",
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "min_voting_power",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "format": "int64",
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "max_voting_power",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "min_delegators",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "format": "double",
+                        "in": "query",
+                        "name": "min_participation_rate",
+                        "required": false,
+                        "type": "number"
+                    },
+                    {
+                        "format": "double",
+                        "in": "query",
+                        "name": "min_rationale_rate",
+                        "required": false,
+                        "type": "number"
+                    },
+                    {
+                        "format": "yyyy-mm-ddThh:MM:ssZ",
+                        "in": "query",
+                        "name": "registered_before",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "format": "yyyy-mm-ddThh:MM:ssZ",
+                        "in": "query",
+                        "name": "registered_after",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "min_age_days",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "name": "voted_on",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "name": "not_voted_on",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "name": "language",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "active_in_epoch",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "name": "q",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "id",
+                            "voting_power",
+                            "delegator_count",
+                            "participation_rate",
+                            "rationale_rate",
+                            "registered_at",
+                            "votes_cast",
+                            "name"
+                        ],
+                        "in": "query",
+                        "name": "order_by",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/DRepExplorerPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "DRep explorer page"
             }
         },
         "/pages/drep/{drep-id}": {
@@ -2038,13 +3356,22 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "DRep profile (canonical page path)"
@@ -2072,13 +3399,22 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "Governance action (canonical page path)"
@@ -2098,16 +3434,199 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "Readiness Check"
+            }
+        },
+        "/search": {
+            "get": {
+                "description": "One request behind the command palette: DReps by published name, governance actions by title or abstract, stake pools by ticker or metadata name, and any of them by a pasted identifier. Six groups ALWAYS travel, each capped at `limit_per_group`, so a missing section is an empty one rather than an absent key; `profiles` and `attestations` are always empty here and are filled over the attestation schema later. `total` is across the whole match, not across the page. \nA pasted identifier is matched by EQUALITY after its bech32 checksum verifies -- drep1y…, drep1…, cc_cold1…, cc_hot1…, pool1…, 56 hex characters, gov_action1… or <tx_hash>#<index> with the # sent as %23. A PARTIAL identifier is not matched: `pool1` is a prefix of all 686 preprod pools, so prefix-matching a five-character paste would return the whole table. \nText matching is substring and case-insensitive, and a % or _ the user typed is matched literally -- measured, q=_a returns nothing where an unescaped pattern would return 39 hits. \nWhat is searchable is set by what db-sync has fetched, and on preprod that is narrow: 64 of 805 DRep credentials carry a name, 7 of 131 actions carry a title, NO pool carries off-chain metadata, and a committee member has no name in db-sync at all -- so that group answers an identifier and nothing else. A hit with no text shows its identifier as its title. \nUnlike /dreps, no status filter is applied: a retired DRep is still something you look up by name.",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "q",
+                        "required": true,
+                        "type": "string"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "drep",
+                                "gov_action",
+                                "spo",
+                                "committee_member",
+                                "profile",
+                                "attestation"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "kinds",
+                        "type": "array"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit_per_group",
+                        "required": false,
+                        "type": "integer"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/SearchResults"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "Command-palette search"
+            }
+        },
+        "/spos": {
+            "get": {
+                "description": "The pools in pool_stat at its latest epoch -- 510 on preprod at epoch 320 -- ordered by voting power descending. This is the DISTRIBUTION, not the set of pools that have voted: 45 pools have ever cast an SPO vote and only 39 of those are still in the distribution, six voters having since retired. min_votes_cast=1 therefore returns 39, and /votes?voter_role=spo is the endpoint that answers who voted. \n`votes_cast` counts DISTINCT governance actions, not vote rows: one preprod pool has 8 rows across 4 actions. \n`ticker` is null throughout F1 because db-sync's pool-metadata fetcher is disabled and off_chain_pool_data has 0 rows. `participation_rate` is null because there is no spo_participation_rate_v1 in the metric catalog, and every number this API publishes carries the id of the formula that produced it -- a rate with no resolvable formula would break that contract. \nThere is no `q` parameter: an SPO row is a direct pool_stat/pool_hash read with no text column to match. Exact id lookup is what /search is for.",
+                "parameters": [
+                    {
+                        "in": "header",
+                        "name": "Accept",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "format": "int64",
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "min_voting_power",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "min_votes_cast",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "active_in_epoch",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "enum": [
+                            "voting_power",
+                            "votes_cast",
+                            "pool_id"
+                        ],
+                        "in": "query",
+                        "name": "order_by",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8",
+                    "text/csv;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "Stake pools in the voting-power distribution"
             }
         },
         "/status": {
@@ -2124,16 +3643,157 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "Service and chain status"
+            }
+        },
+        "/treasury-withdrawals": {
+            "get": {
+                "description": "Every treasury payment a governance action would make, across all actions -- the list form of the `withdrawals` block inside /gov-action/{id}. preprod has 83 of them across 82 actions to 19 beneficiaries. \nNONE has ever been enacted, so `enacted_epoch` and `enacted_at` are null on every row and `paid_heuristic` is false on every row. `enacted_epoch` is the only authoritative enactment value db-sync has; `enacted_at` is an epoch-boundary chain point with no slot and no transaction hash, because the ledger pays a withdrawal at an epoch boundary and there is nothing to point at. \n`paid_heuristic` carries its warning in its name: reward_rest has no governance-action key, so matching a payment by (stake_address, spendable_epoch) is ambiguous when one address receives two withdrawals in one epoch. \nThere is no /treasury-withdrawal/{id}: a withdrawal is addressed by its action, which /gov-action/{id} already serves.",
+                "parameters": [
+                    {
+                        "in": "header",
+                        "name": "Accept",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "type": "string"
+                        },
+                        "name": "gov_action_id",
+                        "type": "array"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "type": "string"
+                        },
+                        "name": "beneficiary",
+                        "type": "array"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "enacted_from_epoch",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "enacted_to_epoch",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "format": "int64",
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "min_amount",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "format": "int64",
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "max_amount",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "enum": [
+                            "amount",
+                            "enacted_epoch"
+                        ],
+                        "in": "query",
+                        "name": "order_by",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8",
+                    "text/csv;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "Treasury withdrawals"
             }
         },
         "/votes": {
@@ -2316,13 +3976,22 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist"
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     },
                     "503": {
-                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
                     }
                 },
                 "summary": "Votes"

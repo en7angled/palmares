@@ -78,7 +78,8 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }            # full history: leak #2 was a token COMMITTED
+        with:
+          fetch-depth: 0                    # full history: leak #2 was a token COMMITTED
 
       # The repo's own guard, run against the checked-out tree. Cheap, dependency-free, and the same
       # code the pre-push hook runs, so local and CI cannot disagree.
@@ -86,5 +87,9 @@ jobs:
 
       # Depth beyond the regex: full-history entropy and rule-based detection.
       # Free for public repositories; an organisation's PRIVATE repo would need GITLEAKS_LICENSE.
+      # NOTE: block style, not `env: { GITHUB_TOKEN: ${{ ... }} }`. In a YAML flow mapping the `{{` of
+      # an Actions expression opens a nested mapping and the whole workflow file fails to parse — which
+      # is exactly how this file failed its first run.
       - uses: gitleaks/gitleaks-action@v2
-        env: { GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

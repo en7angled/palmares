@@ -30,6 +30,7 @@ extra-source-files:
   resources/metrics/*.sql
   sql/*.sql
   test/fixtures/*.sql
+  test/fixtures/koios/*.json
 
 -- resources/metrics/*.sql
 -- resources/metric-formulas.json

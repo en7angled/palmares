@@ -1,0 +1,24 @@
+{
+  "gov_action1tp9gwwuy66ymk4mmmxu7msgmrxe9e2pqmhddsgqru4kawa4me36qqtjralt": [
+    {
+      "block_time": 1740152025,
+      "voter_role": "ConstitutionalCommittee",
+      "voter_id": "cc_hot1qd8spxz05uhzvku0lrluu3q9mftze57kk94y5wx7xdewa6s3guxzr",
+      "voter_hex": "4f00984fa72e265b8ff8ffce4405da562cd3d6b16a4a38de3372eeea",
+      "voter_has_script": true,
+      "vote": "Abstain",
+      "meta_url": "ipfs://bafkreidsmyjjfrsvj3czrsu5roy2undco2bhhcnqdgbievolgbyi7lptxy",
+      "meta_hash": "e4ccdfd78721607b7fbbe99f89940627950cf447aae930acb9e33292930569ac"
+    },
+    {
+      "block_time": 1740132728,
+      "voter_role": "DRep",
+      "voter_id": "drep1ytqdcp8h75nlr6lvqamp5nztn7ce2m7yjt9hdqmn7565uhgmmudx6",
+      "voter_hex": "c0dc04f7f527f1ebec07761a4c4b9fb1956fc492cb768373f5354e5d",
+      "voter_has_script": false,
+      "vote": "Abstain",
+      "meta_url": null,
+      "meta_hash": null
+    }
+  ]
+}

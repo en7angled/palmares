@@ -328,10 +328,14 @@ live AS (
   FROM seq s
 ),
 at_epoch AS (
+  -- UNION, not UNION ALL. With retention_window_epochs = 0 the two epochs coincide, and UNION ALL
+  -- would join every delegator twice: measured, the counters came back doubled (24 for 12
+  -- delegators). UNION collapses the degenerate case so "previous" equals "now", which is the
+  -- right answer for a zero window and is what makes the parameter testable at all.
   SELECT e.e, l.addr_id
   FROM (
     SELECT (SELECT as_of_epoch FROM p) AS e
-    UNION ALL
+    UNION
     SELECT (SELECT as_of_epoch - retention_window_epochs FROM p)
   ) e
   JOIN live l
@@ -477,7 +481,9 @@ final AS (
     AND v.seq_last = 1
 )
 SELECT
-  t.action_type,
+  -- ::text, because action_type is a PostgreSQL enum and a client wants a string. Without the
+  -- cast persistent hands back a PersistLiteral that no decoder accepts.
+  t.action_type::text AS action_type,
   count(e.gov_action_id) AS eligible_actions,
   count(f.gov_action_id) AS votes_cast,
   count(*) FILTER (WHERE f.vote = 'Yes') AS yes,

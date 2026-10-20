@@ -12,6 +12,7 @@ import UnitTests.Conversions (conversionsTests)
 import UnitTests.GovIds (govIdsTests)
 import UnitTests.MetricCatalog qualified as MetricCatalog
 import UnitTests.MetricDoc qualified as MetricDoc
+import UnitTests.MetricFixture qualified as MetricFixture
 import UnitTests.StorageRoundtrip (storageRoundtripTests)
 import UnitTests.ThresholdMap qualified as ThresholdMap
 import UnitTests.Views qualified as Views
@@ -28,6 +29,7 @@ unitTests =
       govIdsTests,
       MetricCatalog.tests,
       MetricDoc.tests,
+      MetricFixture.tests,
       storageRoundtripTests,
       ThresholdMap.tests,
       Views.tests

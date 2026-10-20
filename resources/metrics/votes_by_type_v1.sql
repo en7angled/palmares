@@ -19,7 +19,9 @@ final AS (
     AND v.seq_last = 1
 )
 SELECT
-  t.action_type,
+  -- ::text, because action_type is a PostgreSQL enum and a client wants a string. Without the
+  -- cast persistent hands back a PersistLiteral that no decoder accepts.
+  t.action_type::text AS action_type,
   count(e.gov_action_id) AS eligible_actions,
   count(f.gov_action_id) AS votes_cast,
   count(*) FILTER (WHERE f.vote = 'Yes') AS yes,

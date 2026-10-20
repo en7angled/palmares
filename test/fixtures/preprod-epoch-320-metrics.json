@@ -1,0 +1,97 @@
+{
+  "_about": [
+    "The regression gate on S2: every published metric, measured once against a real synced",
+    "cardano-db-sync and pinned here, so a change to any formula shows up as a diff in a number",
+    "rather than as a silently different answer.",
+    "",
+    "as_of_epoch is 319, NOT 320, and the file keeps its name for continuity with the plan.",
+    "Epoch 320 was the TIP when this was measured, i.e. still open, and an open epoch has no",
+    "stable cursor: age_days_v1 takes max(block.time) over epochs <= as_of_epoch, which inside an",
+    "open epoch is 'now' and moves every twenty seconds. Measured: epoch 320's last block was",
+    "2026-10-20 11:19:14 and advancing, while epoch 319's is 2026-10-17 23:59:44 forever. Pinning",
+    "a closed epoch is what makes this file a fixture instead of a snapshot.",
+    "",
+    "Where a value differs from the plan's draft, the reason is recorded next to it."
+  ],
+  "cursor": {
+    "epoch_no": 319,
+    "block_hash": "a598548610730a90b9880b50dc219f48f112e95e8214f5aeb6f79bc88348c8c2",
+    "slot_no": 136598384,
+    "block_time": "2026-10-17T23:59:44Z",
+    "_why_pinned": "age_days is measured against this exact block.time. If age_days drifts, the cursor moved, not the formula."
+  },
+  "drep": {
+    "cip129": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
+    "hex": "81378d3ea89b68f0fc09944b1f93f2feb851318f196f98ba4029d8a8",
+    "has_script": false,
+    "registered_at": "2024-10-16T20:38:10Z",
+    "registered_epoch": 173,
+    "deposit": 500000000
+  },
+  "network": {
+    "proposals": 131,
+    "settled": 119,
+    "settled_drep_votable": 115,
+    "open": 12,
+    "_note": "measured with proposed_epoch < 320, which is the cut that makes these immutable"
+  },
+  "metrics": {
+    "as_of_epoch": 319,
+    "age_days": 731.14,
+    "age_days_tolerance": 0.01,
+    "eligible_actions": 112,
+    "votes_cast": 15,
+    "participation_rate": 0.133929,
+    "open_actions_unvoted": 13,
+    "rationale_verified": 0,
+    "rationale_inline": 0,
+    "rationale_unverified": 2,
+    "rationale_pending": 0,
+    "rationale_absent": 13,
+    "rationale_cip100_valid": 0,
+    "rationale_rate": 0.0,
+    "_note_rationale": [
+      "The plan's draft pinned rationale_verified = 2 and rationale_rate = 0.125, counting 'an",
+      "anchor is attached' as 'a rationale exists'. Measured on our own db-sync, this DRep's two",
+      "anchors are ipfs:// CIDs that our gateway list cannot fetch (retry_count 4), so their",
+      "verdict is 'unreachable' and nothing is verified. rationale_rate is therefore 0 over the 13",
+      "assessable votes: see the denominator decision in F1-PROGRESS.md."
+    ],
+    "vote_latency_median_hours": 160.41,
+    "vote_latency_p90_hours": 549.33,
+    "vote_latency_sample": 15,
+    "voting_power": 3901077453443,
+    "voting_power_epoch": 319,
+    "delegator_count": 12,
+    "delegator_count_prev": 11,
+    "delegators_retained": 11,
+    "delegators_joined": 1,
+    "delegators_left": 0,
+    "delegator_retention_rate": 1.0,
+    "_note_delegators": "the plan's draft said 13; it was 13 on 2026-10-19 and 12 at epoch 319. Counted at a CLOSED epoch this is stable: a delegation arriving later has from_epoch >= 320.",
+    "is_active": true,
+    "active_until_epoch": 333,
+    "final_votes": { "yes": 6, "no": 8, "abstain": 1 }
+  },
+  "latency_sample_hours": [
+    1.29, 1.34, 50.27, 75.32, 76.01, 151.3, 155.68, 160.41,
+    242.83, 304.53, 385.73, 459.36, 512.35, 573.98, 630.08
+  ],
+  "votes_by_type": [
+    { "action_type": "ParameterChange",     "eligible_actions": 11, "votes_cast": 4, "yes": 2, "no": 1, "abstain": 1, "participation_rate": 0.363636 },
+    { "action_type": "HardForkInitiation",  "eligible_actions":  2, "votes_cast": 1, "yes": 1, "no": 0, "abstain": 0, "participation_rate": 0.5 },
+    { "action_type": "TreasuryWithdrawals", "eligible_actions": 79, "votes_cast": 6, "yes": 1, "no": 5, "abstain": 0, "participation_rate": 0.075949 },
+    { "action_type": "NoConfidence",        "eligible_actions":  1, "votes_cast": 0, "yes": 0, "no": 0, "abstain": 0, "participation_rate": 0.0 },
+    { "action_type": "NewCommittee",        "eligible_actions":  7, "votes_cast": 0, "yes": 0, "no": 0, "abstain": 0, "participation_rate": 0.0 },
+    { "action_type": "NewConstitution",     "eligible_actions":  1, "votes_cast": 0, "yes": 0, "no": 0, "abstain": 0, "participation_rate": 0.0 },
+    { "action_type": "InfoAction",          "eligible_actions": 11, "votes_cast": 4, "yes": 2, "no": 2, "abstain": 0, "participation_rate": 0.363636 }
+  ],
+  "pseudo_dreps": {
+    "epoch_no": 319,
+    "always_abstain_lovelace": 431863790957959,
+    "always_no_confidence_lovelace": 325390800383,
+    "total_lovelace": 937803900128796,
+    "absent_from_dreps": true,
+    "_why": "always_abstain alone is about 46% of total voting power. A denominator built from a view that filtered the pseudo-DReps out would understate total power by nearly half."
+  }
+}

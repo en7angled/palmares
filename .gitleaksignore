@@ -1,0 +1,21 @@
+# Findings gitleaks must not fail on, named by FINGERPRINT: commit, file, rule, line.
+#
+# This file is for findings that live in HISTORY and cannot be edited out of it. A fingerprint names
+# one finding in one commit, so it cannot widen: the same pattern appearing anywhere else, including
+# in the same file at a later commit, is a new finding and still fails the gate.
+#
+# Both entries below are the SAME mistake, made once. `scripts/check_gitleaks_allowlist.sh` plants
+# a credential on purpose — that is its job, it asserts the secrets gate still catches one inside
+# the Koios allowlist — and the first version of it wrote the plants as LITERALS. The file is
+# committed, so gitleaks scanned it and found them, correctly.
+#
+# The current version assembles every plant from fragments across a shell concatenation, so no
+# pattern matches the file any more. What remains is commit 2baed8c, already pushed. The choice was
+# between rewriting pushed history to erase a synthetic AWS key id from gitleaks' own test corpus,
+# or naming the two findings here. Naming them is proportionate: nothing was leaked, there is
+# nothing to rotate, and a force-push is a destructive operation for no gain.
+#
+# If either line ever stops being needed — because the history was rewritten for some other reason
+# — delete it. A stale fingerprint is harmless but it is also a claim nobody has checked.
+2baed8caa71aa7b0507bf9099036c2c8e5d4857e:scripts/check_gitleaks_allowlist.sh:aws-access-token:66
+2baed8caa71aa7b0507bf9099036c2c8e5d4857e:scripts/check_gitleaks_allowlist.sh:generic-api-key:81

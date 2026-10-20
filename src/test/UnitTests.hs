@@ -9,6 +9,7 @@ import UnitTests.ChainSyncReplay (chainSyncReplayTests)
 import UnitTests.Conversions (conversionsTests)
 import UnitTests.GovIds (govIdsTests)
 import UnitTests.StorageRoundtrip (storageRoundtripTests)
+import UnitTests.Views qualified as Views
 
 unitTests :: (HasCallStack) => TestTree
 unitTests =
@@ -18,5 +19,6 @@ unitTests =
       chainSyncReplayTests,
       conversionsTests,
       govIdsTests,
-      storageRoundtripTests
+      storageRoundtripTests,
+      Views.tests
     ]

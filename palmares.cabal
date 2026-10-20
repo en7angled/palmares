@@ -22,8 +22,9 @@ build-type:    Simple
 extra-source-files:
   NOTICE
   licenses/LICENSE.decentralized-belt-system.MIT
+  sql/*.sql
+  test/fixtures/*.sql
 
--- sql/*.sql
 -- resources/metrics/*.sql
 -- resources/metric-formulas.json
 
@@ -298,7 +299,7 @@ executable query-api
     Query.Projected
   --   Query.Refresh
     Query.ServiceStatus
-  --   Query.Views
+    Query.Views
     QueryAppMonad
     RestAPI
 
@@ -407,13 +408,18 @@ executable attest-sync
 test-suite test
   import:         common-options
   type:           exitcode-stdio-1.0
-  hs-source-dirs: src/test
+
+  -- src/exe/query-api is load-bearing, not convenience: a cabal test-suite cannot import an
+  -- executable's other-modules, and the schema bootstrap lives at Query/Views.hs by design.
+  hs-source-dirs: src/test, src/exe/query-api
   main-is:        Main.hs
 
   other-modules:
   --   PropertyTests
   --   Test.Fixtures
+    Query.Views
     Test.Helpers
+    Test.Pg
   --   TestRuns
     UnitTests
     UnitTests.ApiHardening
@@ -422,6 +428,7 @@ test-suite test
   --   UnitTests.Cleanup
     UnitTests.Conversions
     UnitTests.GovIds
+    UnitTests.Views
   --   UnitTests.Dispute
   --   UnitTests.Oracle
   --   UnitTests.Profile
@@ -441,14 +448,18 @@ test-suite test
     , bytestring
     , containers
     , extra
+    , file-embed
     , http-types
+    , monad-logger
     , mtl
     , persistent
+    , persistent-postgresql
     , persistent-sqlite
     , servant-server
     , tasty
     , tasty-hunit
     , time
+    , unix
     , wai
     , wai-cors
     , warp

@@ -11,6 +11,20 @@ jobs:
   haskell:
     runs-on: ubuntu-24.04-arm     # arm64: same arch as the target cluster
     timeout-minutes: 350          # the first uncached run is the expensive one; GitHub's max is 360
+
+    # The palmares schema is views over db-sync's public schema, so its tests need a real
+    # PostgreSQL: enums, domains and jsonb have no SQLite equivalent. Each test creates and
+    # drops its own database on this server, so they neither share rows nor depend on order.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: devonly
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -84,6 +98,10 @@ jobs:
       - run: cabal update
       - run: cabal build all --enable-tests
       - run: cabal test all --test-show-details=direct
+        env:
+          # Test.Pg dies naming this variable when it is unset, so a database test can never
+          # read as a pass just because the server was missing.
+          PALMARES_TEST_PG_CONN_STR: host=localhost user=postgres password=devonly dbname=postgres port=5432
 
   secrets:
     runs-on: ubuntu-24.04-arm

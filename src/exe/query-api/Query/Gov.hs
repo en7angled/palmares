@@ -87,6 +87,11 @@ module Query.Gov
     proposerQuery,
     govActionAnchorQuery,
     thresholdValueAt,
+
+    -- * Votes
+    voteSortSpec,
+    voteWhere,
+    listVotes,
   )
 where
 
@@ -118,13 +123,16 @@ import Palmares.DomainTypes.Core.Types
   ( AnchorStatus,
     DRepStatus (..),
     GovActionId (..),
+    Vote (..),
+    VoterRole (..),
   )
-import Palmares.DomainTypes.Transfer.Filters (DRepFilter (..), GovActionFilter (..))
+import Palmares.DomainTypes.Transfer.Filters (DRepFilter (..), GovActionFilter (..), VoteFilter (..))
 import Palmares.DomainTypes.Transfer.OrderBy
   ( DRepsOrderBy (..),
     DelegatorsOrderBy (..),
     GovActionsOrderBy (..),
     SortOrder (..),
+    VotesOrderBy (..),
   )
 import Data.Int (Int64)
 import Palmares.DomainTypes.Transfer.QueryResponses
@@ -141,6 +149,7 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     ProposerSummary,
     SyncStatus (..),
     TreasuryWithdrawalRow,
+    VoteRecord,
     VoteTally,
   )
 import Palmares.Metrics.Catalog (lookupMetricSql)
@@ -1096,3 +1105,150 @@ thresholdValueAt expr epoch = do
   pure $ case rows of
     (Single v : _) -> v
     [] -> Nothing
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /votes
+
+-- | The ordering each @order_by@ value means. Closed and total.
+voteSortSpec :: VotesOrderBy -> SortSpec
+voteSortSpec = \case
+  VotesOrderByCastAt -> SortSpec "v.vote_slot" False tie
+  VotesOrderByVotingPower -> SortSpec "p.amount" True tie
+  VotesOrderByLatency -> SortSpec "(v.cast_at - w.proposed_at)" True tie
+  VotesOrderByVoterId -> SortSpec "v.voter_id_hash" False tie
+  VotesOrderByGovActionId -> SortSpec "v.gov_action_id" False tie
+  where
+    tie = "v.voting_procedure_id"
+
+-- | The FROM clause the page and the count share.
+--
+-- The power join reads @palmares.drep_epoch_power@ at the action's LAST VOTABLE EPOCH, not at the
+-- vote's own epoch: that is the epoch the ledger weighs the vote in, and a DRep's stake moves
+-- between the two.
+voteFrom :: Text
+voteFrom =
+  " FROM palmares.vote v \
+  \ JOIN palmares.gov_action w ON w.gov_action_id = v.gov_action_id \
+  \ LEFT JOIN palmares.anchor a ON a.voting_anchor_id = v.voting_anchor_id \
+  \ LEFT JOIN palmares.drep_epoch_power p \
+  \   ON p.target_kind = 'drep' AND p.drep_raw = v.voter_id_hash \
+  \  AND p.epoch_no = w.last_votable_epoch \
+  \ LEFT JOIN palmares.drep d ON d.drep_raw = v.voter_id_hash "
+
+-- | The @WHERE@ fragment and its parameters.
+voteWhere :: VoteFilter -> (Text, [PersistValue])
+voteWhere f =
+  let clauses =
+        concat
+          [ inClause "v.voter_role::text" (map pascalRole (voteFilterRoles f)),
+            -- The voter is matched on the HASH, decoded from whichever id form the client sent,
+            -- which is what lets one parameter serve all three roles: a committee cold key, a
+            -- DRep credential and a pool hash are all 28 bytes and palmares.vote's voter_id_hash
+            -- is already the cold one for committee rows.
+            --
+            -- Compared as BYTES, with decode() on the parameter side, not as hex with encode() on
+            -- the column. That is a performance decision: voter_id_hash is in the PARTITION BY of
+            -- palmares.vote's window functions, so a qual directly on it is pushed below the
+            -- WindowAgg and the query touches only that voter's rows. Wrapped in encode() the
+            -- planner cannot see it as a partition-column qual, and every voter_id lookup pays a
+            -- full pass over 3.24 M rows instead.
+            byteaInClause "v.voter_id_hash" (voteFilterVoterIds f),
+            inClause "encode(w.tx_hash, 'hex') || '#' || w.index" (map unGovActionId (voteFilterGovActionIds f)),
+            inClause "v.vote::text" (map pascalVerdict (voteFilterVerdicts f)),
+            inClause "w.action_type::text" (map (T.pack . show) (voteFilterGovActionTypes f)),
+            inClause "a.verdict" (map jsonTag (voteFilterAnchorStatus f)),
+            one "v.cast_at >= ?" (voteFilterFrom f),
+            one "v.cast_at <= ?" (voteFilterTo f),
+            one "v.vote_epoch >= ?" (voteFilterFromEpoch f),
+            one "v.vote_epoch <= ?" (voteFilterToEpoch f),
+            qClause (voteFilterQ f)
+          ]
+   in ( if null clauses then "" else "WHERE " <> T.intercalate " AND " (map fst clauses),
+        concatMap snd clauses
+      )
+  where
+    one sql = maybe [] (\v -> [(sql, [toPersistValue v])])
+
+    inClause col vs
+      | null vs = []
+      | otherwise =
+          [ ( col <> " IN (" <> T.intercalate ", " (map (const "?") vs) <> ")",
+              map toPersistValue vs
+            )
+          ]
+
+    byteaInClause col vs
+      | null vs = []
+      | otherwise =
+          [ ( col <> " IN (" <> T.intercalate ", " (map (const "decode(?, 'hex')") vs) <> ")",
+              map toPersistValue vs
+            )
+          ]
+
+    -- Three placeholders, one pattern: the action's title, its abstract, and the voter's name.
+    qClause = maybe [] $ \raw ->
+      let p = likePat raw
+       in [ ( "(lower(w.title) LIKE ? OR lower(w.abstract) LIKE ? OR lower(d.given_name) LIKE ?)",
+              [toPersistValue p, toPersistValue p, toPersistValue p]
+            )
+          ]
+
+    -- db-sync's enums are PascalCase; VoterRole's wire form is not derivable from its constructor
+    -- (drep, spo), so the two spellings are mapped explicitly here and nowhere else.
+    pascalRole r = case r of
+      DRep -> "DRep" :: Text
+      SPO -> "SPO"
+      ConstitutionalCommittee -> "ConstitutionalCommittee"
+
+    pascalVerdict v = case v of
+      Yes -> "Yes" :: Text
+      No -> "No"
+      Abstain -> "Abstain"
+
+-- | One page of votes, with a total over the same predicate.
+listVotes :: VoteFilter -> (VotesOrderBy, SortOrder) -> (Limit, Offset) -> SqlPersistT IO (Page VoteRecord)
+listVotes f (ob, so) (lim, off) = do
+  items <-
+    queryJson
+      ( "SELECT row_to_json(x)::text FROM ( SELECT "
+          <> voteProjection
+          <> voteFrom
+          <> whereSql
+          <> " "
+          <> orderClause (voteSortSpec ob) so
+          <> " LIMIT ? OFFSET ? ) x"
+      )
+      (params <> [toPersistValue lim, toPersistValue off])
+  totals <- rawSql ("SELECT count(*)::int" <> voteFrom <> whereSql) params
+  pure (Page items (Just (case totals of (Single n : _) -> n; [] -> 0)) lim off Nothing)
+  where
+    (whereSql, params) = voteWhere f
+
+-- | The projection list. Keys are 'VoteRecord''s wire names.
+voteProjection :: Text
+voteProjection =
+  " encode(w.tx_hash, 'hex') AS tx_hash, w.index, \
+  \ lower(regexp_replace(w.action_type::text, '([a-z0-9])([A-Z])', '\\1_\\2', 'g')) AS gov_action_type, \
+  \ w.title AS gov_action_title, \
+  \ CASE v.voter_role WHEN 'DRep' THEN 'drep' WHEN 'SPO' THEN 'spo' \
+  \                   ELSE 'constitutional_committee' END AS voter_role, \
+  \ encode(v.voter_id_hash, 'hex') AS voter_id_hash, \
+  \ CASE v.voter_role \
+  \   WHEN 'DRep' THEN COALESCE(v.has_script, FALSE) \
+  \   WHEN 'SPO' THEN FALSE \
+  \   ELSE COALESCE(v.voter_cold_has_script, FALSE) \
+  \ END AS has_script, \
+  \ encode(v.voter_hot_hash, 'hex') AS voter_hot_hash, \
+  \ d.given_name AS voter_name, \
+  \ lower(v.vote::text) AS verdict, \
+  \ json_build_object('slot', v.vote_slot, 'epoch', v.vote_epoch, \
+  \                   'time', (v.cast_at AT TIME ZONE 'UTC'), \
+  \                   'tx_hash', encode(v.vote_tx_hash, 'hex')) AS cast_at, \
+  \ EXTRACT(EPOCH FROM (v.cast_at - w.proposed_at)) / 3600.0 AS latency_hours, \
+  \ (v.seq_last = 1) AS is_final, (v.seq_first = 1) AS is_first, v.vote_rows AS revote_count, \
+  \ CASE WHEN v.voting_anchor_id IS NULL THEN NULL \
+  \      ELSE json_build_object('url', a.url, 'status', a.verdict, 'cip100_valid', a.cip100_valid) \
+  \      END AS anchor, \
+  \ p.amount AS voting_power, \
+  \ CASE WHEN p.amount IS NULL THEN NULL ELSE w.last_votable_epoch END AS voting_power_epoch "

@@ -264,3 +264,20 @@ instance ToParamSchema GovActionsOrderBy where
 
 instance FromHttpApiData GovActionsOrderBy where
   parseQueryParam = parseJsonEnumParam "invalid_parameter"
+
+-- | @order_by@ on @GET \/votes@. Default is @cast_at@, descending: a vote feed is a chronology.
+data VotesOrderBy
+  = VotesOrderByCastAt
+  | VotesOrderByVotingPower
+  | VotesOrderByLatency
+  | VotesOrderByVoterId
+  | VotesOrderByGovActionId
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[ConstructorTagModifier '[StripPrefix "VotesOrderBy", CamelToSnake]] VotesOrderBy
+
+instance ToParamSchema VotesOrderBy where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData VotesOrderBy where
+  parseQueryParam = parseJsonEnumParam "invalid_parameter"

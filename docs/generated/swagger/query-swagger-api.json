@@ -841,7 +841,7 @@
             "properties": {
                 "items": {
                     "items": {
-                        "$ref": "#/definitions/GovActionSummary"
+                        "$ref": "#/definitions/VoteRecord"
                     },
                     "type": "array"
                 },
@@ -1054,6 +1054,31 @@
             "format": "yyyy-mm-ddThh:MM:ssZ",
             "type": "string"
         },
+        "Vote": {
+            "enum": [
+                "yes",
+                "no",
+                "abstain"
+            ],
+            "type": "string"
+        },
+        "VoteAnchor": {
+            "properties": {
+                "cip100_valid": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "$ref": "#/definitions/AnchorStatus"
+                },
+                "url": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "status"
+            ],
+            "type": "object"
+        },
         "VoteCounts": {
             "properties": {
                 "abstain": {
@@ -1076,6 +1101,79 @@
                 "yes",
                 "no",
                 "abstain"
+            ],
+            "type": "object"
+        },
+        "VoteRecord": {
+            "properties": {
+                "anchor": {
+                    "$ref": "#/definitions/VoteAnchor"
+                },
+                "cast_at": {
+                    "$ref": "#/definitions/ChainPoint"
+                },
+                "gov_action_bech32": {
+                    "type": "string"
+                },
+                "gov_action_id": {
+                    "type": "string"
+                },
+                "gov_action_title": {
+                    "type": "string"
+                },
+                "gov_action_type": {
+                    "$ref": "#/definitions/GovActionType"
+                },
+                "is_final": {
+                    "type": "boolean"
+                },
+                "is_first": {
+                    "type": "boolean"
+                },
+                "latency_hours": {
+                    "format": "double",
+                    "type": "number"
+                },
+                "revote_count": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "verdict": {
+                    "$ref": "#/definitions/Vote"
+                },
+                "voter_hot_hash": {
+                    "type": "string"
+                },
+                "voter_id": {
+                    "type": "string"
+                },
+                "voter_name": {
+                    "type": "string"
+                },
+                "voter_role": {
+                    "$ref": "#/definitions/VoterRole"
+                },
+                "voting_power": {
+                    "type": "integer"
+                },
+                "voting_power_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "gov_action_id",
+                "gov_action_bech32",
+                "gov_action_type",
+                "voter_role",
+                "voter_id",
+                "verdict",
+                "cast_at",
+                "is_final",
+                "is_first",
+                "revote_count"
             ],
             "type": "object"
         },
@@ -2036,6 +2134,198 @@
                     }
                 },
                 "summary": "Service and chain status"
+            }
+        },
+        "/votes": {
+            "get": {
+                "description": "Every vote cast, across all three voter roles, with the rationale anchor's outcome and the voter's power at the epoch the action's window closed. One endpoint rather than four per-actor routes: the filters are repeatable, so a DRep's record, an action's votes, a committee member's votes and the global feed are all the same query. \n`voter_id` accepts any identifier form -- drep1y…, cc_cold1…, pool1… or 56 hex characters -- and committee votes are addressed by the COLD credential, the identity that survives a hot-key rotation, with the signing hot key published beside it. \nRe-votes are returned as rows, not hidden: `revote_count` says how many exist for that (voter, action) pair and `is_final` / `is_first` mark which one a verdict or a latency is measured from. preprod's worst pair has 21,626 rows, from the epoch-187 committee stress test. \nThere is no `has_rationale` parameter: it is `anchor_status=valid`, which makes the caller say which of the five anchor outcomes they mean instead of collapsing an unreachable IPFS document into \"no rationale\".",
+                "parameters": [
+                    {
+                        "in": "header",
+                        "name": "Accept",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "drep",
+                                "spo",
+                                "constitutional_committee"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "voter_role",
+                        "type": "array"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "type": "string"
+                        },
+                        "name": "voter_id",
+                        "type": "array"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "type": "string"
+                        },
+                        "name": "gov_action_id",
+                        "type": "array"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "yes",
+                                "no",
+                                "abstain"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "verdict",
+                        "type": "array"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "parameter_change",
+                                "hard_fork_initiation",
+                                "treasury_withdrawals",
+                                "no_confidence",
+                                "new_committee",
+                                "new_constitution",
+                                "info_action"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "gov_action_type",
+                        "type": "array"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "valid",
+                                "invalid_schema",
+                                "hash_mismatch",
+                                "oversized",
+                                "unreachable",
+                                "inline",
+                                "not_fetched"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "anchor_status",
+                        "type": "array"
+                    },
+                    {
+                        "format": "yyyy-mm-ddThh:MM:ssZ",
+                        "in": "query",
+                        "name": "from",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "format": "yyyy-mm-ddThh:MM:ssZ",
+                        "in": "query",
+                        "name": "to",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "from_epoch",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "to_epoch",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "name": "q",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "cast_at",
+                            "voting_power",
+                            "latency",
+                            "voter_id",
+                            "gov_action_id"
+                        ],
+                        "in": "query",
+                        "name": "order_by",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8",
+                    "text/csv;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "Votes"
             }
         }
     },

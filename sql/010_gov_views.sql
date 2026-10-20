@@ -524,6 +524,12 @@ WITH resolved AS (
     -- member's hot key may have been rotated since, and the registration in force at the time is
     -- the one that identifies them.
     cold.cold_raw AS voter_cold_hash,
+    -- The COLD credential's script flag, which is NOT the hot key's. Carried because the
+    -- published CIP-129 cc_cold1… id is built from the cold hash, and the header byte that says
+    -- key-or-script has to come from the same credential as the hash. Measured: every preprod
+    -- committee cold credential is a SCRIPT, while `has_script` below reports the HOT key —
+    -- pairing those two published a cc_cold1z… id that decodes to a different credential.
+    cold.cold_has_script AS voter_cold_has_script,
     CASE v.voter_role
       WHEN 'DRep' THEN (SELECT dh.has_script FROM public.drep_hash dh WHERE dh.id = v.drep_voter)
       -- A stake pool is always a key hash; db-sync's pool_hash has no has_script column because
@@ -563,6 +569,7 @@ SELECT
   i.voter_id_hash,
   i.voter_hot_hash,
   i.voter_cold_hash,
+  i.voter_cold_has_script,
   i.has_script,
   i.vote,
   i.voting_anchor_id,

@@ -28,10 +28,12 @@ import GeniusYield.Types (GYAssetClass)
 import GeniusYield.Types.Time
 import Servant (FromHttpApiData (..))
 import Palmares.DomainTypes.Core.Ids
-  ( drepIdCip129,
+  ( ccColdIdCip129,
+    drepIdCip129,
     govActionIdCip129,
     parseDrepIdAny,
     parseGovActionIdCip129,
+    poolIdBech32,
   )
 import Palmares.Utils
 
@@ -295,6 +297,25 @@ govActionIdForms txHex ix
                 govActionIdCip129 raw (fromIntegral ix)
               )
       _ -> Nothing
+
+-- | The published identifier of a voter, by role, from the hash the views give as hex.
+--
+-- Three different forms on purpose, because each role's ecosystem shows a different one and
+-- publishing a form nobody recognises makes the voter unsearchable:
+--
+--   * DRep — CIP-129 @drep1y…@;
+--   * committee — CIP-129 @cc_cold1…@ over the COLD credential (D-24), the identity that survives
+--     a hot-key rotation;
+--   * stake pool — CIP-5 @pool1…@, which predates CIP-129 and is what cardano-cli and every
+--     explorer show.
+voterIdFor :: VoterRole -> Bool -> Text -> Maybe Text
+voterIdFor role hasScript hex = case B16.decode (TE.encodeUtf8 hex) of
+  Right raw
+    | BS.length raw == 28 -> Just $ case role of
+        DRep -> drepIdCip129 hasScript raw
+        ConstitutionalCommittee -> ccColdIdCip129 hasScript raw
+        SPO -> poolIdBech32 raw
+  _ -> Nothing
 
 -- | Where on the chain something happened.
 --

@@ -322,5 +322,47 @@ for p in "/gov-action/0000000000000000000000000000000000000000000000000000000000
   if [ "$got" = "$want" ]; then echo "  ok   $path is $want"; else echo "  FAIL $path is $got (want $want)"; fail=1; fi
 done
 
+echo "== votes (T-API-13)"
+# preprod role totals. The committee figure is the epoch-187 stress test, not participation:
+# 3.24 M rows from 648,766 hot keys resolving to 43 cold credentials.
+assert '/votes?voter_role=spo&limit=1' '.total' '90'
+assert '/votes?voter_role=drep&limit=1' '.total >= 819' 'true'
+assert '/votes?voter_role=constitutional_committee&limit=1' '.total >= 3243802' 'true'
+assert '/votes?voter_role=drep&limit=200' '[.items[].voter_role] | unique' '["drep"]'
+# has_rationale is spelled anchor_status=valid. Measured: 1 DRep vote and 0 SPO votes carry a
+# verified anchor, which is a statement about IPFS reachability and not about 36 authors.
+assert '/votes?voter_role=spo&anchor_status=valid&limit=1' '.total' '0'
+assert '/votes?voter_role=drep&anchor_status=valid&limit=1' '.total >= 1' 'true'
+# the fixture DRep: 16 votes, one verdict each, no re-votes, two anchors attached
+assert "/votes?voter_id=$D&limit=100" '[.total, ([.items[] | select(.revote_count > 1)] | length)]' '[16,0]'
+assert "/votes?voter_id=$D&limit=100" '[.items[].verdict] | group_by(.) | map([.[0], length]) | sort' \
+  '[["abstain",1],["no",8],["yes",7]]'
+assert "/votes?voter_id=$D&limit=100" '[.items[] | select(.anchor != null)] | length' '2'
+# the latency extremes are the fixture's own sample bounds
+assert "/votes?voter_id=$D&order_by=latency&sort_order=asc&limit=1" '.items[0].latency_hours * 100 | round' '129'
+assert "/votes?voter_id=$D&order_by=latency&sort_order=desc&limit=1" '.items[0].latency_hours * 100 | round' '63008'
+# every row of a re-voted pair is returned, and exactly one of them is final
+assert "/votes?voter_id=$D&limit=100" '[.items[] | select(.is_final)] | length' '16'
+# D-24: a committee vote is addressed by the COLD credential and the id ROUND-TRIPS, for both
+# credential kinds. 32 of the 43 cold keys that voted are key credentials and 11 are scripts, so
+# publishing one header byte for all of them mis-identified eleven of them until this was fixed.
+CCID=$(j '/votes?voter_role=constitutional_committee&limit=1' '.items[0].voter_id' | tr -d '"')
+assert "/votes?voter_id=$CCID&limit=1" '.items[0].voter_id' "\"$CCID\""
+assert "/votes?voter_id=$CCID&limit=1" '.items[0] | [.voter_role, (.voter_hot_hash != null)]' '["constitutional_committee",true]'
+assert "/votes?voter_id=$CCID&limit=1" '.total > 0' 'true'
+assert "/votes?voter_role=constitutional_committee&limit=1" '.items[0].voter_id | startswith("cc_cold1")' 'true'
+# a stake pool is published in CIP-5 pool1… form: no CIP-129 exists for a pool and no tool shows one
+assert '/votes?voter_role=spo&limit=1' '.items[0].voter_id | startswith("pool1")' 'true'
+# power and its epoch are null together: a committee member holds no stake
+assert '/votes?voter_role=drep&limit=200' '[.items[] | ((.voting_power == null) == (.voting_power_epoch == null))] | unique' '[true]'
+assert '/votes?voter_role=constitutional_committee&limit=1' '.items[0] | [.voting_power, .voting_power_epoch]' '[null,null]'
+assert_err '/votes?from_epoch=321&to_epoch=320' '.code' '"invalid_epoch_range"'
+# a mistyped voter id is a 400, not an empty page: a client should be told, not shown "never voted"
+assert_err '/votes?voter_id=nonsense' '.code' '"invalid_drep_id"'
+vcsv=$(curl -fsS -H 'Accept: text/csv' "$API/votes?voter_role=spo&limit=10000")
+check "/votes CSV header" \
+  "$(printf '%s' "$vcsv" | head -1 | tr -d '\r' | cut -d, -f1-3)" 'gov_action_id,gov_action_bech32,gov_action_type'
+check "/votes CSV is 90 SPO rows plus a header" "$(printf '%s\n' "$vcsv" | grep -c .)" 91
+
 if [ "$fail" = 0 ]; then echo "smoke OK"; else echo "smoke FAILED" >&2; fi
 exit $fail

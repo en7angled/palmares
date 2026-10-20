@@ -64,10 +64,12 @@ module Palmares.DomainTypes.Transfer.QueryResponses
     ProposerSummary (..),
     GovActionAnchorContent (..),
     GovActionDetailResponse (..),
+    VoteAnchor (..),
+    VoteRecord (..),
   )
 where
 
-import Data.Aeson (FromJSON (parseJSON), withObject, (.:), (.:?))
+import Data.Aeson (FromJSON (parseJSON), withObject, (.!=), (.:), (.:?))
 import Data.Swagger (ToSchema (..), genericDeclareNamedSchema)
 import Data.Swagger.Internal.Schema ()
 import Data.Text (Text)
@@ -1043,3 +1045,102 @@ data GovActionDetailResponse = GovActionDetailResponse
 
 instance ToSchema GovActionDetailResponse where
   declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "govActionDetail")
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * Votes
+
+-- | The rationale anchor attached to a vote, as far as db-sync got with it.
+data VoteAnchor = VoteAnchor
+  { voteAnchorUrl :: Maybe Text,
+    voteAnchorStatus :: Core.AnchorStatus,
+    -- | Whether the fetched document validated against CIP-100's schema. @null@ when nothing was
+    -- fetched; distinct from @status@, which is about the hash and the fetch.
+    voteAnchorCip100Valid :: Maybe Bool
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "voteAnchor", CamelToSnake]] VoteAnchor
+
+instance ToSchema VoteAnchor where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "voteAnchor")
+
+-- | One vote, as cast — including the ones later superseded.
+--
+-- __Re-votes are rows, not a problem to hide.__ Changing one's mind is legal and is part of a
+-- public record, so every row is returned with @revote_count@ saying how many exist for that
+-- (voter, action) pair and @is_final@ / @is_first@ marking which one a verdict or a latency is
+-- measured from. On preprod the worst pair has 21,626 rows — a committee hot key voting on one
+-- action over and over during the epoch-187 stress test.
+--
+-- __D-24: @voter_id@ for a committee vote is the COLD credential__, which is the identity that
+-- survives a hot-key rotation and the one a reader can follow. The hot key that actually signed is
+-- published beside it as @voter_hot_hash@, because that is what the transaction contains.
+data VoteRecord = VoteRecord
+  { voteRecordGovActionId :: Core.GovActionId,
+    voteRecordGovActionBech32 :: Text,
+    voteRecordGovActionType :: Core.GovActionType,
+    voteRecordGovActionTitle :: Maybe Text,
+    voteRecordVoterRole :: Core.VoterRole,
+    -- | CIP-129 for a DRep (@drep1y…@) or a committee cold key (@cc_cold1…@); CIP-5 for a stake
+    -- pool (@pool1…@), because that is the only form any Cardano tool shows for a pool.
+    voteRecordVoterId :: Text,
+    voteRecordVoterHotHash :: Maybe Text,
+    voteRecordVoterName :: Maybe Text,
+    voteRecordVerdict :: Core.Vote,
+    voteRecordCastAt :: Core.ChainPoint,
+    -- | Hours between the action being proposed and THIS row being cast. Per row rather than per
+    -- voter, so a re-vote shows how long the second thought took; @vote_latency_median_hours_v1@
+    -- samples the @is_first@ rows, which is why that flag is published.
+    voteRecordLatencyHours :: Maybe Double,
+    voteRecordIsFinal :: Bool,
+    voteRecordIsFirst :: Bool,
+    voteRecordRevoteCount :: Int,
+    voteRecordAnchor :: Maybe VoteAnchor,
+    -- | The voter's power at the epoch the action's window closed. @null@ together with
+    -- @voting_power_epoch@: a committee member holds no stake, and a DRep absent from the
+    -- distribution for that epoch has no recorded power for it.
+    voteRecordVotingPower :: Maybe Integer,
+    voteRecordVotingPowerEpoch :: Maybe Int
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "voteRecord", CamelToSnake]] VoteRecord
+
+instance ToSchema VoteRecord where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "voteRecord")
+
+-- | Decode a @palmares.vote@ row, deriving both identifiers.
+--
+-- @voter_id@ is derived per role from the hash and the script flag, and the governance action's
+-- two forms from its transaction hash and index — the same reason 'DRepSummary' and
+-- 'GovActionSummary' hand-write theirs.
+instance FromJSON VoteRecord where
+  parseJSON = withObject "VoteRecord" $ \o -> do
+    txHex <- o .: "tx_hash"
+    ix <- o .: "index"
+    (gid, bech) <-
+      maybe (fail ("VoteRecord: not a proposal id: " <> show (txHex :: Text))) pure
+        (Core.govActionIdForms txHex (ix :: Int))
+    role <- o .: "voter_role"
+    idHex <- o .: "voter_id_hash"
+    hasScript <- o .:? "has_script" .!= False
+    voterId <-
+      maybe (fail ("VoteRecord: not a credential: " <> show (idHex :: Text))) pure
+        (Core.voterIdFor role hasScript idHex)
+    VoteRecord
+      <$> pure gid
+      <*> pure bech
+      <*> o .: "gov_action_type"
+      <*> o .:? "gov_action_title"
+      <*> pure role
+      <*> pure voterId
+      <*> o .:? "voter_hot_hash"
+      <*> o .:? "voter_name"
+      <*> o .: "verdict"
+      <*> o .: "cast_at"
+      <*> o .:? "latency_hours"
+      <*> o .: "is_final"
+      <*> o .: "is_first"
+      <*> o .: "revote_count"
+      <*> o .:? "anchor"
+      <*> o .:? "voting_power"
+      <*> o .:? "voting_power_epoch"

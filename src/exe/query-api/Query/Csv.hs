@@ -26,6 +26,8 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     DelegatorRow (..),
     GovActionLifecycle (..),
     GovActionSummary (..),
+    VoteAnchor (..),
+    VoteRecord (..),
   )
 import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.CSV (safeCell)
@@ -188,3 +190,56 @@ instance ToNamedRecord GovActionSummary where
       ]
     where
       lc = govActionSummaryLifecycle g
+
+instance DefaultOrdered VoteRecord where
+  headerOrder _ =
+    header
+      [ "gov_action_id",
+        "gov_action_bech32",
+        "gov_action_type",
+        "gov_action_title",
+        "voter_role",
+        "voter_id",
+        "voter_hot_hash",
+        "voter_name",
+        "verdict",
+        "cast_at",
+        "epoch",
+        "latency_hours",
+        "is_final",
+        "is_first",
+        "revote_count",
+        "anchor_url",
+        "anchor_status",
+        "voting_power",
+        "voting_power_epoch"
+      ]
+
+-- | A vote row. The chain point and the anchor object are flattened into columns, because a cell
+-- cannot hold a nested object and a column of JSON is useless in a spreadsheet.
+--
+-- Every row is present, including superseded ones: @is_final@ and @revote_count@ are what a reader
+-- filters on. Dropping them here would make the CSV disagree with the JSON about what happened.
+instance ToNamedRecord VoteRecord where
+  toNamedRecord v =
+    namedRecord
+      [ "gov_action_id" .= safeCell (unGovActionId (voteRecordGovActionId v)),
+        "gov_action_bech32" .= safeCell (voteRecordGovActionBech32 v),
+        "gov_action_type" .= jsonTag (voteRecordGovActionType v),
+        "gov_action_title" .= mtext (voteRecordGovActionTitle v),
+        "voter_role" .= jsonTag (voteRecordVoterRole v),
+        "voter_id" .= safeCell (voteRecordVoterId v),
+        "voter_hot_hash" .= mtext (voteRecordVoterHotHash v),
+        "voter_name" .= mtext (voteRecordVoterName v),
+        "verdict" .= jsonTag (voteRecordVerdict v),
+        "cast_at" .= T.pack (iso8601Show (chainPointTime (voteRecordCastAt v))),
+        "epoch" .= num (chainPointEpoch (voteRecordCastAt v)),
+        "latency_hours" .= mrate (voteRecordLatencyHours v),
+        "is_final" .= bool (voteRecordIsFinal v),
+        "is_first" .= bool (voteRecordIsFirst v),
+        "revote_count" .= num (voteRecordRevoteCount v),
+        "anchor_url" .= mtext (voteAnchorUrl =<< voteRecordAnchor v),
+        "anchor_status" .= maybe "" (jsonTag . voteAnchorStatus) (voteRecordAnchor v),
+        "voting_power" .= mnum (voteRecordVotingPower v),
+        "voting_power_epoch" .= mnum (voteRecordVotingPowerEpoch v)
+      ]

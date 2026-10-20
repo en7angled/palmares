@@ -12,6 +12,8 @@ module Palmares.DomainTypes.Transfer.Filters
     emptyDRepFilter,
     GovActionFilter (..),
     emptyGovActionFilter,
+    VoteFilter (..),
+    emptyVoteFilter,
   )
 where
 
@@ -208,4 +210,45 @@ emptyGovActionFilter =
       govActionFilterMinTreasuryAmount = Nothing,
       govActionFilterMaxTreasuryAmount = Nothing,
       govActionFilterQ = Nothing
+    }
+
+-- | Every filter @GET \/votes@ accepts. One endpoint serves four screens — a DRep's record, an
+-- action's votes, a committee member's votes, and the global feed — which is why the filters are
+-- repeatable rather than there being four routes.
+--
+-- @has_rationale@ is deliberately NOT a parameter: it is @anchor_status=valid@, which says which
+-- of the five anchor outcomes the caller means instead of collapsing them into a boolean that
+-- would quietly count an unreachable IPFS document as "no rationale".
+data VoteFilter = VoteFilter
+  { voteFilterRoles :: [Core.VoterRole],
+    -- | A DRep's @drep1y…@, a pool's @pool1…@ or a committee member's COLD @cc_cold1…@ (D-24).
+    -- One parameter for all three roles.
+    voteFilterVoterIds :: [Text],
+    voteFilterGovActionIds :: [Core.GovActionId],
+    voteFilterVerdicts :: [Core.Vote],
+    voteFilterGovActionTypes :: [Core.GovActionType],
+    voteFilterAnchorStatus :: [Core.AnchorStatus],
+    voteFilterFrom :: Maybe UTCTime,
+    voteFilterTo :: Maybe UTCTime,
+    voteFilterFromEpoch :: Maybe Int,
+    voteFilterToEpoch :: Maybe Int,
+    voteFilterQ :: Maybe Text
+  }
+  deriving stock (Show, Eq)
+
+-- | The filter with nothing set: every vote, newest first.
+emptyVoteFilter :: VoteFilter
+emptyVoteFilter =
+  VoteFilter
+    { voteFilterRoles = [],
+      voteFilterVoterIds = [],
+      voteFilterGovActionIds = [],
+      voteFilterVerdicts = [],
+      voteFilterGovActionTypes = [],
+      voteFilterAnchorStatus = [],
+      voteFilterFrom = Nothing,
+      voteFilterTo = Nothing,
+      voteFilterFromEpoch = Nothing,
+      voteFilterToEpoch = Nothing,
+      voteFilterQ = Nothing
     }

@@ -40,20 +40,25 @@ import Palmares.DomainTypes.Core.Types
     GovActionId (..),
     GovActionState,
     GovActionType,
+    Vote,
     VoterRole (..),
     drepIdHex,
   )
+import Palmares.DomainTypes.Core.Ids (anyVoterIdHex)
 import Palmares.DomainTypes.Transfer.Filters
   ( DRepFilter (..),
     GovActionFilter (..),
+    VoteFilter (..),
     emptyDRepFilter,
     emptyGovActionFilter,
+    emptyVoteFilter,
   )
 import Palmares.DomainTypes.Transfer.OrderBy
   ( DRepsOrderBy (..),
     DelegatorsOrderBy (..),
     GovActionsOrderBy (..),
     SortOrder (..),
+    VotesOrderBy (..),
   )
 import Palmares.DomainTypes.Transfer.QueryResponses
   ( DRepDetailResponse (..),
@@ -69,6 +74,7 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     ProposerSummary,
     StatusResponse (..),
     TreasuryWithdrawalRow,
+    VoteRecord,
     VoteTally (..),
   )
 import Palmares.Metrics.Catalog (MetricFormula, resolvedMetricCatalog, retentionWindowEpochs)
@@ -109,6 +115,7 @@ import Query.Gov
     listDelegators,
     listEpochPower,
     listGovActions,
+    listVotes,
     resolveDRepHex,
   )
 import Palmares.WebAPI.CORS (CorsConfig, mkCorsMiddleware)
@@ -612,6 +619,92 @@ splitActionId gid = case T.splitOn "#" gid of
 
 ------------------------------------------------------------------------------------------------
 
+--  Votes
+
+------------------------------------------------------------------------------------------------
+
+type VotesAPI =
+  Summary "Votes"
+    :> Description
+         "Every vote cast, across all three voter roles, with the rationale anchor's outcome and \
+         \the voter's power at the epoch the action's window closed. One endpoint rather than four \
+         \per-actor routes: the filters are repeatable, so a DRep's record, an action's votes, a \
+         \committee member's votes and the global feed are all the same query. \
+         \\n`voter_id` accepts any identifier form -- drep1y…, cc_cold1…, pool1… or 56 hex \
+         \characters -- and committee votes are addressed by the COLD credential, the identity \
+         \that survives a hot-key rotation, with the signing hot key published beside it. \
+         \\nRe-votes are returned as rows, not hidden: `revote_count` says how many exist for that \
+         \(voter, action) pair and `is_final` / `is_first` mark which one a verdict or a latency is \
+         \measured from. preprod's worst pair has 21,626 rows, from the epoch-187 committee stress \
+         \test. \
+         \\nThere is no `has_rationale` parameter: it is `anchor_status=valid`, which makes the \
+         \caller say which of the five anchor outcomes they mean instead of collapsing an \
+         \unreachable IPFS document into \"no rationale\"."
+    :> "votes"
+    :> Header "Accept" Text
+    :> QueryParam "limit" Int
+    :> QueryParam "offset" Int
+    :> QueryParams "voter_role" VoterRole
+    :> QueryParams "voter_id" Text
+    :> QueryParams "gov_action_id" GovActionId
+    :> QueryParams "verdict" Vote
+    :> QueryParams "gov_action_type" GovActionType
+    :> QueryParams "anchor_status" AnchorStatus
+    :> QueryParam "from" UTCTime
+    :> QueryParam "to" UTCTime
+    :> QueryParam "from_epoch" Int
+    :> QueryParam "to_epoch" Int
+    :> QueryParam "q" Text
+    :> QueryParam "order_by" VotesOrderBy
+    :> QueryParam "sort_order" SortOrder
+    :> Get '[JSON, CSV] (Page VoteRecord)
+
+handleGetVotes ::
+  Maybe Text ->
+  Maybe Int ->
+  Maybe Int ->
+  [VoterRole] ->
+  [Text] ->
+  [GovActionId] ->
+  [Vote] ->
+  [GovActionType] ->
+  [AnchorStatus] ->
+  Maybe UTCTime ->
+  Maybe UTCTime ->
+  Maybe Int ->
+  Maybe Int ->
+  Maybe Text ->
+  Maybe VotesOrderBy ->
+  Maybe SortOrder ->
+  QueryAppMonad (Page VoteRecord)
+handleGetVotes accept limit offset roles voterIds gaIds verdicts gaTypes anchorStatus from to fromEpoch toEpoch q orderBy sortOrder = do
+  q' <- either throwApi pure (normalizeQ q)
+  _ <- either throwApi pure (checkRanges from to fromEpoch toEpoch)
+  bounds <- either throwApi pure (normalizeLimitOffset (boundsFor accept) limit offset)
+  -- Every voter_id must decode, and a bad one is a 400 rather than an empty page: a client that
+  -- mistyped an identifier should be told, not shown "this voter never voted".
+  hexes <- mapM (maybe (throwApi InvalidDrepId) pure . anyVoterIdHex) voterIds
+  let filt =
+        emptyVoteFilter
+          { voteFilterRoles = roles,
+            voteFilterVoterIds = hexes,
+            voteFilterGovActionIds = gaIds,
+            voteFilterVerdicts = verdicts,
+            voteFilterGovActionTypes = gaTypes,
+            voteFilterAnchorStatus = anchorStatus,
+            voteFilterFrom = from,
+            voteFilterTo = to,
+            voteFilterFromEpoch = fromEpoch,
+            voteFilterToEpoch = toEpoch,
+            voteFilterQ = q'
+          }
+  runRead (listVotes filt (fromMaybe VotesOrderByCastAt orderBy, fromMaybe Desc sortOrder) bounds)
+
+votesServer :: ServerT VotesAPI QueryAppMonad
+votesServer = handleGetVotes
+
+------------------------------------------------------------------------------------------------
+
 --  Core Function API
 
 ------------------------------------------------------------------------------------------------
@@ -629,6 +722,7 @@ type CoreFunctionAPI =
     :<|> GovActionsAPI
     :<|> GovActionDetailAPI
     :<|> GovActionPageAPI
+    :<|> VotesAPI
 
 coreFunctionServer :: ServerT CoreFunctionAPI QueryAppMonad
 -- Spelled out flat rather than grouped into a drepProfileServer: `:<|>` is right-associative,
@@ -646,6 +740,7 @@ coreFunctionServer =
     :<|> govActionsServer
     :<|> handleGetGovActionDetail
     :<|> handleGetGovActionDetail
+    :<|> votesServer
 
 ------------------------------------------------------------------------------------------------
 

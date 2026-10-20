@@ -26,6 +26,8 @@ module Palmares.DomainTypes.Core.Ids
     ccColdIdCip129,
     govActionIdCip129,
     parseGovActionIdCip129,
+    poolIdBech32,
+    anyVoterIdHex,
     parseDrepIdAny,
   )
 where
@@ -122,3 +124,39 @@ parseGovActionIdCip129 t = case Bech32.decode t of
       Just (txId, ix) <- BS.unsnoc bs ->
         Right (TE.decodeUtf8 (B16.encode txId), ix)
   _ -> Left "invalid_gov_action_id"
+
+-- | CIP-5 stake pool id (@pool1…@) over the 28-byte pool hash.
+--
+-- No header byte and no CIP-129 form: a stake pool predates CIP-129 and every tool — cardano-cli,
+-- every explorer, every pool listing — shows this one. Publishing anything else would make a pool
+-- unsearchable.
+poolIdBech32 :: ByteString -> Text
+poolIdBech32 = encodeWith "pool"
+
+-- | The 28-byte credential hash behind ANY voter identifier a client may send, as hex.
+--
+-- One function for all three roles, which is what lets @\/votes?voter_id=@ be a single parameter:
+-- a DRep's @drep1y…@ or @drep1…@, a committee @cc_cold1…@ or @cc_hot1…@, a pool's @pool1…@, or 56
+-- hex characters. The HRP decides how many leading bytes to drop, since only the CIP-129 forms
+-- carry a header byte.
+--
+-- A @cc_hot1…@ is accepted and returns the HOT hash, which will not match a committee vote row —
+-- those are keyed by the cold credential (D-24). That is the correct outcome rather than a
+-- convenience: a hot key is not a stable identity, and silently resolving it to a cold one would
+-- hide a hot-key rotation from a reader who asked about a specific hot key.
+anyVoterIdHex :: Text -> Maybe Text
+anyVoterIdHex t = case Bech32.decode t of
+  Right (hrp, dp)
+    | Just bs <- Bech32.dataPartToBytes dp,
+      let h = Bech32.humanReadablePartToText hrp,
+      Just raw <- strip h bs ->
+        Just (TE.decodeUtf8 (B16.encode raw))
+  _
+    | T.length t == 56, T.all isHexDigit t -> Just (T.toLower t)
+    | otherwise -> Nothing
+  where
+    -- CIP-129 payloads are 29 bytes with a leading header; CIP-105 and CIP-5 are the bare 28.
+    strip h bs
+      | BS.length bs == 29, h `elem` ["drep", "cc_cold", "cc_hot"] = Just (BS.drop 1 bs)
+      | BS.length bs == 28, h `elem` ["drep", "pool"] = Just bs
+      | otherwise = Nothing

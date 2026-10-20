@@ -85,11 +85,18 @@ jobs:
       # code the pre-push hook runs, so local and CI cannot disagree.
       - run: .githooks/pre-push
 
-      # Depth beyond the regex: full-history entropy and rule-based detection.
-      # Free for public repositories; an organisation's PRIVATE repo would need GITLEAKS_LICENSE.
-      # NOTE: block style, not `env: { GITHUB_TOKEN: ${{ ... }} }`. In a YAML flow mapping the `{{` of
-      # an Actions expression opens a nested mapping and the whole workflow file fails to parse — which
-      # is exactly how this file failed its first run.
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Depth beyond the regex: full-history, rule-based detection with entropy checks.
+      #
+      # The BINARY, not gitleaks/gitleaks-action@v2. gitleaks itself is MIT/Apache-licensed and free;
+      # only the Action wrapper is license-gated, and it refuses to run for any organisation-owned
+      # repository regardless of visibility: "[en7angled] is an organization. License key is required."
+      # Measured, not guessed — that is how this job failed its first run. Running the binary keeps a
+      # gate that actually decides something, with no paid dependency.
+      - name: gitleaks (full history)
+        run: |
+          set -euo pipefail
+          VER=8.30.1
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_arm64.tar.gz" \
+            | tar -xz -C /tmp gitleaks
+          /tmp/gitleaks version
+          /tmp/gitleaks git --redact --no-banner --exit-code 1 .

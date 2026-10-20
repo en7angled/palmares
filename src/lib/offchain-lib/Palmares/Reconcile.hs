@@ -48,6 +48,17 @@ module Palmares.Reconcile
     Freshness (..),
     checkFreshness,
 
+    -- * The two snapshots
+    KoiosSnapshot (..),
+    PalmaresSnapshot (..),
+    PDRep (..),
+    PAction (..),
+    PCommittee (..),
+
+    -- * The ten rows
+    reconcileAll,
+    readyMaxLagSeconds,
+
     -- * The report
     ReportStatus (..),
     Report (..),
@@ -60,12 +71,17 @@ import Data.Aeson (FromJSON (parseJSON), withObject, withText, (.:), (.:?))
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
+import Data.Maybe (fromMaybe)
+import Data.Set (Set)
 import Data.Set qualified as S
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (Day, UTCTime)
 import Data.Yaml qualified as Yaml
 import GHC.Generics (Generic)
+import Palmares.DomainTypes.Core.Types (DRepStatus, GovActionType, Vote, VoterRole)
+import Palmares.Reconcile.Koios
+import Palmares.Utils (jsonTag)
 
 -- ---------------------------------------------------------------------------------------------
 
@@ -358,7 +374,11 @@ data Report = Report
     reportRows :: [RowResult],
     reportStaleExceptions :: [ExceptionEntry],
     reportStatus :: ReportStatus,
-    reportUnexplained :: Int
+    reportUnexplained :: Int,
+    -- | How many divergences a waiver accounted for. Published beside 'reportUnexplained' rather
+    -- than left implicit: a run whose explained count is climbing is a run whose waiver file is
+    -- doing more work every week, which is worth seeing before it is worth investigating.
+    reportExplained :: Int
   }
   deriving stock (Show, Eq, Generic)
 
@@ -393,7 +413,8 @@ mkReport network at ourEpoch lagSeconds koiosEpoch es rows =
         if any (isSkipped . rowStatus) rows
           then ReportAborted
           else if unexplained > 0 then ReportDivergent else ReportOk,
-      reportUnexplained = unexplained
+      reportUnexplained = unexplained,
+      reportExplained = sum (map (length . rowExplained) rows)
     }
   where
     unexplained = sum (map (length . rowUnexplained) rows)
@@ -408,3 +429,308 @@ reportExitCode r = case reportStatus r of
   ReportOk -> 0
   ReportDivergent -> 1
   ReportAborted -> 3
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * The two snapshots
+
+-- | Everything one Koios run read, one field per endpoint.
+--
+-- A record of what was FETCHED, not a model of governance: the reconciler compares two readings of
+-- the same chain, so each side keeps the shape its source gave it and the comparison does the
+-- translating. The keyed fields are maps because that is how they were requested — one call per id.
+data KoiosSnapshot = KoiosSnapshot
+  { ksTip :: KoiosTip,
+    ksDRepList :: [KoiosDRepListRow],
+    ksDRepInfo :: [KoiosDRepInfo],
+    ksPower :: [KoiosPowerRow],
+    ksProposals :: [KoiosProposal],
+    -- | @gov_action1…@ → that action's votes, latest per voter
+    ksProposalVotes :: Map Text [KoiosVoteRow],
+    -- | @drep1…@ → that DRep's whole vote history
+    ksDRepVotes :: Map Text [KoiosDRepVoteRow],
+    ksCommittee :: [KoiosCommittee]
+  }
+  deriving stock (Show, Eq, Generic)
+
+-- | One DRep, reduced to what R1 and R2 compare.
+data PDRep = PDRep
+  { pdrepHasScript :: Bool,
+    pdrepStatus :: DRepStatus,
+    pdrepActiveUntilEpoch :: Maybe Int,
+    pdrepDelegatorCount :: Int
+  }
+  deriving stock (Show, Eq, Generic)
+
+-- | One governance action, reduced to what R5 compares.
+data PAction = PAction
+  { pactionType :: GovActionType,
+    pactionProposedEpoch :: Int,
+    pactionExpiresEpoch :: Maybe Int,
+    pactionRatifiedEpoch :: Maybe Int,
+    pactionEnactedEpoch :: Maybe Int,
+    pactionDroppedEpoch :: Maybe Int,
+    pactionExpiredEpoch :: Maybe Int
+  }
+  deriving stock (Show, Eq, Generic)
+
+-- | The committee, reduced to what R8 compares: the quorum, and per cold id the hot key and the
+-- term's end.
+data PCommittee = PCommittee
+  { pcommitteeQuorumNumerator :: Int,
+    pcommitteeQuorumDenominator :: Int,
+    -- | @cc_cold1…@ → (hot key hash in hex, expiration epoch)
+    pcommitteeMembers :: Map Text (Maybe Text, Int)
+  }
+  deriving stock (Show, Eq, Generic)
+
+-- | Everything one run read from OUR API, reduced to the fields the ten rows compare.
+--
+-- __A projection, not the response DTOs themselves,__ and that is a deliberate split. The rows
+-- compare nine values; 'DRepSummary' alone carries twenty-two, and a snapshot built from the DTOs
+-- would make every test case in 'rowTests' spell out thirteen fields nobody reads to assert one
+-- that is. The DTO dependency is kept where it belongs — in the @from*@ projections below, which
+-- is also where a field rename has to break — and the comparison is over types a test can build on
+-- one line.
+--
+-- The projections are exercised end to end by @admin reconcile-koios@ against the live API, which
+-- is the only place they CAN be exercised honestly: a unit test that hand-builds a 'DRepSummary'
+-- proves that the test author and the projection agree, not that the API serves what we think.
+data PalmaresSnapshot = PalmaresSnapshot
+  { psEpoch :: Int,
+    psLagSeconds :: Int,
+    -- | CIP-129 @drep1…@ → its profile
+    psDReps :: Map Text PDRep,
+    -- | @(drep id, epoch)@ → lovelace. Includes BOTH reserved ledger options (D-20).
+    psPower :: Map (Text, Int) Integer,
+    -- | CIP-129 @gov_action1…@ → its lifecycle
+    psActions :: Map Text PAction,
+    -- | @(action, role, verdict)@ → count, over FINAL votes only
+    psTallies :: Map (Text, VoterRole, Vote) Int,
+    -- | @(action, verdict, vote tx hash)@, the DRep vote HISTORY including superseded votes
+    psVotes :: Set (Text, Vote, Text),
+    psCommittee :: PCommittee,
+    -- | @(beneficiary, amount)@ → count, a multiset over every action's withdrawals
+    psWithdrawals :: Map (Text, Integer) Int
+  }
+  deriving stock (Show, Eq, Generic)
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * The ten rows
+
+-- | Reconcile the two snapshots into ten rows.
+--
+-- __R10 runs FIRST and its failure skips everything else.__ Comparing two indexes at different
+-- tips manufactures divergences that are artefacts of timing and not defects in either side, so a
+-- run that cannot establish freshness reports R10 divergent and R1–R9 'RowSkipped' — never a pass.
+-- 'mkReport' turns any skipped row into 'ReportAborted', which is the only path to exit 3.
+--
+-- Each row is one 'diffKeyed' call. What each one compares is the specification; the signature and
+-- the tests do not determine it, so it is written out beside each row.
+reconcileAll :: KoiosSnapshot -> PalmaresSnapshot -> [ExceptionEntry] -> [RowResult]
+reconcileAll k p es = case checkFreshness (psEpoch p) (koiosTipEpochNo (ksTip k)) (psLagSeconds p) readyMaxLagSeconds of
+  Aborted why ->
+    mkRow es R10 1 [Divergence "freshness" "epoch_skew" (tshow (koiosTipEpochNo (ksTip k))) (tshow (psEpoch p))]
+      : [skippedRow r why | r <- [R1 .. R9]]
+  Fresh ->
+    [ rowMembership,
+      rowProfile,
+      rowPower,
+      rowPowerTotal,
+      rowLifecycle,
+      rowTally,
+      rowVoteHistory,
+      rowCommittee,
+      rowWithdrawals,
+      mkRow es R10 1 []
+    ]
+  where
+    -- R1: the registry's membership. Koios's registered list against our own, as SETS — a DRep on
+    -- one side only is the whole finding, and there is nothing else to compare about it.
+    rowMembership =
+      mkRow es R1 (M.size koiosDReps `max` M.size (psDReps p)) $
+        diffKeyed id (\_ _ -> []) koiosDReps (psDReps p)
+
+    -- R2: the profile. `deposit` is deliberately absent — it is the protocol constant
+    -- epoch_param.drep_deposit, our DRepSummary does not carry it, and fetching it would cost 294
+    -- extra calls to compare a constant.
+    rowProfile =
+      mkRow es R2 (M.size koiosInfo) $
+        diffKeyed id profileDiff koiosInfo (psDReps p)
+
+    profileDiff i d =
+      concat
+        [ ["has_script" `differs` (tshow (koiosDRepInfoHasScript i), tshow (pdrepHasScript d))
+            | koiosDRepInfoHasScript i /= pdrepHasScript d],
+          ["active_until_epoch" `differs` (tshow (koiosDRepInfoExpiresEpochNo i), tshow (pdrepActiveUntilEpoch d))
+            | koiosDRepInfoExpiresEpochNo i /= pdrepActiveUntilEpoch d],
+          -- Koios splits what we join: `registered` plus `active` is our single status.
+          ["status" `differs` (tshow koiosStatus, tshow (Just (pdrepStatus d)))
+            | koiosStatus /= Just (pdrepStatus d)],
+          ["delegator_count" `differs` (tshow (koiosDRepInfoLiveDelegatorCount i), tshow (pdrepDelegatorCount d))
+            | koiosDRepInfoLiveDelegatorCount i /= pdrepDelegatorCount d]
+        ]
+      where
+        koiosStatus = koiosDRepStatus (koiosDRepInfoStatus i) (koiosDRepInfoActive i)
+
+    -- R3: voting power, per (DRep, epoch), EXACT lovelace. Both sides read drep_distr, so a
+    -- tolerance here would hide a bug rather than absorb a rounding difference.
+    rowPower =
+      mkRow es R3 (M.size koiosPower) $
+        diffKeyed renderPowerKey lovelaceDiff koiosPower (psPower p)
+
+    lovelaceDiff a b = ["lovelace" `differs` (tshow a, tshow b) | a /= b]
+
+    -- R4: the per-epoch TOTAL, including both reserved ledger options (D-20). This is spec check
+    -- 5's "documented tolerance" and the tolerance is ZERO: the 46% one used to need was the
+    -- pseudo-DRep filter, not a measurement error.
+    rowPowerTotal =
+      mkRow es R4 (M.size koiosTotals) $
+        diffKeyed tshow totalDiff koiosTotals palmaresTotals
+
+    totalDiff a b = ["total_lovelace" `differs` (tshow a, tshow b) | a /= b]
+
+    -- R5: the lifecycle, population-wide over every action, not a sample. These five epochs are
+    -- what our own `state` is derived from, so a mismatch in one means the two indexes disagree
+    -- about what the ledger did.
+    rowLifecycle =
+      mkRow es R5 (M.size koiosActions) $
+        diffKeyed id lifecycleDiff koiosActions (psActions p)
+
+    lifecycleDiff ka pa =
+      concat
+        [ ["type" `differs` (tshow (koiosActionType (koiosProposalType ka)), tshow (Just (pactionType pa)))
+            | koiosActionType (koiosProposalType ka) /= Just (pactionType pa)],
+          cmp "proposed_epoch" (koiosProposalProposedEpoch ka) (Just (pactionProposedEpoch pa)),
+          cmp "expires_epoch" (koiosProposalExpiration ka) (pactionExpiresEpoch pa),
+          cmp "ratified_epoch" (koiosProposalRatifiedEpoch ka) (pactionRatifiedEpoch pa),
+          cmp "enacted_epoch" (koiosProposalEnactedEpoch ka) (pactionEnactedEpoch pa),
+          cmp "dropped_epoch" (koiosProposalDroppedEpoch ka) (pactionDroppedEpoch pa),
+          cmp "expired_epoch" (koiosProposalExpiredEpoch ka) (pactionExpiredEpoch pa)
+        ]
+      where
+        cmp f a b = [f `differs` (tshow a, tshow b) | a /= b]
+
+    -- R6: the tally, as a (role, verdict) -> count map over the LATEST vote per voter. Koios
+    -- collapses re-votes itself, and our tallies read palmares.vote WHERE seq_last = 1, so the two
+    -- are counting the same thing in different ways.
+    rowTally =
+      mkRow es R6 (M.size koiosTallies) $
+        diffKeyed renderTallyKey countDiff koiosTallies (psTallies p)
+
+    countDiff a b = ["count" `differs` (tshow a, tshow b) | a /= b]
+
+    -- R7: the vote HISTORY, superseded votes included — which is the gate on GET /votes returning
+    -- every palmares.vote row rather than only the final ones. DRep role only: preprod carries
+    -- 3,243,802 committee vote rows of test spam, so no row compares committee history.
+    rowVoteHistory =
+      mkRow es R7 (S.size koiosVoteSet `max` S.size (psVotes p)) $
+        diffKeyed renderVoteKey (\_ _ -> []) (setToMap koiosVoteSet) (setToMap (psVotes p))
+
+    -- R8: the quorum under one key, then the members under their cold ids. Two key spaces in one
+    -- row because they are one fact about one committee; `status` is excluded, Koios's vocabulary
+    -- being its own (`authorized` where we publish `active`).
+    rowCommittee =
+      mkRow es R8 (1 + M.size koiosMembers) $
+        diffKeyed id quorumDiff (M.singleton "committee" koiosQuorum) (M.singleton "committee" palmaresQuorum)
+          <> diffKeyed id memberDiff koiosMembers (pcommitteeMembers (psCommittee p))
+
+    quorumDiff a b = ["quorum" `differs` (a, b) | a /= b]
+
+    memberDiff (kh, ke) (ph, pe) =
+      concat
+        [ ["hot_hash" `differs` (tshow kh, tshow ph) | kh /= ph],
+          ["expiration_epoch" `differs` (tshow ke, tshow pe) | ke /= pe]
+        ]
+
+    -- R9: withdrawals as a (beneficiary, amount) MULTISET. A multiset and not a set because the
+    -- same beneficiary may legitimately appear twice in one action, and collapsing that would make
+    -- a duplicated row invisible.
+    rowWithdrawals =
+      mkRow es R9 (M.size koiosWithdrawals) $
+        diffKeyed renderWithdrawalKey countDiff koiosWithdrawals (psWithdrawals p)
+
+    -- ---- Koios's side, reduced the same way ours is -----------------------------------------
+
+    koiosDReps = M.fromList [(koiosDRepListId r, ()) | r <- ksDRepList k, koiosDRepListRegistered r]
+    koiosInfo = M.fromList [(koiosDRepInfoId i, i) | i <- ksDRepInfo k]
+    koiosPower = M.fromList [((koiosPowerDRepId r, koiosPowerEpochNo r), toInteger (unKoiosLovelace (koiosPowerAmount r))) | r <- ksPower k]
+    koiosTotals = M.fromListWith (+) [(koiosPowerEpochNo r, toInteger (unKoiosLovelace (koiosPowerAmount r))) | r <- ksPower k]
+    palmaresTotals = M.fromListWith (+) [(e, v) | ((_, e), v) <- M.toList (psPower p)]
+    koiosActions = M.fromList [(koiosProposalId a, a) | a <- ksProposals k]
+
+    koiosTallies =
+      M.fromListWith (+) $
+        [ ((act, role, verdict), 1 :: Int)
+          | (act, rows) <- M.toList (ksProposalVotes k),
+            r <- rows,
+            Just role <- [koiosVoterRole (koiosVoteRole r)],
+            Just verdict <- [koiosVote (koiosVoteVote r)]
+        ]
+
+    koiosVoteSet =
+      S.fromList
+        [ (koiosDRepVoteProposalId r, verdict, koiosDRepVoteTxHash r)
+          | rows <- M.elems (ksDRepVotes k),
+            r <- rows,
+            Just verdict <- [koiosVote (koiosDRepVoteVote r)]
+        ]
+
+    (koiosQuorum, koiosMembers) = case ksCommittee k of
+      (c : _) ->
+        ( tshow (koiosCommitteeQuorumNumerator c) <> "/" <> tshow (koiosCommitteeQuorumDenominator c),
+          M.fromList
+            [ (koiosMemberColdId m, (koiosMemberHotHex m, fromMaybe 0 (koiosMemberExpirationEpoch m)))
+              | m <- koiosCommitteeMembers c
+            ]
+        )
+      [] -> ("", M.empty)
+
+    palmaresQuorum =
+      tshow (pcommitteeQuorumNumerator (psCommittee p))
+        <> "/"
+        <> tshow (pcommitteeQuorumDenominator (psCommittee p))
+
+    koiosWithdrawals =
+      M.fromListWith (+) $
+        [ ((koiosWithdrawalStakeAddress w, toInteger (unKoiosLovelace (koiosWithdrawalAmount w))), 1 :: Int)
+          | a <- ksProposals k,
+            w <- koiosProposalWithdrawals a
+        ]
+
+-- | A set as a map to unit, so 'diffKeyed' serves a membership-only row too.
+--
+-- One primitive and no second one for sets: a membership divergence is the same finding whether
+-- the row compares fields or not, and a set-specific comparator would be a second place for the
+-- rendering of that finding to drift.
+setToMap :: (Ord a) => Set a -> Map a ()
+setToMap = M.fromSet (const ())
+
+-- | @\<drep_id\>:\<epoch\>@, R3's key.
+renderPowerKey :: (Text, Int) -> Text
+renderPowerKey (d, e) = d <> ":" <> tshow e
+
+-- | @\<gov_action1…\>:\<role\>:\<verdict\>@, R6's key, in the wire spellings a client sees.
+renderTallyKey :: (Text, VoterRole, Vote) -> Text
+renderTallyKey (a, role, verdict) = a <> ":" <> jsonTag role <> ":" <> jsonTag verdict
+
+-- | @\<gov_action1…\>:\<verdict\>:\<vote_tx_hash\>@, R7's key.
+renderVoteKey :: (Text, Vote, Text) -> Text
+renderVoteKey (a, verdict, txh) = a <> ":" <> jsonTag verdict <> ":" <> txh
+
+-- | @\<stake_address\>:\<amount\>@, R9's key.
+renderWithdrawalKey :: (Text, Integer) -> Text
+renderWithdrawalKey (addr, amt) = addr <> ":" <> tshow amt
+
+-- | The lag a run will tolerate before aborting, in seconds.
+--
+-- 300, which is D-7's @PALMARES_READY_MAX_LAG_SECONDS@ — the same bound @\/ready@ uses. The two
+-- must agree: a run against an index the service itself calls not-ready is comparing against
+-- something no client is being served.
+readyMaxLagSeconds :: Int
+readyMaxLagSeconds = 300
+
+-- | @(field, koios, palmares)@, spelled so a comparator reads as a sentence.
+differs :: Text -> (Text, Text) -> (Text, Text, Text)
+differs f (a, b) = (f, a, b)

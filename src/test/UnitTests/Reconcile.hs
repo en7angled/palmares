@@ -24,6 +24,7 @@ import Data.Aeson (FromJSON, eitherDecode, eitherDecodeFileStrict)
 import Data.ByteString.Lazy.Char8 qualified as BL8
 import Data.List (nub, sort)
 import Data.Map.Strict qualified as M
+import Data.Set qualified as S
 import Data.Maybe (isJust, isNothing, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -50,7 +51,8 @@ reconcileTests =
     [ wireTests,
       countTests,
       mappingTests,
-      primitiveTests
+      primitiveTests,
+      rowTests
     ]
 
 -- ---------------------------------------------------------------------------------------------
@@ -369,3 +371,286 @@ primitiveTests =
     tshow :: (Show a) => a -> Text
     tshow = T.pack . show
     entry r k f reason = ExceptionEntry r k f reason (fromGregorian 2026 10 20) "it@blazarlabs.io"
+
+-- ---------------------------------------------------------------------------------------------
+
+-- | The ten rows, over a hand-built pair.
+--
+-- No recording and no database: the pair is the smallest consistent pair of readings — two DReps,
+-- both reserved ledger options, one action, one committee member, one withdrawal, one vote — and
+-- each case applies ONE mutation to it. That is the only way to test a row in isolation: against a
+-- recording, a row either agrees (proving nothing about the comparison) or disagrees for reasons
+-- the test did not choose.
+--
+-- The mutators are plain record updates HERE, not library code. A library function that breaks a
+-- snapshot on purpose is a function someone will eventually call by accident.
+rowTests :: TestTree
+rowTests =
+  testGroup
+    "Reconcile rows"
+    [ testCase "a consistent snapshot pair yields all ten rows ok" $ do
+        let rs = reconcileAll kOk pOk []
+        map rowId rs @?= [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10]
+        map rowStatus rs @?= replicate 10 RowOk
+        sum (map (length . rowUnexplained) rs) @?= 0,
+      -- Every row must actually have compared something. A row that silently compared zero keys
+      -- would pass on any pair at all, which is the failure mode a hand-built fixture invites.
+      testCase "every row compared at least one key" $
+        filter ((== 0) . rowCompared) (reconcileAll kOk pOk []) @?= [],
+      testCase "R1: a DRep Koios has and we do not is one membership divergence" $ do
+        let r1 = row R1 (reconcileAll kOk (dropDRep dB pOk) [])
+        (rowStatus r1, rowUnexplained r1)
+          @?= (RowDivergent, [Divergence dB "membership" "present" "absent"]),
+      testCase "R2: expires_epoch_no is compared against active_until_epoch" $
+        rowUnexplained (row R2 (reconcileAll kOk (setActiveUntil dA 334 pOk) []))
+          @?= [Divergence dA "active_until_epoch" "Just 333" "Just 334"],
+      -- Koios splits what we join, so this is the case that would pass if koiosDRepStatus read
+      -- drep_status alone: `registered` + active=False is our `inactive`, not our `active`.
+      testCase "R2: a lapsed registration is inactive, not active" $
+        rowUnexplained (row R2 (reconcileAll (setKoiosActive dA False kOk) pOk []))
+          @?= [Divergence dA "status" "Just DRepInactive" "Just DRepActive"],
+      testCase "R2: the delegator count is compared, which is how the live_delegation bug surfaced" $
+        rowUnexplained (row R2 (reconcileAll kOk (setDelegators dA 12 pOk) []))
+          @?= [Divergence dA "delegator_count" "13" "12"],
+      testCase "R3: voting power is exact lovelace, keyed by (drep_id, epoch)" $
+        rowUnexplained (row R3 (reconcileAll kOk (setPower dA 319 3923709956712 pOk) []))
+          @?= [Divergence (dA <> ":319") "lovelace" "3923709956713" "3923709956712"],
+      -- D-20: the reserved options are rows like any other, and they hold most of the power. A
+      -- snapshot that filtered them would understate the total by about half.
+      testCase "R4: the per-epoch total includes BOTH reserved ledger options" $ do
+        let r4 = row R4 (reconcileAll kOk (dropPower abstainId 319 pOk) [])
+        -- 3,923,709,956,713 + 830,756,067,101 + 431,863,790,957,959 + 325,390,800,383, against the
+        -- same sum without always_abstain. The option holds 98.8% of this fixture's power, which is
+        -- the point: a snapshot that filtered the reserved options would not be slightly wrong.
+        (rowStatus r4, rowUnexplained r4)
+          @?= ( RowDivergent,
+                [Divergence "319" "total_lovelace" "436943647782156" "5079856824197"]
+              ),
+      testCase "R5: lifecycle epochs are exact per gov_action1 id" $
+        rowUnexplained (row R5 (reconcileAll kOk (setRatified act (Just 229) pOk) []))
+          @?= [Divergence act "ratified_epoch" "Just 228" "Just 229"],
+      testCase "R5: the action type is compared through the Koios mapping" $
+        rowUnexplained (row R5 (reconcileAll kOk (setActionType act InfoAction pOk) []))
+          @?= [Divergence act "type" "Just ParameterChange" "Just InfoAction"],
+      testCase "R6: the tally map is (role, verdict) -> count over final votes" $
+        rowUnexplained (row R6 (reconcileAll kOk (setTally act DRep Yes 6 pOk) []))
+          @?= [Divergence (act <> ":drep:yes") "count" "7" "6"],
+      -- R7 is the gate on GET /votes returning every palmares.vote row rather than only the final
+      -- ones: Koios's drep_votes keeps superseded votes, so dropping one here must be visible.
+      testCase "R7: the vote-history set keeps superseded votes" $
+        rowUnexplained (row R7 (reconcileAll kOk (dropVote pOk) []))
+          @?= [Divergence (act <> ":yes:" <> voteTx) "membership" "present" "absent"],
+      testCase "R8: the quorum is compared as a fraction, under its own key" $
+        rowUnexplained (row R8 (reconcileAll kOk (setQuorum 3 3 pOk) []))
+          @?= [Divergence "committee" "quorum" "2/3" "3/3"],
+      testCase "R8: a member's hot key and term end are compared per cold id" $
+        rowUnexplained (row R8 (reconcileAll kOk (setMemberExpiry coldId 400 pOk) []))
+          @?= [Divergence coldId "expiration_epoch" "372" "400"],
+      -- A multiset, not a set: the same beneficiary may legitimately appear twice in one action,
+      -- and collapsing that would make a duplicated row invisible.
+      testCase "R9: withdrawals are a (beneficiary, amount) multiset" $
+        rowUnexplained (row R9 (reconcileAll kOk (dupWithdrawal pOk) []))
+          @?= [Divergence (benef <> ":120000000000") "count" "1" "2"],
+      testCase "R10 aborting skips every other row rather than faking a pass" $ do
+        let rs = reconcileAll (setKoiosTipEpoch 322 kOk) pOk []
+        rowStatus (row R10 rs) @?= RowDivergent
+        assertBool
+          "every other row is skipped"
+          (all (\r -> rowId r == R10 || isSkipped (rowStatus r)) rs)
+        length rs @?= 10,
+      -- The lag bound is the same one /ready uses (D-7). A run against an index the service itself
+      -- calls not-ready is comparing against something no client is being served.
+      testCase "R10 aborts on lag alone, at the same bound /ready uses" $ do
+        let rs = reconcileAll kOk (pOk {psLagSeconds = readyMaxLagSeconds + 1}) []
+        (rowStatus (row R10 rs), readyMaxLagSeconds) @?= (RowDivergent, 300),
+      testCase "a waived divergence becomes explained and the run exits 0" $ do
+        let e =
+              ExceptionEntry
+                R2
+                dA
+                (Just "delegator_count")
+                "Koios counts live where we count at the epoch"
+                (fromGregorian 2026 10 20)
+                "it@blazarlabs.io"
+            rs = reconcileAll kOk (setDelegators dA 12 pOk) [e]
+            rp = mkReport "preprod" t0 320 41 320 [e] rs
+        rowStatus (row R2 rs) @?= RowOk
+        (reportUnexplained rp, reportExplained rp, reportExitCode rp) @?= (0, 1, 0)
+        reportStaleExceptions rp @?= []
+    ]
+  where
+    row r rs = case filter ((== r) . rowId) rs of
+      (x : _) -> x
+      [] -> error ("UnitTests.Reconcile: no " <> show r <> " in the result")
+    t0 = UTCTime (fromGregorian 2026 10 20) 0
+
+-- ---------------------------------------------------------------------------------------------
+
+-- | The ids the hand-built pair uses. Short, but the right SHAPE: the comparison keys are these
+-- strings, and a test whose keys were @\"a\"@ and @\"b\"@ would not catch a renderer that dropped
+-- the prefix.
+dA, dB, act, coldId, hotHex, benef, voteTx :: Text
+dA = "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg"
+dB = "drep1ygpuetneftlmufa97hm5mf3xvqpdkyw656hyg6h20qaewtg3csnkc"
+act = "gov_action1qnergwfcsse2y2mgxpp96z5pzjsk3tz745nk0lsj96u4d6ze8azqqdc2a6v"
+coldId = "cc_cold1zds4k4qn0eelpyxjmhdsgvtmaeqkyn6qz0jule99a7nk6asezxvlu"
+hotHex = "5bfa7d850280c54110534065fa91a3635bbcc0eadc69c5c792c35e1e"
+benef = "stake_test1uzrr46pd4wn2qpzvv5fpdeycndzsgjc899jn8e4rmten3ngcgm3f4"
+voteTx = "05a64317c25d058d0be08db8e9a5728a257ab97af5b8d5d8c0a00df41bd3bcc5"
+
+-- | The two reserved ledger options, which hold most of preprod's voting power (D-20).
+abstainId, noConfId :: Text
+abstainId = "drep_always_abstain"
+noConfId = "drep_always_no_confidence"
+
+-- | Koios's side of the consistent pair.
+kOk :: KoiosSnapshot
+kOk =
+  KoiosSnapshot
+    { ksTip = KoiosTip "deadbeef" 320 136841444 5315445 1792524644,
+      ksDRepList =
+        [ KoiosDRepListRow dA "81378d3e" False True,
+          KoiosDRepListRow dB "03ccae79" False True
+        ],
+      ksDRepInfo = [kInfo dA 333 13, kInfo dB 324 1],
+      ksPower =
+        [ KoiosPowerRow dA 319 (KoiosLovelace 3923709956713),
+          KoiosPowerRow dB 319 (KoiosLovelace 830756067101),
+          KoiosPowerRow abstainId 319 (KoiosLovelace 431863790957959),
+          KoiosPowerRow noConfId 319 (KoiosLovelace 325390800383)
+        ],
+      ksProposals = [kProposal],
+      ksProposalVotes = M.singleton act (replicate 7 (kVote "DRep" "Yes")),
+      ksDRepVotes = M.singleton dA [kDRepVote],
+      ksCommittee = [kCommittee]
+    }
+
+kInfo :: Text -> Int -> Int -> KoiosDRepInfo
+kInfo i expires delegators =
+  KoiosDRepInfo
+    { koiosDRepInfoId = i,
+      koiosDRepInfoHex = "81378d3e",
+      koiosDRepInfoHasScript = False,
+      koiosDRepInfoStatus = "registered",
+      koiosDRepInfoActive = True,
+      koiosDRepInfoDeposit = Just (KoiosLovelace 500000000),
+      koiosDRepInfoExpiresEpochNo = Just expires,
+      koiosDRepInfoAmount = Just (KoiosLovelace 3923709956713),
+      koiosDRepInfoMetaUrl = Nothing,
+      koiosDRepInfoMetaHash = Nothing,
+      koiosDRepInfoLiveDelegatorCount = delegators
+    }
+
+kProposal :: KoiosProposal
+kProposal =
+  KoiosProposal
+    { koiosProposalId = act,
+      koiosProposalTxHash = "04f23439",
+      koiosProposalIndex = 0,
+      koiosProposalType = "ParameterChange",
+      koiosProposalDeposit = Just (KoiosLovelace 1000000000),
+      koiosProposalReturnAddress = Just benef,
+      koiosProposalProposedEpoch = Just 226,
+      koiosProposalRatifiedEpoch = Just 228,
+      koiosProposalEnactedEpoch = Just 229,
+      koiosProposalDroppedEpoch = Nothing,
+      koiosProposalExpiredEpoch = Nothing,
+      koiosProposalExpiration = Just 233,
+      koiosProposalMetaUrl = Nothing,
+      koiosProposalMetaHash = Nothing,
+      koiosProposalMetaIsValid = Nothing,
+      koiosProposalWithdrawals = [KoiosWithdrawal benef (KoiosLovelace 120000000000)]
+    }
+
+kVote :: Text -> Text -> KoiosVoteRow
+kVote role verdict = KoiosVoteRow role dA "81378d3e" False verdict 1740152025 Nothing Nothing
+
+kDRepVote :: KoiosDRepVoteRow
+kDRepVote = KoiosDRepVoteRow act "6056be57" 0 voteTx 1789327015 "Yes" Nothing Nothing
+
+kCommittee :: KoiosCommittee
+kCommittee =
+  KoiosCommittee
+    { koiosCommitteeProposalId = Just act,
+      koiosCommitteeProposalTxHash = Just "bbfa303a",
+      koiosCommitteeProposalIndex = Just 0,
+      koiosCommitteeQuorumNumerator = 2,
+      koiosCommitteeQuorumDenominator = 3,
+      koiosCommitteeMembers =
+        [ KoiosCommitteeMember "authorized" (Just "cc_hot1x") coldId (Just hotHex) "615b5413" (Just True) True (Just 372)
+        ]
+    }
+
+-- | Our side of the consistent pair.
+pOk :: PalmaresSnapshot
+pOk =
+  PalmaresSnapshot
+    { psEpoch = 320,
+      psLagSeconds = 41,
+      psDReps =
+        M.fromList
+          [ (dA, PDRep False DRepActive (Just 333) 13),
+            (dB, PDRep False DRepActive (Just 324) 1)
+          ],
+      psPower =
+        M.fromList
+          [ ((dA, 319), 3923709956713),
+            ((dB, 319), 830756067101),
+            ((abstainId, 319), 431863790957959),
+            ((noConfId, 319), 325390800383)
+          ],
+      psActions = M.singleton act (PAction ParameterChange 226 (Just 233) (Just 228) (Just 229) Nothing Nothing),
+      psTallies = M.singleton (act, DRep, Yes) 7,
+      psVotes = S.singleton (act, Yes, voteTx),
+      psCommittee = PCommittee 2 3 (M.singleton coldId (Just hotHex, 372)),
+      psWithdrawals = M.singleton (benef, 120000000000) 1
+    }
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * One mutation each. Plain record updates, deliberately not library code.
+
+dropDRep :: Text -> PalmaresSnapshot -> PalmaresSnapshot
+dropDRep i p = p {psDReps = M.delete i (psDReps p)}
+
+setActiveUntil :: Text -> Int -> PalmaresSnapshot -> PalmaresSnapshot
+setActiveUntil i e p = p {psDReps = M.adjust (\d -> d {pdrepActiveUntilEpoch = Just e}) i (psDReps p)}
+
+setDelegators :: Text -> Int -> PalmaresSnapshot -> PalmaresSnapshot
+setDelegators i n p = p {psDReps = M.adjust (\d -> d {pdrepDelegatorCount = n}) i (psDReps p)}
+
+setPower :: Text -> Int -> Integer -> PalmaresSnapshot -> PalmaresSnapshot
+setPower i e v p = p {psPower = M.insert (i, e) v (psPower p)}
+
+dropPower :: Text -> Int -> PalmaresSnapshot -> PalmaresSnapshot
+dropPower i e p = p {psPower = M.delete (i, e) (psPower p)}
+
+setRatified :: Text -> Maybe Int -> PalmaresSnapshot -> PalmaresSnapshot
+setRatified a e p = p {psActions = M.adjust (\x -> x {pactionRatifiedEpoch = e}) a (psActions p)}
+
+setActionType :: Text -> GovActionType -> PalmaresSnapshot -> PalmaresSnapshot
+setActionType a t p = p {psActions = M.adjust (\x -> x {pactionType = t}) a (psActions p)}
+
+setTally :: Text -> VoterRole -> Vote -> Int -> PalmaresSnapshot -> PalmaresSnapshot
+setTally a role verdict n p = p {psTallies = M.insert (a, role, verdict) n (psTallies p)}
+
+dropVote :: PalmaresSnapshot -> PalmaresSnapshot
+dropVote p = p {psVotes = S.empty}
+
+setQuorum :: Int -> Int -> PalmaresSnapshot -> PalmaresSnapshot
+setQuorum n d p =
+  p {psCommittee = (psCommittee p) {pcommitteeQuorumNumerator = n, pcommitteeQuorumDenominator = d}}
+
+setMemberExpiry :: Text -> Int -> PalmaresSnapshot -> PalmaresSnapshot
+setMemberExpiry cid e p =
+  p {psCommittee = (psCommittee p) {pcommitteeMembers = M.adjust (\(h, _) -> (h, e)) cid (pcommitteeMembers (psCommittee p))}}
+
+dupWithdrawal :: PalmaresSnapshot -> PalmaresSnapshot
+dupWithdrawal p = p {psWithdrawals = M.map (+ 1) (psWithdrawals p)}
+
+setKoiosTipEpoch :: Int -> KoiosSnapshot -> KoiosSnapshot
+setKoiosTipEpoch e k = k {ksTip = (ksTip k) {koiosTipEpochNo = e}}
+
+setKoiosActive :: Text -> Bool -> KoiosSnapshot -> KoiosSnapshot
+setKoiosActive i a k =
+  k {ksDRepInfo = [if koiosDRepInfoId x == i then x {koiosDRepInfoActive = a} else x | x <- ksDRepInfo k]}

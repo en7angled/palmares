@@ -116,3 +116,14 @@ parseJsonEnumParam err t =
     tag v = case toJSON v of
       Aeson.String s -> s
       other -> T.pack (BL8.unpack (Aeson.encode other))
+
+-- | A value's own JSON tag, as 'Data.Text.Text'.
+--
+-- The counterpart to 'parseJsonEnumParam': wherever a value's wire string is needed outside JSON
+-- — a SQL filter comparing against the string the response publishes, a CSV cell — it is read
+-- back out of 'toJSON' rather than re-derived. A second snake-caser would publish @d_rep_active@
+-- where the JSON says @active@, because these constructors carry a stripped prefix.
+jsonTag :: (ToJSON a) => a -> Text
+jsonTag v = case toJSON v of
+  Aeson.String s -> s
+  other -> T.pack (BL8.unpack (Aeson.encode other))

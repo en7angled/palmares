@@ -44,9 +44,11 @@ module Palmares.DomainTypes.Transfer.QueryResponses
     SyncStatus (..),
     EpochParamsSummary (..),
     StatusResponse (..),
+    DRepSummary (..),
   )
 where
 
+import Data.Aeson (FromJSON (parseJSON), withObject, (.:), (.:?))
 import Data.Swagger (ToSchema (..), genericDeclareNamedSchema)
 import Data.Swagger.Internal.Schema ()
 import Data.Text (Text)
@@ -461,3 +463,100 @@ data StatusResponse = StatusResponse
 
 instance ToSchema StatusResponse where
   declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "status")
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * DReps
+
+-- | One row of @GET \/dreps@: everything the delegation-discovery list shows about a DRep.
+--
+-- @id@ is the CIP-129 rendering and is DERIVED from @hex@ and @has_script@, which is why the
+-- 'FromJSON' instance below is hand-written: the @palmares@ views deliberately never publish
+-- db-sync's @drep_hash.view@ (the CIP-105 form, which uses one HRP for both credential kinds and
+-- therefore cannot be compared against Koios, GovTool or a wallet), so the canonical id is
+-- computed here from the pair that does determine it.
+--
+-- @hex@ is published alongside @id@ rather than instead of it because it is what a Koios or
+-- db-sync comparison joins on.
+data DRepSummary = DRepSummary
+  { drepSummaryId :: Core.DRepId,
+    drepSummaryHex :: Text,
+    drepSummaryHasScript :: Bool,
+    drepSummaryStatus :: Core.DRepStatus,
+    drepSummaryIsActive :: Bool,
+    -- | The epoch the ledger will stop counting this DRep's power in if it does not vote.
+    drepSummaryActiveUntilEpoch :: Maybe Int,
+    drepSummaryGivenName :: Maybe Text,
+    drepSummaryImageUrl :: Maybe Text,
+    drepSummaryLanguage :: Maybe Text,
+    -- | What became of the DRep's own CIP-119 metadata anchor, consumed from @palmares.anchor@.
+    drepSummaryAnchorStatus :: Maybe Core.AnchorStatus,
+    drepSummaryRegisteredAt :: Maybe UTCTime,
+    -- | Whole days registered, summed over registration intervals. @Maybe@ because a credential
+    -- that never registered has no interval to sum (D-17), and floored rather than rounded
+    -- because \"733 days\" should mean 733 days have elapsed.
+    drepSummaryAgeDays :: Maybe Int,
+    -- | Lovelace, at 'drepSummaryVotingPowerEpoch'.
+    --
+    -- Zero, not null, when the ledger's distribution for that epoch does not include this DRep.
+    -- Measured on preprod: 109 of 294 registered DReps are in that position, 8 of them WITH live
+    -- delegations — a delegation made during an epoch is not in that epoch's snapshot, so its
+    -- power really is zero for that epoch and arrives in the next one. Five more have power with
+    -- no live delegator, their delegators having since closed their stake accounts.
+    drepSummaryVotingPower :: Integer,
+    drepSummaryVotingPowerEpoch :: Maybe Int,
+    drepSummaryDelegatorCount :: Int,
+    drepSummaryEligibleActions :: Int,
+    drepSummaryVotesCast :: Int,
+    drepSummaryParticipationRate :: Maybe Double,
+    drepSummaryRationaleRate :: Maybe Double,
+    -- | Still-open actions this DRep has not voted on. Reported beside participation rather than
+    -- folded into it: a vote not yet due is not a vote missed.
+    drepSummaryOpenActionsUnvoted :: Int,
+    drepSummaryLastVoteAt :: Maybe UTCTime,
+    -- | The epoch every metric above is measured at.
+    drepSummaryAsOfEpoch :: Int
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "drepSummary", CamelToSnake]] DRepSummary
+
+instance ToSchema DRepSummary where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "drepSummary")
+
+-- | Decode a @palmares@ row, computing @id@ from @hex@ and @has_script@.
+--
+-- Hand-written for that one derived field; everything else is the generic mapping spelled out.
+-- @UnitTests.GovDto@ round-trips a value through 'Data.Aeson.encode' and back, so a field added
+-- above and forgotten here fails the suite rather than reaching a client as @null@.
+instance FromJSON DRepSummary where
+  parseJSON = withObject "DRepSummary" $ \o -> do
+    hex <- o .: "hex"
+    hasScript <- o .: "has_script"
+    drepId <-
+      maybe
+        (fail ("DRepSummary.hex is not a 28-byte credential: " <> show (hex :: Text)))
+        pure
+        (Core.drepIdFromHex hasScript hex)
+    DRepSummary
+      <$> pure drepId
+      <*> pure hex
+      <*> pure hasScript
+      <*> o .: "status"
+      <*> o .: "is_active"
+      <*> o .:? "active_until_epoch"
+      <*> o .:? "given_name"
+      <*> o .:? "image_url"
+      <*> o .:? "language"
+      <*> o .:? "anchor_status"
+      <*> o .:? "registered_at"
+      <*> o .:? "age_days"
+      <*> o .: "voting_power"
+      <*> o .:? "voting_power_epoch"
+      <*> o .: "delegator_count"
+      <*> o .: "eligible_actions"
+      <*> o .: "votes_cast"
+      <*> o .:? "participation_rate"
+      <*> o .:? "rationale_rate"
+      <*> o .: "open_actions_unvoted"
+      <*> o .:? "last_vote_at"
+      <*> o .: "as_of_epoch"

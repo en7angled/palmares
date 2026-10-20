@@ -1,5 +1,128 @@
 {
     "definitions": {
+        "AnchorStatus": {
+            "enum": [
+                "valid",
+                "invalid_schema",
+                "hash_mismatch",
+                "oversized",
+                "unreachable",
+                "inline",
+                "not_fetched"
+            ],
+            "type": "string"
+        },
+        "DRepStatus": {
+            "enum": [
+                "active",
+                "inactive",
+                "retired",
+                "reserved"
+            ],
+            "type": "string"
+        },
+        "DRepSummary": {
+            "properties": {
+                "active_until_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "age_days": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "anchor_status": {
+                    "$ref": "#/definitions/AnchorStatus"
+                },
+                "as_of_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "delegator_count": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "eligible_actions": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "given_name": {
+                    "type": "string"
+                },
+                "has_script": {
+                    "type": "boolean"
+                },
+                "hex": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "image_url": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "last_vote_at": {
+                    "$ref": "#/definitions/UTCTime"
+                },
+                "open_actions_unvoted": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "participation_rate": {
+                    "format": "double",
+                    "type": "number"
+                },
+                "rationale_rate": {
+                    "format": "double",
+                    "type": "number"
+                },
+                "registered_at": {
+                    "$ref": "#/definitions/UTCTime"
+                },
+                "status": {
+                    "$ref": "#/definitions/DRepStatus"
+                },
+                "votes_cast": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "voting_power": {
+                    "type": "integer"
+                },
+                "voting_power_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "id",
+                "hex",
+                "has_script",
+                "status",
+                "is_active",
+                "voting_power",
+                "delegator_count",
+                "eligible_actions",
+                "votes_cast",
+                "open_actions_unvoted",
+                "as_of_epoch"
+            ],
+            "type": "object"
+        },
         "EpochParamsSummary": {
             "description": "The protocol parameters a client needs to audit a published tally. Threshold lists are (name, value) pairs under db-sync's own column names, so any of them can be looked up in palmares.thresholds. `gov_action_lifetime` is the parameter, not the voting window: the ledger sets expiration = proposed_epoch + lifetime + 1.",
             "properties": {
@@ -152,6 +275,40 @@
             ],
             "type": "object"
         },
+        "Page": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/DRepSummary"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "limit",
+                "offset"
+            ],
+            "type": "object"
+        },
         "ServiceProbeStatus": {
             "properties": {
                 "service": {
@@ -246,6 +403,216 @@
         "version": "0.1.0"
     },
     "paths": {
+        "/dreps": {
+            "get": {
+                "description": "Registered delegate representatives with their track record: participation, rationale coverage, vote latency, voting power, delegator count and age. Default ordering is voting_power descending, because this list is what a delegator chooses from. Statuses default to the two registered ones (active and inactive) -- preprod has 511 retired DReps against 294 registered, so including them by default would make the first page mostly useless; ask for them with status=retired. The two reserved ledger options (drep_always_abstain, drep_always_no_confidence) are never listed: they hold stake but no credential, and are published by /drep-power instead.",
+                "parameters": [
+                    {
+                        "in": "header",
+                        "name": "Accept",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "active",
+                                "inactive",
+                                "retired",
+                                "reserved"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "status",
+                        "type": "array"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "valid",
+                                "invalid_schema",
+                                "hash_mismatch",
+                                "oversized",
+                                "unreachable",
+                                "inline",
+                                "not_fetched"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "anchor_status",
+                        "type": "array"
+                    },
+                    {
+                        "in": "query",
+                        "name": "has_script",
+                        "required": false,
+                        "type": "boolean"
+                    },
+                    {
+                        "format": "int64",
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "min_voting_power",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "format": "int64",
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "max_voting_power",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "min_delegators",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "format": "double",
+                        "in": "query",
+                        "name": "min_participation_rate",
+                        "required": false,
+                        "type": "number"
+                    },
+                    {
+                        "format": "double",
+                        "in": "query",
+                        "name": "min_rationale_rate",
+                        "required": false,
+                        "type": "number"
+                    },
+                    {
+                        "format": "yyyy-mm-ddThh:MM:ssZ",
+                        "in": "query",
+                        "name": "registered_before",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "format": "yyyy-mm-ddThh:MM:ssZ",
+                        "in": "query",
+                        "name": "registered_after",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "min_age_days",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "name": "voted_on",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "name": "not_voted_on",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "name": "language",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "active_in_epoch",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "name": "q",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "id",
+                            "voting_power",
+                            "delegator_count",
+                            "participation_rate",
+                            "rationale_rate",
+                            "registered_at",
+                            "votes_cast",
+                            "name"
+                        ],
+                        "in": "query",
+                        "name": "order_by",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8",
+                    "text/csv;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "DReps"
+            }
+        },
         "/health": {
             "get": {
                 "description": "Returns the health status of the service",

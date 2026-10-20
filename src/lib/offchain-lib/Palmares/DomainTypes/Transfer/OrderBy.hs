@@ -17,6 +17,7 @@ import Data.Text qualified as T
 import Deriving.Aeson
 import GHC.Generics ()
 import GeniusYield.Types (GYAddress, addressFromTextMaybe)
+import Palmares.Utils (jsonEnumParamSchema, parseJsonEnumParam)
 import Servant (FromHttpApiData (..))
 
 data SortOrder = Asc | Desc
@@ -194,3 +195,37 @@ instance ToSchema WalletAddress where
           & type_ ?~ SwaggerString
           & description ?~ "Bech32-encoded Cardano address"
           & example ?~ toJSON (T.pack "addr_test1...")
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * Governance orderings
+
+--
+-- Each of these is a CLOSED enum, and that is the security property: 'Query.Common.SortSpec'
+-- splices a column name straight into an @ORDER BY@, and the only way a column name gets there
+-- is through a total function from one of these types. No request text reaches the clause.
+--
+-- The Swagger @enum@ and the query parser are both read out of 'toJSON' by
+-- 'Palmares.Utils.jsonEnumParamSchema' and 'Palmares.Utils.parseJsonEnumParam', so the documented
+-- values and the accepted values are the same list.
+
+-- | @order_by@ on @GET \/dreps@. Default is @voting_power@, descending: every DRep list is a
+-- leaderboard, and ascending-by-id would bury the DReps a delegator is looking for.
+data DRepsOrderBy
+  = DRepsOrderById
+  | DRepsOrderByVotingPower
+  | DRepsOrderByDelegatorCount
+  | DRepsOrderByParticipationRate
+  | DRepsOrderByRationaleRate
+  | DRepsOrderByRegisteredAt
+  | DRepsOrderByVotesCast
+  | DRepsOrderByName
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[ConstructorTagModifier '[StripPrefix "DRepsOrderBy", CamelToSnake]] DRepsOrderBy
+
+instance ToParamSchema DRepsOrderBy where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData DRepsOrderBy where
+  parseQueryParam = parseJsonEnumParam "invalid_parameter"

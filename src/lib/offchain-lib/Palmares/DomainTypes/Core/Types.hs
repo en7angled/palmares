@@ -6,6 +6,8 @@ module Palmares.DomainTypes.Core.Types where
 
 import Data.Aeson
 import Data.Aeson.Types qualified as AesonTypes
+import Data.ByteString qualified as BS
+import Data.ByteString.Base16 qualified as B16
 import Data.Char (isHexDigit)
 import Data.List.Extra
 import Data.Maybe (fromMaybe)
@@ -16,6 +18,7 @@ import Data.Swagger.ParamSchema
 import Data.Swagger.SchemaOptions (fromAesonOptions)
 import Data.Text hiding (init, tail)
 import Data.Text as T
+import Data.Text.Encoding qualified as TE
 import Data.Text.Read qualified as TRead
 import Data.Time (UTCTime)
 import Database.Persist.TH
@@ -182,6 +185,16 @@ instance ToSchema DRepId where
 
 instance ToParamSchema DRepId where
   toParamSchema _ = toParamSchema (Proxy :: Proxy Text)
+
+-- | The CIP-129 id of a credential the @palmares@ views published as hex.
+--
+-- 'Nothing' when the text is not 28 bytes of hex, which cannot happen for a value read out of
+-- @drep_hash.raw@ — so a decoder that gets 'Nothing' has found a view and a DTO disagreeing, and
+-- should fail naming the field rather than publish something that is not an identifier.
+drepIdFromHex :: Bool -> Text -> Maybe DRepId
+drepIdFromHex hasScript hex = case B16.decode (TE.encodeUtf8 hex) of
+  Right raw | BS.length raw == 28 -> Just (DRepId (drepIdCip129 hasScript raw))
+  _ -> Nothing
 
 -- | The two reserved ledger voting options. They are not DReps — they hold no credential and
 -- cannot vote — but they do hold stake, and @palmares.drep_epoch_power@ publishes them, so a
@@ -414,6 +427,9 @@ instance ToSchema AnchorStatus where
 
 instance ToParamSchema AnchorStatus where
   toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData AnchorStatus where
+  parseUrlPiece = parseJsonEnumParam "invalid_parameter"
 
 -- | Which feed an activity row came from.
 --

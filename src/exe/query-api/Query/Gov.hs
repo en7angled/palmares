@@ -3,6 +3,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -55,6 +56,11 @@ module Query.Gov
     -- * Queries
     freshnessQuery,
     epochParamsQuery,
+
+    -- * DReps
+    drepSortSpec,
+    drepWhere,
+    listDReps,
   )
 where
 
@@ -77,12 +83,26 @@ import Database.Persist.Sql
     SqlPersistT,
     rawSql,
     runSqlPoolWithIsolation,
+    toPersistValue,
   )
 import Deriving.Aeson
 import Network.HTTP.Types.Header (Header)
 import Network.Wai (Middleware, mapResponseHeaders)
-import Palmares.DomainTypes.Transfer.QueryResponses (EpochParamsSummary (..), SyncStatus (..))
-import Palmares.WebAPI.Envelope (ErrorCode (..))
+import Palmares.DomainTypes.Core.Types
+  ( AnchorStatus,
+    DRepStatus (..),
+    GovActionId (..),
+  )
+import Palmares.DomainTypes.Transfer.Filters (DRepFilter (..))
+import Palmares.DomainTypes.Transfer.OrderBy (DRepsOrderBy (..), SortOrder)
+import Palmares.DomainTypes.Transfer.QueryResponses
+  ( DRepSummary,
+    EpochParamsSummary (..),
+    SyncStatus (..),
+  )
+import Palmares.Utils (jsonTag)
+import Palmares.WebAPI.Envelope (ErrorCode (..), Page (..))
+import Query.Common (Limit, Offset, SortSpec (..), likePat, orderClause)
 import System.Environment (lookupEnv)
 import System.IO (hPutStrLn, stderr)
 import Text.Read (readMaybe)
@@ -341,3 +361,156 @@ syncStatusOf f isReady =
       syncIsReady = isReady,
       syncSource = "cardano-db-sync"
     }
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /dreps
+
+-- | The ordering each @order_by@ value means, as a TOTAL function over a closed enum.
+--
+-- This is the only way a column name reaches 'orderClause', and therefore the only reason
+-- splicing one into SQL is safe. The tiebreaker is the same for every ordering, because what it
+-- has to do is break ties, not add a second sort key a client asked for.
+--
+-- @NULLS LAST@ on the three rate-like columns: a DRep with no participation rate belongs after
+-- one with 0%, in both directions. On @given_name@ for the same reason — an unnamed DRep is not
+-- alphabetically first.
+drepSortSpec :: DRepsOrderBy -> SortSpec
+drepSortSpec = \case
+  DRepsOrderById -> SortSpec "d.drep_hash_id" False tie
+  DRepsOrderByVotingPower -> SortSpec "m.voting_power" True tie
+  DRepsOrderByDelegatorCount -> SortSpec "m.delegator_count" False tie
+  DRepsOrderByParticipationRate -> SortSpec "m.participation_rate" True tie
+  DRepsOrderByRationaleRate -> SortSpec "m.rationale_rate" True tie
+  DRepsOrderByRegisteredAt -> SortSpec "d.first_cert_slot" True tie
+  DRepsOrderByVotesCast -> SortSpec "m.votes_cast" False tie
+  DRepsOrderByName -> SortSpec "d.given_name" True tie
+  where
+    tie = "d.drep_hash_id"
+
+-- | The FROM clause, shared by the page and the count.
+--
+-- Shared deliberately, and this is F-17's root-cause fix rather than a tidiness measure: a count
+-- computed over a different join than the page is a total that disagrees with the rows, and the
+-- disagreement only shows up as a paginator that offers a page which comes back empty.
+drepFrom :: Text
+drepFrom =
+  " FROM palmares.drep d \
+  \ JOIN palmares.drep_metrics m ON m.drep_hash_id = d.drep_hash_id \
+  \ LEFT JOIN palmares.anchor a ON a.voting_anchor_id = d.voting_anchor_id "
+
+-- | The @WHERE@ fragment and its parameters, in placeholder order.
+--
+-- @never_registered@ credentials are excluded by an unconditional clause, not by the status
+-- filter: they exist in @drep_hash@ only because something delegated to them, @palmares.drep@'s
+-- own documentation says they are not DReps, and no 'Core.DRepStatus' value names them — which is
+-- exactly why the exclusion cannot be left to the status CASE.
+drepWhere :: DRepFilter -> (Text, [PersistValue])
+drepWhere f =
+  let clauses =
+        concat
+          [ -- Unconditional, and it has to be explicit: the status CASE below has no arm for a
+            -- credential with no certificate, so without this they fall through to 'inactive' and
+            -- the default page publishes 7 non-DReps as inactive ones. Measured: the total read
+            -- 301 instead of 294 until this line existed.
+            [("d.registration_status <> 'never_registered'", [])],
+            inClause statusExpr effectiveStatus,
+            inClause "a.verdict" (drepFilterAnchorStatus f),
+            one "d.has_script = ?" (drepFilterHasScript f),
+            one "m.voting_power >= ?" (drepFilterMinVotingPower f),
+            one "m.voting_power <= ?" (drepFilterMaxVotingPower f),
+            one "m.delegator_count >= ?" (drepFilterMinDelegators f),
+            one "m.participation_rate >= ?" (drepFilterMinParticipationRate f),
+            one "m.rationale_rate >= ?" (drepFilterMinRationaleRate f),
+            one "d.first_cert_time < ?" (drepFilterRegisteredBefore f),
+            one "d.first_cert_time > ?" (drepFilterRegisteredAfter f),
+            one "m.age_days >= ?" (drepFilterMinAgeDays f),
+            one "d.language = ?" (drepFilterLanguage f),
+            votedClause True (drepFilterVotedOn f),
+            votedClause False (drepFilterNotVotedOn f),
+            one
+              "EXISTS (SELECT 1 FROM palmares.drep_epoch_power p \
+              \ WHERE p.drep_hash_id = d.drep_hash_id AND p.epoch_no = ? AND p.amount > 0)"
+              (drepFilterActiveInEpoch f),
+            one "lower(d.given_name) LIKE ?" (likePat <$> drepFilterQ f)
+          ]
+   in ("WHERE " <> T.intercalate " AND " (map fst clauses), concatMap snd clauses)
+  where
+    one sql = maybe [] (\v -> [(sql, [toPersistValue v])])
+
+    -- Placeholders are EXPANDED rather than bound as one array parameter. persistent's
+    -- @PersistField [a]@ serialises a list as JSON text, which @= ANY(?)@ cannot read, and an
+    -- expanded @IN (?, ?, ?)@ needs no backend-specific array encoding at all. The empty list
+    -- yields NO clause, which is what makes "no status given" mean "any status".
+    inClause col vs
+      | null vs = []
+      | otherwise =
+          [ ( col <> " IN (" <> T.intercalate ", " (map (const "?") vs) <> ")",
+              map (toPersistValue . jsonTag) vs
+            )
+          ]
+
+    -- The default. See DRepFilter's haddock for why it is not "every credential".
+    effectiveStatus
+      | null (drepFilterStatus f) = [DRepActive, DRepInactive]
+      | otherwise = drepFilterStatus f
+
+    -- status is not a column: it is `registration_status` and `is_active` composed, and the
+    -- composition lives HERE in one expression rather than in both the projection and the filter,
+    -- so a page cannot show a status the filter would have excluded.
+    statusExpr =
+      "(CASE WHEN d.registration_status = 'retired' THEN 'retired' \
+      \      WHEN d.is_active THEN 'active' ELSE 'inactive' END)"
+
+    votedClause wanted = maybe [] $ \(GovActionId gid) ->
+      let (txHex, ix) = T.breakOn "#" gid
+          predicate =
+            (if wanted then "" else "NOT ")
+              <> "EXISTS (SELECT 1 FROM palmares.vote v \
+                 \ JOIN palmares.gov_action g ON g.gov_action_id = v.gov_action_id \
+                 \ WHERE v.drep_voter_id = d.drep_hash_id \
+                 \   AND g.tx_hash = decode(?, 'hex') AND g.index = ?)"
+       in [(predicate, [toPersistValue txHex, toPersistValue (T.drop 1 ix)])]
+
+-- | One page of DReps, with a total computed over the same predicate.
+listDReps ::
+  DRepFilter ->
+  (DRepsOrderBy, SortOrder) ->
+  (Limit, Offset) ->
+  SqlPersistT IO (Page DRepSummary)
+listDReps f (ob, so) (lim, off) = do
+  items <-
+    queryJson
+      ( "SELECT row_to_json(x)::text FROM ( SELECT "
+          <> drepProjection
+          <> drepFrom
+          <> whereSql
+          <> " "
+          <> orderClause (drepSortSpec ob) so
+          <> " LIMIT ? OFFSET ? ) x"
+      )
+      (params <> [toPersistValue lim, toPersistValue off])
+  totals <- rawSql ("SELECT count(*)::int" <> drepFrom <> whereSql) params
+  let total = case totals of
+        (Single n : _) -> n
+        [] -> 0
+  pure (Page items (Just total) lim off Nothing)
+  where
+    (whereSql, params) = drepWhere f
+
+-- | The projection list. Keys are 'DRepSummary''s wire names; see rule 2 in the module header.
+drepProjection :: Text
+drepProjection =
+  " encode(d.drep_raw, 'hex') AS hex, \
+  \ d.has_script, \
+  \ (CASE WHEN d.registration_status = 'retired' THEN 'retired' \
+  \       WHEN d.is_active THEN 'active' ELSE 'inactive' END) AS status, \
+  \ d.is_active, d.active_until_epoch, d.given_name, d.image_url AS image_url, d.language, \
+  \ a.verdict AS anchor_status, \
+  \ (d.first_cert_time AT TIME ZONE 'UTC') AS registered_at, \
+  \ floor(m.age_days)::int AS age_days, \
+  \ m.voting_power, m.voting_power_epoch, m.delegator_count, \
+  \ m.eligible_actions, m.votes_cast, m.participation_rate, m.rationale_rate, \
+  \ m.open_actions_unvoted, \
+  \ (m.last_vote_at AT TIME ZONE 'UTC') AS last_vote_at, \
+  \ m.as_of_epoch "

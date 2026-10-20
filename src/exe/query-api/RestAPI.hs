@@ -23,17 +23,30 @@ module RestAPI where
 
 import Control.Lens hiding (Context)
 import Data.Proxy (Proxy (..))
-import Data.Swagger
+-- `hiding (Header)`: Data.Swagger has its own Header type and servant's is the one a route
+-- means. The alternative is a qualified import of every lens used in apiSwagger.
+import Data.Swagger hiding (Header)
 import Data.Text (Text)
 import Network.Wai (Application)
 import Network.Wai.Middleware.Servant.Options (provideOptions)
-import Palmares.DomainTypes.Transfer.QueryResponses (StatusResponse (..))
+import Data.Int (Int64)
+import Data.Maybe (fromMaybe)
+import Data.Time (UTCTime)
+import Palmares.DomainTypes.Core.Types (AnchorStatus, DRepStatus, GovActionId)
+import Palmares.DomainTypes.Transfer.Filters (DRepFilter (..), emptyDRepFilter)
+import Palmares.DomainTypes.Transfer.OrderBy (DRepsOrderBy (..), SortOrder (..))
+import Palmares.DomainTypes.Transfer.QueryResponses (DRepSummary, StatusResponse (..))
 import Palmares.Metrics.Catalog (MetricFormula, resolvedMetricCatalog)
+import Palmares.WebAPI.CSV (CSV)
+import Palmares.WebAPI.Envelope (Page)
+import Query.Common (boundsFor, checkRanges, normalizeLimitOffset, normalizeQ)
+import Query.Csv ()
+import Query.Gov (listDReps)
 import Palmares.WebAPI.CORS (CorsConfig, mkCorsMiddleware)
 import Palmares.WebAPI.ServiceProbe (ServiceProbe, ServiceProbeStatus)
 import Query.Gov (Freshness, freshnessMiddleware)
 import Query.ServiceStatus (getHealthProbe, getReadyProbe, getStatusQuery)
-import QueryAppMonad (QueryAppContext (..), QueryAppMonad, runAppMonad)
+import QueryAppMonad (QueryAppContext (..), QueryAppMonad, runAppMonad, runRead, throwApi)
 import Servant
 import Servant.Swagger
 import Servant.Swagger.UI
@@ -97,6 +110,106 @@ metricsFormulasServer = pure (either error id resolvedMetricCatalog)
 
 ------------------------------------------------------------------------------------------------
 
+--  DReps
+
+------------------------------------------------------------------------------------------------
+
+-- | @GET \/dreps@ — the delegation-discovery list.
+--
+-- @Header "Accept" Text@ is load-bearing rather than informational: servant resolves content
+-- negotiation inside the @Verb@ server instance and never tells the handler which type it chose,
+-- so reading the header is the only way a CSV request can get its own (much higher) page ceiling.
+--
+-- Repeatable parameters are OR within a parameter and AND across parameters, and an EMPTY list is
+-- no filter rather than "match nothing".
+type DRepsAPI =
+  Summary "DReps"
+    :> Description
+         "Registered delegate representatives with their track record: participation, rationale \
+         \coverage, vote latency, voting power, delegator count and age. Default ordering is \
+         \voting_power descending, because this list is what a delegator chooses from. Statuses \
+         \default to the two registered ones (active and inactive) -- preprod has 511 retired \
+         \DReps against 294 registered, so including them by default would make the first page \
+         \mostly useless; ask for them with status=retired. The two reserved ledger options \
+         \(drep_always_abstain, drep_always_no_confidence) are never listed: they hold stake but \
+         \no credential, and are published by /drep-power instead."
+    :> "dreps"
+    :> Header "Accept" Text
+    :> QueryParam "limit" Int
+    :> QueryParam "offset" Int
+    :> QueryParams "status" DRepStatus
+    :> QueryParams "anchor_status" AnchorStatus
+    :> QueryParam "has_script" Bool
+    :> QueryParam "min_voting_power" Int64
+    :> QueryParam "max_voting_power" Int64
+    :> QueryParam "min_delegators" Int
+    :> QueryParam "min_participation_rate" Double
+    :> QueryParam "min_rationale_rate" Double
+    :> QueryParam "registered_before" UTCTime
+    :> QueryParam "registered_after" UTCTime
+    :> QueryParam "min_age_days" Int
+    :> QueryParam "voted_on" GovActionId
+    :> QueryParam "not_voted_on" GovActionId
+    :> QueryParam "language" Text
+    :> QueryParam "active_in_epoch" Int
+    :> QueryParam "q" Text
+    :> QueryParam "order_by" DRepsOrderBy
+    :> QueryParam "sort_order" SortOrder
+    :> Get '[JSON, CSV] (Page DRepSummary)
+
+handleGetDReps ::
+  Maybe Text ->
+  Maybe Int ->
+  Maybe Int ->
+  [DRepStatus] ->
+  [AnchorStatus] ->
+  Maybe Bool ->
+  Maybe Int64 ->
+  Maybe Int64 ->
+  Maybe Int ->
+  Maybe Double ->
+  Maybe Double ->
+  Maybe UTCTime ->
+  Maybe UTCTime ->
+  Maybe Int ->
+  Maybe GovActionId ->
+  Maybe GovActionId ->
+  Maybe Text ->
+  Maybe Int ->
+  Maybe Text ->
+  Maybe DRepsOrderBy ->
+  Maybe SortOrder ->
+  QueryAppMonad (Page DRepSummary)
+handleGetDReps accept limit offset status anchorStatus hasScript minPower maxPower minDelegators minPart minRat regBefore regAfter minAge votedOn notVotedOn lang activeEpoch q orderBy sortOrder = do
+  q' <- either throwApi pure (normalizeQ q)
+  _ <- either throwApi pure (checkRanges regAfter regBefore Nothing Nothing)
+  bounds <- either throwApi pure (normalizeLimitOffset (boundsFor accept) limit offset)
+  let filt =
+        emptyDRepFilter
+          { drepFilterStatus = status,
+            drepFilterAnchorStatus = anchorStatus,
+            drepFilterHasScript = hasScript,
+            drepFilterMinVotingPower = minPower,
+            drepFilterMaxVotingPower = maxPower,
+            drepFilterMinDelegators = minDelegators,
+            drepFilterMinParticipationRate = minPart,
+            drepFilterMinRationaleRate = minRat,
+            drepFilterRegisteredBefore = regBefore,
+            drepFilterRegisteredAfter = regAfter,
+            drepFilterMinAgeDays = minAge,
+            drepFilterVotedOn = votedOn,
+            drepFilterNotVotedOn = notVotedOn,
+            drepFilterLanguage = lang,
+            drepFilterActiveInEpoch = activeEpoch,
+            drepFilterQ = q'
+          }
+  runRead (listDReps filt (fromMaybe DRepsOrderByVotingPower orderBy, fromMaybe Desc sortOrder) bounds)
+
+drepsServer :: ServerT DRepsAPI QueryAppMonad
+drepsServer = handleGetDReps
+
+------------------------------------------------------------------------------------------------
+
 --  Core Function API
 
 ------------------------------------------------------------------------------------------------
@@ -105,11 +218,13 @@ metricsFormulasServer = pure (either error id resolvedMetricCatalog)
 type CoreFunctionAPI =
   StatusAPI
     :<|> MetricsFormulasAPI
+    :<|> DRepsAPI
 
 coreFunctionServer :: ServerT CoreFunctionAPI QueryAppMonad
 coreFunctionServer =
   statusServer
     :<|> metricsFormulasServer
+    :<|> drepsServer
 
 ------------------------------------------------------------------------------------------------
 

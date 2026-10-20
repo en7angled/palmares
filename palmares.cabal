@@ -448,6 +448,7 @@ test-suite test
     , servant-server
     , tasty
     , tasty-hunit
+    , time
     , wai
     , wai-cors
     , warp

@@ -44,8 +44,7 @@ main = do
     connStr <- fromMaybe defaultConnStr <$> lookupEnv "PG_CONN_STR"
     pool <- runStdoutLoggingT $ createPostgresqlPool (T.encodeUtf8 (T.pack connStr)) 10
     mDeployedCtx <- decodeConfigEnvOrFile "DEPLOYED_VALIDATORS_CONFIG" defaultTxBuildingContextFile
-    liveProj <- (Just "true" ==) <$> lookupEnv "LIVE_PROJECTION"
-    let appContext = QueryAppContext authContext providerContext pool mDeployedCtx liveProj
+    let appContext = QueryAppContext authContext providerContext pool mDeployedCtx
     let host = "0.0.0.0"
     port <- getPortFromEnvOrDefault 8083
 

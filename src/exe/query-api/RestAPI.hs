@@ -238,7 +238,9 @@ handleGetActivity ::
 handleGetActivity limit offset eventType actor since = do
   let limitOffset = C.normalizeLimitOffset (Just (fromMaybe 20 limit)) offset
       actFilter = activityFilterFromParams eventType actor since
-  P.getActivityFeed limitOffset actFilter
+  -- One slot config per request; row conversion is pure (fix #5).
+  slotCfg <- requestSlotConfig
+  P.getActivityFeed slotCfg limitOffset actFilter
 
 activityServer :: ServerT ActivityAPI QueryAppMonad
 activityServer = handleGetActivity

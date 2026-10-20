@@ -15,7 +15,9 @@ import Data.Time
 import Database.Persist.Sql (ConnectionPool, SqlPersistT, Single (..), rawSql, runSqlPool)
 import Control.Exception (SomeException, displayException, try)
 import Data.Typeable (cast)
+import GeniusYield.TxBuilder.Class (slotConfig)
 import GeniusYield.TxBuilder.Errors (GYTxMonadException (GYApplicationException))
+import GeniusYield.Types.SlotConfig (GYSlotConfig)
 import Servant
 -- import System.Directory.Extra
 import Palmares.TxBuilding.Context
@@ -33,8 +35,7 @@ data QueryAppContext = QueryAppContext
   { authContext :: AuthContext, -- ^ Basic-auth credentials for protected routes
     providerContext :: ProviderCtx, -- ^ Cardano provider for live on-chain queries
     pgPool :: ConnectionPool, -- ^ PostgreSQL connection pool for projected data
-    deployedScriptsCtx :: Maybe DeployedScriptsContext, -- ^ Deployed validator script references (when available)
-    liveProjection :: Bool -- ^ Use live on-chain queries instead of projected data (default: False)
+    deployedScriptsCtx :: Maybe DeployedScriptsContext -- ^ Deployed validator script references (when available)
   }
 
 newtype QueryAppMonad a = QueryAppMonad {unAppMonad :: ReaderT QueryAppContext Servant.Handler a}
@@ -54,6 +55,12 @@ instance MonadReader QueryAppContext QueryAppMonad where
 
   local :: (QueryAppContext -> QueryAppContext) -> QueryAppMonad a -> QueryAppMonad a
   local f (QueryAppMonad app) = QueryAppMonad (local f app)
+
+-- | The chain's slot configuration, fetched once per request. Row-level time conversion is
+-- pure ('Palmares.TxBuilding.Utils.slotToUTC'), so a handler that renders a page of rows must
+-- fetch this once and map, never call the monadic 'slotToBeginTime' per row.
+requestSlotConfig :: QueryAppMonad GYSlotConfig
+requestSlotConfig = asks providerContext >>= \ctx -> liftIO (runQuery ctx slotConfig)
 
 -- | Run an IO action, mapping a bare 'TxBuildingException' to its HTTP status.
 -- Query handlers throw @TxBuildingException@ directly (no @GYApplicationException@

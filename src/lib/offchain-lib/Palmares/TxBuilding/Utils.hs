@@ -6,13 +6,16 @@ import Control.Monad.Except (throwError)
 import Data.Text
 import Data.Text.IO qualified
 import GeniusYield.TxBuilder.Class (enclosingSlotFromTime', slotToBeginTime)
+import GeniusYield.Types.SlotConfig (GYSlotConfig, enclosingSlotFromTimePure, slotToBeginTimePure)
 import GeniusYield.TxBuilder.Errors (GYTxMonadException (GYApplicationException))
 import GeniusYield.TxBuilder.Query.Class (GYTxQueryMonad)
-import GeniusYield.Types (GYAddress, GYAssetClass (..), GYDatum, GYExtendedPaymentSigningKey, GYMintingPolicyId, GYNetworkId (..), GYOutDatum (..), GYPaymentKeyHash, GYSlot, GYTokenName, GYTxOutRef, GYUTxO, GYValue, mintingPolicyIdFromCurrencySymbol, paymentKeyHash, tokenNameFromPlutus, txOutRefToPlutus, utxoOutDatum, utxoValue, valueAssetClass, valueToPlutus)
+import GeniusYield.Types (GYAddress, GYAssetClass (..), GYDatum, GYExtendedPaymentSigningKey, GYMintingPolicyId, GYNetworkId (..), GYOutDatum (..), GYPaymentKeyHash, GYSlot, GYTokenName, slotToInteger, unsafeSlotFromInteger, GYTxOutRef, GYUTxO, GYValue, mintingPolicyIdFromCurrencySymbol, paymentKeyHash, tokenNameFromPlutus, txOutRefToPlutus, utxoOutDatum, utxoValue, valueAssetClass, valueToPlutus)
 import GeniusYield.Types.Address (addressFromPaymentKeyHash)
 import GeniusYield.Types.Datum (datumToPlutus')
 import GeniusYield.Types.Key (extendedPaymentSigningKeyToApi, paymentVerificationKeyFromApi)
-import GeniusYield.Types.Time (timeFromPlutus, timeToPlutus)
+import Data.Time (UTCTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
+import GeniusYield.Types.Time (timeFromPOSIX, timeFromPlutus, timeToPOSIX, timeToPlutus)
 import GeniusYield.Types.Wallet
 import Palmares.Onchain.CIP68 (CIP68Datum)
 import Palmares.Onchain.Protocol qualified as Onchain
@@ -61,6 +64,18 @@ authenticateStateUTxO ourPolicy ac v =
   case ac of
     GYToken pid _ -> pid == ourPolicy && valueAssetClass v ac == 1
     GYLovelace -> False
+
+-- | Chain time for a stored @created_at_slot@. Pure, so a handler maps a whole page with one
+-- slot config instead of calling the monadic 'slotToBeginTime' once per row.
+slotToUTC :: GYSlotConfig -> Integer -> UTCTime
+slotToUTC cfg = posixSecondsToUTCTime . timeToPOSIX . slotToBeginTimePure cfg . unsafeSlotFromInteger
+
+-- | A @since@ query parameter as a slot, so the comparison happens on the indexed column.
+-- A time before the system start clamps to slot 0 — i.e. "no lower bound", which is what
+-- @since@ means.
+utcToSlot :: GYSlotConfig -> UTCTime -> Integer
+utcToSlot cfg =
+  maybe 0 slotToInteger . enclosingSlotFromTimePure cfg . timeFromPOSIX . utcTimeToPOSIXSeconds
 
 pPOSIXTimeFromGYSlot :: (GYTxQueryMonad m) => GYSlot -> m POSIXTime
 pPOSIXTimeFromGYSlot = (timeToPlutus <$>) . slotToBeginTime

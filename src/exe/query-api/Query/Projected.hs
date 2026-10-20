@@ -44,12 +44,13 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     SearchTarget (..),
   )
 import Palmares.DomainTypes.Transfer.Types
-import GeniusYield.Types (GYTime, timeFromPOSIX, timeToPOSIX)
+import GeniusYield.Types (GYSlotConfig, GYTime, timeFromPOSIX, timeToPOSIX)
 import Query.Common qualified as C
 import QueryAppMonad
 import Palmares.Storage
 import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
 import Palmares.Utils (stringFromJSON)
+import Palmares.TxBuilding.Utils (slotToUTC, utcToSlot)
 import Palmares.WebAPI.Utils (escapeLikePattern)
 
 
@@ -122,8 +123,8 @@ applyProfileFilter (Just F.ProfileFilter {..}) pp = do
                 ||. (lower_ (unsafeSqlCastAs "text" (pp ^. ProfileProjectionProfileId)) `like` pat)
          in where_ selfMatch
     )
-  -- Filter by registration date (insertedAt >= cutoff)
-  for_ profileFilterRegisteredAfter (\cutoff -> where_ (pp ^. ProfileProjectionInsertedAt >=. val cutoff))
+  -- Filter by registration slot (created_at_slot >= cutoff); see fix #5 in Storage.hs
+  for_ profileFilterRegisteredAfterSlot (\cutoff -> where_ (pp ^. ProfileProjectionCreatedAtSlot >=. val cutoff))
 
 
 
@@ -241,7 +242,7 @@ getProfiles maybeLimitOffset maybeProfileFilter maybeOrder = do
                   ProfilesOrderByName -> orderBy [orderByDir so (pp ^. ProfileProjectionProfileName)]
                   ProfilesOrderByDescription -> orderBy [orderByDir so (pp ^. ProfileProjectionProfileDescription)]
                   ProfilesOrderByType -> orderBy [orderByDir so (pp ^. ProfileProjectionProfileType)]
-                  ProfilesOrderByRegisteredAt -> orderBy [orderByDir so (pp ^. ProfileProjectionInsertedAt)]
+                  ProfilesOrderByRegisteredAt -> orderBy [orderByDir so (pp ^. ProfileProjectionCreatedAtSlot)]
             applyLimitOffset maybeLimitOffset
             pure pp
           let toProfile pp =
@@ -345,7 +346,7 @@ profileSearchFilter pt q =
       C.profileFilterName = Nothing,
       C.profileFilterDescription = Nothing,
       C.profileFilterTextSearch = Just q,
-      C.profileFilterRegisteredAfter = Nothing
+      C.profileFilterRegisteredAfterSlot = Nothing
     }
 
 achievementSearchFilter :: Text -> F.AchievementFilter
@@ -501,18 +502,20 @@ searchProjected q
 -- @profile_projection@.  Merges + sorts by timestamp descending in Haskell.
 getActivityFeed ::
   (MonadIO m, MonadReader QueryAppContext m) =>
+  GYSlotConfig ->
   Maybe (C.Limit, C.Offset) ->
   Maybe F.ActivityFilter ->
   m [ActivityEventResponse]
-getActivityFeed maybeLimitOffset maybeFilter = do
+getActivityFeed slotCfg maybeLimitOffset maybeFilter = do
   pool <- asks pgPool
   let wantType et = case maybeFilter >>= C.activityFilterEventType of
         Nothing -> True
         Just t -> t == et
       actorFilter = maybeFilter >>= C.activityFilterActor
-      sinceUTC = maybeFilter >>= C.activityFilterSince >>= \t -> Just (posixSecondsToUTCTime (timeToPOSIX t))
+      -- `since` becomes a slot BEFORE the SQL, so the created_at_slot index is used (fix #5).
+      sinceSlot = utcToSlot slotCfg . posixSecondsToUTCTime . timeToPOSIX <$> (maybeFilter >>= C.activityFilterSince)
   -- Intermediate type: event without resolved names.
-  -- (eventType, actorId, targetId, timestamp, title, body)
+  -- (eventType, actorId, targetId, createdAtSlot, title, body)
   rawEvents <-
     liftIO $
       runSqlPool
@@ -524,15 +527,15 @@ getActivityFeed maybeLimitOffset maybeFilter = do
                   rows <- select $ do
                     pp <- from $ table @ProfileProjection
                     for_ actorFilter (\a -> where_ (pp ^. ProfileProjectionProfileId ==. val a))
-                    for_ sinceUTC (\s -> where_ (pp ^. ProfileProjectionInsertedAt >. val s))
-                    orderBy [Database.Esqueleto.Experimental.desc (pp ^. ProfileProjectionInsertedAt)]
+                    for_ sinceSlot (\s -> where_ (pp ^. ProfileProjectionCreatedAtSlot >. val s))
+                    orderBy [Database.Esqueleto.Experimental.desc (pp ^. ProfileProjectionCreatedAtSlot)]
                     Database.Esqueleto.Experimental.limit 200
                     pure pp
                   pure
                     [ ( EvtProfileCreated,
                         profileProjectionProfileId p,
                         Nothing,
-                        profileProjectionInsertedAt p,
+                        profileProjectionCreatedAtSlot p,
                         "Profile Created" :: Text,
                         Just $ "New " <> T.toLower (T.pack (show (profileProjectionProfileType p))) <> " profile registered"
                       )
@@ -547,15 +550,15 @@ getActivityFeed maybeLimitOffset maybeFilter = do
                   rows <- select $ do
                     ap_ <- from $ table @AchievementProjection
                     for_ actorFilter (\a -> where_ (ap_ ^. AchievementProjectionAwardedToProfileId ==. val a))
-                    for_ sinceUTC (\s -> where_ (ap_ ^. AchievementProjectionInsertedAt >. val s))
-                    orderBy [Database.Esqueleto.Experimental.desc (ap_ ^. AchievementProjectionInsertedAt)]
+                    for_ sinceSlot (\s -> where_ (ap_ ^. AchievementProjectionCreatedAtSlot >. val s))
+                    orderBy [Database.Esqueleto.Experimental.desc (ap_ ^. AchievementProjectionCreatedAtSlot)]
                     Database.Esqueleto.Experimental.limit 200
                     pure ap_
                   pure
                     [ ( evtType,
                         achievementProjectionAwardedToProfileId a,
                         Just (achievementProjectionAwardedByProfileId a),
-                        achievementProjectionInsertedAt a,
+                        achievementProjectionCreatedAtSlot a,
                         if achievementProjectionIsAccepted a then "Achievement Accepted" else ("Achievement Awarded" :: Text),
                         Just $ "Achievement: " <> achievementProjectionAchievementName a
                       )
@@ -584,12 +587,12 @@ getActivityFeed maybeLimitOffset maybeFilter = do
         pool
 
   let lookupName pid = M.lookup pid nameMap
-      toResponse (evtType, actorId, targetId, ts, title, body) =
+      toResponse (evtType, actorId, targetId, slot, title, body) =
         ActivityEventResponse
           { activityEventEventType = evtType,
             activityEventActorId = actorId,
             activityEventTargetId = targetId,
-            activityEventTimestamp = timeFromPOSIX (utcTimeToPOSIXSeconds ts),
+            activityEventTimestamp = timeFromPOSIX (utcTimeToPOSIXSeconds (slotToUTC slotCfg slot)),
             activityEventDetails =
               ActivityEventDetails
                 { activityEventDetailsTitle = title,

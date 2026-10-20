@@ -9,15 +9,18 @@ module UnitTests.ChainSyncReplay (chainSyncReplayTests) where
 import Data.Either (isLeft, isRight)
 import Data.Map qualified as Map
 import Data.Text (Text)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import GeniusYield.Types
   ( GYAssetClass (GYLovelace),
     GYMintingPolicyId,
+    GYSlotConfig,
+    simpleSlotConfig,
     valueFromLovelace,
     valueSingleton,
   )
 import Palmares.ChainSync.KupoAtlas (AtlasMatch (..), toGYAssetClass)
 import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..))
-import Palmares.TxBuilding.Utils (authenticateStateUTxO)
+import Palmares.TxBuilding.Utils (authenticateStateUTxO, slotToUTC, utcToSlot)
 import Palmares.Storage
   ( OnchainMatchEvent (..),
     onchainMatchEventCreatedOutputIndex,
@@ -98,6 +101,30 @@ authenticationTests =
         authenticateStateUTxO ourPolicy GYLovelace (valueFromLovelace 2_000_000) @?= False
     ]
 
+------------------------------------------------------------------------------------------------
+-- Inherited fix #5: 'rollbackTo' wipes and replays the projections, so a stored wall clock was
+-- re-stamped on every re-sync and silently renumbered the activity feed. @created_at_slot@ is
+-- the chain's own clock and is immune to replay, so it is the only time a projection row holds;
+-- these two converters turn it into wire time on read, and a @since@ param into a slot before
+-- the SQL so the indexed column is used.
+------------------------------------------------------------------------------------------------
+
+-- 1-second slots from the POSIX epoch, so the expected time IS the slot number.
+testSlotConfig :: GYSlotConfig
+testSlotConfig = simpleSlotConfig (posixSecondsToUTCTime 0) 1
+
+chainTimeTests :: TestTree
+chainTimeTests =
+  testGroup
+    "chain time on read (inherited fix #5)"
+    [ testCase "slotToUTC is the slot's begin time, from the slot alone" $
+        slotToUTC testSlotConfig 12345 @?= posixSecondsToUTCTime 12345,
+      testCase "slotToUTC is strictly monotone in the slot" $
+        compare (slotToUTC testSlotConfig 100) (slotToUTC testSlotConfig 101) @?= LT,
+      testCase "utcToSlot . slotToUTC is the identity on slot boundaries" $
+        utcToSlot testSlotConfig (slotToUTC testSlotConfig 777) @?= 777
+    ]
+
 chainSyncReplayTests :: TestTree
 chainSyncReplayTests =
   testGroup
@@ -110,5 +137,6 @@ chainSyncReplayTests =
           (replayOrder [ev 5 2 0, ev 5 1 3, ev 5 1 0])
           @?= [(1, 0), (1, 3), (2, 0)],
       valueConversionTests,
-      authenticationTests
+      authenticationTests,
+      chainTimeTests
     ]

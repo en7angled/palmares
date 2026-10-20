@@ -12,7 +12,6 @@ module Palmares.DomainTypes.Transfer.Filters
 where
 
 import Data.Text (Text)
-import Data.Time (UTCTime)
 import Palmares.DomainTypes.Core.Types
 import Palmares.DomainTypes.Transfer.OrderBy (ActivityEventType)
 import GeniusYield.Types (GYTime)
@@ -27,7 +26,11 @@ data ProfileFilter = ProfileFilter
     profileFilterName :: Maybe Text, -- ^ Exact or prefix name match
     profileFilterDescription :: Maybe Text, -- ^ Substring match on description
     profileFilterTextSearch :: Maybe Text, -- ^ Free-text search across name and description
-    profileFilterRegisteredAfter :: Maybe UTCTime -- ^ Registered on or after this timestamp
+    -- | Registered at or after this chain slot. A slot, not a timestamp: @created_at_slot@ is
+    -- the only time a projection row carries (inherited fix #5), and comparing on it keeps the
+    -- indexed column in play. Handlers translate a @since@ query param with
+    -- 'Palmares.TxBuilding.Utils.utcToSlot'.
+    profileFilterRegisteredAfterSlot :: Maybe Integer
   }
 
 -- | Optional filters for the achievements listing endpoint.
@@ -56,7 +59,7 @@ profileFilterFromParams profileRefs profileType q =
       profileFilterName = Nothing,
       profileFilterDescription = Nothing,
       profileFilterTextSearch = q,
-      profileFilterRegisteredAfter = Nothing
+      profileFilterRegisteredAfterSlot = Nothing
     }
 
 -- | Build achievement filter from query params.

@@ -26,7 +26,6 @@ import Data.List qualified as L
 import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Database.Persist
 import Database.Persist.Sql
@@ -111,7 +110,11 @@ OnchainMatchEvent
     UniqueKupoMatch createdSlot createdHeader createdTxId createdOutputIndex
     deriving Show
 
--- Projection-specific flattened tables (domain fields + created_at)
+-- Projection-specific flattened tables (domain fields + created_at).
+-- Inherited fix #5: @createdAtSlot@ is the ONLY time a projection row carries. A wall clock
+-- stamped at ingest is re-stamped by every 'rollbackTo' + replay, which silently renumbers
+-- anything ordered by it; the chain's slot is immune to replay. Readers convert with
+-- 'Palmares.TxBuilding.Utils.slotToUTC'.
 ProfileProjection
     createdAtSlot    Integer
     createdAtHash    Text
@@ -120,7 +123,6 @@ ProfileProjection
     profileDescription Text
     profileImageURI  Text
     profileType      ProfileType
-    insertedAt       UTCTime
     UniqueProfileProjection profileId
     deriving Show
 
@@ -138,7 +140,6 @@ AchievementProjection
     achievementDescription    Text
     achievementImageURI       Text
     otherMetadata             (Maybe AchievementOtherMetadataJson)
-    insertedAt                UTCTime
     UniqueAchievementProjection achievementId
     deriving Show
 |]
@@ -271,7 +272,6 @@ putKupoMatch km = do
 -- | Store a profile projection, upserting by profile ID.
 putProfileProjection :: (MonadIO m) => Integer -> Text -> Profile -> SqlPersistT m ()
 putProfileProjection createdSlot createdHash p = do
-  now <- liftIO getCurrentTime
   let ev =
         ProfileProjection
           createdSlot
@@ -281,13 +281,11 @@ putProfileProjection createdSlot createdHash p = do
           (profileDescription p)
           (profileImageURI p)
           (profileType p)
-          now
   upsertByUnique (UniqueProfileProjection . profileProjectionProfileId) ev
 
 -- | Store an achievement projection, upserting by achievement ID.
 putAchievementProjection :: (MonadIO m) => Integer -> Text -> Text -> Int -> Achievement -> SqlPersistT m ()
 putAchievementProjection createdSlot createdHash createdTxId createdOutIdx a = do
-  now <- liftIO getCurrentTime
   let ev =
         AchievementProjection
           createdSlot
@@ -303,7 +301,6 @@ putAchievementProjection createdSlot createdHash createdTxId createdOutIdx a = d
           (achievementDescription a)
           (achievementImageURI a)
           (Just $ AchievementOtherMetadataJson $ achievementOtherMetadata a)
-          now
   upsertByUnique (UniqueAchievementProjection . achievementProjectionAchievementId) ev
 
 -- | The single source of chain-replay order: sort raw matches by true chain order

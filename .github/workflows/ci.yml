@@ -115,6 +115,54 @@ jobs:
           cabal run -v0 exe:admin -- write-metrics-doc
           git diff --exit-code docs/metrics.md
 
+  # F1 check 3, over the seeded db-sync skeleton rather than the real synced database, so it
+  # blocks merges without needing preprod. The against-preprod run is the one that SIGNS check 3
+  # — the skeleton has empty tables, so it proves the statements parse and are self-consistent,
+  # not that they are stable over real rows.
+  #
+  # No Haskell build: this job reads resources/metric-formulas.json and resources/metrics/*.sql
+  # directly, which is the whole reason it can gate a pull request in a minute.
+  determinism:
+    runs-on: ubuntu-24.04-arm
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: devonly
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: psql
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      # The same two files the Haskell tests use, applied in the same order: db-sync's shape, then
+      # the palmares views over it. If the schema does not apply, this job fails before it can
+      # report anything about determinism, which is the right order of blame.
+      - name: db-sync skeleton and the palmares schema
+        run: |
+          set -euo pipefail
+          psql "$PG_CONN_STR" -v ON_ERROR_STOP=1 -q -f test/fixtures/dbsync-skeleton.sql
+          for f in sql/000_schema.sql sql/010_gov_views.sql sql/020_views.sql sql/030_metrics.sql; do
+            psql "$PG_CONN_STR" -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+        env:
+          PGPASSWORD: devonly
+          PG_CONN_STR: host=localhost user=postgres dbname=postgres port=5432
+
+      - name: every metric statement gives the same answer twice
+        run: scripts/check_determinism.sh
+        env:
+          PGPASSWORD: devonly
+          PG_CONN_STR: host=localhost user=postgres dbname=postgres port=5432
+
   secrets:
     runs-on: ubuntu-24.04-arm
     steps:

@@ -26,6 +26,8 @@ build-type:    Simple
 extra-source-files:
   NOTICE
   licenses/LICENSE.decentralized-belt-system.MIT
+  resources/metric-formulas.json
+  resources/metrics/*.sql
   sql/*.sql
   test/fixtures/*.sql
 
@@ -195,6 +197,7 @@ library offchain-lib
     Palmares.DomainTypes.Transfer.QueryResponses
     Palmares.DomainTypes.Transfer.Types
     Palmares.Ingestion
+    Palmares.Metrics.Catalog
     Palmares.Storage
     Palmares.TxBuilding.Context
     Palmares.TxBuilding.Conversions
@@ -216,6 +219,7 @@ library offchain-lib
     , chainsync-lib
     , containers
     , deriving-aeson
+    , file-embed
     , extra
     , lens
     , mtl
@@ -434,6 +438,7 @@ test-suite test
   --   UnitTests.Cleanup
     UnitTests.Conversions
     UnitTests.GovIds
+    UnitTests.MetricCatalog
     UnitTests.Views
   --   UnitTests.Dispute
   --   UnitTests.Oracle

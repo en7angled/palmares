@@ -480,6 +480,9 @@ WITH resolved AS (
     -- not a per-transaction counter in this data: 3,243,802 CC rows carry only 108,176 distinct
     -- (tx_id, index) pairs.
     v.id AS voting_procedure_id,
+    -- The DRep's own row id, NULL for the other two roles. Carried so the metric SQL can bind one
+    -- parameter (`drep_hash_id`) instead of also carrying the raw credential for the match.
+    v.drep_voter AS drep_voter_id,
     v.gov_action_proposal_id AS gov_action_id,
     v.voter_role,
     -- The credential that signed the vote.
@@ -529,6 +532,7 @@ identified AS (
 )
 SELECT
   i.voting_procedure_id,
+  i.drep_voter_id,
   i.gov_action_id,
   i.voter_role,
   i.voter_id_hash,

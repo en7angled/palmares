@@ -10,6 +10,7 @@ import UnitTests.ApiHardening (apiHardeningTests)
 import UnitTests.ChainSyncReplay (chainSyncReplayTests)
 import UnitTests.Conversions (conversionsTests)
 import UnitTests.GovIds (govIdsTests)
+import UnitTests.MetricCatalog qualified as MetricCatalog
 import UnitTests.StorageRoundtrip (storageRoundtripTests)
 import UnitTests.ThresholdMap qualified as ThresholdMap
 import UnitTests.Views qualified as Views
@@ -24,6 +25,7 @@ unitTests =
       chainSyncReplayTests,
       conversionsTests,
       govIdsTests,
+      MetricCatalog.tests,
       storageRoundtripTests,
       ThresholdMap.tests,
       Views.tests

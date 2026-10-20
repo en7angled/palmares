@@ -32,7 +32,8 @@ import Palmares.TxBuilding.Interactions (Interaction)
 import Palmares.TxBuilding.Operations (ensureDeployedScriptsAreReady)
 import Palmares.TxBuilding.Transactions (interactionToHexEncodedCBOR, submitTx)
 import Palmares.WebAPI.Auth (AuthContext)
-import Palmares.WebAPI.Errors (genericErrorMessage, mkServantErr)
+import Palmares.WebAPI.Envelope (ErrorCode (..))
+import Palmares.WebAPI.Errors (mkServantErr, mkServantErrBody)
 import Palmares.WebAPI.ServiceProbe (ServiceProbeStatus (..))
 
 ------------------------------------------------------------------------------------------------
@@ -68,7 +69,7 @@ instance MonadReader InteractionAppContext InteractionAppMonad where
 -- stable @code@; @message@ stays available for display/fallback text matching.
 txBuildingServantErr :: Int -> TxBuildingException -> ServerError
 txBuildingServantErr status txEx =
-  mkServantErr status $ BL8.unpack $ encode $ object ["code" .= txBuildingExceptionCode txEx, "message" .= displayException txEx]
+  mkServantErrBody status $ encode $ object ["code" .= txBuildingExceptionCode txEx, "message" .= displayException txEx]
 
 -- | Run an IO action in the TxBuilding context with standardized error handling.
 -- Maps 'TxBuildingException' constructors to appropriate HTTP status codes
@@ -93,16 +94,15 @@ runWithTxErrorHandling action = InteractionAppMonad $ do
         GYNoSuitableCollateralException {} -> insufficientFunds ex
         _ -> do
           liftIO $ putStrLn $ "Unexpected exception: " <> show ex
-          throwError $ mkServantErr 500 (genericErrorMessage 500)
+          throwError $ mkServantErr 500 InternalError
     Right ok -> pure ok
   where
     insufficientFunds ex = do
       liftIO $ putStrLn $ "Insufficient funds (400) [InsufficientFunds]: " <> show ex
       throwError $
-        mkServantErr 400 $
-          BL8.unpack $
-            encode $
-              object
+        mkServantErrBody 400 $
+          encode $
+            object
                 [ "code" .= ("InsufficientFunds" :: Text),
                   "message"
                     .= ("Not enough preview ADA in your wallet to cover the profile fee, deposit and transaction cost." :: Text)
@@ -151,7 +151,7 @@ checkDeployedScriptsAreReady = do
                 throwError $ txBuildingServantErr status txEx
           _ -> do
             liftIO $ putStrLn $ "checkDeployedScriptsAreReady GYTxMonadException: " <> show ex
-            throwError $ mkServantErr 503 (genericErrorMessage 503)
+            throwError $ mkServantErr 503 NotReady
       Right () ->
         return $
           ServiceProbeStatus

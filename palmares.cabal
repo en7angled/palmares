@@ -253,6 +253,7 @@ library webapi-lib
     Palmares.WebAPI.Auth
     Palmares.WebAPI.CORS
   --   Palmares.WebAPI.CSV
+    Palmares.WebAPI.Envelope
     Palmares.WebAPI.Errors
     Palmares.WebAPI.ServiceProbe
     Palmares.WebAPI.Utils
@@ -261,6 +262,7 @@ library webapi-lib
     , aeson
     , bytestring
     , cassava
+    , deriving-aeson
     , http-types
     , lens
     , memory

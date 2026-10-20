@@ -10,6 +10,7 @@ module QueryAppMonad where
 
 import Palmares.Constants qualified as Constants
 import Control.Monad.Reader
+import Data.Aeson (encode, object, (.=))
 import Data.Text hiding (elem, reverse, take)
 import Data.Time
 import Database.Persist.Sql (ConnectionPool, SqlPersistT, Single (..), rawSql, runSqlPool)
@@ -21,9 +22,10 @@ import GeniusYield.Types.SlotConfig (GYSlotConfig)
 import Servant
 -- import System.Directory.Extra
 import Palmares.TxBuilding.Context
-import Palmares.TxBuilding.Exceptions (TxBuildingException, txBuildingExceptionToHttpStatus)
+import Palmares.TxBuilding.Exceptions (TxBuildingException, txBuildingExceptionCode, txBuildingExceptionToHttpStatus)
 import Palmares.WebAPI.Auth (AuthContext)
-import Palmares.WebAPI.Errors (genericErrorMessage, mkServantErr)
+import Palmares.WebAPI.Envelope (ErrorCode (..))
+import Palmares.WebAPI.Errors (mkServantErr, mkServantErrBody)
 import Palmares.WebAPI.ServiceProbe (ServiceProbeStatus (..))
 
 ------------------------------------------------------------------------------------------------
@@ -62,6 +64,19 @@ instance MonadReader QueryAppContext QueryAppMonad where
 requestSlotConfig :: QueryAppMonad GYSlotConfig
 requestSlotConfig = asks providerContext >>= \ctx -> liftIO (runQuery ctx slotConfig)
 
+-- | Build a 'ServerError' for a 'TxBuildingException' with the same @{"code", "message"}@ body
+-- the interaction API serves, so a client parses one error shape across both services.
+--
+-- Duplicated from interaction-api rather than shared: @webapi-lib@ cannot see
+-- @TxBuildingException@ (it keeps no project-library dependency) and @offchain-lib@ must not
+-- construct HTTP responses, so the two executables each own three lines instead of a library
+-- owning a dependency it should not have.
+txBuildingServantErr :: Int -> TxBuildingException -> ServerError
+txBuildingServantErr status txEx =
+  mkServantErrBody status $
+    encode $
+      object ["code" .= txBuildingExceptionCode txEx, "message" .= displayException txEx]
+
 -- | Run an IO action, mapping a bare 'TxBuildingException' to its HTTP status.
 -- Query handlers throw @TxBuildingException@ directly (no @GYApplicationException@
 -- wrapper), so this catches the concrete type — it must NOT copy the
@@ -73,7 +88,7 @@ runWithQueryErrorHandling action = QueryAppMonad $ do
     Left (txEx :: TxBuildingException) -> do
       let status = txBuildingExceptionToHttpStatus txEx
       liftIO $ putStrLn $ "TxBuildingException (" <> show status <> "): " <> displayException txEx
-      throwError $ mkServantErr status (displayException txEx)
+      throwError $ txBuildingServantErr status txEx
     Right ok -> pure ok
 
 -- | Run an IO action, mapping a 'TxBuildingException' that is wrapped in a
@@ -91,12 +106,11 @@ runWithQueryErrorHandlingWrapped action = QueryAppMonad $ do
         GYApplicationException appE
           | Just txEx <- cast appE -> do
               let status = txBuildingExceptionToHttpStatus txEx
-              let msg = displayException txEx
-              liftIO $ putStrLn $ "TxBuildingException (" <> show status <> "): " <> msg
-              throwError $ mkServantErr status msg
+              liftIO $ putStrLn $ "TxBuildingException (" <> show status <> "): " <> displayException txEx
+              throwError $ txBuildingServantErr status txEx
         _ -> do
           liftIO $ putStrLn $ "Unexpected exception: " <> show ex
-          throwError $ mkServantErr 500 (genericErrorMessage 500)
+          throwError $ mkServantErr 500 InternalError
     Right ok -> pure ok
 
 -- | Health-check probe: verify the projection database is reachable.
@@ -116,4 +130,4 @@ verifyProjectionDbConnection = QueryAppMonad $ do
           }
     Left err -> do
       liftIO $ putStrLn $ "Projection DB not ready: " <> show err
-      throwError $ mkServantErr 503 (genericErrorMessage 503)
+      throwError $ mkServantErr 503 DbUnavailable

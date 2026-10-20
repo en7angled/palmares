@@ -16,8 +16,18 @@ module UnitTests.GovDto (govDtoTests) where
 import Data.Aeson (decode, encode, toJSON)
 import Data.Text (Text)
 import Data.Time (UTCTime)
+import Network.HTTP.Types.Header (hContentType)
 import Palmares.DomainTypes.Core.Types
-import Servant (parseUrlPiece)
+import Palmares.WebAPI.Envelope
+  ( ApiError (..),
+    Cursor (..),
+    ErrorCode (..),
+    Page (..),
+    errorCodeToHttpStatus,
+  )
+import Palmares.WebAPI.Errors (genericErrorMessage, mkServantErr)
+import Servant (errBody, errHTTPCode, parseUrlPiece)
+import Servant.Server.Internal.ServerError (errHeaders)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -168,5 +178,58 @@ govDtoTests =
         map
           (parseUrlPiece @GovActionId)
           ["0ecc74fe#0", actionTxHex <> "#x", bitcowsCip129, actionTxHex]
-          @?= replicate 4 (Left "invalid_gov_action_id")
+          @?= replicate 4 (Left "invalid_gov_action_id"),
+      testCase "Page echoes applied limit/offset; total is nullable (D-18)" $
+        encode (Page [1 :: Int, 2] (Just 3) 10 0 Nothing)
+          @?= "{\"items\":[1,2],\"total\":3,\"limit\":10,\"offset\":0,\"next_cursor\":null}",
+      -- Four cursor components, not three: measured on preprod, three left 108,141 duplicate
+      -- triples in palmares.activity, so a client paging by a three-part cursor would skip rows.
+      testCase "Page on /activity carries total = null, never -1" $
+        encode (Page [1 :: Int] Nothing 20 0 (Just (Cursor "136598384:12:5:3")))
+          @?= "{\"items\":[1],\"total\":null,\"limit\":20,\"offset\":0,\"next_cursor\":\"136598384:12:5:3\"}",
+      testCase "ApiError is {code,message}" $
+        encode (ApiError DrepNotFound "No DRep with that identifier")
+          @?= "{\"code\":\"drep_not_found\",\"message\":\"No DRep with that identifier\"}",
+      -- The grouping IS the documentation: nothing here is a 401 or a 403, because the read
+      -- surface is public.
+      testCase "every ErrorCode maps to its documented status" $
+        map
+          errorCodeToHttpStatus
+          [ InvalidParameter,
+            QueryTooShort,
+            QueryTooLong,
+            OffsetTooLarge,
+            LimitTooLarge,
+            InvalidCursor,
+            BothCursorsGiven,
+            InvalidDrepId,
+            InvalidGovActionId,
+            InvalidAssetClass,
+            InvalidTimeRange,
+            InvalidEpochRange,
+            DrepNotFound,
+            GovActionNotFound,
+            SpoNotFound,
+            CommitteeNotFound,
+            ProfileNotFound,
+            AttestationNotFound,
+            DisputeNotFound,
+            RateLimited,
+            NotReady,
+            IndexerBehind,
+            DbUnavailable,
+            InternalError
+          ]
+          @?= replicate 12 400 <> replicate 7 404 <> [429] <> replicate 3 503 <> [500],
+      -- Every code must be listed above. Without this, adding a code and forgetting it leaves it
+      -- untested rather than failing.
+      testCase "the status map covers every ErrorCode" $
+        length ([minBound .. maxBound] :: [ErrorCode]) @?= 24,
+      testCase "mkServantErr sets a JSON content type and an ApiError body" $
+        let e = mkServantErr 503 IndexerBehind
+         in (errHTTPCode e, lookup hContentType (errHeaders e), errBody e)
+              @?= ( 503,
+                    Just "application/json",
+                    encode (ApiError IndexerBehind (genericErrorMessage IndexerBehind))
+                  )
     ]

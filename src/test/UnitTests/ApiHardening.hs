@@ -17,7 +17,10 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Palmares.WebAPI.Auth (AuthContext (..), AuthUser (..), authCheck)
 import Palmares.WebAPI.CORS (CorsConfig (..), corsPolicy, parseCorsOrigins)
-import Palmares.WebAPI.Errors (genericErrorMessage, mkServantErr)
+import Network.HTTP.Types.Header (hContentType)
+import Servant.Server.Internal.ServerError (errHeaders)
+import Palmares.WebAPI.Envelope (ErrorCode (..))
+import Palmares.WebAPI.Errors (genericErrorMessage, mkServantErr, mkServantErrBody)
 import Palmares.WebAPI.Utils (escapeLikePattern)
 
 -- Run a BasicAuthCheck's handler against supplied raw credential bytes.
@@ -77,13 +80,20 @@ errorTests :: TestTree
 errorTests =
   testGroup
     "mkServantErr / genericErrorMessage"
-    [ testCase "503 stays 503" $ errHTTPCode (mkServantErr 503 "x") @?= 503,
-      testCase "502 stays 502" $ errHTTPCode (mkServantErr 502 "x") @?= 502,
-      testCase "500 stays 500" $ errHTTPCode (mkServantErr 500 "x") @?= 500,
-      testCase "404 stays 404" $ errHTTPCode (mkServantErr 404 "x") @?= 404,
+    [ testCase "503 stays 503" $ errHTTPCode (mkServantErr 503 NotReady) @?= 503,
+      testCase "502 stays 502" $ errHTTPCode (mkServantErrBody 502 "{}") @?= 502,
+      testCase "500 stays 500" $ errHTTPCode (mkServantErr 500 InternalError) @?= 500,
+      testCase "404 stays 404" $ errHTTPCode (mkServantErr 404 DrepNotFound) @?= 404,
       -- Unknown status must NOT collapse to 400 — pins the F-30 invariant.
-      testCase "unknown status maps to 500, not 400" $ errHTTPCode (mkServantErr 418 "x") @?= 500,
-      testCase "generic message for 503" $ genericErrorMessage 503 @?= "Service temporarily unavailable"
+      testCase "unknown status maps to 500, not 400" $ errHTTPCode (mkServantErr 418 InternalError) @?= 500,
+      testCase "generic message for 503" $ genericErrorMessage NotReady @?= "Service temporarily unavailable",
+      -- Both constructors must set the content type, or a client's JSON parse of the body fails on
+      -- a response that says text/plain.
+      testCase "both constructors declare application/json" $
+        ( lookup hContentType (errHeaders (mkServantErr 400 InvalidParameter)),
+          lookup hContentType (errHeaders (mkServantErrBody 400 "{}"))
+        )
+          @?= (Just "application/json", Just "application/json")
     ]
 
 apiHardeningTests :: TestTree

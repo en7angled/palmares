@@ -9,6 +9,14 @@
 -- resolve cached or CDN URLs).
 --
 -- JSON uses @StripPrefix@ + @CamelToSnake@ (see 'ProfileResponse', 'LineageGraphData').
+--
+-- __The page envelope and the error body are NOT re-exported here__, although every DTO is
+-- wrapped in one. @Page@, @Cursor@, @ApiError@, @ErrorCode@ and @errorCodeToHttpStatus@ live in
+-- @Palmares.WebAPI.Envelope@, and re-exporting them would mean @offchain-lib@ depending on
+-- @webapi-lib@ — an OUTWARD dependency, which the house layering forbids in both directions
+-- (@webapi-lib@ keeps no project-library dependency at all). Consumers import that module
+-- directly; every executable already depends on both libraries, so the cost is one import line,
+-- which is the right price for keeping the layering real.
 module Palmares.DomainTypes.Transfer.QueryResponses
   ( ProfileResponse (..),
     AchievementResponse (..),

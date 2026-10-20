@@ -233,8 +233,10 @@ library offchain-lib
     , persistent
     , servant-server
     , swagger2
+    , filepath
     , text
     , time
+    , transformers
     , yaml
 
   --- Cardano specific dependencies

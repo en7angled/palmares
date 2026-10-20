@@ -20,7 +20,9 @@
 -- enough to change them, re-record and update them deliberately.
 module UnitTests.Reconcile (reconcileTests) where
 
-import Data.Aeson (FromJSON, eitherDecode, eitherDecodeFileStrict)
+import Data.Aeson (FromJSON, ToJSON (toJSON), Value (Object, String), eitherDecode, eitherDecodeFileStrict)
+import Data.Aeson.Key qualified as AK
+import Data.Aeson.KeyMap qualified as AKM
 import Data.ByteString.Lazy.Char8 qualified as BL8
 import Data.List (nub, sort)
 import Data.Map.Strict qualified as M
@@ -53,7 +55,8 @@ reconcileTests =
       mappingTests,
       primitiveTests,
       rowTests,
-      sampleTests
+      sampleTests,
+      reportJsonTests
     ]
 
 -- ---------------------------------------------------------------------------------------------
@@ -703,3 +706,69 @@ sampleTests =
           Left _ -> pure ()
           Right _ -> assertFailure "a missing sample must not read as zero ids"
     ]
+
+-- ---------------------------------------------------------------------------------------------
+
+-- | The report's wire form.
+--
+-- The key names are the contract — the nightly wrapper's jq reads them and a person reads them
+-- six weeks later — so they are asserted rather than left to whatever the Haskell field names
+-- happen to be.
+reportJsonTests :: TestTree
+reportJsonTests =
+  testGroup
+    "Reconcile report JSON"
+    [ testCase "the top level carries exactly the documented keys" $
+        sort (keysOf (toJSON okReport))
+          @?= sort
+            [ "network",
+              "ran_at",
+              "palmares_epoch",
+              "palmares_lag_seconds",
+              "koios_epoch",
+              "status",
+              "unexplained",
+              "explained",
+              "stale_exceptions",
+              "rows"
+            ],
+      testCase "a row carries its divergences in full, not just a count" $
+        sort (keysOf (toJSON (mkRow [] R1 294 [Divergence "a" "membership" "present" "absent"])))
+          @?= sort ["row", "compared", "status", "unexplained", "explained"],
+      -- koios and palmares, never expected and actual: a report that calls one side "expected" has
+      -- already decided which index is right.
+      testCase "a divergence names the two sides by index, not by expectation" $
+        sort (keysOf (toJSON (Divergence "a" "membership" "present" "absent")))
+          @?= sort ["key", "field", "koios", "palmares"],
+      testCase "the three statuses are the documented strings" $
+        map (toJSON :: ReportStatus -> Value) [ReportOk, ReportDivergent, ReportAborted]
+          @?= [String "ok", String "divergent", String "aborted"],
+      -- A reader scanning for failures must not have to parse prose to tell a clean row from an
+      -- unreached one, so `skipped` is a status and the reason is its own key.
+      testCase "a skipped row says so in status and carries the reason separately" $
+        let j = toJSON (skippedRow R3 "epoch skew 2 > 1")
+         in (lookupKey "status" j, lookupKey "skipped_reason" j)
+              @?= (Just (String "skipped"), Just (String "epoch skew 2 > 1")),
+      testCase "a clean row has no skipped_reason key at all" $
+        lookupKey "skipped_reason" (toJSON (mkRow [] R1 1 [])) @?= Nothing,
+      -- A stale waiver is echoed in the shape the file wrote it, so the line can be deleted by
+      -- copying it out of the report.
+      testCase "a stale waiver echoes the file's own keys, field only when it has one" $
+        let withField = ExceptionEntry R2 "k" (Just "f") "why" (fromGregorian 2026 10 20) "o"
+            without = ExceptionEntry R2 "k" Nothing "why" (fromGregorian 2026 10 20) "o"
+         in ( sort (keysOf (toJSON withField)),
+              sort (keysOf (toJSON without))
+            )
+              @?= ( sort ["row", "key", "reason", "opened", "owner", "field"],
+                    sort ["row", "key", "reason", "opened", "owner"]
+                  )
+    ]
+  where
+    okReport =
+      mkReport "preprod" (UTCTime (fromGregorian 2026 10 20) 0) 320 41 320 [] [mkRow [] R1 294 []]
+    keysOf v = case v of
+      Object o -> map AK.toText (AKM.keys o)
+      _ -> []
+    lookupKey k v = case v of
+      Object o -> AKM.lookup (AK.fromText k) o
+      _ -> Nothing

@@ -63,6 +63,11 @@ module Palmares.Reconcile
     ReconcileSample (..),
     loadSample,
 
+    -- * Recorded snapshots
+    loadKoiosSnapshot,
+    loadPalmaresSnapshot,
+    mkPalmaresSnapshot,
+
     -- * The report
     ReportStatus (..),
     Report (..),
@@ -72,7 +77,19 @@ module Palmares.Reconcile
 where
 
 import Control.Exception (IOException, try)
-import Data.Aeson (FromJSON (parseJSON), eitherDecodeFileStrict, withObject, withText, (.:), (.:?))
+import Control.Monad.Trans.Except (ExceptT (..), runExceptT)
+import Data.Aeson
+  ( FromJSON (parseJSON),
+    ToJSON (toJSON),
+    Value (String),
+    eitherDecodeFileStrict,
+    object,
+    withObject,
+    withText,
+    (.:),
+    (.:?),
+    (.=),
+  )
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
@@ -84,9 +101,31 @@ import Data.Text qualified as T
 import Data.Time (Day, UTCTime)
 import Data.Yaml qualified as Yaml
 import GHC.Generics (Generic)
-import Palmares.DomainTypes.Core.Types (DRepStatus, GovActionType, Vote, VoterRole)
+import Palmares.DomainTypes.Core.Types
+  ( ChainPoint (..),
+    DRepId (..),
+    DRepStatus,
+    GovActionType,
+    Vote (..),
+    VoterRole (..),
+  )
+import Palmares.DomainTypes.Transfer.QueryResponses
+  ( CommitteeMemberSummary (..),
+    CommitteeResponse (..),
+    DRepSummary (..),
+    EpochPowerPoint (..),
+    GovActionDetailResponse (..),
+    GovActionLifecycle (..),
+    GovActionSummary (..),
+    StatusResponse (..),
+    SyncStatus (..),
+    TreasuryWithdrawalRow (..),
+    VoteRecord (..),
+    VoteTally (..),
+  )
 import Palmares.Reconcile.Koios
 import Palmares.Utils (jsonTag)
+import System.FilePath ((</>))
 
 -- ---------------------------------------------------------------------------------------------
 
@@ -660,8 +699,13 @@ reconcileAll k p es = case checkFreshness (psEpoch p) (koiosTipEpochNo (ksTip k)
 
     koiosDReps = M.fromList [(koiosDRepListId r, ()) | r <- ksDRepList k, koiosDRepListRegistered r]
     koiosInfo = M.fromList [(koiosDRepInfoId i, i) | i <- ksDRepInfo k]
-    koiosPower = M.fromList [((koiosPowerDRepId r, koiosPowerEpochNo r), toInteger (unKoiosLovelace (koiosPowerAmount r))) | r <- ksPower k]
-    koiosTotals = M.fromListWith (+) [(koiosPowerEpochNo r, toInteger (unKoiosLovelace (koiosPowerAmount r))) | r <- ksPower k]
+    koiosPower =
+      M.fromList
+        [ ((koiosPowerDRepId r, koiosPowerEpochNo r), lovelaceOf r)
+          | r <- ksPower k
+        ]
+    koiosTotals = M.fromListWith (+) [(koiosPowerEpochNo r, lovelaceOf r) | r <- ksPower k]
+    lovelaceOf = toInteger . unKoiosLovelace . koiosPowerAmount
     palmaresTotals = M.fromListWith (+) [(e, v) | ((_, e), v) <- M.toList (psPower p)]
     koiosActions = M.fromList [(koiosProposalId a, a) | a <- ksProposals k]
 
@@ -789,3 +833,243 @@ readyMaxLagSeconds = 300
 -- | @(field, koios, palmares)@, spelled so a comparator reads as a sentence.
 differs :: Text -> (Text, Text) -> (Text, Text, Text)
 differs f (a, b) = (f, a, b)
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * Recorded snapshots
+
+-- | Read a Koios snapshot from a directory of raw response bodies.
+--
+-- __One file per endpoint, named after it,__ so the recorded layout lives in exactly one place and
+-- a reader of the directory can see which call produced which file. The five keyed files
+-- (@proposal_votes@, @drep_votes@) are one JSON object keyed by the id the call was made for; the
+-- flat ones are the concatenated rows of a paged fetch.
+--
+-- The point of recording is that CI can replay a real reconciliation with __no network at all__,
+-- so a nightly outage of either service can never fail a pull request. It is also the tool that
+-- captures the evidence when the nightly DOES diverge: the pair that produced a finding is a file
+-- somebody can read six weeks later.
+loadKoiosSnapshot :: FilePath -> IO (Either String KoiosSnapshot)
+loadKoiosSnapshot dir = runExceptT $ do
+  KoiosSnapshot
+    <$> f "tip.json" firstOf
+    <*> f "drep_list.json" pure
+    <*> f "drep_info.json" pure
+    <*> f "drep_voting_power_history.json" pure
+    <*> f "proposal_list.json" pure
+    <*> f "proposal_votes.json" pure
+    <*> f "drep_votes.json" pure
+    <*> f "committee_info.json" pure
+  where
+    f :: (FromJSON a) => FilePath -> (a -> Either String b) -> ExceptT String IO b
+    f name conv = ExceptT (fmap (>>= conv) (readJsonFile (dir </> name)))
+
+    -- /tip answers with a one-element ARRAY, like every other Koios list endpoint.
+    firstOf :: [KoiosTip] -> Either String KoiosTip
+    firstOf (t : _) = Right t
+    firstOf [] = Left "tip.json: Koios returned no tip"
+
+-- | Read our own snapshot from a directory of raw response bodies, and project it.
+--
+-- The files are what the API SERVED, decoded through the real response DTOs — so a field rename in
+-- 'DRepSummary' breaks this at compile time — and then reduced to 'PalmaresSnapshot'. That order
+-- matters: decoding first is what makes the recorded pair evidence about the API rather than about
+-- the reconciler.
+loadPalmaresSnapshot :: FilePath -> IO (Either String PalmaresSnapshot)
+loadPalmaresSnapshot dir = runExceptT $ do
+  status <- f "status.json"
+  dreps <- f "dreps.json"
+  power <- f "drep_power.json"
+  actions <- f "gov_actions.json"
+  details <- f "gov_action_detail.json"
+  votes <- f "votes.json"
+  committee <- f "committee.json"
+  pure (mkPalmaresSnapshot status dreps power actions details votes committee)
+  where
+    f :: (FromJSON a) => FilePath -> ExceptT String IO a
+    f name = ExceptT (readJsonFile (dir </> name))
+
+-- | Decode one file, naming it in any error.
+readJsonFile :: (FromJSON a) => FilePath -> IO (Either String a)
+readJsonFile path = do
+  r <- try (eitherDecodeFileStrict path)
+  pure $ case r of
+    Left (e :: IOException) -> Left (path <> ": " <> show e)
+    Right (Left e) -> Left (path <> ": " <> e)
+    Right (Right a) -> Right a
+
+-- | Build the projection from what our API served.
+--
+-- This is the ONLY place the response DTOs are read, which is the point: nine comparison values
+-- against twenty-two DTO fields, with the translation in one function instead of scattered through
+-- ten rows.
+mkPalmaresSnapshot ::
+  StatusResponse ->
+  [DRepSummary] ->
+  -- | @drep1…@ → its power series
+  Map Text [EpochPowerPoint] ->
+  [GovActionSummary] ->
+  -- | @gov_action1…@ → its detail
+  Map Text GovActionDetailResponse ->
+  -- | @drep1…@ → its vote history
+  Map Text [VoteRecord] ->
+  CommitteeResponse ->
+  PalmaresSnapshot
+mkPalmaresSnapshot status dreps power actions details votes committee =
+  PalmaresSnapshot
+    { psEpoch = syncEpoch (statusGovernance status),
+      psLagSeconds = syncLagSeconds (statusGovernance status),
+      psDReps =
+        M.fromList
+          [ ( unDRepId (drepSummaryId d),
+              PDRep
+                (drepSummaryHasScript d)
+                (drepSummaryStatus d)
+                (drepSummaryActiveUntilEpoch d)
+                (drepSummaryDelegatorCount d)
+            )
+            | d <- dreps
+          ],
+      psPower =
+        M.fromList
+          [ ((i, epochPowerEpoch pt), epochPowerLovelace pt)
+            | (i, pts) <- M.toList power,
+              pt <- pts
+          ],
+      psActions =
+        M.fromList
+          [ ( govActionSummaryBech32 a,
+              PAction
+                (govActionSummaryType a)
+                (chainPointEpoch (govActionSummaryProposedAt a))
+                (govActionSummaryExpiresEpoch a)
+                (govActionLifecycleRatifiedEpoch (govActionSummaryLifecycle a))
+                (govActionLifecycleEnactedEpoch (govActionSummaryLifecycle a))
+                (govActionLifecycleDroppedEpoch (govActionSummaryLifecycle a))
+                (govActionLifecycleExpiredEpoch (govActionSummaryLifecycle a))
+            )
+            | a <- actions
+          ],
+      -- A tally row carries three counts, so it expands to three keys — and a ZERO count is
+      -- dropped, because Koios has no row for a verdict nobody cast and a 0 on one side against an
+      -- absent key on the other would be a membership divergence on every action.
+      psTallies =
+        M.fromList
+          [ ((act, voteTallyRole t, verdict), n)
+            | (act, d) <- M.toList details,
+              t <- govActionDetailTallies d,
+              (verdict, n) <-
+                [ (Yes, voteTallyYesCount t),
+                  (No, voteTallyNoCount t),
+                  (Abstain, voteTallyAbstainCount t)
+                ],
+              n > 0
+          ],
+      psVotes =
+        S.fromList
+          [ (voteRecordGovActionBech32 v, voteRecordVerdict v, txh)
+            | vs <- M.elems votes,
+              v <- vs,
+              -- DRep role only: R7 compares DRep history, and preprod's committee vote rows are
+              -- 3.24 M of test spam.
+              voteRecordVoterRole v == DRep,
+              Just txh <- [chainPointTxHash (voteRecordCastAt v)]
+          ],
+      psCommittee =
+        PCommittee
+          (committeeQuorumNumerator committee)
+          (committeeQuorumDenominator committee)
+          ( M.fromList
+              [ (committeeMemberColdBech32 m, (committeeMemberHotHash m, committeeMemberExpirationEpoch m))
+                | m <- committeeMembers committee
+              ]
+          ),
+      psWithdrawals =
+        M.fromListWith
+          (+)
+          [ ((treasuryWithdrawalBeneficiary w, treasuryWithdrawalAmount w), 1 :: Int)
+            | d <- M.elems details,
+              w <- govActionDetailWithdrawals d
+          ]
+    }
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * The report on the wire
+
+-- | @out\/divergences.json@.
+--
+-- Hand-written rather than derived, because this file is READ BY PEOPLE and by the wrapper's jq:
+-- the key names are the contract, and a @deriving via CustomJSON@ would make them a consequence of
+-- the Haskell field names. @reportStaleExceptions@ becoming @stale_exceptions@ is the kind of
+-- rename that should be a decision, not a side effect.
+--
+-- Both @unexplained@ and @explained@ travel, and the rows carry their divergences in full. A
+-- report that only said "1 unexplained" would make every investigation start with another run.
+instance ToJSON Report where
+  toJSON r =
+    object
+      [ "network" .= reportNetwork r,
+        "ran_at" .= reportAt r,
+        "palmares_epoch" .= reportOurEpoch r,
+        "palmares_lag_seconds" .= reportLagSeconds r,
+        "koios_epoch" .= reportKoiosEpoch r,
+        "status" .= reportStatus r,
+        "unexplained" .= reportUnexplained r,
+        "explained" .= reportExplained r,
+        "stale_exceptions" .= reportStaleExceptions r,
+        "rows" .= reportRows r
+      ]
+
+instance ToJSON ReportStatus where
+  toJSON = String . \case
+    ReportOk -> "ok"
+    ReportDivergent -> "divergent"
+    ReportAborted -> "aborted"
+
+-- | A row, with its divergences in full.
+--
+-- @skipped_reason@ appears only on a skipped row, and @status@ is @\"skipped\"@ there rather than a
+-- fourth value shoehorned into the reason: a reader scanning for failures must not have to parse
+-- prose to tell a clean row from an unreached one.
+instance ToJSON RowResult where
+  toJSON r =
+    object $
+      [ "row" .= rowIdText (rowId r),
+        "compared" .= rowCompared r,
+        "status" .= rowStatus r,
+        "unexplained" .= rowUnexplained r,
+        "explained" .= rowExplained r
+      ]
+        <> case rowStatus r of
+          RowSkipped why -> ["skipped_reason" .= why]
+          _ -> []
+
+instance ToJSON RowStatus where
+  toJSON = String . \case
+    RowOk -> "ok"
+    RowDivergent -> "divergent"
+    RowSkipped _ -> "skipped"
+
+-- | @koios@ and @palmares@, never @expected@ and @actual@ — see the module header.
+instance ToJSON Divergence where
+  toJSON d =
+    object
+      [ "key" .= divergenceKey d,
+        "field" .= divergenceField d,
+        "koios" .= divergenceKoios d,
+        "palmares" .= divergencePalmares d
+      ]
+
+-- | A stale waiver, echoed back in the shape the file wrote it, so the line can be deleted by
+-- copying it out of the report.
+instance ToJSON ExceptionEntry where
+  toJSON e =
+    object $
+      [ "row" .= rowIdText (exceptionRow e),
+        "key" .= exceptionKey e,
+        "reason" .= exceptionReason e,
+        "opened" .= exceptionOpened e,
+        "owner" .= exceptionOwner e
+      ]
+        <> maybe [] (\f -> ["field" .= f]) (exceptionField e)

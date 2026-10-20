@@ -57,9 +57,7 @@ import Data.Swagger (ToSchema (..), genericDeclareNamedSchema)
 import Data.Swagger.Internal.Schema ()
 import Data.Text (Text)
 import Deriving.Aeson
-import Palmares.DomainTypes.Core.BJJ (BJJBelt)
 import Palmares.DomainTypes.Core.Types qualified as Core
-import Palmares.DomainTypes.Rules.Promotion (PromotionViolation)
 import Palmares.DomainTypes.Transfer.OrderBy (ActivityEventType (..))
 import Palmares.DomainTypes.Transfer.Types qualified as T
 import GeniusYield.Types (GYTime)

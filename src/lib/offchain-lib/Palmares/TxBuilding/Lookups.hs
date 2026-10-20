@@ -6,7 +6,6 @@ import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Maybe
 import Data.Typeable (cast)
 import Palmares.DomainTypes.Core.Actions
-import Palmares.DomainTypes.Core.BJJ (BJJBelt)
 import Palmares.DomainTypes.Core.Types
 import Palmares.DomainTypes.Transfer.Types
 import GeniusYield.TxBuilder
@@ -15,7 +14,6 @@ import GeniusYield.Types (GYDatum, GYNetworkId, GYScriptHash, GYTxOutRef, GYUTxO
 import GeniusYield.Types.Address
 import GeniusYield.Types.Value
 import Palmares.Onchain.CIP68 (CIP68Datum (..), deriveRefFromUserAC, userTokenPrefixBS)
-import Palmares.Onchain.LinkedList (NodeDatum (..))
 import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Protocol.Id qualified as OnchainId
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
@@ -25,7 +23,6 @@ import PlutusLedgerApi.V1.Value qualified as PlutusValue
 import Palmares.TxBuilding.Context (DeployedScriptsContext (..))
 import Palmares.TxBuilding.Conversions (onchainAchievementToAchievement, onchainMembershipHistoryToMembershipHistory, onchainMembershipIntervalToMembershipInterval, onchainPromotionToPromotionInformation, onchainRankToRankInformation, profileDatumToProfile, profileDatumToProfileData)
 import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
-import Palmares.TxBuilding.SafeOnchainLogic (safeGetCurrentRankId)
 import Palmares.TxBuilding.Utils (achievementAndValueFromUTxO, achievementDatumFromDatum, extractNFTAssetClass, getInlineDatumAndValue, membershipDatumFromDatum, oracleParamsFromDatum, profileAndValueFromUTxO, profileDatumFromDatum, rankAndValueFromUTxO, rankDatumFromDatum)
 import Palmares.TxBuilding.Validators (achievementsValidatorHashGY, membershipsValidatorHashGY, oracleValidatorGY, profilesValidatorHashGY, ranksValidatorHashGY)
 

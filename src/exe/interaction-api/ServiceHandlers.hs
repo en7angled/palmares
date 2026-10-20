@@ -16,7 +16,6 @@ import Data.Text (Text, unpack)
 import Palmares.DomainTypes.Core.Actions
 import Palmares.DomainTypes.Core.Types (MembershipHistory (..))
 import GeniusYield.Types (GYAddress)
-import IPFS (IPFSConfig, uploadToIPFS)
 import InteractionAppMonad
 import Servant.Multipart (FileData (..))
 import ServiceRequests
@@ -24,7 +23,6 @@ import Palmares.TxBuilding.Context (TxBuildingContext (..), getNetworkId, runQue
 import Palmares.TxBuilding.Interactions (ActionType (..), Interaction (..), UserAddresses)
 import Palmares.TxBuilding.Lookups (getMembershipHistoriesForOrganization)
 import Palmares.WebAPI.Errors (genericErrorMessage, mkServantErr)
-import Palmares.WebAPI.ImageType (detectImageType)
 
 -------------------------------------------------------------------------------
 

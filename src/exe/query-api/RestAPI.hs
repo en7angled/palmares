@@ -12,7 +12,6 @@ import Control.Lens hiding (Context)
 import Control.Monad.Reader (lift)
 import Data.Swagger
 import Data.Text hiding (length, map)
-import Palmares.DomainTypes.Core.BJJ (BJJBelt)
 import Palmares.DomainTypes.Core.Types
 import Palmares.DomainTypes.Transfer.Types
 import GeniusYield.Imports
@@ -21,10 +20,8 @@ import Network.Wai
 import Network.Wai.Middleware.Servant.Options (provideOptions)
 import Query.Aggregates qualified as Agg
 import Query.Common qualified as C
-import Query.Live qualified as L
 import Query.Pages qualified as Pg
 import Query.Projected qualified as P
-import Query.Rules qualified as Rules
 import Query.ServiceStatus (getProtocolStatusQuery, getReadyProbe)
 import QueryAppMonad
 import Palmares.DomainTypes.Transfer.Filters
@@ -33,7 +30,6 @@ import Palmares.DomainTypes.Transfer.Filters
     profileFilterFromParams,
   )
 import Palmares.DomainTypes.Transfer.QueryResponses
-import RestAPI.Common (withBackend)
 import Servant
 import Servant.Swagger
 import Servant.Swagger.UI

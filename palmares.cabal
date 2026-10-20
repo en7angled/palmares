@@ -68,20 +68,20 @@ library onchain-lib
   default-language:   Haskell2010
   hs-source-dirs:     src/lib/onchain-lib
 
-  -- exposed-modules:
-  --   Palmares.Onchain.Blueprint
-  --   Palmares.Onchain.CIP68
-  --   Palmares.Onchain.Protocol
-  --   Palmares.Onchain.Protocol.Id
-  --   Palmares.Onchain.Protocol.Lookup
-  --   Palmares.Onchain.Protocol.Types
-  --   Palmares.Onchain.Utils
-  --   Palmares.Onchain.Validators.AttestationsValidator
+  exposed-modules:
+    Palmares.Onchain.Blueprint
+    Palmares.Onchain.CIP68
+    Palmares.Onchain.Protocol
+    Palmares.Onchain.Protocol.Id
+    Palmares.Onchain.Protocol.Lookup
+    Palmares.Onchain.Protocol.Types
+    Palmares.Onchain.Utils
+    Palmares.Onchain.Validators.AttestationsValidator
   --   Palmares.Onchain.Validators.DisputesValidator
-  --   Palmares.Onchain.Validators.MintingPolicy
-  --   Palmares.Onchain.Validators.OracleNFTPolicy
-  --   Palmares.Onchain.Validators.OracleValidator
-  --   Palmares.Onchain.Validators.ProfilesValidator
+    Palmares.Onchain.Validators.MintingPolicy
+    Palmares.Onchain.Validators.OracleNFTPolicy
+    Palmares.Onchain.Validators.OracleValidator
+    Palmares.Onchain.Validators.ProfilesValidator
 
   if !(impl(ghcjs) || os(ghcjs))
     build-depends: plutus-tx-plugin
@@ -138,9 +138,9 @@ library chainsync-lib
     TemplateHaskell
     TypeOperators
 
-  -- exposed-modules:
-  --   Palmares.ChainSync.KupoAtlas
-  --   Palmares.ChainSync.KupoClient
+  exposed-modules:
+    Palmares.ChainSync.KupoAtlas
+    Palmares.ChainSync.KupoClient
 
   build-depends:
     , aeson
@@ -164,28 +164,28 @@ library offchain-lib
   default-language:   Haskell2010
   hs-source-dirs:     src/lib/offchain-lib
 
-  -- exposed-modules:
-  --   Palmares.Constants
-  --   Palmares.DomainTypes.Core.Actions
+  exposed-modules:
+    Palmares.Constants
+    Palmares.DomainTypes.Core.Actions
   --   Palmares.DomainTypes.Core.Ids
-  --   Palmares.DomainTypes.Core.Types
-  --   Palmares.DomainTypes.Transfer.Filters
-  --   Palmares.DomainTypes.Transfer.OrderBy
-  --   Palmares.DomainTypes.Transfer.QueryResponses
-  --   Palmares.DomainTypes.Transfer.Types
-  --   Palmares.Ingestion
-  --   Palmares.Storage
-  --   Palmares.TxBuilding.Context
-  --   Palmares.TxBuilding.Conversions
-  --   Palmares.TxBuilding.Exceptions
-  --   Palmares.TxBuilding.Interactions
-  --   Palmares.TxBuilding.Lookups
-  --   Palmares.TxBuilding.Operations
-  --   Palmares.TxBuilding.Skeletons
-  --   Palmares.TxBuilding.Transactions
-  --   Palmares.TxBuilding.Utils
-  --   Palmares.TxBuilding.Validators
-  --   Palmares.Utils
+    Palmares.DomainTypes.Core.Types
+    Palmares.DomainTypes.Transfer.Filters
+    Palmares.DomainTypes.Transfer.OrderBy
+    Palmares.DomainTypes.Transfer.QueryResponses
+    Palmares.DomainTypes.Transfer.Types
+    Palmares.Ingestion
+    Palmares.Storage
+    Palmares.TxBuilding.Context
+    Palmares.TxBuilding.Conversions
+    Palmares.TxBuilding.Exceptions
+    Palmares.TxBuilding.Interactions
+    Palmares.TxBuilding.Lookups
+    Palmares.TxBuilding.Operations
+    Palmares.TxBuilding.Skeletons
+    Palmares.TxBuilding.Transactions
+    Palmares.TxBuilding.Utils
+    Palmares.TxBuilding.Validators
+    Palmares.Utils
 
   build-depends:
     , aeson
@@ -221,13 +221,13 @@ library webapi-lib
     TypeOperators
 
   -- This library keeps NO project-library dependencies: HTTP, auth, CORS and serialisation only.
-  -- exposed-modules:
-  --   Palmares.WebAPI.Auth
-  --   Palmares.WebAPI.CORS
+  exposed-modules:
+    Palmares.WebAPI.Auth
+    Palmares.WebAPI.CORS
   --   Palmares.WebAPI.CSV
-  --   Palmares.WebAPI.Errors
-  --   Palmares.WebAPI.ServiceProbe
-  --   Palmares.WebAPI.Utils
+    Palmares.WebAPI.Errors
+    Palmares.WebAPI.ServiceProbe
+    Palmares.WebAPI.Utils
 
   build-depends:
     , aeson
@@ -270,19 +270,19 @@ executable query-api
   hs-source-dirs: src/exe/query-api
   ghc-options:    -threaded -rtsopts -with-rtsopts=-T -with-rtsopts=-N -O2
 
-  -- other-modules:
+  other-modules:
   --   Metrics.Catalog
-  --   Query.Aggregates
-  --   Query.Common
+    Query.Aggregates
+    Query.Common
   --   Query.Gov
   --   Query.Metrics
-  --   Query.Pages
-  --   Query.Projected
+    Query.Pages
+    Query.Projected
   --   Query.Refresh
-  --   Query.ServiceStatus
+    Query.ServiceStatus
   --   Query.Views
-  --   QueryAppMonad
-  --   RestAPI
+    QueryAppMonad
+    RestAPI
 
   build-depends:
     , offchain-lib
@@ -322,11 +322,11 @@ executable interaction-api
   hs-source-dirs: src/exe/interaction-api
   ghc-options:    -threaded -rtsopts -with-rtsopts=-T -with-rtsopts=-N -O2
 
-  -- other-modules:
-  --   InteractionAppMonad
-  --   RestAPI
-  --   ServiceHandlers
-  --   ServiceRequests
+  other-modules:
+    InteractionAppMonad
+    RestAPI
+    ServiceHandlers
+    ServiceRequests
 
   build-depends:
     , offchain-lib
@@ -360,10 +360,10 @@ executable attest-sync
   hs-source-dirs: src/exe/attest-sync
   ghc-options:    -threaded -rtsopts -with-rtsopts=-T -with-rtsopts=-N -O2
 
-  -- other-modules:
-  --   ChainSyncLogic
-  --   ChainSyncServer
-  --   ChainsyncAPI
+  other-modules:
+    ChainSyncLogic
+    ChainSyncServer
+    ChainsyncAPI
 
   build-depends:
     , chainsync-lib
@@ -392,21 +392,21 @@ test-suite test
   hs-source-dirs: src/test
   main-is:        Main.hs
 
-  -- other-modules:
+  other-modules:
   --   PropertyTests
   --   Test.Fixtures
-  --   Test.Helpers
+    Test.Helpers
   --   TestRuns
-  --   UnitTests
-  --   UnitTests.ApiHardening
+    UnitTests
+    UnitTests.ApiHardening
   --   UnitTests.Attestation
-  --   UnitTests.ChainSyncReplay
-  --   UnitTests.Cleanup
-  --   UnitTests.Conversions
+    UnitTests.ChainSyncReplay
+    UnitTests.Cleanup
+    UnitTests.Conversions
   --   UnitTests.Dispute
   --   UnitTests.Oracle
   --   UnitTests.Profile
-  --   UnitTests.StorageRoundtrip
+    UnitTests.StorageRoundtrip
 
   build-depends:
     , chainsync-lib

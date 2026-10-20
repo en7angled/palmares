@@ -18,7 +18,6 @@ import Test.Tasty.HUnit
 import Palmares.WebAPI.Auth (AuthContext (..), AuthUser (..), authCheck)
 import Palmares.WebAPI.CORS (CorsConfig (..), corsPolicy, parseCorsOrigins)
 import Palmares.WebAPI.Errors (genericErrorMessage, mkServantErr)
-import Palmares.WebAPI.ImageType (ImageType (..), detectImageType)
 import Palmares.WebAPI.Utils (escapeLikePattern)
 
 -- Run a BasicAuthCheck's handler against supplied raw credential bytes.

@@ -18,7 +18,6 @@ import Data.Text (Text, pack)
 import Data.Text.Encoding (encodeUtf8)
 import Data.Typeable (Typeable, typeRep)
 import Deriving.Aeson
-import Palmares.DomainTypes.Core.BJJ (BJJBelt)
 import Palmares.DomainTypes.Core.Types (ProfileRefAC, ProfileType, RankAC)
 import GeniusYield.Types (GYAddress, GYAssetClass)
 import GeniusYield.Types.Time (GYTime)

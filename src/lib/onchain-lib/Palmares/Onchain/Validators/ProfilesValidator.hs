@@ -28,7 +28,7 @@ where
 
 import GHC.Generics (Generic)
 import Palmares.Onchain.CIP68 (CIP68Datum (CIP68Datum), MetadataFields (..), deriveUserFromRefAC, updateCIP68DatumMetadata, validateMetadataFields)
-import Palmares.Onchain.Protocol (OnchainProfile (..), OnchainRank (..), RankId, getCurrentRankId, promoteProfileDatum, protocolParams, ranksValidatorScriptHash, unsafeGetRankDatumAndValue)
+import Palmares.Onchain.Protocol (OnchainProfile (..), protocolParams)
 import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Utils (hasCurrencySymbol)
 import Palmares.Onchain.Utils qualified as Utils
@@ -53,11 +53,6 @@ import Prelude qualified
 data ProfilesRedeemer
   = -- | UpdateProfile newMetadataFields profileOutputIdx
     UpdateProfile MetadataFields Integer
-  | -- | AcceptPromotion rankId profileOutputIdx
-    -- NOTE: rankOutputIdx was removed (R2 redundancy). RanksValidator has only
-    -- one redeemer (PromotionAcceptance) and always validates the rank output,
-    -- so PV's rank output check was genuinely redundant.
-    AcceptPromotion RankId Integer
   | -- | Permissionless dust/griefing cleanup. Anyone can spend a UTxO at the
     -- validator address if its datum is absent or does not parse as a valid
     -- protocol datum. Legitimate protocol UTxOs (with valid datums) are rejected.
@@ -65,7 +60,7 @@ data ProfilesRedeemer
   deriving stock (Generic, Prelude.Show)
   deriving anyclass (HasBlueprintDefinition)
 
-makeIsDataSchemaIndexed ''ProfilesRedeemer [('UpdateProfile, 0), ('AcceptPromotion, 1), ('Cleanup, 2)]
+makeIsDataSchemaIndexed ''ProfilesRedeemer [('UpdateProfile, 0), ('Cleanup, 1)]
 
 type ProfilesDatum = CIP68Datum Onchain.OnchainProfile
 
@@ -100,8 +95,6 @@ profilesLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) scriptInfo
                  in case redeemer of
                       (UpdateProfile newFields profileOutputIdx) ->
                         handleUpdateProfile txInfo ownValue ownAddress profileRefAssetClass profileDatum newFields profileOutputIdx
-                      (AcceptPromotion promotionId profileOutputIdx) ->
-                        handleAcceptPromotion txInfo ownValue ownAddress profileRefAssetClass mintingPolicyCurrencySymbol profile profileDatum promotionId profileOutputIdx
         _ -> traceError "P1" -- Invalid purpose (P1)
 
 -------------------------------------------------------------------------------
@@ -130,62 +123,6 @@ handleUpdateProfile txInfo@TxInfo {..} ownValue ownAddress profileRefAssetClass 
           traceIfFalse "P5" $ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress profileOutputIdx newCip68Datum ownValue ownAddress txInfoOutputs -- Lock updated profile (P5); >= ownValue (balancer may add min-ADA)
         ]
 
-{-# INLINEABLE handleAcceptPromotion #-}
-handleAcceptPromotion ::
-  TxInfo ->
-  Value ->
-  Address ->
-  V1.AssetClass ->
-  CurrencySymbol ->
-  OnchainProfile ->
-  CIP68Datum OnchainProfile ->
-  RankId ->
-  Integer ->
-  Bool
-handleAcceptPromotion TxInfo {..} ownValue ownAddress profileRefAssetClass mintingPolicyCurrencySymbol profile profileDatum promotionId profileOutputIdx =
-  let isValidPromotionId = hasCurrencySymbol promotionId mintingPolicyCurrencySymbol
-      ranksValidatorAddress = V1.scriptHashAddress $ ranksValidatorScriptHash $ protocolParams profile
-      (_promotionValue, pendingRankDatum) = unsafeGetRankDatumAndValue promotionId ranksValidatorAddress txInfoInputs
-
-      -- Get current rank from reference inputs to validate promotion is still valid
-      currentRankId = getCurrentRankId profile
-      (_, currentRankDatum) = unsafeGetRankDatumAndValue currentRankId ranksValidatorAddress txInfoReferenceInputs
-
-      -- Validate the promotion is still valid given current state
-      currentBelt = rankNumber currentRankDatum
-      currentBeltDate = rankAchievementDate currentRankDatum
-      nextBelt = promotionRankNumber pendingRankDatum
-      nextBeltDate = promotionAchievementDate pendingRankDatum
-
-      isPromotionStillValid =
-        and
-          [ traceIfFalse "P6" isValidPromotionId, -- Promotion ID CS check (P6)
-            traceIfFalse "P7" $ nextBelt > currentBelt, -- Already at or past this rank (P7)
-            traceIfFalse "P8" $ nextBeltDate > currentBeltDate -- Date must be after current (P8)
-          ]
-
-      -- R4 optimization: use promoteProfileDatum instead of promoteProfile
-      -- to avoid constructing the full 7-field Rank record that PV doesn't need.
-      -- Rank output validation is handled by RanksValidator (R2).
-      updatedProfileCIP68Datum = promoteProfileDatum profileDatum pendingRankDatum
-   in -- NOTE: User NFT consent check is NOT needed here because:
-      -- 1. AcceptPromotion reads the promotion from txInfoInputs
-      -- 2. This means the Promotion UTxO at RanksValidator MUST be spent
-      -- 3. RanksValidator always runs when Promotion UTxO is spent
-      -- 4. RanksValidator checks User NFT consent (deriveUserFromRefAC)
-      -- Therefore, RanksValidator guarantees user consent for this transaction.
-      --
-      -- NOTE (R2 redundancy removed):
-      -- The rank output check was removed from PV because RV has only one
-      -- redeemer (PromotionAcceptance) and always validates the rank output.
-      -- When PV forces the promotion to be in txInfoInputs, RV must run,
-      -- and it has no alternative code path. Removing this also eliminates
-      -- the rankOutputIdx parameter from the AcceptPromotion redeemer.
-      and
-        [ traceIfFalse "P9" $ V1.assetClassValueOf ownValue profileRefAssetClass == 1, -- Own value has Ref NFT (accept) (P9)
-          isPromotionStillValid,
-          traceIfFalse "Pa" $ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress profileOutputIdx updatedProfileCIP68Datum ownValue ownAddress txInfoOutputs -- Lock updated profile (accept) (Pa); >= ownValue (balancer may add min-ADA)
-        ]
 
 -------------------------------------------------------------------------------
 

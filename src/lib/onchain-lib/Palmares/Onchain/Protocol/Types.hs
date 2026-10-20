@@ -5,7 +5,6 @@
 module Palmares.Onchain.Protocol.Types where
 
 import GHC.Generics (Generic)
-import Palmares.Onchain.LinkedList (NodeDatum (..))
 import PlutusLedgerApi.V1.Value (AssetClass)
 import PlutusLedgerApi.V3 (Address, POSIXTime, PubKeyHash, ScriptHash)
 import PlutusTx
@@ -23,10 +22,8 @@ import Prelude qualified
 -- Baked into the MintingPolicy at compile time and embedded in datums for
 -- cross-validator communication.
 data ProtocolParams = ProtocolParams
-  { ranksValidatorScriptHash :: ScriptHash,
-    profilesValidatorScriptHash :: ScriptHash,
-    membershipsValidatorScriptHash :: ScriptHash,
-    achievementsValidatorScriptHash :: ScriptHash,
+  { profilesValidatorScriptHash :: ScriptHash,
+    attestationsValidatorScriptHash :: ScriptHash,
     oracleToken :: AssetClass
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
@@ -48,14 +45,8 @@ data FeeConfig = FeeConfig
     fcFeeAddress :: Address,
     -- | Fee in lovelace for creating a profile
     fcProfileCreationFee :: Integer,
-    -- | Fee in lovelace for creating a promotion
-    fcPromotionFee :: Integer,
-    -- | Fee in lovelace for creating a membership history
-    fcMembershipHistoryFee :: Integer,
-    -- | Fee in lovelace for creating a membership interval
-    fcMembershipIntervalFee :: Integer,
-    -- | Fee in lovelace for creating an achievement
-    fcAchievementFee :: Integer
+    -- | Fee in lovelace for issuing an attestation
+    fcAttestationFee :: Integer
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
@@ -106,15 +97,7 @@ applyOracleAdminAction (OracleSetMinUTxOValue lovelace) params = params {opMinUT
 
 -------------------------------------------------------------------------------
 
-type RankId = AssetClass
-
 type ProfileId = AssetClass
-
-type MembershipHistoriesListNodeId = AssetClass
-
-type MembershipHistoryId = AssetClass
-
-type MembershipIntervalId = AssetClass
 
 type AchievementId = AssetClass
 
@@ -136,108 +119,12 @@ data OnchainProfile
   = OnchainProfile
   { profileId :: ProfileId,
     profileType :: OnchainProfileType,
-    currentRank :: Maybe RankId, -- ˆ Organisations have no rank
     protocolParams :: ProtocolParams
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
 
 makeIsDataSchemaIndexed ''OnchainProfile [('OnchainProfile, 0)]
-
--------------------------------------------------------------------------------
-
--- * Ranks
-
--------------------------------------------------------------------------------
-
-data OnchainRank
-  = Rank
-      { rankId :: RankId,
-        rankNumber :: Integer,
-        rankAchievedByProfileId :: ProfileId,
-        rankAwardedByProfileId :: ProfileId,
-        rankAchievementDate :: POSIXTime,
-        rankPreviousRankId :: Maybe RankId,
-        rankProtocolParams :: ProtocolParams
-      }
-  | Promotion
-      { promotionId :: RankId,
-        promotionRankNumber :: Integer,
-        promotionAwardedTo :: ProfileId,
-        promotionAwardedBy :: ProfileId,
-        promotionAchievementDate :: POSIXTime,
-        promotionProtocolParams :: ProtocolParams
-      }
-  deriving stock (Generic, Prelude.Show, Prelude.Eq)
-  deriving anyclass (HasBlueprintDefinition)
-
-makeIsDataSchemaIndexed ''OnchainRank [('Rank, 0), ('Promotion, 1)]
-
--------------------------------------------------------------------------------
-
--- * Memberships
-
--------------------------------------------------------------------------------
-
-data OnchainMembershipHistory = OnchainMembershipHistory
-  { -- | Practitioner ProfileId
-    membershipHistoryPractitionerId :: ProfileId,
-    -- | Organization ProfileId
-    membershipHistoryOrganizationId :: ProfileId,
-    -- | Sequential number of the head (most recent) interval (0-based).
-    -- The head interval's NFT ID is derived at runtime via
-    -- @deriveMembershipIntervalId (deriveMembershipHistoryIdFromHistory h) headNumber@.
-    membershipHistoryIntervalsHeadNumber :: Integer
-  }
-  deriving stock (Generic, Prelude.Show, Prelude.Eq)
-  deriving anyclass (HasBlueprintDefinition)
-
-makeIsDataSchemaIndexed ''OnchainMembershipHistory [('OnchainMembershipHistory, 0)]
-
-data OnchainMembershipInterval = OnchainMembershipInterval
-  { -- | Start date of the membership interval
-    membershipIntervalStartDate :: POSIXTime,
-    -- | End date of the membership interval
-    membershipIntervalEndDate :: Maybe POSIXTime,
-    -- | Is the membership interval accepted
-    membershipIntervalIsAck :: Bool,
-    -- | Sequential number within the history (0-based).
-    -- The interval's NFT ID is derived at runtime via
-    -- @deriveMembershipIntervalId historyId number@.
-    membershipIntervalNumber :: Integer,
-    -- | Practitioner ProfileId (for User NFT derivation in AcceptInterval)
-    membershipIntervalPractitionerId :: ProfileId
-  }
-  deriving stock (Generic, Prelude.Show, Prelude.Eq)
-  deriving anyclass (HasBlueprintDefinition)
-
-makeIsDataSchemaIndexed ''OnchainMembershipInterval [('OnchainMembershipInterval, 0)]
-
--------------------------------------------------------------------------------
-
--- * Membership Histories List
-
--------------------------------------------------------------------------------
-
-data MembershipHistoriesListNode
-  = MembershipHistoriesListNode
-  { organizationId :: ProfileId,
-    nodeInfo :: NodeDatum (Maybe OnchainMembershipHistory)
-  }
-  deriving stock (Generic, Prelude.Show, Prelude.Eq)
-  deriving anyclass (HasBlueprintDefinition)
-
-makeIsDataSchemaIndexed ''MembershipHistoriesListNode [('MembershipHistoriesListNode, 0)]
-
--- | Sum type for datums stored at the MembershipsValidator address.
--- Distinguishes between linked list nodes (membership histories) and interval records.
-data MembershipDatum
-  = ListNodeDatum MembershipHistoriesListNode
-  | IntervalDatum OnchainMembershipInterval
-  deriving stock (Generic, Prelude.Show, Prelude.Eq)
-  deriving anyclass (HasBlueprintDefinition)
-
-makeIsDataSchemaIndexed ''MembershipDatum [('ListNodeDatum, 0), ('IntervalDatum, 1)]
 
 -------------------------------------------------------------------------------
 

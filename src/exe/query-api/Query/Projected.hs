@@ -27,7 +27,6 @@ import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Database.Esqueleto.Experimental
 import Database.Esqueleto.Internal.Internal (unsafeSqlCastAs, unsafeSqlFunction)
 import Database.Persist qualified as P
-import Palmares.DomainTypes.Core.BJJ (BJJBelt (..))
 import Palmares.DomainTypes.Core.Types
 import Palmares.DomainTypes.Transfer.Filters qualified as C
 import Palmares.DomainTypes.Transfer.Filters qualified as F
@@ -48,7 +47,6 @@ import Palmares.DomainTypes.Transfer.QueryResponses
 import Palmares.DomainTypes.Transfer.Types
 import GeniusYield.Types (GYTime, timeFromPOSIX, timeToPOSIX)
 import Query.Common qualified as C
-import Query.ExplorerMonthly (monthlyAchievementsFromList, monthlyPromotionsFromList)
 import QueryAppMonad
 import Palmares.Storage
 import Palmares.TxBuilding.Exceptions (TxBuildingException (..))

@@ -1,7 +1,10 @@
--- | CIP-57 contract blueprint generation for the BJJ Belt System.
+-- | CIP-57 contract blueprint generation for the Palmares attestation protocol.
+--
+-- This module is the machine-readable public face of the on-chain protocol: `admin write-blueprint`
+-- renders it to @docs/generated/@, and third parties build against it. Prose here is a published
+-- interface, not a comment — keep it accurate.
 module Palmares.Onchain.Blueprint
   ( contractBlueprint,
-    mintingPolicyBlueprint,
     myPreamble,
   )
 where
@@ -9,59 +12,82 @@ where
 import Data.ByteString.Short (fromShort)
 import Data.Set qualified as Set
 import Palmares.Onchain.CIP68 (CIP68Datum)
-import Palmares.Onchain.Protocol (OnchainProfile, OnchainRank, ProtocolParams)
+import Palmares.Onchain.Protocol (OnchainProfile, ProtocolParams)
 import Palmares.Onchain.Protocol.Types (FeeConfig, OracleAdminAction, OracleParams)
 import Palmares.Onchain.Validators.AttestationsValidator (AchievementsRedeemer, achievementsCompile)
-import Palmares.Onchain.Validators.MembershipsValidator (MembershipsRedeemer, membershipsCompile)
 import Palmares.Onchain.Validators.MintingPolicy (MintingRedeemer, mintingPolicyCompile)
 import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer, oracleCompile)
 import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer, profilesCompile)
-import Palmares.Onchain.Validators.RanksValidator (RanksRedeemer, ranksCompile)
 import PlutusLedgerApi.V3 (serialiseCompiledCode)
 import PlutusTx.Blueprint
 
--- | Complete contract blueprint for the BJJ Belt System
+-- | Complete contract blueprint for the Palmares attestation protocol.
 contractBlueprint :: ProtocolParams -> ContractBlueprint
 contractBlueprint mp =
   MkContractBlueprint
-    { contractId = Just "BJJ Belt System",
+    { contractId = Just "Palmares",
       contractPreamble = myPreamble,
       contractValidators =
         Set.fromList
           [ mintingPolicyValidatorBlueprint mp,
             profilesValidatorBlueprint mp,
-            ranksValidatorBlueprint mp,
-            membershipsValidatorBlueprint mp,
-            achievementsValidatorBlueprint mp,
+            attestationsValidatorBlueprint mp,
             oracleValidatorBlueprint
           ],
-      -- Note: MembershipDatum is excluded from deriveDefinitions because it transitively contains
-      -- NodeDatum (polymorphic type from LinkedList.hs) which cannot derive HasBlueprintSchema
-      -- for concrete type parameter instantiations. The MembershipsValidator datum uses @() as a placeholder.
-      -- OracleParams and FeeConfig are included for the oracle hub.
-      contractDefinitions = deriveDefinitions @[ProtocolParams, CIP68Datum OnchainProfile, OnchainRank, OracleParams, FeeConfig, OracleAdminAction, OracleRedeemer, MintingRedeemer, ProfilesRedeemer, RanksRedeemer, MembershipsRedeemer, AchievementsRedeemer]
+      contractDefinitions =
+        deriveDefinitions
+          @[ ProtocolParams,
+             CIP68Datum OnchainProfile,
+             OracleParams,
+             FeeConfig,
+             OracleAdminAction,
+             OracleRedeemer,
+             MintingRedeemer,
+             ProfilesRedeemer,
+             AchievementsRedeemer
+           ]
     }
 
 myPreamble :: Preamble
 myPreamble =
   MkPreamble
-    { preambleTitle = "BJJ Belt System",
-      preambleDescription = Just "A decentralized belt system for Brazilian Jiu-Jitsu practitioners and organizations that implements a comprehensive smart contract architecture for managing BJJ practitioner profiles, rank promotions, and membership histories on the Cardano blockchain. The system consists of four main validators: Minting Policy (controls token creation), Profiles Validator (manages profile lifecycle and updates), Ranks Validator (enforces promotion acceptance and rank state transitions), and Memberships Validator (manages membership histories and intervals in a sorted linked list).",
-      preambleVersion = "2.0.0",
+    { preambleTitle = "Palmares",
+      preambleDescription =
+        Just
+          "A countersigned attestation protocol for Cardano governance actors. An attestation is \
+          \issued as pending by its author and becomes a permanent record only once its subject \
+          \accepts it, so no claim can be attached to an identity without that identity's own \
+          \on-chain consent. Authority is carried by CIP-68 user tokens rather than signature \
+          \lists, which lets an organisation or a committee acting through a script be a \
+          \first-class issuer. Three validators plus a configuration oracle: Minting Policy \
+          \(token creation), Profiles Validator (profile lifecycle), Attestations Validator \
+          \(acceptance and cleanup), Oracle Validator (pause, fees, minimum UTxO, admin key)."
+    , preambleVersion = "0.1.0",
       preamblePlutusVersion = PlutusV3,
-      preambleLicense = Just "MIT"
+      preambleLicense = Just "Apache-2.0"
     }
 
 -- | Minting Policy Blueprint
 mintingPolicyValidatorBlueprint :: ProtocolParams -> ValidatorBlueprint referencedTypes
 mintingPolicyValidatorBlueprint mp =
   MkValidatorBlueprint
-    { validatorTitle = "BJJ Belt System Minting Policy",
-      validatorDescription = Just "Governs the rules for issuing new profiles, ranks, promotions, and membership tokens. It is parameterized by ProtocolParams (containing ProfilesValidator, RanksValidator, and MembershipsValidator script hashes), enabling secure cross-validator communication. Handles profile creation with CIP-68 standard metadata, initial rank assignment for practitioners, organization profile creation with membership histories root, promotion issuance, and membership history/interval creation. Features single minting authority for consistency, CIP-68 standard integration for NFT metadata, deterministic token generation to prevent collisions, exact mint checks to prevent other-token-name attacks, and cross-validator parameterization for secure communication.",
+    { validatorTitle = "Palmares Minting Policy",
+      validatorDescription =
+        Just
+          "The single minting authority for protocol tokens. Parameterised by ProtocolParams (the \
+          \Profiles and Attestations validator script hashes plus the oracle token), which is how \
+          \validators authenticate each other. Every minting transaction reads the oracle UTxO as a \
+          \reference input and is refused while the protocol is paused. Token names are derived \
+          \deterministically from a seed TxOutRef, which must be spent in the same transaction, so a \
+          \name cannot be replayed. The full minted value is constrained, not just the expected token \
+          \name, which is what closes the other-token-name attack.",
       validatorParameters =
         [ MkParameterBlueprint
             { parameterTitle = Just "Protocol Parameters",
-              parameterDescription = Just "Compile-time protocol parameters including validator script hashes for secure cross-validator communication. Contains the ProfilesValidator, RanksValidator, and MembershipsValidator script hashes.",
+              parameterDescription =
+                Just
+                  "Compile-time parameters: the Profiles and Attestations validator script hashes, and \
+                  \the oracle token's AssetClass.",
               parameterPurpose = Set.singleton Mint,
               parameterSchema = definitionRef @ProtocolParams
             }
@@ -69,12 +95,17 @@ mintingPolicyValidatorBlueprint mp =
       validatorRedeemer =
         MkArgumentBlueprint
           { argumentTitle = Just "Minting Redeemer",
-            argumentDescription = Just "Redeemer for minting operations: CreateProfile (creates new profile with initial rank or membership root), Promote (creates pending promotion tokens), NewMembershipHistory (creates membership history node and first interval), or NewMembershipInterval (adds a new interval to an existing membership history). Validates creation dates against transaction validity range, ensures seed TxOutRef is spent to prevent replay attacks, enforces exact token minting to prevent other-token-name attacks, and requires spending of awarding authority's user token.",
+            argumentDescription =
+              Just
+                "NewAchievement seedTxOutRef metadata otherMetadata awardedTo awardedBy date \
+                \outputIdx — mints a pending attestation CIP-68 token pair locked at the \
+                \Attestations Validator. Requires the issuer's user token to be spent, validates the \
+                \date against the transaction validity range, and pays the attestation fee when the \
+                \oracle configures one.",
             argumentPurpose = Set.fromList [Mint],
             argumentSchema = definitionRef @MintingRedeemer
           },
-      validatorDatum =
-        Nothing, -- Minting policies don't have datums
+      validatorDatum = Nothing, -- Minting policies don't have datums
       validatorCompiled =
         Just $
           compiledValidator PlutusV3 (fromShort $ serialiseCompiledCode $ mintingPolicyCompile mp)
@@ -84,13 +115,24 @@ mintingPolicyValidatorBlueprint mp =
 profilesValidatorBlueprint :: ProtocolParams -> ValidatorBlueprint referencedTypes
 profilesValidatorBlueprint _mp =
   MkValidatorBlueprint
-    { validatorTitle = "BJJ Belt System Profiles Validator",
-      validatorDescription = Just "Governs the rules for profile lifecycle and promotion acceptance. Handles profile metadata updates (description and image; name is immutable after minting) and allows practitioners to accept pending promotions. Profile deletion is intentionally unsupported to preserve lineage integrity — BJJ belt records are permanent historical facts. Features token-based authorization requiring user tokens for profile modifications, full CIP-68 metadata support with size-limited fields, and atomic promotion acceptance. Uses the lightweight promoteProfileDatum function (R4 optimization) to avoid unnecessary Rank record construction.",
-      validatorParameters = [], -- No parameters for this validator
+    { validatorTitle = "Palmares Profiles Validator",
+      validatorDescription =
+        Just
+          "Governs the profile lifecycle. Profile metadata (description and image) can be updated by \
+          \whoever holds the profile's user token; the name is immutable after minting. Deletion is \
+          \intentionally unsupported: a profile is the anchor of an attestation history, and that \
+          \history must not become unresolvable. Unparameterised — it reads the validator addresses \
+          \it needs from the datum's protocolParams.",
+      validatorParameters = [],
       validatorRedeemer =
         MkArgumentBlueprint
           { argumentTitle = Just "Profiles Redeemer",
-            argumentDescription = Just "Redeemer for profile operations: UpdateProfile (updates profile metadata — description and image — with size validation; name is immutable) or AcceptPromotion (accepts pending promotion by updating the profile's currentRank pointer). Requires user token authorization for UpdateProfile; AcceptPromotion defers consent to RanksValidator via forced co-execution.",
+            argumentDescription =
+              Just
+                "UpdateProfile newMetadataFields outputIdx — updates the mutable metadata fields with \
+                \size validation, requiring the profile's user token. Cleanup — permissionless \
+                \removal of a UTxO at this address whose datum is absent or does not parse; it fails \
+                \if the datum is a valid protocol datum, so legitimate state cannot be swept.",
             argumentPurpose = Set.fromList [Spend],
             argumentSchema = definitionRef @ProfilesRedeemer
           },
@@ -98,7 +140,11 @@ profilesValidatorBlueprint _mp =
         Just
           MkArgumentBlueprint
             { argumentTitle = Just "Profile Datum",
-              argumentDescription = Just "CIP68 datum containing profile information with extensible metadata structure. Contains profile ID, profile type (Practitioner or Organization), current rank reference, and protocol parameters. Supports CIP-68 standard for interoperability with wallets and marketplaces while maintaining extensible metadata structure.",
+              argumentDescription =
+                Just
+                  "CIP-68 datum carrying the profile: its id, its type, and the protocol parameters \
+                  \used to resolve sibling validator addresses. The CIP-68 shape is what makes the \
+                  \profile legible to wallets and marketplaces.",
               argumentPurpose = Set.singleton Spend,
               argumentSchema = definitionRef @(CIP68Datum OnchainProfile)
             },
@@ -107,81 +153,38 @@ profilesValidatorBlueprint _mp =
           compiledValidator PlutusV3 (fromShort $ serialiseCompiledCode profilesCompile)
     }
 
--- | Ranks Validator Blueprint
-ranksValidatorBlueprint :: ProtocolParams -> ValidatorBlueprint referencedTypes
-ranksValidatorBlueprint _mp =
+-- | Attestations Validator Blueprint
+attestationsValidatorBlueprint :: ProtocolParams -> ValidatorBlueprint referencedTypes
+attestationsValidatorBlueprint _mp =
   MkValidatorBlueprint
-    { validatorTitle = "BJJ Belt System Ranks Validator",
-      validatorDescription = Just "Enforces promotion acceptance and rank state transitions. When a promotion UTxO is spent, this validator verifies practitioner consent (User NFT), computes the updated profile datum and accepted rank via promoteProfile, validates both the profile output (R1 — prevents promotion consumption via alternative PV redeemer) and rank output, transforming the Promotion datum into a confirmed Rank datum. Works in conjunction with ProfilesValidator through forced co-execution.",
-      validatorParameters = [], -- No parameters for this validator
-      validatorRedeemer =
-        MkArgumentBlueprint
-          { argumentTitle = Just "Ranks Redeemer",
-            argumentDescription = Just "Redeemer for rank operations: PromotionAcceptance (profileOutputIdx, rankOutputIdx) — accepts a pending promotion by verifying practitioner consent and updating both profile and rank outputs atomically.",
-            argumentPurpose = Set.fromList [Spend],
-            argumentSchema = definitionRef @RanksRedeemer
-          },
-      validatorDatum =
+    { validatorTitle = "Palmares Attestations Validator",
+      validatorDescription =
         Just
-          MkArgumentBlueprint
-            { argumentTitle = Just "Rank Datum",
-              argumentDescription = Just "Datum containing rank information with two states: Rank (confirmed rank with all promotion details including rankId, rankNumber, achievement/award profile IDs, achievement date, previous rank reference, and protocol parameters) or Promotion (pending promotion awaiting acceptance with promotionId, rank number, awarded-to/by profile IDs, achievement date, and protocol parameters).",
-              argumentPurpose = Set.singleton Spend,
-              argumentSchema = definitionRef @OnchainRank
-            },
-      validatorCompiled =
-        Just $
-          compiledValidator PlutusV3 (fromShort $ serialiseCompiledCode ranksCompile)
-    }
-
--- | Memberships Validator Blueprint
-membershipsValidatorBlueprint :: ProtocolParams -> ValidatorBlueprint referencedTypes
-membershipsValidatorBlueprint _mp =
-  MkValidatorBlueprint
-    { validatorTitle = "BJJ Belt System Memberships Validator",
-      validatorDescription = Just "Manages membership histories and intervals for practitioner-organization relationships. Membership histories are stored in a sorted linked list per organization. Intervals represent time-bounded membership periods that must be acknowledged by the practitioner. Enforces linked list invariants (ordering, adjacency, organization consistency), exact mint checks to force MintingPolicy co-execution for authorization, and practitioner consent for interval acceptance.",
-      validatorParameters = [], -- No parameters for this validator
-      validatorRedeemer =
-        MkArgumentBlueprint
-          { argumentTitle = Just "Memberships Redeemer",
-            argumentDescription = Just "Redeemer for membership operations: InsertNodeToMHList (inserts a new membership history node into the sorted linked list), UpdateNodeInMHList (adds a new interval to an existing membership history), AcceptInterval (practitioner acknowledges a membership interval), or UpdateEndDate (org or practitioner updates interval end date; org may set any future end date, practitioner may only shorten or close accepted intervals). InsertNodeToMHList and UpdateNodeInMHList require organization User NFT; AcceptInterval requires practitioner User NFT; UpdateEndDate requires exactly one of org or practitioner User NFT.",
-            argumentPurpose = Set.fromList [Spend],
-            argumentSchema = definitionRef @MembershipsRedeemer
-          },
-      validatorDatum =
-        Just
-          MkArgumentBlueprint
-            { argumentTitle = Just "Membership Datum",
-              argumentDescription = Just "Sum type for datums stored at the MembershipsValidator address: ListNodeDatum (membership history node in the sorted linked list, containing organization ID, practitioner ID, and interval head number) or IntervalDatum (individual time-bounded membership period with start/end dates, interval number, practitioner reference, and acknowledgement flag). IDs (history NFT, interval NFT) are derived at runtime via deterministic hashing rather than stored in the datum.",
-              argumentPurpose = Set.singleton Spend,
-              -- MembershipDatum cannot be referenced here because NodeDatum (polymorphic) lacks HasBlueprintSchema.
-              -- The actual datum type is MembershipDatum = ListNodeDatum MembershipHistoriesListNode | IntervalDatum OnchainMembershipInterval.
-              argumentSchema = definitionRef @()
-            },
-      validatorCompiled =
-        Just $
-          compiledValidator PlutusV3 (fromShort $ serialiseCompiledCode membershipsCompile)
-    }
-
--- | Achievements Validator Blueprint
-achievementsValidatorBlueprint :: ProtocolParams -> ValidatorBlueprint referencedTypes
-achievementsValidatorBlueprint _mp =
-  MkValidatorBlueprint
-    { validatorTitle = "BJJ Belt System Achievements Validator",
-      validatorDescription = Just "Manages achievement NFTs awarded to practitioners by organizations or other practitioners. Supports acceptance (practitioner consent) and permissionless dust cleanup. Achievement NFTs are CIP-68 tokens locked at this validator with an OnchainAchievement datum tracking the award and acceptance status.",
+          "Holds attestation tokens and enforces the second half of the two-phase protocol: an \
+          \attestation minted as pending becomes permanent only when its subject spends it with the \
+          \acceptance redeemer, which requires the subject's user token. That requirement is the \
+          \whole anti-spam property — a claim cannot enter the record unilaterally. Also carries the \
+          \permissionless cleanup path for dust.",
       validatorParameters = [],
       validatorRedeemer =
         MkArgumentBlueprint
-          { argumentTitle = Just "Achievements Redeemer",
-            argumentDescription = Just "Redeemer for achievement operations: AcceptAchievement (practitioner acknowledges an achievement, setting isAccepted to True) or Cleanup (permissionless dust removal for UTxOs without valid achievement datums).",
+          { argumentTitle = Just "Attestations Redeemer",
+            argumentDescription =
+              Just
+                "AcceptAchievement outputIdx — the subject accepts, flipping the acceptance flag and \
+                \returning the token to this validator. Cleanup — permissionless dust removal for \
+                \UTxOs whose datum does not parse as protocol state.",
             argumentPurpose = Set.fromList [Spend],
             argumentSchema = definitionRef @AchievementsRedeemer
           },
       validatorDatum =
         Just
           MkArgumentBlueprint
-            { argumentTitle = Just "Achievement Datum",
-              argumentDescription = Just "CIP-68 datum containing achievement information: achievement ID, awarded-to profile, awarded-by profile, achievement date, and acceptance status.",
+            { argumentTitle = Just "Attestation Datum",
+              argumentDescription =
+                Just
+                  "CIP-68 datum carrying the attestation: its id, the subject it is about, the issuer \
+                  \that authored it, the date, and whether the subject has accepted.",
               argumentPurpose = Set.singleton Spend,
               argumentSchema = definitionRef @()
             },
@@ -194,13 +197,23 @@ achievementsValidatorBlueprint _mp =
 oracleValidatorBlueprint :: ValidatorBlueprint referencedTypes
 oracleValidatorBlueprint =
   MkValidatorBlueprint
-    { validatorTitle = "BJJ Belt System Oracle Validator",
-      validatorDescription = Just "Unparameterized spending validator that guards the oracle UTxO containing OracleParams. The admin (identified by opAdminPkh in the current datum) must sign each update. The oracle UTxO must be returned to the same address with the same value; only the datum may change. This enables dynamic protocol configuration (pause, fees, minLovelace, admin key rotation) without redeploying validators.",
-      validatorParameters = [], -- Unparameterized
+    { validatorTitle = "Palmares Oracle Validator",
+      validatorDescription =
+        Just
+          "Unparameterised spending validator guarding the oracle UTxO that holds OracleParams. The \
+          \admin named by the current datum must sign each update, and the UTxO must return to the \
+          \same address with at least the same value; only the datum may change. This is how the \
+          \protocol is paused, repriced or re-keyed without redeploying a validator.",
+      validatorParameters = [],
       validatorRedeemer =
         MkArgumentBlueprint
           { argumentTitle = Just "Oracle Redeemer",
-            argumentDescription = Just "OracleUpdate outputIdx action — output index where the oracle UTxO must be returned and the admin action to apply. The validator computes the new params with applyOracleAdminAction and checks the output at this index has that datum, same value, and address.",
+            argumentDescription =
+              Just
+                "OracleUpdate outputIdx action — the output index the oracle UTxO must return to, and \
+                \the admin action to apply. The validator computes the expected new datum on-chain \
+                \with applyOracleAdminAction and checks the output at that index against it, so \
+                \off-chain and on-chain cannot disagree about the result of an update.",
             argumentPurpose = Set.fromList [Spend],
             argumentSchema = definitionRef @OracleRedeemer
           },
@@ -208,7 +221,11 @@ oracleValidatorBlueprint =
         Just
           MkArgumentBlueprint
             { argumentTitle = Just "Oracle Params Datum",
-              argumentDescription = Just "Inline datum containing operational parameters: admin public key hash (opAdminPkh), pause flag (opPaused), and optional fee configuration (opFeeConfig with fee address and per-action fees).",
+              argumentDescription =
+                Just
+                  "Inline datum with the operational parameters: the admin public key hash, the pause \
+                  \flag, the minimum UTxO value, and an optional fee configuration (fee address plus \
+                  \per-action amounts).",
               argumentPurpose = Set.singleton Spend,
               argumentSchema = definitionRef @OracleParams
             },
@@ -217,17 +234,6 @@ oracleValidatorBlueprint =
           compiledValidator PlutusV3 (fromShort $ serialiseCompiledCode oracleCompile)
     }
 
--- Note: OracleNFTPolicy is not included in the blueprint because it is a one-shot
--- minting policy parameterized by a TxOutRef that is only known at deployment time.
--- Each deployment produces a unique policy, making a static blueprint impractical.
-
--- | Legacy function for backward compatibility
-{-# DEPRECATED mintingPolicyBlueprint "Use contractBlueprint instead" #-}
-mintingPolicyBlueprint :: ProtocolParams -> ContractBlueprint
-mintingPolicyBlueprint mp =
-  MkContractBlueprint
-    { contractId = Just "BJJ Belt System Minting Policy",
-      contractPreamble = myPreamble,
-      contractValidators = Set.singleton (mintingPolicyValidatorBlueprint mp),
-      contractDefinitions = deriveDefinitions @[ProtocolParams, CIP68Datum OnchainProfile, MintingRedeemer]
-    }
+-- Note: OracleNFTPolicy is not included in the blueprint because it is a one-shot minting policy
+-- parameterised by a TxOutRef only known at deployment time. Each deployment produces a unique
+-- policy, which makes a static blueprint meaningless for it.

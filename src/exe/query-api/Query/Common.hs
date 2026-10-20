@@ -3,7 +3,6 @@
 module Query.Common where
 
 import Data.Maybe (fromMaybe)
-import Palmares.DomainTypes.Core.BJJ (BJJBelt (..))
 import Palmares.DomainTypes.Transfer.OrderBy (SortOrder (Asc))
 
 -- | True when the belt is Black or higher (can award promotions per protocol UX).

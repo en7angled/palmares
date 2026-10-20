@@ -12,7 +12,6 @@ import Data.Swagger.ParamSchema
 import Data.Swagger.SchemaOptions (fromAesonOptions)
 import Data.Text hiding (init, tail)
 import Deriving.Aeson
-import Palmares.DomainTypes.Core.BJJ (BJJBelt)
 import Palmares.DomainTypes.Core.Types
 import GHC.Generics ()
 import GeniusYield.Types (GYAssetClass)

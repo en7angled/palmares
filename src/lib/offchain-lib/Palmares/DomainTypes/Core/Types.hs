@@ -15,7 +15,6 @@ import Data.Text hiding (init, tail)
 import Data.Text as T
 import Database.Persist.TH
 import Deriving.Aeson
-import Palmares.DomainTypes.Core.BJJ (BJJBelt)
 import GHC.Generics ()
 import GeniusYield.Types (GYAssetClass)
 import GeniusYield.Types.Time

@@ -7,12 +7,10 @@ import Data.ByteString.Short qualified as SBS
 import GeniusYield.Types
 import Palmares.Onchain.Protocol
 import Palmares.Onchain.Validators.AttestationsValidator qualified as AttestationsValidator (achievementsCompile)
-import Palmares.Onchain.Validators.MembershipsValidator qualified as MembershipsValidator (membershipsCompile)
 import Palmares.Onchain.Validators.MintingPolicy qualified as MintingPolicy (mintingPolicyCompile)
 import Palmares.Onchain.Validators.OracleNFTPolicy qualified as OracleNFTPolicy (oracleNFTPolicyCompile)
 import Palmares.Onchain.Validators.OracleValidator qualified as OracleValidator (oracleCompile)
 import Palmares.Onchain.Validators.ProfilesValidator qualified as ProfilesValidator (profilesCompile)
-import Palmares.Onchain.Validators.RanksValidator qualified as RanksValidator (ranksCompile)
 import PlutusLedgerApi.V1.Value qualified as V1
 import PlutusLedgerApi.V3
 -- PlutusTx for types/script compilation; PlutusTx.Prelude for term-level code with ($) hidden to avoid conflict.

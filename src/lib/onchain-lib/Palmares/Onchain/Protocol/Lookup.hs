@@ -4,12 +4,8 @@
 -- Each function locates the UTxO carrying a specific state NFT and deserializes
 -- the inline datum into the expected on-chain type.
 module Palmares.Onchain.Protocol.Lookup
-  ( unsafeGetRank,
-    unsafeGetRankDatumAndValue,
-    unsafeGetProfile,
+  ( unsafeGetProfile,
     unsafeGetProfileDatumAndValue,
-    unsafeGetListNodeDatumAndValue,
-    unsafeGetMembershipInterval,
     unsafeGetProtocolParamsFromProfileRefInput,
     readOracleParams,
     checkFee,
@@ -25,20 +21,6 @@ import PlutusLedgerApi.V3
 import PlutusTx.List qualified
 import PlutusTx.Prelude
 
--- | Look up a rank datum from transaction inputs. Fails if not found.
-{-# INLINEABLE unsafeGetRank #-}
-unsafeGetRank :: RankId -> Address -> [TxInInfo] -> OnchainRank
-unsafeGetRank ac addr txins =
-  let (_, b) = checkAndGetCurrentStateDatumAndValue ac addr txins
-   in unsafeFromBuiltinData b
-
--- | Look up a rank datum and its UTxO value from transaction inputs. Fails if not found.
-{-# INLINEABLE unsafeGetRankDatumAndValue #-}
-unsafeGetRankDatumAndValue :: RankId -> Address -> [TxInInfo] -> (Value, OnchainRank)
-unsafeGetRankDatumAndValue ac addr txins =
-  let (v, b) = checkAndGetCurrentStateDatumAndValue ac addr txins
-   in (v, unsafeFromBuiltinData b)
-
 -- | Look up a profile datum (unwrapped from CIP68) from transaction inputs. Fails if not found.
 {-# INLINEABLE unsafeGetProfile #-}
 unsafeGetProfile :: ProfileId -> Address -> [TxInInfo] -> OnchainProfile
@@ -53,28 +35,10 @@ unsafeGetProfileDatumAndValue ac addr txins =
   let (v, b) = checkAndGetCurrentStateDatumAndValue ac addr txins
    in (v, unsafeFromBuiltinData b :: CIP68Datum OnchainProfile)
 
--- | Look up a membership histories list node and its UTxO value from transaction inputs. Fails if not found.
-{-# INLINEABLE unsafeGetListNodeDatumAndValue #-}
-unsafeGetListNodeDatumAndValue :: MembershipHistoriesListNodeId -> Address -> [TxInInfo] -> (Value, MembershipHistoriesListNode)
-unsafeGetListNodeDatumAndValue listNodeId addr txins =
-  let (v, b) = checkAndGetCurrentStateDatumAndValue listNodeId addr txins
-   in case unsafeFromBuiltinData b :: MembershipDatum of
-        ListNodeDatum node -> (v, node)
-        _ -> traceError "K0" -- Wrong datum type: expected ListNodeDatum (K0)
-
--- | Look up a membership interval datum and its UTxO value from transaction inputs. Fails if not found.
-{-# INLINEABLE unsafeGetMembershipInterval #-}
-unsafeGetMembershipInterval :: MembershipIntervalId -> Address -> [TxInInfo] -> (Value, OnchainMembershipInterval)
-unsafeGetMembershipInterval intervalId addr txins =
-  let (v, b) = checkAndGetCurrentStateDatumAndValue intervalId addr txins
-   in case unsafeFromBuiltinData b :: MembershipDatum of
-        IntervalDatum interval -> (v, interval)
-        _ -> traceError "K0" -- Wrong datum type: expected IntervalDatum (K0)
-
 -- | Get 'ProtocolParams' from the profile UTxO in reference inputs.
 -- Finds the ref input whose value contains the given profile Ref 'AssetClass' (ProfileId)
 -- with quantity 1, parses its inline datum as 'CIP68Datum OnchainProfile', returns 'protocolParams'.
--- Used by MembershipsValidator when handling InsertNodeToMHList to read the oracle token.
+-- The pattern a minting path uses to read protocol params without spending the profile UTxO.
 {-# INLINEABLE unsafeGetProtocolParamsFromProfileRefInput #-}
 unsafeGetProtocolParamsFromProfileRefInput :: ProfileId -> [TxInInfo] -> ProtocolParams
 unsafeGetProtocolParamsFromProfileRefInput profileRefAC refInputs =

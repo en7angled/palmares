@@ -77,7 +77,7 @@ achievementsLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) script
                     ownInput = Utils.unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs
                     ownValue = txOutValue ownInput
                     ownAddress = txOutAddress ownInput
-                    updatedAchievementDatum = achievementDatum {extra = acceptAchievement achievement}
+                    updatedAchievementDatum = achievementDatum {extra = achievement {achievementIsAccepted = True}}
                     practitionerUserAC = deriveUserFromRefAC (achievementAwardedTo achievement)
                  in traceIfFalse
                       "A1"

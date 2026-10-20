@@ -9,36 +9,20 @@ import Palmares.DomainTypes.Core.Actions (AdminActionType (..))
 import GHC.Stack (HasCallStack)
 import GeniusYield.TxBuilder
 import GeniusYield.Types
-import Palmares.Onchain.BJJ (BJJBelt (White), beltToInt)
 import Palmares.Onchain.CIP68 (CIP68Datum (..), ImageURI, MetadataFields (..), extra, getMetadataFields, mkCIP68Datum, updateCIP68DatumMetadata)
-import Palmares.Onchain.LinkedList (NodeDatum (..))
 import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import Palmares.Onchain.Validators.AttestationsValidator (AchievementsRedeemer (..))
-import Palmares.Onchain.Validators.MembershipsValidator (MembershipsRedeemer (..))
 import Palmares.Onchain.Validators.MintingPolicy
 import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer (OracleUpdate))
 import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (AcceptPromotion, UpdateProfile))
 import Palmares.Onchain.Validators.ProfilesValidator qualified (ProfilesRedeemer (Cleanup))
-import Palmares.Onchain.Validators.RanksValidator (RanksRedeemer (PromotionAcceptance))
-import Palmares.Onchain.Validators.RanksValidator qualified (RanksRedeemer (Cleanup))
 import PlutusLedgerApi.V3
 import Palmares.TxBuilding.Context (DeployedScriptsContext (..), getAchievementsValidatorRef, getMembershipsValidatorRef, getMintingPolicyFromCtx, getMintingPolicyRef, getOracleValidatorRef, getProfilesValidatorRef, getProtocolParamsFromCtx, getRanksValidatorRef)
 import Palmares.TxBuilding.Conversions (cip68StandardMetadataKeys)
 import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
 import Palmares.TxBuilding.Lookups (findInsertPointForNewMembership, getAchievementDatumAndValue, getDustUTxOs, getMembershipIntervalDatumAndValue, getMembershipListNodeDatumAndValue, getProfileStateDatumAndValue, getRankStateDatumAndValue, getUTxOWithTokenAtAddresses, queryOracleParams)
-import Palmares.TxBuilding.SafeOnchainLogic
-  ( safeAcceptAchievement,
-    safeAcceptMembershipInterval,
-    safeAddMembershipIntervalToHistory,
-    safeAppendMembershipHistory,
-    safeGetCurrentRankId,
-    safeGetPromotionAwardedTo,
-    safeInitMembershipHistory,
-    safeInsertMembershipHistoryInBetween,
-    safePromoteProfile,
-  )
 import Palmares.TxBuilding.Skeletons
 import Palmares.TxBuilding.Utils (gySlotFromPOSIXTime, pPOSIXTimeFromGYSlot, txOutRefToV3Plutus)
 import Palmares.TxBuilding.Validators

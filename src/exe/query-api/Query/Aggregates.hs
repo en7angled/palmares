@@ -21,7 +21,6 @@ import Database.Persist (Entity (..))
 import Database.Persist qualified as P
 import Database.Persist.Sql (SqlPersistT, runSqlPool)
 import Palmares.DomainTypes.Core.Actions (ProfileData (..))
-import Palmares.DomainTypes.Core.BJJ (BJJBelt (..))
 import Palmares.DomainTypes.Core.Types
 import Palmares.DomainTypes.Transfer.Types
 import GeniusYield.Types (GYTime, timeFromPOSIX)
@@ -39,10 +38,8 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     practitionerProfileToResponse,
     promotionInformationToResponse,
   )
-import Query.Live qualified as L
 import Query.Projected qualified as P
 import QueryAppMonad (QueryAppContext (..), QueryAppMonad, runWithQueryErrorHandling)
-import RestAPI.Common (withBackend)
 import Palmares.Storage
 import Palmares.TxBuilding.Context (runQuery)
 import Palmares.TxBuilding.Conversions (profileDatumToProfileData)

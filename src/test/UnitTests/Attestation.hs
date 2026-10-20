@@ -14,7 +14,6 @@ import GeniusYield.Test.Clb
 import GeniusYield.Test.Utils
 import GeniusYield.TxBuilder
 import GeniusYield.Types
-import Palmares.Onchain.BJJ (BJJBelt (Black, White))
 import Test.Fixtures (achievementProfileData, achievementProfileDataMaxLength, masterProfileData, orgProfileData, seminarProfileData, studentProfileData)
 import Test.Tasty
 import TestRuns (profileInteraction, deployValidators, protocolInteraction, sendDustToValidator)

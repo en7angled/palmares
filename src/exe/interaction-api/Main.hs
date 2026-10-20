@@ -9,7 +9,6 @@ import Data.ByteString.Lazy.Char8 qualified as BL8
 import Data.String (IsString (..))
 import GeniusYield.GYConfig
 import GeniusYield.Types
-import IPFS (initIPFSConfig)
 import InteractionAppMonad (InteractionAppContext (..))
 import Network.Wai.Handler.Warp
 import RestAPI (apiSwagger, mkWebApp)

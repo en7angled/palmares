@@ -28,7 +28,6 @@ import GeniusYield.Types
 import Servant
 import Palmares.TxBuilding.Context
 import Palmares.TxBuilding.Exceptions (TxBuildingException, txBuildingExceptionCode, txBuildingExceptionToHttpStatus)
-import IPFS (IPFSConfig)
 import Palmares.TxBuilding.Interactions (Interaction)
 import Palmares.TxBuilding.Operations (ensureDeployedScriptsAreReady)
 import Palmares.TxBuilding.Transactions (interactionToHexEncodedCBOR, submitTx)

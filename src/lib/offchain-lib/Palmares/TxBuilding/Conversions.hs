@@ -18,7 +18,6 @@ import PlutusLedgerApi.V3
 import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Builtins (fromBuiltin)
 import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteStringUtf8)
-import Palmares.TxBuilding.SafeOnchainLogic (safeIntToBelt)
 
 -- | Convert domain 'ProfileData' to on-chain CIP-68 metadata fields.
 profileDataToMetadataFields :: ProfileData -> MetadataFields

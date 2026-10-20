@@ -19,7 +19,6 @@ where
 
 import Data.Text (Text)
 import Data.Time (UTCTime)
-import Palmares.DomainTypes.Core.BJJ (BJJBelt)
 import Palmares.DomainTypes.Core.Types
 import Palmares.DomainTypes.Transfer.OrderBy (ActivityEventType)
 import GeniusYield.Types (GYTime)

@@ -35,7 +35,6 @@ import Palmares.Onchain.Protocol (OnchainProfile (..), OnchainRank (..), getCurr
 import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Protocol.Types (OracleParams (..))
 import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (..))
-import Palmares.Onchain.Validators.RanksValidator (RanksRedeemer (..))
 import PlutusLedgerApi.V3
 import Palmares.TxBuilding.Context
 import Palmares.TxBuilding.Interactions

@@ -12,7 +12,6 @@ import Data.ByteString.Lazy qualified as B
 import Data.Char (toLower, toUpper)
 import Data.Text qualified as T
 import Palmares.DomainTypes.Core.Actions (AdminActionType (..), ProfileActionType (..), ProfileData (..), ProtocolActionType (..))
-import Palmares.DomainTypes.Core.BJJ (BJJBelt (..), parseBelt)
 import Palmares.DomainTypes.Core.Types (ProfileType (..))
 import GeniusYield.GYConfig
 import GeniusYield.Imports

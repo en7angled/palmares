@@ -31,7 +31,6 @@ import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Database.Persist
 import Database.Persist.Sql
 import Database.Persist.TH
-import Palmares.DomainTypes.Core.BJJ (BJJBelt)
 import Palmares.DomainTypes.Core.Types
 import GeniusYield.Types
 import Palmares.Ingestion

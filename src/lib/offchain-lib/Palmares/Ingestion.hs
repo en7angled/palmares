@@ -10,7 +10,6 @@ import GeniusYield.TxBuilder
 import GeniusYield.Types
 import Palmares.ChainSync.KupoAtlas
 import Palmares.Onchain.Protocol.Types (MembershipDatum (..), MembershipHistoriesListNode (..))
-import Palmares.Onchain.LinkedList (NodeDatum (..))
 import Palmares.TxBuilding.Conversions
 import Palmares.TxBuilding.Utils
 import Palmares.TxBuilding.Validators (achievementsValidatorHashGY, membershipsValidatorHashGY, profilesValidatorHashGY, ranksValidatorHashGY)

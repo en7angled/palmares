@@ -306,7 +306,7 @@ executable query-api
   --   Query.Metrics
     Query.Pages
     Query.Projected
-  --   Query.Refresh
+    Query.Refresh
     Query.ServiceStatus
     Query.Views
     QueryAppMonad
@@ -426,6 +426,7 @@ test-suite test
   other-modules:
   --   PropertyTests
   --   Test.Fixtures
+    Query.Refresh
     Query.Views
     Test.Helpers
     Test.Pg
@@ -442,6 +443,7 @@ test-suite test
     UnitTests.MetricCatalog
     UnitTests.MetricDoc
     UnitTests.MetricFixture
+    UnitTests.Refresh
     UnitTests.Views
   --   UnitTests.Dispute
   --   UnitTests.Oracle

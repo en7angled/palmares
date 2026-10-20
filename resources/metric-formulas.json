@@ -6,7 +6,12 @@
     "expression": "|actions_voted| / |actions_eligible|",
     "denominator": "distinct governance actions whose voting window closed before as_of_epoch, of a type the role may vote on in the action's protocol-version phase, overlapping a registered interval of the actor",
     "null_when": "eligible_actions = 0",
-    "inputs": ["gov_action_proposal", "voting_procedure", "drep_registration", "epoch_param.protocol_major"],
+    "inputs": [
+      "gov_action_proposal",
+      "voting_procedure",
+      "drep_registration",
+      "epoch_param.protocol_major"
+    ],
     "edge_cases": [
       "Conway bootstrap phase: a DRep could only vote on InfoAction, and the test is over the whole voting window rather than the proposing block",
       "re-votes collapsed to distinct actions; verdict = last vote, latency = first vote",
@@ -16,7 +21,10 @@
     ],
     "sql_file": "participation_rate_v1.sql",
     "sql_object": null,
-    "params": ["drep_hash_id", "as_of_epoch"],
+    "params": [
+      "drep_hash_id",
+      "as_of_epoch"
+    ],
     "spec": "docs/superpowers/design/f1-metric-formulas.md#51-participation_rate-eligible_actions-votes_cast-open_actions_unvoted",
     "version": 1
   },
@@ -24,19 +32,29 @@
     "formula_id": "rationale_rate_v1",
     "name": "Rationale rate",
     "field": "rationale_rate",
-    "expression": "(rationale_verified + rationale_inline) / votes_cast",
-    "denominator": "the final votes the actor cast on actions in its eligible set",
-    "null_when": "votes_cast = 0",
-    "inputs": ["voting_procedure.voting_anchor_id", "voting_anchor", "off_chain_vote_data", "off_chain_vote_fetch_error"],
+    "expression": "(rationale_verified + rationale_inline) / (rationale_verified + rationale_inline + rationale_absent)",
+    "denominator": "the final votes on actions in the eligible set whose rationale we could actually assess: verified, inline, or demonstrably absent. Unverified and pending votes are excluded from both sides.",
+    "null_when": "rationale_verified + rationale_inline + rationale_absent = 0, i.e. none of this actor's rationales could be assessed",
+    "inputs": [
+      "voting_procedure.voting_anchor_id",
+      "voting_anchor",
+      "off_chain_vote_data",
+      "off_chain_vote_fetch_error"
+    ],
     "edge_cases": [
       "five grades, not four: verified | inline | unverified | pending | absent",
       "inline is a data: URI, where the rationale IS the URL and hash verification is vacuous; counting it as missing would accuse an author who did publish one",
       "pending means db-sync has not attempted the fetch yet, which is not the author's failure",
+      "unverified and pending are excluded from the DENOMINATOR, not counted as failures: measured on preprod, zero anchors on DRep votes are valid and 140 of the 237 unreachable ones are ipfs:// URIs our gateway list cannot fetch, so dividing by votes_cast would report our infrastructure's failure as 36 authors' negligence",
+      "all five counters are published, so a consumer wanting another basis — an attachment rate, say — can compute it",
       "the five counters sum to votes_cast by construction, because the sample is the eligible set"
     ],
     "sql_file": "rationale_rate_v1.sql",
     "sql_object": null,
-    "params": ["drep_hash_id", "as_of_epoch"],
+    "params": [
+      "drep_hash_id",
+      "as_of_epoch"
+    ],
     "spec": "docs/superpowers/design/f1-metric-formulas.md#52-rationale_rate-and-its-four-counters",
     "version": 1
   },
@@ -47,7 +65,10 @@
     "expression": "sum over registration intervals of (min(interval end, cursor) - interval start) / 86400",
     "denominator": null,
     "null_when": "the actor has no registration interval",
-    "inputs": ["drep_registration", "block.time"],
+    "inputs": [
+      "drep_registration",
+      "block.time"
+    ],
     "edge_cases": [
       "summed over intervals, because retire-then-re-register is legal and the age is time actually spent registered",
       "the retirement lookup is bounded by slot, not epoch: register-retire-re-register inside one epoch would otherwise contribute a negative term",
@@ -55,7 +76,10 @@
     ],
     "sql_file": "age_days_v1.sql",
     "sql_object": null,
-    "params": ["drep_hash_id", "as_of_epoch"],
+    "params": [
+      "drep_hash_id",
+      "as_of_epoch"
+    ],
     "spec": "docs/superpowers/design/f1-metric-formulas.md#53-age_days",
     "version": 1
   },
@@ -66,7 +90,11 @@
     "expression": "delegators_retained / delegator_count_prev",
     "denominator": "the delegators this actor had retention_window_epochs epochs before as_of_epoch",
     "null_when": "delegator_count_prev = 0",
-    "inputs": ["delegation_vote", "stake_deregistration", "block.epoch_no"],
+    "inputs": [
+      "delegation_vote",
+      "stake_deregistration",
+      "block.epoch_no"
+    ],
     "edge_cases": [
       "the window is a parameter bound from this catalog, never a literal in the SQL",
       "a delegation ends at the next certificate for that address or at the credential's de-registration, whichever comes first",
@@ -74,7 +102,11 @@
     ],
     "sql_file": "delegator_retention_rate_v1.sql",
     "sql_object": null,
-    "params": ["drep_hash_id", "as_of_epoch", "retention_window_epochs"],
+    "params": [
+      "drep_hash_id",
+      "as_of_epoch",
+      "retention_window_epochs"
+    ],
     "spec": "docs/superpowers/design/f1-metric-formulas.md#54-delegator_count-delegator_retention_rate-delegators_joinedleft",
     "version": 1
   },
@@ -85,7 +117,11 @@
     "expression": "median over eligible voted actions of (first vote time - proposal time) in hours",
     "denominator": null,
     "null_when": "vote_latency_sample = 0",
-    "inputs": ["voting_procedure", "gov_action_proposal", "block.time"],
+    "inputs": [
+      "voting_procedure",
+      "gov_action_proposal",
+      "block.time"
+    ],
     "edge_cases": [
       "the sample is the FIRST vote on each action, while a verdict uses the last",
       "percentile_cont over an empty set is NULL, and vote_latency_sample is published so a reader can tell no-data from zero-hours",
@@ -93,7 +129,10 @@
     ],
     "sql_file": "vote_latency_median_hours_v1.sql",
     "sql_object": null,
-    "params": ["drep_hash_id", "as_of_epoch"],
+    "params": [
+      "drep_hash_id",
+      "as_of_epoch"
+    ],
     "spec": "docs/superpowers/design/f1-metric-formulas.md#55-vote_latency_median_hours-vote_latency_p90_hours",
     "version": 1
   },
@@ -104,14 +143,20 @@
     "expression": "per action type: votes_cast / eligible_actions",
     "denominator": "the eligible set, partitioned by action type",
     "null_when": "eligible_actions = 0 for that type",
-    "inputs": ["gov_action_proposal.type", "voting_procedure"],
+    "inputs": [
+      "gov_action_proposal.type",
+      "voting_procedure"
+    ],
     "edge_cases": [
       "all seven action types always appear, even at zero: a missing row reads as no-data while a zero row reads as nothing-to-vote-on",
       "a new governance action type must be added to the VALUES list in the SQL"
     ],
     "sql_file": "votes_by_type_v1.sql",
     "sql_object": null,
-    "params": ["drep_hash_id", "as_of_epoch"],
+    "params": [
+      "drep_hash_id",
+      "as_of_epoch"
+    ],
     "spec": "docs/superpowers/design/f1-metric-formulas.md#56-votes_by_type",
     "version": 1
   },
@@ -122,7 +167,12 @@
     "expression": "enacted_epoch -> enacted; else expired_epoch -> expired; else dropped_epoch -> dropped; else ratified_epoch -> ratified; else proposed",
     "denominator": null,
     "null_when": null,
-    "inputs": ["gov_action_proposal.ratified_epoch", "gov_action_proposal.enacted_epoch", "gov_action_proposal.expired_epoch", "gov_action_proposal.dropped_epoch"],
+    "inputs": [
+      "gov_action_proposal.ratified_epoch",
+      "gov_action_proposal.enacted_epoch",
+      "gov_action_proposal.expired_epoch",
+      "gov_action_proposal.dropped_epoch"
+    ],
     "edge_cases": [
       "the arms are ordered because the columns are not mutually exclusive: an enacted action carries ratified_epoch too, and most expired actions carry dropped_epoch",
       "state and votability can disagree: an action with expired_epoch = the current epoch is 'expired' while its window is still open, so action_window is the authority for whether a vote is still possible",
@@ -141,7 +191,12 @@
     "expression": "yes_power / (yes_power + no_power)",
     "denominator": "the power behind the final yes and no votes actually cast; abstentions are excluded",
     "null_when": "yes_power + no_power = 0",
-    "inputs": ["voting_procedure", "drep_distr", "pool_stat.voting_power", "epoch_param"],
+    "inputs": [
+      "voting_procedure",
+      "drep_distr",
+      "pool_stat.voting_power",
+      "epoch_param"
+    ],
     "edge_cases": [
       "basis = 'cast_votes_only' is published as a column: this is NOT the ledger's ratification arithmetic, which compares against total active voting power",
       "abstain removes stake from the question rather than voting no, which is why it is out of the denominator",

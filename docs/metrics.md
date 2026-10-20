@@ -102,11 +102,11 @@ Spec: docs/superpowers/design/f1-metric-formulas.md#51-participation_rate-eligib
 | version | 1 |
 | source | `resources/metrics/rationale_rate_v1.sql` |
 
-**Expression.** (rationale_verified + rationale_inline) / votes_cast
+**Expression.** (rationale_verified + rationale_inline) / (rationale_verified + rationale_inline + rationale_absent)
 
-**Denominator.** the final votes the actor cast on actions in its eligible set
+**Denominator.** the final votes on actions in the eligible set whose rationale we could actually assess: verified, inline, or demonstrably absent. Unverified and pending votes are excluded from both sides.
 
-**Null when.** votes_cast = 0
+**Null when.** rationale_verified + rationale_inline + rationale_absent = 0, i.e. none of this actor's rationales could be assessed
 
 **Inputs.** `voting_procedure.voting_anchor_id`, `voting_anchor`, `off_chain_vote_data`, `off_chain_vote_fetch_error`
 
@@ -115,6 +115,8 @@ Spec: docs/superpowers/design/f1-metric-formulas.md#51-participation_rate-eligib
 - five grades, not four: verified | inline | unverified | pending | absent
 - inline is a data: URI, where the rationale IS the URL and hash verification is vacuous; counting it as missing would accuse an author who did publish one
 - pending means db-sync has not attempted the fetch yet, which is not the author's failure
+- unverified and pending are excluded from the DENOMINATOR, not counted as failures: measured on preprod, zero anchors on DRep votes are valid and 140 of the 237 unreachable ones are ipfs:// URIs our gateway list cannot fetch, so dividing by votes_cast would report our infrastructure's failure as 36 authors' negligence
+- all five counters are published, so a consumer wanting another basis — an attachment rate, say — can compute it
 - the five counters sum to votes_cast by construction, because the sample is the eligible set
 
 Parameters, in placeholder order: `drep_hash_id`, `as_of_epoch`
@@ -132,10 +134,27 @@ Parameters, in placeholder order: `drep_hash_id`, `as_of_epoch`
 --   unverified  a fetch was attempted and failed
 --   pending     an anchor is attached and db-sync has not tried yet
 --   absent      no anchor at all
--- The numerator is verified + inline. The five counters sum to votes_cast BY CONSTRUCTION, because
--- `final` joins eligible_actions — the same denominator participation_rate uses. Taking every
--- action the DRep ever voted on instead would let a vote on a still-open action into this
--- denominator while participation_rate excluded it, and the two rates would stop being comparable.
+-- THE DENOMINATOR EXCLUDES WHAT WE COULD NOT ASSESS. The rate is
+--   (verified + inline) / (verified + inline + absent)
+-- so `unverified` and `pending` are out of BOTH sides. Rationale, and it is measured, not
+-- theoretical: across all 648 final DRep votes on preprod today there are ZERO `valid` anchors.
+-- 23 are unreachable, and network-wide 140 of the 237 unreachable anchors are `ipfs://` URIs that
+-- our db-sync's gateway list cannot fetch. Dividing by votes_cast would therefore publish
+-- "essentially nobody on preprod writes rationales" when the truth is "our indexer cannot fetch
+-- IPFS" — a statement about our infrastructure, printed as a judgement about 36 people.
+--
+-- An unreachable or not-yet-fetched anchor is evidence the author DID attach something and no
+-- evidence about its contents. Counting it as a failure is the same error the `inline` and
+-- `pending` grades exist to avoid; excluding it says "we cannot tell", which is true. When nothing
+-- can be assessed the rate is NULL — "n/a", not 0%.
+--
+-- All five counters are published regardless, so a consumer who wants a different basis (an
+-- attachment rate, say: (votes_cast - absent) / votes_cast) can compute it without us.
+--
+-- The five counters sum to votes_cast BY CONSTRUCTION, because `final` joins eligible_actions —
+-- the same denominator participation_rate uses. Taking every action the DRep ever voted on instead
+-- would let a vote on a still-open action into this sample while participation_rate excluded it,
+-- and the two rates would stop being comparable.
 WITH p AS (
   SELECT ?::bigint AS drep_hash_id, ?::int AS as_of_epoch
 ),
@@ -171,8 +190,9 @@ SELECT
   count(*) FILTER (WHERE grade = 'pending') AS rationale_pending,
   count(*) FILTER (WHERE grade = 'absent') AS rationale_absent,
   count(*) FILTER (WHERE cip100_valid IS TRUE) AS rationale_cip100_valid,
-  CASE WHEN count(*) = 0 THEN NULL
-       ELSE count(*) FILTER (WHERE grade IN ('verified', 'inline'))::float8 / count(*) END AS rationale_rate
+  CASE WHEN count(*) FILTER (WHERE grade IN ('verified', 'inline', 'absent')) = 0 THEN NULL
+       ELSE count(*) FILTER (WHERE grade IN ('verified', 'inline'))::float8
+            / count(*) FILTER (WHERE grade IN ('verified', 'inline', 'absent')) END AS rationale_rate
 FROM graded;
 ```
 

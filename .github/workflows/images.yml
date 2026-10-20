@@ -12,12 +12,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The two shared base images, PUSHED to GHCR rather than loaded into the local daemon.
+  #
+  # `docker buildx build --load` puts an image in the docker daemon's store, but
+  # docker/build-push-action runs through the buildx container builder, which has its own store and
+  # does not see it — so `FROM palmares-builder:9.6.6` fell through to docker.io/library and the
+  # whole matrix failed with `pull access denied`. A registry is the only store both halves share.
+  bases:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write          # GHCR via GITHUB_TOKEN — no DOCKERHUB_* secrets at all
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { name: builder, file: Dockerfile.base, version: "9.6.6" }
+          - { name: runtime-base, file: Dockerfile.runtime-base, version: "3.20" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          platforms: linux/arm64
+          push: true
+          # The :sha tag is what the service builds consume: it cannot be swapped under them by a
+          # concurrent run the way a floating :version tag can. The :version tag is for humans.
+          tags: |
+            ghcr.io/${{ github.repository }}-${{ matrix.name }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}-${{ matrix.name }}:${{ matrix.version }}
+          cache-from: type=gha,scope=base-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=base-${{ matrix.name }}
+
   build:
+    needs: bases
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 350
     permissions:
       contents: read
-      packages: write          # GHCR via GITHUB_TOKEN — no DOCKERHUB_* secrets at all
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -31,20 +73,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Every Dockerfile.<svc> starts FROM palmares-builder:9.6.6 / palmares-runtime-base:3.20, which
-      # are LOCAL tags. Without this step the first line of every service build fails.
-      - name: Shared base images (local tags the service Dockerfiles FROM)
-        run: |
-          set -euo pipefail
-          docker buildx build --platform linux/arm64 --load -f Dockerfile.base -t palmares-builder:9.6.6 .
-          docker buildx build --platform linux/arm64 --load -f Dockerfile.runtime-base -t palmares-runtime-base:3.20 .
-
       - uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.${{ matrix.svc }}
           platforms: linux/arm64
           push: true
+          # Overrides the Dockerfile defaults, which are the local tags a contributor builds.
+          build-args: |
+            BUILDER_IMAGE=ghcr.io/${{ github.repository }}-builder:${{ github.sha }}
+            RUNTIME_IMAGE=ghcr.io/${{ github.repository }}-runtime-base:${{ github.sha }}
           tags: |
             ghcr.io/${{ github.repository }}-${{ matrix.svc }}:${{ github.sha }}
             ghcr.io/${{ github.repository }}-${{ matrix.svc }}:latest

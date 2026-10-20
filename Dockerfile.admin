@@ -1,7 +1,15 @@
 # syntax=docker/dockerfile:1.4
 
+# The two shared base images, as build args so the same Dockerfile works in both places it is
+# used: locally (and from compose) the defaults are the plain tags a contributor builds with
+# `docker build -f Dockerfile.base -t palmares-builder:9.6.6 .`, while CI overrides them with the
+# GHCR refs it just pushed. Without the args, buildx resolves the bare names against Docker Hub —
+# which is how the images workflow failed with `pull access denied` on docker.io/library.
+ARG BUILDER_IMAGE=palmares-builder:9.6.6
+ARG RUNTIME_IMAGE=palmares-runtime-base:3.20
+
 ### STAGE 1: Build ###
-FROM --platform=$TARGETPLATFORM palmares-builder:9.6.6 AS builder
+FROM --platform=$TARGETPLATFORM ${BUILDER_IMAGE} AS builder
 
 WORKDIR /palmares
 
@@ -21,7 +29,7 @@ RUN cabal install admin \
     --ghc-options="-optl=-static -optl=-pthread -optc=-static"
 
 ### STAGE 2: Runtime ###
-FROM --platform=$TARGETPLATFORM palmares-runtime-base:3.20 AS runtime
+FROM --platform=$TARGETPLATFORM ${RUNTIME_IMAGE} AS runtime
 
 WORKDIR /app
 COPY --from=builder /palmares/admin /app/admin

@@ -200,6 +200,7 @@ library offchain-lib
     Palmares.Ingestion
     Palmares.Metrics.Catalog
     Palmares.Metrics.Doc
+    Palmares.Reconcile
     Palmares.Reconcile.Koios
     Palmares.Storage
     Palmares.TxBuilding.Context
@@ -232,6 +233,7 @@ library offchain-lib
     , swagger2
     , text
     , time
+    , yaml
 
   --- Cardano specific dependencies
   build-depends:

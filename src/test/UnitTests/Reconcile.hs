@@ -27,7 +27,9 @@ import Data.Map.Strict qualified as M
 import Data.Maybe (isJust, isNothing, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Time (UTCTime (..), fromGregorian)
 import Palmares.DomainTypes.Core.Types (DRepStatus (..), GovActionType (..), Vote (..), VoterRole (..))
+import Palmares.Reconcile
 import Palmares.Reconcile.Koios
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -47,7 +49,8 @@ reconcileTests =
     "Koios preprod parity"
     [ wireTests,
       countTests,
-      mappingTests
+      mappingTests,
+      primitiveTests
     ]
 
 -- ---------------------------------------------------------------------------------------------
@@ -230,3 +233,139 @@ mappingTests =
           )
           @?= ([], [], 0)
     ]
+
+-- ---------------------------------------------------------------------------------------------
+
+-- | The comparison primitive, the waiver file, the freshness guard and the report.
+--
+-- No fixtures and no database: these are the decisions the reconciliation rests on, and every one
+-- of them is a place where a wrong answer looks exactly like a right one. A waiver that explains
+-- the wrong row, a freshness guard that lets a two-epoch skew through, a report that calls an
+-- aborted run a pass — none of those fail loudly on their own.
+primitiveTests :: TestTree
+primitiveTests =
+  testGroup
+    "Reconcile primitives"
+    [ testCase "diffKeyed reports a one-sided key as a membership divergence, in key order" $
+        let k = M.fromList [("a", 1 :: Int), ("b", 2)]
+            p = M.fromList [("b", 2 :: Int), ("c", 3)]
+         in map quad (diffKeyed id amountDiff k p)
+              @?= [ ("a", "membership", "present", "absent"),
+                    ("c", "membership", "absent", "present")
+                  ],
+      -- The comparator returns only what differs. If it returned every field and the primitive
+      -- filtered, every comparator would carry the same filter and one would carry it wrongly.
+      testCase "diffKeyed reports only the fields the comparator returns" $
+        let k = M.fromList [("a", 10 :: Int)]
+            p = M.fromList [("a", 11 :: Int)]
+         in map triple (diffKeyed id amountDiff k p) @?= [("amount", "10", "11")],
+      testCase "a key on both sides with nothing different yields no divergence" $
+        let m = M.fromList [("a", 7 :: Int), ("b", 8)]
+         in diffKeyed id amountDiff m m @?= [],
+      -- The same key means different things in different rows: a DRep id is a membership key in R1
+      -- and a profile key in R2, so a waiver for one is not a waiver for the other.
+      testCase "an exception on (row, key, field) explains that divergence and nothing else" $
+        let d1 = Divergence "a" "amount" "10" "11"
+            d2 = Divergence "b" "amount" "10" "11"
+            e = entry R3 "a" (Just "amount") "known"
+         in ( applyExceptions [e] R3 [d1, d2],
+              applyExceptions [e] R5 [d1, d2]
+            )
+              @?= (([d2], [d1]), ([d1, d2], [])),
+      testCase "an exception with no field explains every field of that key" $
+        let d = Divergence "a" "delegator_count" "13" "12"
+         in applyExceptions [entry R2 "a" Nothing "known"] R2 [d] @?= ([], [d]),
+      testCase "an exception that matched nothing is reported stale" $
+        let e = entry R9 "gone" Nothing "stale"
+         in staleExceptions [e] [mkRow [] R9 7 []] @?= [e],
+      -- A skipped row compared nothing, so nothing in it could have matched. A run that aborted
+      -- must not propose deleting the waivers it never reached.
+      testCase "a skipped row does not make its exceptions stale" $
+        let e = entry R9 "gone" Nothing "unreached"
+         in staleExceptions [e] [skippedRow R9 "epoch skew"] @?= [e],
+      testCase "an exception that explained something is not stale" $
+        let d = Divergence "a" "amount" "10" "11"
+            e = entry R3 "a" Nothing "known"
+         in staleExceptions [e] [mkRow [e] R3 1 [d]] @?= [],
+      -- An epoch skew of ONE is two indexes on either side of a boundary, seconds apart. Two is a
+      -- whole epoch of votes, power and lifecycle transitions.
+      testCase "freshness aborts on epoch skew > 1 or lag over the bound, and only then" $
+        ( checkFreshness 320 320 41 300,
+          checkFreshness 320 321 41 300,
+          checkFreshness 321 320 41 300,
+          checkFreshness 318 320 41 300,
+          checkFreshness 320 320 412 300
+        )
+          @?= ( Fresh,
+                Fresh,
+                Fresh,
+                Aborted "epoch skew 2 > 1 (ours 318, koios 320)",
+                Aborted "lag 412s > 300s"
+              ),
+      testCase "exit code: 0 clean or explained, 1 unexplained, 3 aborted" $
+        let t = UTCTime (fromGregorian 2026 10 20) 0
+            d = Divergence "a" "membership" "present" "absent"
+            e = entry R1 "a" Nothing "known"
+            ok = mkReport "preprod" t 320 41 320 [] [mkRow [] R1 294 []]
+            waived = mkReport "preprod" t 320 41 320 [e] [mkRow [e] R1 294 [d]]
+            bad = mkReport "preprod" t 320 41 320 [] [mkRow [] R1 294 [d]]
+            skew = "epoch skew 2 > 1 (ours 318, koios 320)"
+            aborted =
+              mkReport
+                "preprod"
+                t
+                318
+                41
+                320
+                []
+                [ mkRow [] R10 1 [Divergence "freshness" "epoch_skew" "320" "318"],
+                  skippedRow R1 skew
+                ]
+         in ( (reportStatus ok, reportUnexplained ok, reportExitCode ok),
+              (reportStatus waived, reportUnexplained waived, reportExitCode waived),
+              (reportStatus bad, reportUnexplained bad, reportExitCode bad),
+              (reportStatus aborted, reportExitCode aborted)
+            )
+              @?= ( (ReportOk, 0, 0),
+                    (ReportOk, 0, 0),
+                    (ReportDivergent, 1, 1),
+                    (ReportAborted, 3)
+                  ),
+      -- A skipped row aborts the whole report even when every other row is clean: a run that did
+      -- not compare R3 has not checked R3, and "ok" with R3 missing is a false pass.
+      testCase "one skipped row aborts a report whose other rows are all clean" $
+        let t = UTCTime (fromGregorian 2026 10 20) 0
+            r = mkReport "preprod" t 320 41 320 [] [mkRow [] R1 294 [], skippedRow R2 "no snapshot"]
+         in (reportStatus r, reportUnexplained r, reportExitCode r) @?= (ReportAborted, 0, 3),
+      -- 2 is reserved for transport failure and is produced by the executable, never here.
+      testCase "no report ever yields exit code 2" $
+        let t = UTCTime (fromGregorian 2026 10 20) 0
+            d = Divergence "a" "membership" "present" "absent"
+            rs =
+              [ mkReport "preprod" t 320 41 320 [] [mkRow [] R1 1 []],
+                mkReport "preprod" t 320 41 320 [] [mkRow [] R1 1 [d]],
+                mkReport "preprod" t 320 41 320 [] [skippedRow R1 "why"]
+              ]
+         in (filter (== 2) (map reportExitCode rs), sort (map reportExitCode rs)) @?= ([], [0, 1, 3]),
+      testCase "row ids round-trip through the spelling the waiver file uses" $
+        map rowIdText [minBound .. maxBound]
+          @?= ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10"],
+      testCase "the committed waiver file parses, and every entry carries reason/opened/owner" $ do
+        es <- loadExceptions "config/reconcile-exceptions.yaml" >>= either assertFailure pure
+        ( all (not . T.null . exceptionReason) es,
+          all (not . T.null . exceptionOwner) es
+          )
+          @?= (True, True),
+      testCase "a missing waiver file is a Left, not an empty list" $ do
+        r <- loadExceptions "config/does-not-exist.yaml"
+        case r of
+          Left _ -> pure ()
+          Right _ -> assertFailure "a missing waiver file must not read as zero exceptions"
+    ]
+  where
+    quad d = (divergenceKey d, divergenceField d, divergenceKoios d, divergencePalmares d)
+    triple d = (divergenceField d, divergenceKoios d, divergencePalmares d)
+    amountDiff x y = [("amount", tshow x, tshow y) | x /= y]
+    tshow :: (Show a) => a -> Text
+    tshow = T.pack . show
+    entry r k f reason = ExceptionEntry r k f reason (fromGregorian 2026 10 20) "it@blazarlabs.io"

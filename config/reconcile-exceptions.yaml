@@ -1,0 +1,28 @@
+# Documented divergences against Koios preprod (F1 check 6: "explained divergences are documented").
+#
+# An entry here turns ONE divergence from `unexplained` into `explained`. It suppresses nothing
+# else: the divergence still appears in the report, under `explained`, with this entry's reason
+# beside it. A waiver that made a difference disappear would be a way to make the check pass by
+# editing a file.
+#
+# An entry that matches no divergence in a run is reported as `stale_exceptions` — delete it. That
+# report line is also the only signal that a divergence was FIXED: the waiver outliving the problem
+# is what tells you the problem is gone.
+#
+#   row:    R1 … R10. Numbered, not named after the subject, so an entry keeps meaning the same row
+#           when the row's description is reworded.
+#   key:    the row's comparison key verbatim as the report prints it (a CIP-129 id, "<id>:<epoch>", …)
+#   field:  one field name; OMIT to explain every field of that key. Omitting it is the usual shape
+#           for a legitimate waiver — one decision, not six.
+#   reason: what the difference is and why it is not a defect. Required.
+#   opened: the date it was accepted, YYYY-MM-DD. Required.
+#   owner:  who accepted it. Required.
+#
+# All three of reason/opened/owner are required because an undated, unowned, unexplained waiver is
+# indistinguishable from a bug someone silenced.
+#
+# EMPTY ON PURPOSE. The first real divergence found against Koios was ours and was FIXED rather
+# than waived: palmares.live_delegation compared deregistration EPOCHS where it had to compare
+# certificates, and 55 live delegations were missing. Nothing has yet been accepted as a difference
+# we keep.
+exceptions: []

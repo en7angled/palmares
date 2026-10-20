@@ -546,3 +546,88 @@ WINDOW w AS (
   PARTITION BY i.voter_role, i.voter_id_hash, i.gov_action_id
   ORDER BY i.vote_slot, i.tx_index, i.vote_index
 );
+
+-- ---------------------------------------------------------------------------------------------
+-- palmares.drep_epoch_power — the DRep stake distribution, per epoch, UNFILTERED.
+--
+-- D-20: no WHERE clause. The two reserved ledger options, `drep_always_abstain` and
+-- `drep_always_no_confidence`, get rows here exactly like real DReps, distinguished only by
+-- `target_kind`. Consumers filter.
+--
+-- Filtering them out at the source is the mistake this view is shaped to prevent: on preprod at
+-- epoch 319 the always-abstain option alone holds 431,863,790,957,959 lovelace, about 46% of the
+-- 937,803,900,128,796 total. Any denominator built from a filtered view understates total voting
+-- power by nearly half, and the dashboard's "share of total power" numbers would all be inflated.
+--
+-- A DRep with no row in an epoch has ZERO power that epoch, not unknown power: the ledger simply
+-- did not include it in the distribution. 101 of the 294 registered DReps are in that position at
+-- epoch 319. Readers must LEFT JOIN and coalesce, not INNER JOIN.
+CREATE VIEW palmares.drep_epoch_power AS
+SELECT
+  dd.hash_id AS drep_hash_id,
+  dh.raw AS drep_raw,
+  dh.has_script,
+  CASE
+    WHEN dh.raw IS NOT NULL THEN 'drep'
+    WHEN dh.view = 'drep_always_abstain' THEN 'always_abstain'
+    ELSE 'always_no_confidence'
+  END AS target_kind,
+  dd.epoch_no,
+  dd.amount,
+  dd.active_until
+FROM public.drep_distr dd
+JOIN public.drep_hash dh ON dh.id = dd.hash_id;
+
+-- ---------------------------------------------------------------------------------------------
+-- palmares.vote_delegation — every vote-delegation certificate, with the target classified.
+--
+-- One row per certificate, so the history is auditable; `palmares.live_delegation` reduces it to
+-- what is in force now.
+CREATE VIEW palmares.vote_delegation AS
+SELECT
+  dv.addr_id,
+  sa.view AS stake_address,
+  dv.drep_hash_id,
+  CASE
+    WHEN dh.raw IS NOT NULL THEN 'drep'
+    WHEN dh.view = 'drep_always_abstain' THEN 'always_abstain'
+    ELSE 'always_no_confidence'
+  END AS target_kind,
+  tx.hash AS tx_hash,
+  b.slot_no,
+  b.epoch_no,
+  b.time AS delegated_at,
+  dv.cert_index
+FROM public.delegation_vote dv
+JOIN public.tx ON tx.id = dv.tx_id
+JOIN public.block b ON b.id = tx.block_id
+JOIN public.stake_address sa ON sa.id = dv.addr_id
+JOIN public.drep_hash dh ON dh.id = dv.drep_hash_id;
+
+-- ---------------------------------------------------------------------------------------------
+-- palmares.live_delegation — the delegation in force right now, per stake address.
+--
+-- Two rules, and the second is the one that is easy to miss: a later delegation certificate
+-- supersedes an earlier one (so only the last per address counts), AND de-registering the stake
+-- credential ends the delegation even though `delegation_vote` keeps the row forever. Without the
+-- de-registration rule a DRep keeps counting delegators who have closed their accounts.
+CREATE VIEW palmares.live_delegation AS
+WITH latest AS (
+  SELECT DISTINCT ON (dv.addr_id)
+    dv.addr_id,
+    dv.drep_hash_id,
+    b.epoch_no AS from_epoch,
+    b.slot_no AS from_slot
+  FROM public.delegation_vote dv
+  JOIN public.tx ON tx.id = dv.tx_id
+  JOIN public.block b ON b.id = tx.block_id
+  ORDER BY dv.addr_id, b.slot_no DESC, tx.block_index DESC, dv.cert_index DESC
+)
+SELECT l.addr_id, l.drep_hash_id, l.from_epoch, l.from_slot
+FROM latest l
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM public.stake_deregistration sd
+  WHERE sd.addr_id = l.addr_id
+    AND sd.epoch_no >= l.from_epoch
+);

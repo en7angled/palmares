@@ -37,7 +37,7 @@ CREATE DOMAIN public.word31type AS integer;
 CREATE DOMAIN public.word63type AS bigint;
 CREATE DOMAIN public.word64type AS numeric(20,0);
 
--- The 35 tables our views read.
+-- The 36 tables our views read.
 
 CREATE TABLE public.block (
     id bigint NOT NULL,
@@ -377,6 +377,16 @@ CREATE TABLE public.pool_update (
     registered_tx_id bigint NOT NULL,
     reward_addr_id bigint NOT NULL,
     deposit public.lovelace
+);
+
+CREATE TABLE public.pool_stat (
+    id bigint NOT NULL,
+    pool_hash_id bigint NOT NULL,
+    epoch_no public.word31type NOT NULL,
+    number_of_blocks public.word64type NOT NULL,
+    number_of_delegators public.word64type NOT NULL,
+    stake public.word64type NOT NULL,
+    voting_power public.word64type
 );
 
 CREATE TABLE public.reward_rest (

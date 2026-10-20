@@ -11,6 +11,7 @@ import UnitTests.ChainSyncReplay (chainSyncReplayTests)
 import UnitTests.Conversions (conversionsTests)
 import UnitTests.GovDto (govDtoTests)
 import UnitTests.GovIds (govIdsTests)
+import UnitTests.GovThresholds (govThresholdsTests)
 import UnitTests.MetricCatalog qualified as MetricCatalog
 import UnitTests.MetricDoc qualified as MetricDoc
 import UnitTests.MetricFixture qualified as MetricFixture
@@ -31,6 +32,7 @@ unitTests =
       conversionsTests,
       govDtoTests,
       govIdsTests,
+      govThresholdsTests,
       MetricCatalog.tests,
       MetricDoc.tests,
       MetricFixture.tests,

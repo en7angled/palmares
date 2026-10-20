@@ -312,6 +312,7 @@ executable query-api
     Query.Csv
     Query.Gov
   --   Query.Metrics
+    Query.Thresholds
   --   Query.Pages
   --   Query.Projected
     Query.Refresh
@@ -436,6 +437,7 @@ test-suite test
     Query.Common
     Query.Gov
     Query.Refresh
+    Query.Thresholds
     Query.Views
     Test.Helpers
     Test.Pg
@@ -450,6 +452,7 @@ test-suite test
     UnitTests.Conversions
     UnitTests.GovDto
     UnitTests.GovIds
+    UnitTests.GovThresholds
     UnitTests.MetricCatalog
     UnitTests.MetricDoc
     UnitTests.MetricFixture

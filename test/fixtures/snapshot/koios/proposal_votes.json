@@ -1,0 +1,1262 @@
+{
+    "gov_action108a5htqnmlp89ffn2ucf7u9u33s0r9gpx7eytpdc2q28y50ly42qqf9jcen": [
+        {
+            "block_time": 1780820912,
+            "meta_hash": "21ea5cc46f624b274722f172acf93cb0ea235f2abcf20a794f4f39cd9de7607b",
+            "meta_url": "ipfs://QmUSiFS96A2fjb39cecKq57jruE5kSsPt31DVNgZFgNFRA",
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "987752b565179c9984c3742022ead1f44179f47adac3c6a4ca02b7a2",
+            "voter_id": "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1780598274,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "9ed23a4a839826d08d7d10f277a91f0e2373ea90251fb33664d52c94",
+            "voter_id": "pool1nmfr5j5rnqndprtazre802glpc3h865sy50mxdny65kfgf3e5eh",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1780585781,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "fa1a5e1e70bc2fa7f60080b214f7bf5ab14c51da4b307a1a792c1714",
+            "voter_id": "pool1lgd9u8nshsh60asqszepfaalt2c5c5w6fvc85xne9st3g3fwtvm",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1780585781,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "30b4694f065a12c7bc09b7d3bed3362e238ab2d42191369d96c46366",
+            "voter_id": "pool1xz6xjncxtgfv00qfklfma5ek9c3c4vk5yxgnd8vkc33kvrkey20",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1780585781,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "d64193cd0ef313faafeb7464ac56d20df9439be5bba5c16ecedabb64",
+            "voter_id": "pool16eqe8ngw7vfl4tltw3j2c4kjphu58xl9hwjuzmkwm2akghn9dat",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1780585781,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "934facc95005a97ab4a47a16dd001c0302d73f0dbae64f643825ea39",
+            "voter_id": "pool1jd86ej2sqk5h4d9y0gtd6qquqvpdw0cdhtny7epcyh4rjl8wrsr",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1780585781,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "5fc3083905cb1e91c078472c11527075118cafede4dc8d63e361882a",
+            "voter_id": "pool1tlpsswg9ev0frsrcgukpz5nsw5gcetldunwg6clrvxyz5sn2xaz",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1780575610,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "8ed5ab11e76094fa2a2ab29fc3a57498d07e68f6fde6f326162eea88",
+            "voter_id": "pool13m26ky08vz205232k20u8ft5nrg8u68klhn0xfsk9m4gsqsc44v",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1780572159,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "ac9be9eb180b3641d8550e67e10e1ee66e075d5c60abaffe5e0b291e",
+            "voter_id": "drep1y2kfh60trq9nvswc258x0cgwrmnxup6at3s2htl7tc9jj8sl7s5dv",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1780388194,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "8ffb4c8e648c0662f2a91157c92feaa95f1a3d2728eaea8257b3d8d9",
+            "voter_id": "pool13la5erny3srx9u4fz9tujtl2490350f89r4w4qjhk0vdjmuv78v",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1780111647,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "05f17c5238cb888b8bfa2e5e20062d0f870f40f3ea65acb2a7135f8a",
+            "voter_id": "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1780111647,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "2d6984805b2281950a85da5aedfa4e02f989e139cd0d669d35770be1",
+            "voter_id": "pool1945cfqzmy2qe2z59mfdwm7jwqtucncfee5xkd8f4wu97zr8xuys",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1780111647,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "3c1810ae664e179704de9ae7bff444ab8b81aaa9a8f003c376605087",
+            "voter_id": "pool18svpptnxfctewpx7ntnmlazy4w9cr24f4rcq8smkvpggw600ql4",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1780111647,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "b196311f2c4346e70dbd95dceccd1ab1f248498044e8519fb47580ed",
+            "voter_id": "pool1kxtrz8evgdrwwrdajhwweng6k8eysjvqgn59r8a5wkqw6rlnvv6",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1780111516,
+            "meta_hash": "bad50a6a8681005d0541d2d5bf14bf0ebf3cc827074a817cadd9ec0306646ad2",
+            "meta_url": "ipfs://QmavEugKRSS4b1bdQ2MqvJPLZ3AigneS6zh2A8KikRqLGC",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "26648e2c6bc4e4863a373bd28d480b2eb788922545e1df357e76a3d2",
+            "voter_id": "cc_hot1qvnxfr3vd0zwfp36xuaa9r2gpvht0zyjy4z7rhe40em285sq8lgd2",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1780111412,
+            "meta_hash": "bad50a6a8681005d0541d2d5bf14bf0ebf3cc827074a817cadd9ec0306646ad2",
+            "meta_url": "ipfs://QmavEugKRSS4b1bdQ2MqvJPLZ3AigneS6zh2A8KikRqLGC",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "5bfa7d850280c54110534065fa91a3635bbcc0eadc69c5c792c35e1e",
+            "voter_id": "cc_hot1qddl5lv9q2qv2sgs2dqxt7535d34h0xqatwxn3w8jtp4u8su5q6z7",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1780111325,
+            "meta_hash": "bad50a6a8681005d0541d2d5bf14bf0ebf3cc827074a817cadd9ec0306646ad2",
+            "meta_url": "ipfs://QmavEugKRSS4b1bdQ2MqvJPLZ3AigneS6zh2A8KikRqLGC",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "19ebff7033fe1c1f9cd2b346f2c9b0d7ff28b1527ebed1cc071155b4",
+            "voter_id": "cc_hot1qvv7hlmsx0lpc8uu62e5dukfkrtl72932flta5wvqug4tdqaa84y0",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1778810597,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "81378d3ea89b68f0fc09944b1f93f2feb851318f196f98ba4029d8a8",
+            "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1778753723,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "85eb86b47f9f8e736e729c0176ba45cf9778e238b4452b7a6428a6e9",
+            "voter_id": "pool1sh4cddrln788xmnjnsqhdwj9e7th3c3ck3zjk7ny9znwj44t8he",
+            "voter_role": "SPO"
+        }
+    ],
+    "gov_action10md95hawtukx6yqmj33ndwpg7wxd35zdez88gazqkxhna9jzkgnszjwsmss": [],
+    "gov_action10w936mpzlshl3udp2f4gqfadnhczthy6wqfms8h4r7uxn0xp4azqq6g46e8": [
+        {
+            "block_time": 1781449330,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "No",
+            "voter_has_script": false,
+            "voter_hex": "3238ce83df9b32f004b2d28335bfec9d241d7832e7a79a08b141f2ff",
+            "voter_id": "drep1yger3n5rm7dn9uqyktfgxddlajwjg8tcxtn60xsgk9ql9lcc97wv5",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1781353344,
+            "meta_hash": "8d676d30d5ce003aac913d0acc325fce0a791218483b7f7f677b4e38bfc15a73",
+            "meta_url": "ipfs://QmeXMQ6dpZCLBdc44EvyK6qmsb7hJYhN3WcA7EMQh69MQp",
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "987752b565179c9984c3742022ead1f44179f47adac3c6a4ca02b7a2",
+            "voter_id": "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev",
+            "voter_role": "DRep"
+        }
+    ],
+    "gov_action14lefp8upwhhq92xph7t075txshf9huxxh9d2ey05ml2n5hqgvlxqqp92kfl": [
+        {
+            "block_time": 1728304828,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "ed11d1ad4d95806b4443576724a4c5b57b93dc15eca5a3f46d235a9e",
+            "voter_id": "drep1ytk3r5ddfk2cq66ygdtkwf9yck6hhy7uzhk2tgl5d53448skyutw7",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1727882230,
+            "meta_hash": "30d5a8af01f9b08511afd3a70d185b05c9b857dc040e586de11fbd534b767cee",
+            "meta_url": "https://hornan7.github.io/Vote_Context2.jsonld",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "e3a4c41d67592a1b8d87c62e5c5d73f7e8db836171945412d13f40f8",
+            "voter_id": "cc_hot1q036f3qavavj5xudslrzuhzaw0m73kurv9ceg4qj6yl5p7qf4a3gz",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1727752399,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "No",
+            "voter_has_script": false,
+            "voter_hex": "209c6caf1fdabf53984cdcdce4e8d53f680165f33557a47c54b1dd6a",
+            "voter_id": "pool1yzwxetclm2l48xzvmnwwf6x48a5qze0nx4t6glz5k8wk50xl006",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1727386805,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "63b49197a85d0ed90c3173d6ffc27a5c5455eb3c800c2a710d2bbd9c",
+            "voter_id": "pool1vw6fr9agt58djrp3w0t0lsn6t329t6eusqxz5ugd9w7ecyedsdv",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1725664968,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "763ef75661f0cd8c8fa159a79d79bfe8f9a76878bdaaff700598ee0e",
+            "voter_id": "drep1ydmraa6kv8cvmry059v608tehl50nfmg0z764lmsqkvwurs40sw2z",
+            "voter_role": "DRep"
+        }
+    ],
+    "gov_action18cd564yw8jcsj392ggtge8swd3pkxm5k6rdhlf3sv308z0rjy3gsqdgxfqp": [
+        {
+            "block_time": 1778287367,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "05f17c5238cb888b8bfa2e5e20062d0f870f40f3ea65acb2a7135f8a",
+            "voter_id": "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1778286891,
+            "meta_hash": "13f0fc07e4c4e3af41f71c659df175296632c42b535d6157f9f763ce1addc4d0",
+            "meta_url": "ipfs://QmX1Bewwon1GYHU6Hpw9TnkvpZr2zVMuuvf9iEFDWFsihV",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "26648e2c6bc4e4863a373bd28d480b2eb788922545e1df357e76a3d2",
+            "voter_id": "cc_hot1qvnxfr3vd0zwfp36xuaa9r2gpvht0zyjy4z7rhe40em285sq8lgd2",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1778286802,
+            "meta_hash": "13f0fc07e4c4e3af41f71c659df175296632c42b535d6157f9f763ce1addc4d0",
+            "meta_url": "ipfs://QmX1Bewwon1GYHU6Hpw9TnkvpZr2zVMuuvf9iEFDWFsihV",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "5bfa7d850280c54110534065fa91a3635bbcc0eadc69c5c792c35e1e",
+            "voter_id": "cc_hot1qddl5lv9q2qv2sgs2dqxt7535d34h0xqatwxn3w8jtp4u8su5q6z7",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1778286743,
+            "meta_hash": "13f0fc07e4c4e3af41f71c659df175296632c42b535d6157f9f763ce1addc4d0",
+            "meta_url": "ipfs://QmX1Bewwon1GYHU6Hpw9TnkvpZr2zVMuuvf9iEFDWFsihV",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "19ebff7033fe1c1f9cd2b346f2c9b0d7ff28b1527ebed1cc071155b4",
+            "voter_id": "cc_hot1qvv7hlmsx0lpc8uu62e5dukfkrtl72932flta5wvqug4tdqaa84y0",
+            "voter_role": "ConstitutionalCommittee"
+        }
+    ],
+    "gov_action18zuuryq7guh3xx85fgeyuazcj3ndwll5ff3u6d0sxj4gnx8u2w4qqfprex0": [],
+    "gov_action19nvvldw9x8cv05q923fyympcgsff0zumvmmy73z86rpvw0ueakrqzp0dlya": [
+        {
+            "block_time": 1754488213,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "81378d3ea89b68f0fc09944b1f93f2feb851318f196f98ba4029d8a8",
+            "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
+            "voter_role": "DRep"
+        }
+    ],
+    "gov_action1a960ajl5ttpcdfmxqh57s3azuhf8cqrlm597vaxt44fcurp4lcqsqqfz6j2": [
+        {
+            "block_time": 1731302725,
+            "meta_hash": "5b7bb717e259d718e23a9058dd51bb94debbddd0ae4827627bb6eb25a37f11a4",
+            "meta_url": "https://raw.githubusercontent.com/Eastern-Cardano-Council/icc-ga-rationales/refs/heads/main/preprod/ga04/ga04-rationale.jsonld",
+            "vote": "No",
+            "voter_has_script": true,
+            "voter_hex": "104f3db4e905fd008396f53a6d035e290f97f6172d3792673b213956",
+            "voter_id": "cc_hot1qvgy70d5ayzl6qyrjm6n5mgrtc5sl9lkzukn0yn88vsnj4sm78an6",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1730904215,
+            "meta_hash": "30d5a8af01f9b08511afd3a70d185b05c9b857dc040e586de11fbd534b767cee",
+            "meta_url": "https://hornan7.github.io/Vote_Context2.jsonld",
+            "vote": "No",
+            "voter_has_script": true,
+            "voter_hex": "e3a4c41d67592a1b8d87c62e5c5d73f7e8db836171945412d13f40f8",
+            "voter_id": "cc_hot1q036f3qavavj5xudslrzuhzaw0m73kurv9ceg4qj6yl5p7qf4a3gz",
+            "voter_role": "ConstitutionalCommittee"
+        }
+    ],
+    "gov_action1d79hpfyzuy9wgpmawpessfh0ylmjkz8pfqgc55t3cuh8lc7x64gsq8nmy5g": [
+        {
+            "block_time": 1753479930,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "05f17c5238cb888b8bfa2e5e20062d0f870f40f3ea65acb2a7135f8a",
+            "voter_id": "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1753403655,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "2d6984805b2281950a85da5aedfa4e02f989e139cd0d669d35770be1",
+            "voter_id": "pool1945cfqzmy2qe2z59mfdwm7jwqtucncfee5xkd8f4wu97zr8xuys",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1753403655,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "3c1810ae664e179704de9ae7bff444ab8b81aaa9a8f003c376605087",
+            "voter_id": "pool18svpptnxfctewpx7ntnmlazy4w9cr24f4rcq8smkvpggw600ql4",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1753403655,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "b196311f2c4346e70dbd95dceccd1ab1f248498044e8519fb47580ed",
+            "voter_id": "pool1kxtrz8evgdrwwrdajhwweng6k8eysjvqgn59r8a5wkqw6rlnvv6",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1753322011,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "d66e95c8bc223b8fbff285b914b0db7d6996e125d148e91257c02fd1",
+            "voter_id": "drep1yttxa9wghs3rhral72zmj99smd7kn9hpyhg536gj2lqzl5g484sxy",
+            "voter_role": "DRep"
+        }
+    ],
+    "gov_action1eje876cdtrp94celmqsmvtpc0afrpkhfxzhaqayflg7l26h9v53qqnjsjww": [
+        {
+            "block_time": 1731855700,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "9830937b61526f07394627818299d8bbf9cc8312fb1d0bd530954e71",
+            "voter_id": "pool1nqcfx7mp2fhsww2xy7qc9xwch0uueqcjlvwsh4fsj488zyvfknj",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731755722,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "209c6caf1fdabf53984cdcdce4e8d53f680165f33557a47c54b1dd6a",
+            "voter_id": "pool1yzwxetclm2l48xzvmnwwf6x48a5qze0nx4t6glz5k8wk50xl006",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731675639,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "8ed5ab11e76094fa2a2ab29fc3a57498d07e68f6fde6f326162eea88",
+            "voter_id": "pool13m26ky08vz205232k20u8ft5nrg8u68klhn0xfsk9m4gsqsc44v",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731666172,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "8aa469088eaf5c38c3d4faf0d3516ca670cd6df5545fafea2f70258b",
+            "voter_id": "pool132jxjzyw4awr3s75ltcdx5tv5ecv6m042306l630wqjckhfm32r",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731609727,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "d84ba9070a6afa3e09f8e8b7f95df16e58f2e8b8a8c1170f579e2a39",
+            "voter_id": "pool1mp96jpc2dtaruz0cazmljh03dev0969c4rq3wr6hnc4rjdxn8aw",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731608032,
+            "meta_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "meta_url": "http://example.com",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "e732eac066fe2759f10b4b3473623b1cce4ba67ffc299b41915a1a0f",
+            "voter_id": "cc_hot1q0nn96kqvmlzwk03pd9ngumz8vwvujax0l7znx6pj9dp5rcn8g5cu",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1731594334,
+            "meta_hash": "e4ccdfd78721607b7fbbe99f89940627950cf447aae930acb9e33292930569ac",
+            "meta_url": "ipfs://bafkreidsmyjjfrsvj3czrsu5roy2undco2bhhcnqdgbievolgbyi7lptxy",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "4f00984fa72e265b8ff8ffce4405da562cd3d6b16a4a38de3372eeea",
+            "voter_id": "cc_hot1qd8spxz05uhzvku0lrluu3q9mftze57kk94y5wx7xdewa6s3guxzr",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1731471768,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "eec73ca2652e1ae92852195ff3289dd991a83dbe5f989f06e1c96b64",
+            "voter_id": "pool1amrnegn99cdwj2zjr90lx2yamxg6s0d7t7vf7phpe94kga9gg86",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731444675,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "e040920801b69d60c18e2bc00184655c899ddea7abad5cef45ecdc1e",
+            "voter_id": "pool1upqfyzqpk6wkpsvw90qqrpr9tjyemh484wk4em69anwpu586ehq",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731436933,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "8ffb4c8e648c0662f2a91157c92feaa95f1a3d2728eaea8257b3d8d9",
+            "voter_id": "pool13la5erny3srx9u4fz9tujtl2490350f89r4w4qjhk0vdjmuv78v",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731430680,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "097ed33e2485fe2955bfbffa66d0b3e58909363bfb707c7194ee4e5f",
+            "voter_id": "pool1p9ldx03yshlzj4dlhlaxd59nukysjd3mldc8cuv5ae897q7ky2z",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731430459,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "74f5dd2551c2c0fd71aebb95e1f58d0b742c0fd2ff1712644f709bdc",
+            "voter_id": "pool1wn6a6f23ctq06udwhw27ravdpd6zcr7jlut3yez0wzdackz3222",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731429931,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "7facad662e180ce45e5c504957cd1341940c72a708728f7ecfc6e349",
+            "voter_id": "pool107k26e3wrqxwghju2py40ngngx2qcu48ppeg7lk0cm35jl2aenx",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731364038,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "18e91458ace981766dfce309ca905867314118165b31f896c583af97",
+            "voter_id": "pool1rr53gk9vaxqhvm0uuvyu4yzcvuc5zxqktvcl39k9swhewvaf7t2",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731291488,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "535afda0b1a6c46d0dbd25a68048fdc80c35cbeb4524b6e3035f82f3",
+            "voter_id": "pool12dd0mg935mzx6rdaykngqj8aeqxrtjltg5jtdccrt7p0x78rc38",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731234456,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "d9f03bcc12a595624049a4950c42fc0920b21b073f84d48c22be964d",
+            "voter_id": "pool1m8crhnqj5k2kyszf5j2scshupystyxc887zdfrpzh6ty6eun4fx",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731216236,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "632dc1a4d7ec972aa7c63ba56ce57e1a0fdd8a356f0949f0ded0723a",
+            "voter_id": "pool1vvkurfxhajtj4f7x8wjkeet7rg8amz34duy5nux76per5sn3npx",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731197042,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "f9c8e7275348d3b1a3596c94095f43307990cc5f800bbbb256298658",
+            "voter_id": "pool1l8ywwf6nfrfmrg6edj2qjh6rxpuepnzlsq9mhvjk9xr9swkht93",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731147494,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "9ed23a4a839826d08d7d10f277a91f0e2373ea90251fb33664d52c94",
+            "voter_id": "pool1nmfr5j5rnqndprtazre802glpc3h865sy50mxdny65kfgf3e5eh",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731126645,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "3f8809a02dc5bd2387be196f70c52136775f1d2072a76f9074284367",
+            "voter_id": "pool187yqngpdck7j8pa7r9hhp3fpxem478fqw2nklyr59ppkwystqdl",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731126093,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "35431c3b3b86e34d30269c9dce37cef6a42d56e4843ca2883e3774ee",
+            "voter_id": "pool1x4p3cwemsm356vpxnjwuud7w76jz64hyss729zp7xa6wuey6yr9",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731111972,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "65a73f3591a5d9370919c9d5f461073b3d58e056246df38b2fa84487",
+            "voter_id": "pool1vknn7dv35hvnwzgee82lgcg88v743czky3kl8ze04pzgwu047f4",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731105141,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "938e5393543cf32675de87c6ba0d32777c8b10ffb6ae4557ea442360",
+            "voter_id": "pool1jw898y658nejvaw7slrt5rfjwa7gky8lk6hy24l2gs3kqqesnfr",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731097386,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "032a04334a846fdf542fd5633c9b3928998691b8276e004facbc8af1",
+            "voter_id": "pool1qv4qgv62s3ha74p0643nexee9zvcdydcyahqqnavhj90zheuykz",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731092956,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "fdb5834ba06eb4baafd50550d2dc9b3742d2c52cc5ee65bf8673823b",
+            "voter_id": "pool1lk6cxjaqd66t4t74q4gd9hymxapd93fvchhxt0uxwwprk9m8v6c",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731082648,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "3c1810ae664e179704de9ae7bff444ab8b81aaa9a8f003c376605087",
+            "voter_id": "pool18svpptnxfctewpx7ntnmlazy4w9cr24f4rcq8smkvpggw600ql4",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731082588,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "b196311f2c4346e70dbd95dceccd1ab1f248498044e8519fb47580ed",
+            "voter_id": "pool1kxtrz8evgdrwwrdajhwweng6k8eysjvqgn59r8a5wkqw6rlnvv6",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731082514,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "2d6984805b2281950a85da5aedfa4e02f989e139cd0d669d35770be1",
+            "voter_id": "pool1945cfqzmy2qe2z59mfdwm7jwqtucncfee5xkd8f4wu97zr8xuys",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731073555,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "7b56e64f55ed8126ae656d42d56e77099280fb576413646d2ee20703",
+            "voter_id": "pool10dtwvn64akqjdtn9d4pd2mnhpxfgp76hvsfkgmfwugrsxef3y2p",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731072037,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "4efc12c83722ef9cd9a9ad98ccbe53880a7d25c60238e078a5162a31",
+            "voter_id": "pool1fm7p9jphytheekdf4kvve0jn3q986fwxqguwq799zc4rzs4ltte",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731070952,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "1d9302a3fb4b3b1935e02b27f0339798d3f08a55fbfdcd43a449a96f",
+            "voter_id": "pool1rkfs9glmfva3jd0q9vnlqvuhnrflpzj4l07u6sayfx5k7d788us",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731064031,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "089a06986c7dbd50d411890a74ab9e60ba22d32bf6e59cb658491f2c",
+            "voter_id": "pool1pzdqdxrv0k74p4q33y98f2u7vzaz95et7mjeedjcfy0jcgk754f",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731058029,
+            "meta_hash": "dc208474e195442d07a5b6d42af19bb2db02229427dfb53ab23122e6b0e2487d",
+            "meta_url": "https://hornan7.github.io/Vote_Context.jsonld",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "e3a4c41d67592a1b8d87c62e5c5d73f7e8db836171945412d13f40f8",
+            "voter_id": "cc_hot1q036f3qavavj5xudslrzuhzaw0m73kurv9ceg4qj6yl5p7qf4a3gz",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1731021777,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "1e3105f23f2ac91b3fb4c35fa4fe301421028e356e114944e902005b",
+            "voter_id": "pool1rccstu3l9ty3k0a5cd06fl3szsss9r34dcg5j38fqgq9kvng0tg",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1731020821,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "212b8cef18dcedadebadc4cd9688956b07f7168d97e750e1687c820a",
+            "voter_id": "pool1yy4cemccmnk6m6adcnxedzy4dvrlw95djln4pctg0jpq5x7gczh",
+            "voter_role": "SPO"
+        }
+    ],
+    "gov_action1f2j9lepxdsg5yqtn8w7xgytyknf743gssxh7acfdmjfzxk6c73wqqmpu0a4": [
+        {
+            "block_time": 1781478176,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "05f17c5238cb888b8bfa2e5e20062d0f870f40f3ea65acb2a7135f8a",
+            "voter_id": "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1781478176,
+            "meta_hash": "f1ee8dbac1fd1fccaccc2329173e45d92620447a13c466be370e4e202ced2539",
+            "meta_url": "ipfs://Qmd7vhgQFkJfpYhzWQwL9TwumtEFaiLP5n5zTSR5HEENwb",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "5bfa7d850280c54110534065fa91a3635bbcc0eadc69c5c792c35e1e",
+            "voter_id": "cc_hot1qddl5lv9q2qv2sgs2dqxt7535d34h0xqatwxn3w8jtp4u8su5q6z7",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1781478176,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "b196311f2c4346e70dbd95dceccd1ab1f248498044e8519fb47580ed",
+            "voter_id": "pool1kxtrz8evgdrwwrdajhwweng6k8eysjvqgn59r8a5wkqw6rlnvv6",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1781478176,
+            "meta_hash": "f1ee8dbac1fd1fccaccc2329173e45d92620447a13c466be370e4e202ced2539",
+            "meta_url": "ipfs://Qmd7vhgQFkJfpYhzWQwL9TwumtEFaiLP5n5zTSR5HEENwb",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "26648e2c6bc4e4863a373bd28d480b2eb788922545e1df357e76a3d2",
+            "voter_id": "cc_hot1qvnxfr3vd0zwfp36xuaa9r2gpvht0zyjy4z7rhe40em285sq8lgd2",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1781478176,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "2d6984805b2281950a85da5aedfa4e02f989e139cd0d669d35770be1",
+            "voter_id": "pool1945cfqzmy2qe2z59mfdwm7jwqtucncfee5xkd8f4wu97zr8xuys",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1781478176,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "3c1810ae664e179704de9ae7bff444ab8b81aaa9a8f003c376605087",
+            "voter_id": "pool18svpptnxfctewpx7ntnmlazy4w9cr24f4rcq8smkvpggw600ql4",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1781478128,
+            "meta_hash": "f1ee8dbac1fd1fccaccc2329173e45d92620447a13c466be370e4e202ced2539",
+            "meta_url": "ipfs://Qmd7vhgQFkJfpYhzWQwL9TwumtEFaiLP5n5zTSR5HEENwb",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "19ebff7033fe1c1f9cd2b346f2c9b0d7ff28b1527ebed1cc071155b4",
+            "voter_id": "cc_hot1qvv7hlmsx0lpc8uu62e5dukfkrtl72932flta5wvqug4tdqaa84y0",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1781449330,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "No",
+            "voter_has_script": false,
+            "voter_hex": "3238ce83df9b32f004b2d28335bfec9d241d7832e7a79a08b141f2ff",
+            "voter_id": "drep1yger3n5rm7dn9uqyktfgxddlajwjg8tcxtn60xsgk9ql9lcc97wv5",
+            "voter_role": "DRep"
+        }
+    ],
+    "gov_action1f9tcawsvss8gytsx3zcfzyhnlxa2adga6r35d3dyl8gr6t9ur9fsq2kuh0j": [
+        {
+            "block_time": 1754056881,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "81378d3ea89b68f0fc09944b1f93f2feb851318f196f98ba4029d8a8",
+            "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1753482822,
+            "meta_hash": "b222cac942081751d02783b318b8e4fb93f5f61db378a9ffb1c4edd3f99967fd",
+            "meta_url": "ipfs://QmX9AvojBHhUC5eQp2fEiwasM1QKif5WzzpoMBFFcmnE3K",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "8af77f7f912a456cefe7bda6e035a4c8962600598ed1b755f3b12c01",
+            "voter_id": "cc_hot1qw90wlmljy4y2m80u776dcp45nyfvfsqtx8drd647wcjcqgwevfus",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1753482770,
+            "meta_hash": "b222cac942081751d02783b318b8e4fb93f5f61db378a9ffb1c4edd3f99967fd",
+            "meta_url": "ipfs://QmX9AvojBHhUC5eQp2fEiwasM1QKif5WzzpoMBFFcmnE3K",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "cedf596dbc94e2229ec11118ea9404f2336369c4826219253e4b6802",
+            "voter_id": "cc_hot1q08d7ktdhj2wyg57cyg33655qnerxcmfcjpxyxf98e9ksqsms66se",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1753482752,
+            "meta_hash": "b222cac942081751d02783b318b8e4fb93f5f61db378a9ffb1c4edd3f99967fd",
+            "meta_url": "ipfs://QmX9AvojBHhUC5eQp2fEiwasM1QKif5WzzpoMBFFcmnE3K",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "433554e73c96397a4ab3684247db0ccaad0f19382bee8f62bfb91523",
+            "voter_id": "cc_hot1qdpn24888jtrj7j2kd5yy37mpn926rce8q47armzh7u32gcqdtn3c",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1753482607,
+            "meta_hash": "b222cac942081751d02783b318b8e4fb93f5f61db378a9ffb1c4edd3f99967fd",
+            "meta_url": "ipfs://QmX9AvojBHhUC5eQp2fEiwasM1QKif5WzzpoMBFFcmnE3K",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "be4b5ca31023088940eb952d01bd365af0c32d13e99e3c06929ef89c",
+            "voter_id": "cc_hot1qwlykh9rzq3s3z2qaw2j6qdaxed0psedz05eu0qxj20038qc7zdu7",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1753482545,
+            "meta_hash": "b222cac942081751d02783b318b8e4fb93f5f61db378a9ffb1c4edd3f99967fd",
+            "meta_url": "ipfs://QmX9AvojBHhUC5eQp2fEiwasM1QKif5WzzpoMBFFcmnE3K",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "5bfa7d850280c54110534065fa91a3635bbcc0eadc69c5c792c35e1e",
+            "voter_id": "cc_hot1qddl5lv9q2qv2sgs2dqxt7535d34h0xqatwxn3w8jtp4u8su5q6z7",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1753482545,
+            "meta_hash": "b222cac942081751d02783b318b8e4fb93f5f61db378a9ffb1c4edd3f99967fd",
+            "meta_url": "ipfs://QmX9AvojBHhUC5eQp2fEiwasM1QKif5WzzpoMBFFcmnE3K",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "26648e2c6bc4e4863a373bd28d480b2eb788922545e1df357e76a3d2",
+            "voter_id": "cc_hot1qvnxfr3vd0zwfp36xuaa9r2gpvht0zyjy4z7rhe40em285sq8lgd2",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1753482289,
+            "meta_hash": "b222cac942081751d02783b318b8e4fb93f5f61db378a9ffb1c4edd3f99967fd",
+            "meta_url": "ipfs://QmX9AvojBHhUC5eQp2fEiwasM1QKif5WzzpoMBFFcmnE3K",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "19ebff7033fe1c1f9cd2b346f2c9b0d7ff28b1527ebed1cc071155b4",
+            "voter_id": "cc_hot1qvv7hlmsx0lpc8uu62e5dukfkrtl72932flta5wvqug4tdqaa84y0",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1753481136,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "05f17c5238cb888b8bfa2e5e20062d0f870f40f3ea65acb2a7135f8a",
+            "voter_id": "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm",
+            "voter_role": "DRep"
+        }
+    ],
+    "gov_action1fu4jzn3cwvhdyl80zqrywzn6zc2h0h94ef3qkk222cnp2h7q0v2sqq6ac3a": [],
+    "gov_action1h0arqw4rt5verxf5ld07x6chgcy6pswlk3a9gmxdd6jc4f6ju24qqj0haqp": [
+        {
+            "block_time": 1784913245,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "05f17c5238cb888b8bfa2e5e20062d0f870f40f3ea65acb2a7135f8a",
+            "voter_id": "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1784913245,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "2d6984805b2281950a85da5aedfa4e02f989e139cd0d669d35770be1",
+            "voter_id": "pool1945cfqzmy2qe2z59mfdwm7jwqtucncfee5xkd8f4wu97zr8xuys",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1784913245,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "3c1810ae664e179704de9ae7bff444ab8b81aaa9a8f003c376605087",
+            "voter_id": "pool18svpptnxfctewpx7ntnmlazy4w9cr24f4rcq8smkvpggw600ql4",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1784913245,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "b196311f2c4346e70dbd95dceccd1ab1f248498044e8519fb47580ed",
+            "voter_id": "pool1kxtrz8evgdrwwrdajhwweng6k8eysjvqgn59r8a5wkqw6rlnvv6",
+            "voter_role": "SPO"
+        }
+    ],
+    "gov_action1hfvgh6dxe8zllwna6stxeu544cyzhefs9pchqpw34m8tvf0x23ssq6ewfg2": [
+        {
+            "block_time": 1752836098,
+            "meta_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+            "meta_url": "https://pycardano.drepvote.example.com/rationale",
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "cac32ab04e0dc3165468b05892b81ac2b0c857bd2856d60b385a6d8a",
+            "voter_id": "drep1yt9vx24sfcxux9j5dzc93y4crtptpjzhh559d4st8pdxmzs30dr3m",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1752470683,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "05f17c5238cb888b8bfa2e5e20062d0f870f40f3ea65acb2a7135f8a",
+            "voter_id": "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1752470683,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "2d6984805b2281950a85da5aedfa4e02f989e139cd0d669d35770be1",
+            "voter_id": "pool1945cfqzmy2qe2z59mfdwm7jwqtucncfee5xkd8f4wu97zr8xuys",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1752470683,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "3c1810ae664e179704de9ae7bff444ab8b81aaa9a8f003c376605087",
+            "voter_id": "pool18svpptnxfctewpx7ntnmlazy4w9cr24f4rcq8smkvpggw600ql4",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1752470683,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "b196311f2c4346e70dbd95dceccd1ab1f248498044e8519fb47580ed",
+            "voter_id": "pool1kxtrz8evgdrwwrdajhwweng6k8eysjvqgn59r8a5wkqw6rlnvv6",
+            "voter_role": "SPO"
+        }
+    ],
+    "gov_action1k5hsy2yw8n5v0et524fz7nkap8qj09m5nckmxgycajlfszmyt4zsqp0n7ft": [
+        {
+            "block_time": 1731607083,
+            "meta_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "meta_url": "http://example.com",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "e732eac066fe2759f10b4b3473623b1cce4ba67ffc299b41915a1a0f",
+            "voter_id": "cc_hot1q0nn96kqvmlzwk03pd9ngumz8vwvujax0l7znx6pj9dp5rcn8g5cu",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1731594334,
+            "meta_hash": "e4ccdfd78721607b7fbbe99f89940627950cf447aae930acb9e33292930569ac",
+            "meta_url": "ipfs://bafkreidsmyjjfrsvj3czrsu5roy2undco2bhhcnqdgbievolgbyi7lptxy",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "4f00984fa72e265b8ff8ffce4405da562cd3d6b16a4a38de3372eeea",
+            "voter_id": "cc_hot1qd8spxz05uhzvku0lrluu3q9mftze57kk94y5wx7xdewa6s3guxzr",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1731307848,
+            "meta_hash": "b0fbc2a47594936f433e952ae9cbbb58c9ce9aac51fc106fc3cfa1bdd0e7d929",
+            "meta_url": "https://raw.githubusercontent.com/Eastern-Cardano-Council/icc-ga-rationales/refs/heads/main/preprod/ga05/ga05-rationale.jsonld",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "104f3db4e905fd008396f53a6d035e290f97f6172d3792673b213956",
+            "voter_id": "cc_hot1qvgy70d5ayzl6qyrjm6n5mgrtc5sl9lkzukn0yn88vsnj4sm78an6",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1730903059,
+            "meta_hash": "30d5a8af01f9b08511afd3a70d185b05c9b857dc040e586de11fbd534b767cee",
+            "meta_url": "https://hornan7.github.io/Vote_Context2.jsonld",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "e3a4c41d67592a1b8d87c62e5c5d73f7e8db836171945412d13f40f8",
+            "voter_id": "cc_hot1q036f3qavavj5xudslrzuhzaw0m73kurv9ceg4qj6yl5p7qf4a3gz",
+            "voter_role": "ConstitutionalCommittee"
+        }
+    ],
+    "gov_action1kgjjccnea0f9rd2mt2jrzun2afpw5l996gk3arludeee95uc0p3sqh2gnuh": [],
+    "gov_action1nvlup7s040gfxqhuqahyfat0f2wp7qrhc9rwdh42y3rhmkn6c45qqpn3l3l": [],
+    "gov_action1pmx8fl3x2vkwcx4e52vlpq40csm2ljygegkuplr2ekjrr3fdccxsq0jegy9": [],
+    "gov_action1puswrxpglcyl9fqtznauu9y0ya904683lprs0kxyaq5tsz8l4hzqqfegux0": [],
+    "gov_action1ueq7eqptkyy7z58fyrrvqwr7shewl5cfgjjx6zxssgftme2q76wqqvxkqlu": [
+        {
+            "block_time": 1785583500,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "85eb86b47f9f8e736e729c0176ba45cf9778e238b4452b7a6428a6e9",
+            "voter_id": "pool1sh4cddrln788xmnjnsqhdwj9e7th3c3ck3zjk7ny9znwj44t8he",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1785353451,
+            "meta_hash": "72ae4be240f0c69a24edbaa5b18d93e530896aa84877b0e2413c730e4d744654",
+            "meta_url": "ipfs://QmQAUmBc34qKrnZYP2p1RfuRPYrvfdg7fpseU9Bkc9wyd4",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "26648e2c6bc4e4863a373bd28d480b2eb788922545e1df357e76a3d2",
+            "voter_id": "cc_hot1qvnxfr3vd0zwfp36xuaa9r2gpvht0zyjy4z7rhe40em285sq8lgd2",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1785353418,
+            "meta_hash": "72ae4be240f0c69a24edbaa5b18d93e530896aa84877b0e2413c730e4d744654",
+            "meta_url": "ipfs://QmQAUmBc34qKrnZYP2p1RfuRPYrvfdg7fpseU9Bkc9wyd4",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "5bfa7d850280c54110534065fa91a3635bbcc0eadc69c5c792c35e1e",
+            "voter_id": "cc_hot1qddl5lv9q2qv2sgs2dqxt7535d34h0xqatwxn3w8jtp4u8su5q6z7",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1785353342,
+            "meta_hash": "72ae4be240f0c69a24edbaa5b18d93e530896aa84877b0e2413c730e4d744654",
+            "meta_url": "ipfs://QmQAUmBc34qKrnZYP2p1RfuRPYrvfdg7fpseU9Bkc9wyd4",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "19ebff7033fe1c1f9cd2b346f2c9b0d7ff28b1527ebed1cc071155b4",
+            "voter_id": "cc_hot1qvv7hlmsx0lpc8uu62e5dukfkrtl72932flta5wvqug4tdqaa84y0",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1785352911,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "b196311f2c4346e70dbd95dceccd1ab1f248498044e8519fb47580ed",
+            "voter_id": "pool1kxtrz8evgdrwwrdajhwweng6k8eysjvqgn59r8a5wkqw6rlnvv6",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1785352911,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "2d6984805b2281950a85da5aedfa4e02f989e139cd0d669d35770be1",
+            "voter_id": "pool1945cfqzmy2qe2z59mfdwm7jwqtucncfee5xkd8f4wu97zr8xuys",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1785352911,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "3c1810ae664e179704de9ae7bff444ab8b81aaa9a8f003c376605087",
+            "voter_id": "pool18svpptnxfctewpx7ntnmlazy4w9cr24f4rcq8smkvpggw600ql4",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1785352911,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "05f17c5238cb888b8bfa2e5e20062d0f870f40f3ea65acb2a7135f8a",
+            "voter_id": "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm",
+            "voter_role": "DRep"
+        }
+    ],
+    "gov_action1xrt5gav7lg58fafj7mj4qcvlz49jm8tdmumpanynx9mj2q6jd2aq202jxwt": [],
+    "gov_action1zk80dvjfklp7cgvuvtg37zuwwe4r2erj6q3m67c7wdh0akth70rqq44samn": [
+        {
+            "block_time": 1762525870,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Abstain",
+            "voter_has_script": true,
+            "voter_hex": "5e1854a46561a4a215a40be376daa11922317ea8753abb4b9ad49b4d",
+            "voter_id": "drep1yd0ps49yv4s6fgs45s97xak65yvjyvt74p6n4w6tnt2fkngr36m27",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1762463847,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "b196311f2c4346e70dbd95dceccd1ab1f248498044e8519fb47580ed",
+            "voter_id": "pool1kxtrz8evgdrwwrdajhwweng6k8eysjvqgn59r8a5wkqw6rlnvv6",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1762463847,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "2d6984805b2281950a85da5aedfa4e02f989e139cd0d669d35770be1",
+            "voter_id": "pool1945cfqzmy2qe2z59mfdwm7jwqtucncfee5xkd8f4wu97zr8xuys",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1762463847,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "3c1810ae664e179704de9ae7bff444ab8b81aaa9a8f003c376605087",
+            "voter_id": "pool18svpptnxfctewpx7ntnmlazy4w9cr24f4rcq8smkvpggw600ql4",
+            "voter_role": "SPO"
+        },
+        {
+            "block_time": 1762463847,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "05f17c5238cb888b8bfa2e5e20062d0f870f40f3ea65acb2a7135f8a",
+            "voter_id": "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1762463590,
+            "meta_hash": "01da1d9bdc90f6e25c1115714c4e3398c667f9689cc5d3c032e60861438b8a30",
+            "meta_url": "ipfs://QmfCtC3R5F4JNL3gcBz5TZw4XmwbzgazYzpretz3GJpvjt",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "26648e2c6bc4e4863a373bd28d480b2eb788922545e1df357e76a3d2",
+            "voter_id": "cc_hot1qvnxfr3vd0zwfp36xuaa9r2gpvht0zyjy4z7rhe40em285sq8lgd2",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1762463536,
+            "meta_hash": "01da1d9bdc90f6e25c1115714c4e3398c667f9689cc5d3c032e60861438b8a30",
+            "meta_url": "ipfs://QmfCtC3R5F4JNL3gcBz5TZw4XmwbzgazYzpretz3GJpvjt",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "5bfa7d850280c54110534065fa91a3635bbcc0eadc69c5c792c35e1e",
+            "voter_id": "cc_hot1qddl5lv9q2qv2sgs2dqxt7535d34h0xqatwxn3w8jtp4u8su5q6z7",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1762463270,
+            "meta_hash": "01da1d9bdc90f6e25c1115714c4e3398c667f9689cc5d3c032e60861438b8a30",
+            "meta_url": "ipfs://QmfCtC3R5F4JNL3gcBz5TZw4XmwbzgazYzpretz3GJpvjt",
+            "vote": "Yes",
+            "voter_has_script": true,
+            "voter_hex": "19ebff7033fe1c1f9cd2b346f2c9b0d7ff28b1527ebed1cc071155b4",
+            "voter_id": "cc_hot1qvv7hlmsx0lpc8uu62e5dukfkrtl72932flta5wvqug4tdqaa84y0",
+            "voter_role": "ConstitutionalCommittee"
+        },
+        {
+            "block_time": 1762189321,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Yes",
+            "voter_has_script": false,
+            "voter_hex": "81378d3ea89b68f0fc09944b1f93f2feb851318f196f98ba4029d8a8",
+            "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
+            "voter_role": "DRep"
+        }
+    ],
+    "gov_action1zlnc7hsghggj2ztjnkql9qq9e2skrpuz8r0nelz2lxp6hhykl8esqxz5kdd": [
+        {
+            "block_time": 1762525870,
+            "meta_hash": null,
+            "meta_url": null,
+            "vote": "Abstain",
+            "voter_has_script": true,
+            "voter_hex": "5e1854a46561a4a215a40be376daa11922317ea8753abb4b9ad49b4d",
+            "voter_id": "drep1yd0ps49yv4s6fgs45s97xak65yvjyvt74p6n4w6tnt2fkngr36m27",
+            "voter_role": "DRep"
+        },
+        {
+            "block_time": 1762189467,
+            "meta_hash": "803661fce42f4fa486bd11fc9fb02d0d40f763da112279b05b94564f553a566a",
+            "meta_url": "ipfs://bafkreiew43qm2qfmhxnzlyqd3zbncklxpjrciipnrdluzodubnofh7bfle",
+            "vote": "No",
+            "voter_has_script": false,
+            "voter_hex": "81378d3ea89b68f0fc09944b1f93f2feb851318f196f98ba4029d8a8",
+            "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
+            "voter_role": "DRep"
+        }
+    ]
+}

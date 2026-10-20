@@ -1,0 +1,1783 @@
+{
+    "gov_action108a5htqnmlp89ffn2ucf7u9u33s0r9gpx7eytpdc2q28y50ly42qqf9jcen": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action108a5htqnmlp89ffn2ucf7u9u33s0r9gpx7eytpdc2q28y50ly42qqf9jcen",
+            "deposit": 100000000000,
+            "expires_epoch": 294,
+            "id": "79fb4bac13dfc272a53357309f70bc8c60f1950137b24585b850147251ff2554#0",
+            "last_votable_epoch": 293,
+            "lifecycle": {
+                "dropped_epoch": null,
+                "enacted_epoch": 294,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": 293,
+                "state": "enacted"
+            },
+            "proposed_at": {
+                "epoch": 287,
+                "slot": 122566962,
+                "time": "2026-05-08T14:22:42Z",
+                "tx_hash": "79fb4bac13dfc272a53357309f70bc8c60f1950137b24585b850147251ff2554"
+            },
+            "return_address": "stake_test1up4xt9hftul97kwz9wjfuldvf86hcjjcu9833x5rgltly7s9xkkn9",
+            "title": null,
+            "treasury_amount": null,
+            "type": "hard_fork_initiation",
+            "votes_cast": 21
+        },
+        "anchor_content": null,
+        "param_changes": [],
+        "proposer": {
+            "actions_count": 2,
+            "stake_address": "stake_test1up4xt9hftul97kwz9wjfuldvf86hcjjcu9833x5rgltly7s9xkkn9"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 293,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": null,
+                "role": "constitutional_committee",
+                "threshold": null,
+                "threshold_param": null,
+                "yes_count": 3,
+                "yes_power": 0
+            },
+            {
+                "abstain_count": 2,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 293,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "drep",
+                "threshold": 0.6,
+                "threshold_param": "dvt_hard_fork_initiation",
+                "yes_count": 4,
+                "yes_power": 207354880364526
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 293,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "spo",
+                "threshold": 0.51,
+                "threshold_param": "pvt_hard_fork_initiation",
+                "yes_count": 12,
+                "yes_power": 1120449343281128
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action10md95hawtukx6yqmj33ndwpg7wxd35zdez88gazqkxhna9jzkgnszjwsmss": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action10md95hawtukx6yqmj33ndwpg7wxd35zdez88gazqkxhna9jzkgnszjwsmss",
+            "deposit": 100000000000,
+            "expires_epoch": 235,
+            "id": "7eda5a5fae5f2c6d101b946336b828f38cd8d04dc88e747440b1af3e9642b227#1",
+            "last_votable_epoch": 235,
+            "lifecycle": {
+                "dropped_epoch": 236,
+                "enacted_epoch": null,
+                "expired_epoch": 235,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": null,
+                "state": "expired"
+            },
+            "proposed_at": {
+                "epoch": 228,
+                "slot": 97152074,
+                "time": "2025-07-18T10:41:14Z",
+                "tx_hash": "7eda5a5fae5f2c6d101b946336b828f38cd8d04dc88e747440b1af3e9642b227"
+            },
+            "return_address": "stake_test1urrfysygca8m9x0qypxrutl5j2n9c252mev4qmwdtzwqr6g6dj7kn",
+            "title": null,
+            "treasury_amount": 96817080000000,
+            "type": "treasury_withdrawals",
+            "votes_cast": 1
+        },
+        "anchor_content": null,
+        "param_changes": [],
+        "proposer": {
+            "actions_count": 57,
+            "stake_address": "stake_test1urrfysygca8m9x0qypxrutl5j2n9c252mev4qmwdtzwqr6g6dj7kn"
+        },
+        "tallies": [
+            {
+                "abstain_count": 1,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 235,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": null,
+                "role": "drep",
+                "threshold": 0.67,
+                "threshold_param": "dvt_treasury_withdrawal",
+                "yes_count": 0,
+                "yes_power": 0
+            }
+        ],
+        "withdrawals": [
+            {
+                "amount": 96817080000000,
+                "beneficiary": "stake_test1urrfysygca8m9x0qypxrutl5j2n9c252mev4qmwdtzwqr6g6dj7kn",
+                "enacted_at": null,
+                "paid_heuristic": false
+            }
+        ]
+    },
+    "gov_action10w936mpzlshl3udp2f4gqfadnhczthy6wqfms8h4r7uxn0xp4azqq6g46e8": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action10w936mpzlshl3udp2f4gqfadnhczthy6wqfms8h4r7uxn0xp4azqq6g46e8",
+            "deposit": 100000000000,
+            "expires_epoch": 301,
+            "id": "7b8b1d6c22fc2ff8f1a1526a8027ad9df025dc9a7013b81ef51fb869bcc1af44#0",
+            "last_votable_epoch": 295,
+            "lifecycle": {
+                "dropped_epoch": 296,
+                "enacted_epoch": null,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": null,
+                "state": "dropped"
+            },
+            "proposed_at": {
+                "epoch": 294,
+                "slot": 125669632,
+                "time": "2026-06-13T12:13:52Z",
+                "tx_hash": "7b8b1d6c22fc2ff8f1a1526a8027ad9df025dc9a7013b81ef51fb869bcc1af44"
+            },
+            "return_address": "stake_test1ur8k3jnuy9dgmptlzl73g6u5yeax2yh79s8wmdyk0rt4lygf5yrq7",
+            "title": null,
+            "treasury_amount": null,
+            "type": "parameter_change",
+            "votes_cast": 2
+        },
+        "anchor_content": null,
+        "param_changes": [
+            {
+                "group": "dvt_p_p_gov_group",
+                "param": "gov_action_deposit"
+            }
+        ],
+        "proposer": {
+            "actions_count": 5,
+            "stake_address": "stake_test1ur8k3jnuy9dgmptlzl73g6u5yeax2yh79s8wmdyk0rt4lygf5yrq7"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 295,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 1,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "drep",
+                "threshold": 0.75,
+                "threshold_param": "dvt_p_p_gov_group",
+                "yes_count": 1,
+                "yes_power": 3111540337327
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action14lefp8upwhhq92xph7t075txshf9huxxh9d2ey05ml2n5hqgvlxqqp92kfl": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "hash_mismatch",
+            "bech32": "gov_action14lefp8upwhhq92xph7t075txshf9huxxh9d2ey05ml2n5hqgvlxqqp92kfl",
+            "deposit": 100000000000,
+            "expires_epoch": 172,
+            "id": "aff2909f8175ee02a8c1bf96ff516685d25bf0c6b95aac91f4dfd53a5c0867cc#0",
+            "last_votable_epoch": 172,
+            "lifecycle": {
+                "dropped_epoch": 173,
+                "enacted_epoch": null,
+                "expired_epoch": 172,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": null,
+                "state": "expired"
+            },
+            "proposed_at": {
+                "epoch": 165,
+                "slot": 69981572,
+                "time": "2024-09-06T23:19:32Z",
+                "tx_hash": "aff2909f8175ee02a8c1bf96ff516685d25bf0c6b95aac91f4dfd53a5c0867cc"
+            },
+            "return_address": "stake_test1upqt8jvd8d045a6gs2wkzt57rnx47s5ewz4un2l746r847g7hgw24",
+            "title": null,
+            "treasury_amount": null,
+            "type": "info_action",
+            "votes_cast": 5
+        },
+        "anchor_content": null,
+        "param_changes": [],
+        "proposer": {
+            "actions_count": 1,
+            "stake_address": "stake_test1upqt8jvd8d045a6gs2wkzt57rnx47s5ewz4un2l746r847g7hgw24"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 172,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": null,
+                "role": "constitutional_committee",
+                "threshold": null,
+                "threshold_param": null,
+                "yes_count": 1,
+                "yes_power": 0
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 172,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "drep",
+                "threshold": null,
+                "threshold_param": null,
+                "yes_count": 2,
+                "yes_power": 5049365534535
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 172,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 1,
+                "no_power": 1277986846045,
+                "ratio": 0.453239327259233,
+                "role": "spo",
+                "threshold": null,
+                "threshold_param": null,
+                "yes_count": 1,
+                "yes_power": 1059392028772
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action18cd564yw8jcsj392ggtge8swd3pkxm5k6rdhlf3sv308z0rjy3gsqdgxfqp": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action18cd564yw8jcsj392ggtge8swd3pkxm5k6rdhlf3sv308z0rjy3gsqdgxfqp",
+            "deposit": 100000000000,
+            "expires_epoch": 294,
+            "id": "3e1b4d548e3cb10944aa42168c9e0e6c43636e96d0db7fa630645e713c722451#0",
+            "last_votable_epoch": 288,
+            "lifecycle": {
+                "dropped_epoch": null,
+                "enacted_epoch": 289,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": 288,
+                "state": "enacted"
+            },
+            "proposed_at": {
+                "epoch": 287,
+                "slot": 122468590,
+                "time": "2026-05-07T11:03:10Z",
+                "tx_hash": "3e1b4d548e3cb10944aa42168c9e0e6c43636e96d0db7fa630645e713c722451"
+            },
+            "return_address": "stake_test1up4xt9hftul97kwz9wjfuldvf86hcjjcu9833x5rgltly7s9xkkn9",
+            "title": null,
+            "treasury_amount": null,
+            "type": "parameter_change",
+            "votes_cast": 4
+        },
+        "anchor_content": null,
+        "param_changes": [
+            {
+                "group": "dvt_p_p_technical_group",
+                "param": "cost_model_id"
+            }
+        ],
+        "proposer": {
+            "actions_count": 2,
+            "stake_address": "stake_test1up4xt9hftul97kwz9wjfuldvf86hcjjcu9833x5rgltly7s9xkkn9"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 288,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": null,
+                "role": "constitutional_committee",
+                "threshold": null,
+                "threshold_param": null,
+                "yes_count": 3,
+                "yes_power": 0
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 288,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "drep",
+                "threshold": 0.67,
+                "threshold_param": "dvt_p_p_technical_group",
+                "yes_count": 1,
+                "yes_power": 200341072215038
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action18zuuryq7guh3xx85fgeyuazcj3ndwll5ff3u6d0sxj4gnx8u2w4qqfprex0": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action18zuuryq7guh3xx85fgeyuazcj3ndwll5ff3u6d0sxj4gnx8u2w4qqfprex0",
+            "deposit": 1000000000,
+            "expires_epoch": 310,
+            "id": "38b9c1901e472f1318f44a324e74589466d77ff44a63cd35f034aa8998fc53aa#0",
+            "last_votable_epoch": 304,
+            "lifecycle": {
+                "dropped_epoch": 305,
+                "enacted_epoch": null,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": null,
+                "state": "dropped"
+            },
+            "proposed_at": {
+                "epoch": 303,
+                "slot": 129593181,
+                "time": "2026-07-28T22:06:21Z",
+                "tx_hash": "38b9c1901e472f1318f44a324e74589466d77ff44a63cd35f034aa8998fc53aa"
+            },
+            "return_address": "stake_test1upssxqqvnx3wrc4n67p4jsgfvmams7jym9t3w2ha6mzvpfgmxv6vg",
+            "title": null,
+            "treasury_amount": null,
+            "type": "parameter_change",
+            "votes_cast": 3
+        },
+        "anchor_content": null,
+        "param_changes": [
+            {
+                "group": "dvt_p_p_technical_group",
+                "param": "cost_model_id"
+            }
+        ],
+        "proposer": {
+            "actions_count": 2,
+            "stake_address": "stake_test1upssxqqvnx3wrc4n67p4jsgfvmams7jym9t3w2ha6mzvpfgmxv6vg"
+        },
+        "tallies": [
+            {
+                "abstain_count": 3,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 304,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": null,
+                "role": "drep",
+                "threshold": 0.67,
+                "threshold_param": "dvt_p_p_technical_group",
+                "yes_count": 0,
+                "yes_power": 0
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action19nvvldw9x8cv05q923fyympcgsff0zumvmmy73z86rpvw0ueakrqzp0dlya": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action19nvvldw9x8cv05q923fyympcgsff0zumvmmy73z86rpvw0ueakrqzp0dlya",
+            "deposit": 100000000000,
+            "expires_epoch": 235,
+            "id": "2cd8cfb5c531f0c7d0055452426c384412978b9b66f64f4447d0c2c73f99ed86#1",
+            "last_votable_epoch": 235,
+            "lifecycle": {
+                "dropped_epoch": 236,
+                "enacted_epoch": null,
+                "expired_epoch": 235,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": null,
+                "state": "expired"
+            },
+            "proposed_at": {
+                "epoch": 228,
+                "slot": 97151334,
+                "time": "2025-07-18T10:28:54Z",
+                "tx_hash": "2cd8cfb5c531f0c7d0055452426c384412978b9b66f64f4447d0c2c73f99ed86"
+            },
+            "return_address": "stake_test1urrfysygca8m9x0qypxrutl5j2n9c252mev4qmwdtzwqr6g6dj7kn",
+            "title": null,
+            "treasury_amount": 96817080000000,
+            "type": "treasury_withdrawals",
+            "votes_cast": 1
+        },
+        "anchor_content": null,
+        "param_changes": [],
+        "proposer": {
+            "actions_count": 57,
+            "stake_address": "stake_test1urrfysygca8m9x0qypxrutl5j2n9c252mev4qmwdtzwqr6g6dj7kn"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 235,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "drep",
+                "threshold": 0.67,
+                "threshold_param": "dvt_treasury_withdrawal",
+                "yes_count": 1,
+                "yes_power": 2721511084177
+            }
+        ],
+        "withdrawals": [
+            {
+                "amount": 96817080000000,
+                "beneficiary": "stake_test1urrfysygca8m9x0qypxrutl5j2n9c252mev4qmwdtzwqr6g6dj7kn",
+                "enacted_at": null,
+                "paid_heuristic": false
+            }
+        ]
+    },
+    "gov_action1a960ajl5ttpcdfmxqh57s3azuhf8cqrlm597vaxt44fcurp4lcqsqqfz6j2": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1a960ajl5ttpcdfmxqh57s3azuhf8cqrlm597vaxt44fcurp4lcqsqqfz6j2",
+            "deposit": 100000000000,
+            "expires_epoch": 182,
+            "id": "e974fecbf45ac386a76605e9e847a2e5d27c007fdd0be674cbad538e0c35fe01#0",
+            "last_votable_epoch": 179,
+            "lifecycle": {
+                "dropped_epoch": 180,
+                "enacted_epoch": null,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": null,
+                "state": "dropped"
+            },
+            "proposed_at": {
+                "epoch": 175,
+                "slot": 74013957,
+                "time": "2024-10-23T15:25:57Z",
+                "tx_hash": "e974fecbf45ac386a76605e9e847a2e5d27c007fdd0be674cbad538e0c35fe01"
+            },
+            "return_address": "stake_test1uz6ljatyc7w52z44hskd5pu5cvw7qemwz6re3ux4pmdqumcn2qyrx",
+            "title": null,
+            "treasury_amount": null,
+            "type": "parameter_change",
+            "votes_cast": 2
+        },
+        "anchor_content": null,
+        "param_changes": [
+            {
+                "group": "dvt_p_p_technical_group",
+                "param": "cost_model_id"
+            }
+        ],
+        "proposer": {
+            "actions_count": 7,
+            "stake_address": "stake_test1uz6ljatyc7w52z44hskd5pu5cvw7qemwz6re3ux4pmdqumcn2qyrx"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 179,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 2,
+                "no_power": 0,
+                "ratio": null,
+                "role": "constitutional_committee",
+                "threshold": null,
+                "threshold_param": null,
+                "yes_count": 0,
+                "yes_power": 0
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action1d79hpfyzuy9wgpmawpessfh0ylmjkz8pfqgc55t3cuh8lc7x64gsq8nmy5g": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1d79hpfyzuy9wgpmawpessfh0ylmjkz8pfqgc55t3cuh8lc7x64gsq8nmy5g",
+            "deposit": 100000000000,
+            "expires_epoch": 236,
+            "id": "6f8b70a482e10ae4077d70730826ef27f72b08e148118a5171c72e7fe3c6d551#0",
+            "last_votable_epoch": 231,
+            "lifecycle": {
+                "dropped_epoch": null,
+                "enacted_epoch": 232,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": 231,
+                "state": "enacted"
+            },
+            "proposed_at": {
+                "epoch": 229,
+                "slot": 97535257,
+                "time": "2025-07-22T21:07:37Z",
+                "tx_hash": "6f8b70a482e10ae4077d70730826ef27f72b08e148118a5171c72e7fe3c6d551"
+            },
+            "return_address": "stake_test1up8j58qhs6wdcxph99ea4x48xy4mtw8yarzwph2npwtjyxcm07zyj",
+            "title": null,
+            "treasury_amount": null,
+            "type": "new_committee",
+            "votes_cast": 5
+        },
+        "anchor_content": null,
+        "param_changes": [],
+        "proposer": {
+            "actions_count": 4,
+            "stake_address": "stake_test1up8j58qhs6wdcxph99ea4x48xy4mtw8yarzwph2npwtjyxcm07zyj"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 231,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "drep",
+                "threshold": 0.67,
+                "threshold_param": "dvt_committee_normal",
+                "yes_count": 2,
+                "yes_power": 32314493844588
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 231,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "spo",
+                "threshold": 0.51,
+                "threshold_param": "pvt_committee_normal",
+                "yes_count": 3,
+                "yes_power": 899788232488329
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action1eje876cdtrp94celmqsmvtpc0afrpkhfxzhaqayflg7l26h9v53qqnjsjww": {
+        "action": {
+            "abstract": "We propose to upgrade the Cardano PreProd test environment to Protocol Version 10.  This upgrade will be achieved via a Hard Fork (analogous to Chang#2 on Mainnet).  Following the upgrade:\n\n1. The PreProd protocol will be upgraded to Major Version 10 and Minor Version 0\n2. All 7 governance actions that are described in CIP-1694 will be enabled\n3. DRep voting will be enabled on all 7 governance actions \n4. SPO voting will be enabled on all applicable governance actions, as defined in CIP-1694\n5. Constitutional Committee voting will be enabled on all applicable governance actions, also as defined in CIP-1694\n6. Staking rewards can be accumulated as usual, but can only be withdrawn following delegation to a DRep (including the pre-defined abstain/no-confidence options)\n7. Several new Plutus primitives will be available once an update to the Plutus v3 cost model has been ratified\n\nIn line with the Interim Cardano Constitution:\n\n\n\n1. At least 85% of stake pools by stake should have upgraded to a version of the node that can support protocol version 10.",
+            "anchor_status": "valid",
+            "bech32": "gov_action1eje876cdtrp94celmqsmvtpc0afrpkhfxzhaqayflg7l26h9v53qqnjsjww",
+            "deposit": 100000000000,
+            "expires_epoch": 185,
+            "id": "ccb27f6b0d58c25ae33fd821b62c387f5230dae930afd07489fa3df56ae56522#0",
+            "last_votable_epoch": 180,
+            "lifecycle": {
+                "dropped_epoch": null,
+                "enacted_epoch": 181,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": 180,
+                "state": "enacted"
+            },
+            "proposed_at": {
+                "epoch": 178,
+                "slot": 75327829,
+                "time": "2024-11-07T20:23:49Z",
+                "tx_hash": "ccb27f6b0d58c25ae33fd821b62c387f5230dae930afd07489fa3df56ae56522"
+            },
+            "return_address": "stake_test1uz6ljatyc7w52z44hskd5pu5cvw7qemwz6re3ux4pmdqumcn2qyrx",
+            "title": "Hard Fork to Protocol Version 10",
+            "treasury_amount": null,
+            "type": "hard_fork_initiation",
+            "votes_cast": 35
+        },
+        "anchor_content": {
+            "abstract": "We propose to upgrade the Cardano PreProd test environment to Protocol Version 10.  This upgrade will be achieved via a Hard Fork (analogous to Chang#2 on Mainnet).  Following the upgrade:\n\n1. The PreProd protocol will be upgraded to Major Version 10 and Minor Version 0\n2. All 7 governance actions that are described in CIP-1694 will be enabled\n3. DRep voting will be enabled on all 7 governance actions \n4. SPO voting will be enabled on all applicable governance actions, as defined in CIP-1694\n5. Constitutional Committee voting will be enabled on all applicable governance actions, also as defined in CIP-1694\n6. Staking rewards can be accumulated as usual, but can only be withdrawn following delegation to a DRep (including the pre-defined abstain/no-confidence options)\n7. Several new Plutus primitives will be available once an update to the Plutus v3 cost model has been ratified\n\nIn line with the Interim Cardano Constitution:\n\n\n\n1. At least 85% of stake pools by stake should have upgraded to a version of the node that can support protocol version 10.",
+            "motivation": "Protocol Version 10 enables the remainder of the CIP-1694 functionality, ensuring that DReps can participate in voting on all governance actions.  It enables treasury withdrawals, the ability to record a new constitution, updates to the constitutional committee, and votes of no confidence.  These are in addition to the 3 existing governance actions that were enabled for Protocol Version 9 by the Chang hard fork (hard forks, parameter updates, and info actions). \n\nFollowing the hard fork, the protocol will support a number of new Plutus primitives that have been defined in CIP-0122, CIP-0123 and CIP-0127.  These provide bitwise and logical operations on byte strings, plus RIPEMD-160 cryptographic hashing functionality (for compatibility with BitCoin).  These primitives will be enabled by a complementary protocol parameter update governance action.",
+            "rationale": "We propose to upgrade the Cardano PreProd test environment to Protocol Version 10.  This upgrade will be achieved via a Hard Fork (analogous to Chang#2 on Mainnet).  Following the upgrade:\n\n1. The PreProd protocol will be upgraded to Major Version 10 and Minor Version 0\n2. All 7 governance actions that are described in CIP-1694 will be enabled\n3. DRep voting will be enabled on all 7 governance actions \n4. SPO voting will be enabled on all applicable governance actions, as defined in CIP-1694\n5. Constitutional Committee voting will be enabled on all applicable governance actions, also as defined in CIP-1694\n6. Staking rewards can be accumulated as usual, but can only be withdrawn following delegation to a DRep (including the pre-defined abstain/no-confidence options)\n7. Several new Plutus primitives will be available once an update to the Plutus v3 cost model has been ratified\n\nIn line with the Interim Cardano Constitution:\n\n\n\n1. At least 85% of stake pools by stake should have upgraded to a version of the node that can support protocol version 10.\n\n## Technical Evaluation\n\n\n### Functionality\n\nThe upgrade enables two main items: \n\n\n\n\n1. The remainder of the CIP-1694 functionality, as described below - notably: DRep voting on all action types, the remaining governance actions, and restrictions on rewards withdrawals.\n2. New Plutus primitives as described below.\n\nExisting functionality from Protocol Version 9 will be maintained.  Full testing reports have been produced for the Cardano node that demonstrate:\n\n\n\n1. No behavioral regressions for existing functionality;\n2. Conformance between the specification and implementation of the Cardano node for the new CIP-1694 functionality;\n3. Correct operation of the new Plutus primitives.\n\n\n### Security\n\nSecurity audits have been undertaken for: \n\n\n\n\n1. The formal specification for CIP-1694 in Agda;\n2. The ledger implementation in Haskell that corresponds to this formal specification\n\nA security report will be provided for the new Plutus primitives.\n\n\n### Performance\n\n[Performance results for Cardano Node version 10.1.1](https://updates.cardano.intersectmbo.org/reports/2024-10-performance-10.1.1/) show no regressions from previous versions of the Cardano node for the standard value and Plutus benchmarks, and acceptable baseline performance for the new voting benchmark.\n\n\n### Sustainability\n\nThe upgrade provides new functionality that will enhance existing governance capabilities. It also provides new Plutus functionality that will enhance its bitwise and cryptographic capabilities and provide better interoperability with BitCoin and Ethereum.\n\n\n\n## New Functionality that will be enabled by the Upgrade\n\n\n### DRep Voting Changes following the Upgrade \n \nDReps will be able to vote on all 7 types of governance action, as described in CIP-1694, and will no longer be restricted to voting on Info actions. \n\n\n\n### New Governance Actions that will be Available following the Upgrade\n\nFour new governance actions will be enabled as described in CIP-1694.\n\n\n\n1. Treasury withdrawals.  Funds may be withdrawn from the treasury and deposited in designated stake credentials. \n\n2. New constitution/guardrails script.  A new constitution may be proposed and/or a new guardrails script may be proposed. \n\n3. Updates to the constitutional committee. Constitutional committee members may be removed, replaced, or new members may be elected.  The threshold for Constitutional committee voting may also be changed. \n\n4. Votes of no confidence.  A vote of no confidence may be raised.\n\n\n### Other Governance Changes following the Upgrade\n\nThe main other governance changes in Protocol Version 10 are:\n\n\n\n1. Rewards will still be accumulated by Ada holders when delegating to stake pools for block production as in Protocol Version 9 and before, but these rewards can only be withdrawn once the Ada holder has also delegated their stake to a DRep for voting purposes.  This vote delegation may be to a self-created DRep, to a third-party DRep, or to the pre-defined Abstain or No Confidence DReps. \n\n2. SPO votes will default to **No**.  It will be possible for SPOs to default to **Abstain** or **No Confidence** by delegating their reward address to the pre-defined DRep. \n\n\n## New Plutus Primitives that will be Enabled after the Chang#2 Hard Fork\n\n\nThe new Plutus primitives are defined in three CIPs: [CIP-0122](https://github.com/cardano-foundation/CIPs/tree/master/CIP-0122), [CIP-0123](https://github.com/cardano-foundation/CIPs/tree/master/CIP-0123) and [CIP-0127](https://github.com/cardano-foundation/CIPs/tree/master/CIP-0127).\n\n### CIP-0122\nBitwise operations, both over fixed-width and variable-width blocks of bits, have a range of uses, including data structures (especially succinct ones) and cryptography. Currently, operations on individual bits in Plutus Core are difficult, or outright impossible, while also keeping within the tight constraints required on-chain. While it is possible to some degree to work with individual bytes over BuiltinByteStrings, this isn't sufficient, or efficient, when bit manipulations are required.\n\nThe new Plutus primitives defined by CIP-0122 are:\n\n- Bitwise logical AND, OR, XOR and complement;\n- Reading a bit value at a given index;\n- Setting bits value at given indices; and\n- Replicating a byte a given number of times.\n\n> ``\n> andByteString, orByteString, xorByteString, complementByteString, readBit, writeBits, replicateByte\n> ``\n\n### CIP-0123\nThe new bitwise operations that are defined in CIP-0123 extend the set that is provided by CIP-0122 to provide a usefully 'complete' set of bitwise operations.\n\nThe new Plutus primitives defined by CIP-0123 are:\n\n- Bit shifts and rotations\n- Counting the number of set bits (popcount)\n- Finding the first set bit\n\n> ``\n> shiftByteString,\n> rotateByteString,\n> countSetBits,\n> findFirstSetBit\n> ``\n\n\n### CIP-0127\nThe integration of the ECDSA and Schnorr signatures over the secp256k1 curve into Plutus was a significant step towards interoperability with the Ethereum and Bitcoin ecosystems. However, full compatibility is still impossible due to the absence of the RIPEMD-160 hashing algorithm in the Plutus interpreter. This is a fundamental component of Bitcoin's cryptographic framework.\n\nAdding RIPEMD-160 support to Plutus enhances the potential for cross-chain solutions between Cardano and Bitcoin blockchains and complements the set of primitives which are already available. It will allow for the verification of Bitcoin addresses and transactions on-chain. This addition also enables the verification of signed messages that identify the signer by the public key hash, which has not yet been witnessed on the Bitcoin blockchain.\n\nThe new Plutus primitive defined by CIP-0127 is:\n\n- [RIPEMD-160 hashing](https://homes.esat.kuleuven.be/~bosselae/ripemd160/pdf/AB-9601/AB-9601.pdf)\n\n> ``\n> ripemd_160\n> ``\n\n\n**Note that the new Plutus primitives will not be enabled on chain until a parameter update action with appropriate cost model settings is also enacted.  A separate governance action will be submitted to achieve this.**\n\n\n## Consistency with Guardrails\n\n\nThe text of the guardrails states:\n\n\n*“The hard fork initiation action requires both a new major and a new minor protocol version to be specified as positive integers.  As the result of a hard fork, new updatable protocol parameters may be introduced. Guardrails may be defined for these parameters, which will take effect following the hard fork. Existing updatable protocol parameters may also be deprecated by the hard fork, in which case the guardrails become obsolete for all future changes.”*\n\nAll these conditions apply to this proposal.  The upgrade will have major protocol version 10 and minor protocol version 0.  No new updatable parameters will be introduced or deprecated.\n\nThe relevant guardrails in the Interim Constitution are: \n\n\n\n\n* **HARDFORK-01:** “The major protocol version must be the same as or one greater than the major version that will be enacted immediately prior to this change. If the major protocol version is one greater, then the minor protocol version must be zero.” \n\n* **HARDFORK-02:** “The minor protocol version must be no less than the minor version that will be enacted immediately prior to this change.” \n\n* **HARDFORK-03:** “At least one of the protocol versions (major or minor or both) must change.” \n\n* **HARDFORK-04** “At least 85% of stake pools by active stake should have upgraded to a Cardano node version that is capable of processing the rules associated with the new protocol version.” \n\n* **HARDFORK-05** “Any new updatable protocol parameters that are introduced with a hard fork must be included in this Appendix and suitable guardrails defined for those parameters.” \n\n* **HARDFORK-06:** “Settings for any new protocol parameters that are introduced with a hard fork must be included in the appropriate Genesis file.” \n\n* **HARDFORK-07:** “Any deprecated protocol parameters must be indicated in this Appendix.” \n\n* **HARDFORK-08:** “New Plutus versions must be supported by a version-specific Plutus cost model that covers each primitive that is available in the new Plutus version.”\n\n* **INTERIM-01**: “To provide sufficient time for DReps to register and campaign and for Ada holders to choose their initial voting delegations, at least 18 epochs (90 days, or approximately 3 months) must elapse after the Chang hard fork before the subsequent hard fork can be ratified. Once the subsequent hard fork is enacted, DRep voting can occur as described in CIP-1694.”\n\nThis governance action is consistent with all nine guardrails, provided attention is paid to HARDFORK-04 and INTERIM-01, as described below.  None of these guardrails can be checked by the automated guardrails script.\n\n\n### Consistency with HARDFORK-01: \n\nThe protocol version will be changed from major version 9 (minor version 0) to major version 10 (minor version 0).\n\n\n### Consistency with HARDFORK-02: \n\nThe minor protocol version will be unchanged (0 in both cases).\n\n\n### Consistency with HARDFORK-03: \n\nThe major protocol version will change from 9 to 10.\n\n\n### Consistency with HARDFORK-04: \n\nThe stake pool upgrade status will need to be determined prior to ratification of the governance action.  If insufficient stake pools by stake have been upgraded, the action should not be ratified.\n\n\n### Consistency with HARDFORK-05: \n\nNo new updatable protocol parameters will be introduced by this hard fork, so the guardrails do not need to be updated.\n\n\n### Consistency with HARDFORK-06: \n\nNo new protocol parameters will be introduced by this hard fork, so a new Genesis file is not needed.\n\n\n### Consistency with HARDFORK-07: \n\nNo protocol parameters are deprecated by this hard fork.\n\n\n### Consistency with HARDFORK-08: \n\nNo new Plutus version is introduced.  The new Plutus primitives are provided as part of Plutus v3.\n\n### Consistency with INTERIM-01: \n\nThis guardrail applies to Mainnet rather than PreProd.\n\n\n## Reversion Plan\n\nThe hard fork represents a permanent change to the on-chain ledger rules.  Reversion is only possible in extreme circumstances, using the disaster recovery process that is described in [CIP-0135](https://github.com/cardano-foundation/CIPs/blob/master/CIP-0135/README.md).",
+            "references": [
+                {
+                    "label": "CIP-0122",
+                    "uri": "https://github.com/cardano-foundation/CIPs/tree/master/CIP-0122"
+                },
+                {
+                    "label": "CIP-0123",
+                    "uri": "https://github.com/cardano-foundation/CIPs/tree/master/CIP-0123"
+                },
+                {
+                    "label": "CIP-0127",
+                    "uri": "https://github.com/cardano-foundation/CIPs/tree/master/CIP-0127"
+                },
+                {
+                    "label": "CIP-0135",
+                    "uri": "https://github.com/cardano-foundation/CIPs/tree/master/CIP-0135"
+                },
+                {
+                    "label": "Full List of Ledger Fixes for Protocol Version 10",
+                    "uri": "https://github.com/IntersectMBO/cardano-ledger/issues/4572"
+                },
+                {
+                    "label": "RIPEMD-160 hashing",
+                    "uri": "https://homes.esat.kuleuven.be/~bosselae/ripemd160/pdf/AB-9601/AB-9601.pdf"
+                },
+                {
+                    "label": "Overview of the Plutus Primitve Benchmarking Process",
+                    "uri": "https://github.com/IntersectMBO/plutus/blob/master/doc/cost-model-overview/cost-model-overview.pdf"
+                },
+                {
+                    "label": "Generating and Updating the Plutus Cost Model",
+                    "uri": "https://github.com/IntersectMBO/plutus/blob/master/plutus-core/cost-model/CostModelGeneration.md"
+                },
+                {
+                    "label": "Plutus Primitive Benchmarking Code",
+                    "uri": "https://github.com/IntersectMBO/plutus/tree/master/plutus-core/cost-model/create-cost-model"
+                },
+                {
+                    "label": "Plutus Primitive Performance Results (CSV)",
+                    "uri": "https://github.com/IntersectMBO/plutus/blob/master/plutus-core/cost-model/data/benching-conway.csv"
+                },
+                {
+                    "label": "Cardano Node 10.1.1 Performance Report",
+                    "uri": "https://updates.cardano.intersectmbo.org/reports/2024-10-performance-10.1.1/"
+                },
+                {
+                    "label": "All Cardano Node Performance Reports",
+                    "uri": "https://updates.cardano.intersectmbo.org/reports/tags/benchmarking-reports"
+                },
+                {
+                    "label": "CIP-0122",
+                    "uri": "https://github.com/cardano-foundation/CIPs/tree/master/CIP-0122"
+                },
+                {
+                    "label": "CIP-0123",
+                    "uri": "https://github.com/cardano-foundation/CIPs/tree/master/CIP-0123"
+                },
+                {
+                    "label": "CIP-0127",
+                    "uri": "https://github.com/cardano-foundation/CIPs/tree/master/CIP-0127"
+                },
+                {
+                    "label": "CIP-0135",
+                    "uri": "https://github.com/cardano-foundation/CIPs/tree/master/CIP-0135"
+                },
+                {
+                    "label": "Full List of Ledger Fixes for Protocol Version 10",
+                    "uri": "https://github.com/IntersectMBO/cardano-ledger/issues/4572"
+                },
+                {
+                    "label": "RIPEMD-160 hashing",
+                    "uri": "https://homes.esat.kuleuven.be/~bosselae/ripemd160/pdf/AB-9601/AB-9601.pdf"
+                },
+                {
+                    "label": "Overview of the Plutus Primitve Benchmarking Process",
+                    "uri": "https://github.com/IntersectMBO/plutus/blob/master/doc/cost-model-overview/cost-model-overview.pdf"
+                },
+                {
+                    "label": "Generating and Updating the Plutus Cost Model",
+                    "uri": "https://github.com/IntersectMBO/plutus/blob/master/plutus-core/cost-model/CostModelGeneration.md"
+                },
+                {
+                    "label": "Plutus Primitive Benchmarking Code",
+                    "uri": "https://github.com/IntersectMBO/plutus/tree/master/plutus-core/cost-model/create-cost-model"
+                },
+                {
+                    "label": "Plutus Primitive Performance Results (CSV)",
+                    "uri": "https://github.com/IntersectMBO/plutus/blob/master/plutus-core/cost-model/data/benching-conway.csv"
+                },
+                {
+                    "label": "Cardano Node 10.1.1 Performance Report",
+                    "uri": "https://updates.cardano.intersectmbo.org/reports/2024-10-performance-10.1.1/"
+                },
+                {
+                    "label": "All Cardano Node Performance Reports",
+                    "uri": "https://updates.cardano.intersectmbo.org/reports/tags/benchmarking-reports"
+                }
+            ],
+            "title": "Hard Fork to Protocol Version 10"
+        },
+        "param_changes": [],
+        "proposer": {
+            "actions_count": 7,
+            "stake_address": "stake_test1uz6ljatyc7w52z44hskd5pu5cvw7qemwz6re3ux4pmdqumcn2qyrx"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 180,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": null,
+                "role": "constitutional_committee",
+                "threshold": null,
+                "threshold_param": null,
+                "yes_count": 3,
+                "yes_power": 0
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 180,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "spo",
+                "threshold": 0.51,
+                "threshold_param": "pvt_hard_fork_initiation",
+                "yes_count": 32,
+                "yes_power": 186398753984181
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action1f2j9lepxdsg5yqtn8w7xgytyknf743gssxh7acfdmjfzxk6c73wqqmpu0a4": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1f2j9lepxdsg5yqtn8w7xgytyknf743gssxh7acfdmjfzxk6c73wqqmpu0a4",
+            "deposit": 100000000000,
+            "expires_epoch": 301,
+            "id": "4aa45fe4266c114201733bbc641164b4d3eac51081afeee12ddc92235b58f45c#0",
+            "last_votable_epoch": 295,
+            "lifecycle": {
+                "dropped_epoch": null,
+                "enacted_epoch": 296,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": 295,
+                "state": "enacted"
+            },
+            "proposed_at": {
+                "epoch": 294,
+                "slot": 125592775,
+                "time": "2026-06-12T14:52:55Z",
+                "tx_hash": "4aa45fe4266c114201733bbc641164b4d3eac51081afeee12ddc92235b58f45c"
+            },
+            "return_address": "stake_test1urku22qg6k9yyr8zmu7633c33jzcc74pxma8k2cm4glgrmgrmu5lc",
+            "title": null,
+            "treasury_amount": null,
+            "type": "parameter_change",
+            "votes_cast": 8
+        },
+        "anchor_content": null,
+        "param_changes": [
+            {
+                "group": "dvt_p_p_gov_group",
+                "param": "gov_action_deposit"
+            }
+        ],
+        "proposer": {
+            "actions_count": 1,
+            "stake_address": "stake_test1urku22qg6k9yyr8zmu7633c33jzcc74pxma8k2cm4glgrmgrmu5lc"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 295,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": null,
+                "role": "constitutional_committee",
+                "threshold": null,
+                "threshold_param": null,
+                "yes_count": 3,
+                "yes_power": 0
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 295,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 1,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "drep",
+                "threshold": 0.75,
+                "threshold_param": "dvt_p_p_gov_group",
+                "yes_count": 1,
+                "yes_power": 400524311478281
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 295,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "spo",
+                "threshold": 0.51,
+                "threshold_param": "pvtpp_security_group",
+                "yes_count": 3,
+                "yes_power": 861834979195121
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action1f9tcawsvss8gytsx3zcfzyhnlxa2adga6r35d3dyl8gr6t9ur9fsq2kuh0j": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1f9tcawsvss8gytsx3zcfzyhnlxa2adga6r35d3dyl8gr6t9ur9fsq2kuh0j",
+            "deposit": 100000000000,
+            "expires_epoch": 237,
+            "id": "49578eba0c840e822e0688b09112f3f9baaeb51dd0e346c5a4f9d03d2cbc1953#0",
+            "last_votable_epoch": 232,
+            "lifecycle": {
+                "dropped_epoch": null,
+                "enacted_epoch": 233,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": 232,
+                "state": "enacted"
+            },
+            "proposed_at": {
+                "epoch": 230,
+                "slot": 97796216,
+                "time": "2025-07-25T21:36:56Z",
+                "tx_hash": "49578eba0c840e822e0688b09112f3f9baaeb51dd0e346c5a4f9d03d2cbc1953"
+            },
+            "return_address": "stake_test1up8j58qhs6wdcxph99ea4x48xy4mtw8yarzwph2npwtjyxcm07zyj",
+            "title": null,
+            "treasury_amount": null,
+            "type": "parameter_change",
+            "votes_cast": 9
+        },
+        "anchor_content": null,
+        "param_changes": [
+            {
+                "group": "dvt_p_p_gov_group",
+                "param": "committee_min_size"
+            }
+        ],
+        "proposer": {
+            "actions_count": 4,
+            "stake_address": "stake_test1up8j58qhs6wdcxph99ea4x48xy4mtw8yarzwph2npwtjyxcm07zyj"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 232,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": null,
+                "role": "constitutional_committee",
+                "threshold": null,
+                "threshold_param": null,
+                "yes_count": 7,
+                "yes_power": 0
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 232,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "drep",
+                "threshold": 0.75,
+                "threshold_param": "dvt_p_p_gov_group",
+                "yes_count": 2,
+                "yes_power": 34937523403347
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action1fu4jzn3cwvhdyl80zqrywzn6zc2h0h94ef3qkk222cnp2h7q0v2sqq6ac3a": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1fu4jzn3cwvhdyl80zqrywzn6zc2h0h94ef3qkk222cnp2h7q0v2sqq6ac3a",
+            "deposit": 1000000000,
+            "expires_epoch": 318,
+            "id": "4f2b214e38732ed27cef1006470a7a161577dcb5ca620b594a5626155fc07b15#0",
+            "last_votable_epoch": 312,
+            "lifecycle": {
+                "dropped_epoch": 313,
+                "enacted_epoch": null,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": null,
+                "state": "dropped"
+            },
+            "proposed_at": {
+                "epoch": 311,
+                "slot": 133105541,
+                "time": "2026-09-07T13:45:41Z",
+                "tx_hash": "4f2b214e38732ed27cef1006470a7a161577dcb5ca620b594a5626155fc07b15"
+            },
+            "return_address": "stake_test1upfr45qwpx5xdh8lw5eadq38vtmxk37vruh6rwelk658k0cdcgqcf",
+            "title": null,
+            "treasury_amount": null,
+            "type": "parameter_change",
+            "votes_cast": 1
+        },
+        "anchor_content": null,
+        "param_changes": [
+            {
+                "group": "dvt_p_p_economic_group",
+                "param": "min_fee_a"
+            }
+        ],
+        "proposer": {
+            "actions_count": 4,
+            "stake_address": "stake_test1upfr45qwpx5xdh8lw5eadq38vtmxk37vruh6rwelk658k0cdcgqcf"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 312,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": null,
+                "role": "drep",
+                "threshold": 0.67,
+                "threshold_param": "dvt_p_p_economic_group",
+                "yes_count": 1,
+                "yes_power": 0
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action1h0arqw4rt5verxf5ld07x6chgcy6pswlk3a9gmxdd6jc4f6ju24qqj0haqp": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1h0arqw4rt5verxf5ld07x6chgcy6pswlk3a9gmxdd6jc4f6ju24qqj0haqp",
+            "deposit": 1000000000,
+            "expires_epoch": 309,
+            "id": "bbfa303aa35d19919934fb5fe36b174609a0c1dfb47a546ccd6ea58aa752e2aa#0",
+            "last_votable_epoch": 303,
+            "lifecycle": {
+                "dropped_epoch": null,
+                "enacted_epoch": 304,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": 303,
+                "state": "enacted"
+            },
+            "proposed_at": {
+                "epoch": 302,
+                "slot": 129229156,
+                "time": "2026-07-24T16:59:16Z",
+                "tx_hash": "bbfa303aa35d19919934fb5fe36b174609a0c1dfb47a546ccd6ea58aa752e2aa"
+            },
+            "return_address": "stake_test1up8j58qhs6wdcxph99ea4x48xy4mtw8yarzwph2npwtjyxcm07zyj",
+            "title": null,
+            "treasury_amount": null,
+            "type": "new_committee",
+            "votes_cast": 4
+        },
+        "anchor_content": null,
+        "param_changes": [],
+        "proposer": {
+            "actions_count": 4,
+            "stake_address": "stake_test1up8j58qhs6wdcxph99ea4x48xy4mtw8yarzwph2npwtjyxcm07zyj"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 303,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "drep",
+                "threshold": 0.67,
+                "threshold_param": "dvt_committee_normal",
+                "yes_count": 1,
+                "yes_power": 400599926701051
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 303,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "spo",
+                "threshold": 0.51,
+                "threshold_param": "pvt_committee_normal",
+                "yes_count": 3,
+                "yes_power": 863047698672473
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action1hfvgh6dxe8zllwna6stxeu544cyzhefs9pchqpw34m8tvf0x23ssq6ewfg2": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1hfvgh6dxe8zllwna6stxeu544cyzhefs9pchqpw34m8tvf0x23ssq6ewfg2",
+            "deposit": 100000000000,
+            "expires_epoch": 234,
+            "id": "ba588be9a6c9c5ffba7dd4166cf295ae082be53028717005d1aeceb625e65461#0",
+            "last_votable_epoch": 228,
+            "lifecycle": {
+                "dropped_epoch": null,
+                "enacted_epoch": 229,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": 228,
+                "state": "enacted"
+            },
+            "proposed_at": {
+                "epoch": 227,
+                "slot": 96786672,
+                "time": "2025-07-14T05:11:12Z",
+                "tx_hash": "ba588be9a6c9c5ffba7dd4166cf295ae082be53028717005d1aeceb625e65461"
+            },
+            "return_address": "stake_test1up8j58qhs6wdcxph99ea4x48xy4mtw8yarzwph2npwtjyxcm07zyj",
+            "title": null,
+            "treasury_amount": null,
+            "type": "new_committee",
+            "votes_cast": 5
+        },
+        "anchor_content": null,
+        "param_changes": [],
+        "proposer": {
+            "actions_count": 4,
+            "stake_address": "stake_test1up8j58qhs6wdcxph99ea4x48xy4mtw8yarzwph2npwtjyxcm07zyj"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 228,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "drep",
+                "threshold": 0.67,
+                "threshold_param": "dvt_committee_normal",
+                "yes_count": 2,
+                "yes_power": 100110000000000
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 228,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "spo",
+                "threshold": 0.51,
+                "threshold_param": "pvt_committee_normal",
+                "yes_count": 3,
+                "yes_power": 1003432701197546
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action1k5hsy2yw8n5v0et524fz7nkap8qj09m5nckmxgycajlfszmyt4zsqp0n7ft": {
+        "action": {
+            "abstract": "We propose to update the Plutus V3 Cost Model via a Parameter Update governance action to enable the new Plutus primitives that will be available following the Chang#2 hard fork (to Protocol Version 10).  Existing Plutus cost model settings will not be changed.  Note that the primitives will not be enabled in Protocol version 9 (as enabled by the Chang hard fork).",
+            "anchor_status": "valid",
+            "bech32": "gov_action1k5hsy2yw8n5v0et524fz7nkap8qj09m5nckmxgycajlfszmyt4zsqp0n7ft",
+            "deposit": 100000000000,
+            "expires_epoch": 184,
+            "id": "b52f02288e3ce8c7e57455522f4edd09c12797749e2db32098ecbe980b645d45#0",
+            "last_votable_epoch": 179,
+            "lifecycle": {
+                "dropped_epoch": null,
+                "enacted_epoch": 180,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": 179,
+                "state": "enacted"
+            },
+            "proposed_at": {
+                "epoch": 177,
+                "slot": 75143783,
+                "time": "2024-11-05T17:16:23Z",
+                "tx_hash": "b52f02288e3ce8c7e57455522f4edd09c12797749e2db32098ecbe980b645d45"
+            },
+            "return_address": "stake_test1uz6ljatyc7w52z44hskd5pu5cvw7qemwz6re3ux4pmdqumcn2qyrx",
+            "title": "Plutus V3 Cost Model Parameter Changes Prior to Chang#2",
+            "treasury_amount": null,
+            "type": "parameter_change",
+            "votes_cast": 4
+        },
+        "anchor_content": {
+            "abstract": "We propose to update the Plutus V3 Cost Model via a Parameter Update governance action to enable the new Plutus primitives that will be available following the Chang#2 hard fork (to Protocol Version 10).  Existing Plutus cost model settings will not be changed.  Note that the primitives will not be enabled in Protocol version 9 (as enabled by the Chang hard fork).",
+            "motivation": "Following the hard fork to Protocol Version 10, 12 new Plutus primitives will be available for bitwise and cryptographic operations. This governance action provides cost model settings so that these primitives can be used following the Chang#2 hard fork.",
+            "rationale": "We propose to update the Plutus V3 Cost Model via a Parameter Update governance action to enable the new Plutus primitives that will be available following the Chang #2 hard fork (to Protocol Version 10).  Existing Plutus cost model settings will not be changed.  Note that the new primitives will not be enabled in Protocol version 9 (as enabled by the Chang hard fork). \n\n## Technical Evaluation\n\nThe changes described in this governance action have been recommended by Intersect’s Parameter Committee on 2024-10-10, as evidenced by [this post in the Cardano Forum](https://forum.cardano.org/t/oct-10-2024-voltaire-era-parameter-committee-intermediate-state/137361), and subsequently ratified unanimously by Intersect's Technical Steering Committee on 2024-10-18.\n\n\n### Functionality\n\nAs described below, 12 new Plutus v3 primitives will be enabled following the Chang#2 hard fork. These will provide new bitwise and cryptographic hashing functions that have a variety of uses, and which will enhance interoperability with BitCoin and Ethereum.  The revised Plutus v3 cost model will enable those new primitives.  The changes are all additions to the existing Plutus V3 cost model.  No changes will be made to the cost model values for any existing Plutus primitives or to the Plutus V1 and V2 cost nodels.\n### Security\n\n\nNo specific security concerns are raised by this change. A security report will be provided for the new Plutus primitives to support the Chang#2 hard fork.\n\n\n### Performance\n\nIn line with [Plutus benchmarking procedures](https://github.com/IntersectMBO/plutus/blob/master/plutus-core/cost-model/CostModelGeneration.md), [standard benchmarking has been undertaken on a reference machine](https://github.com/IntersectMBO/plutus/blob/master/plutus-core/cost-model/data/benching-conway.csv) to determine these cost model settings and to align them with existing Plutus primitives.  Since Plutus script execution times and memory usage are bounded by `maxBlockExecutionUnits[steps/memory]` and `maxTxExecutionUnits[steps/memory]`, there will be no overall performance impact on the node from these new cost model settings.\n\n### Sustainability\n\nThe upgrade provides new Plutus functionality that will enhance its bitwise and cryptographic capabilities and provide better interoperability with BitCoin and Ethereum.\n\n## New Plutus Primitives that will be Enabled after the Chang#2 Hard Fork\n\n\nThe new Plutus primitives are defined in three CIPs: [CIP-0122](https://github.com/cardano-foundation/CIPs/tree/master/CIP-0122), [CIP-0123](https://github.com/cardano-foundation/CIPs/tree/master/CIP-0123) and [CIP-0127](https://github.com/cardano-foundation/CIPs/tree/master/CIP-0127).\n\n### CIP-0122\nBitwise operations, both over fixed-width and variable-width blocks of bits, have a range of uses, including data structures (especially succinct ones) and cryptography. Currently, operations on individual bits in Plutus Core are difficult, or outright impossible, while also keeping within the tight constraints required on-chain. While it is possible to some degree to work with individual bytes over BuiltinByteStrings, this isn't sufficient, or efficient, when bit manipulations are required.\n\nThe new Plutus primitives defined by CIP-0122 are:\n\n- Bitwise logical AND, OR, XOR and complement;\n- Reading a bit value at a given index;\n- Setting bits value at given indices; and\n- Replicating a byte a given number of times.\n\n> ``\n> andByteString, orByteString, xorByteString, complementByteString, readBit, writeBits, replicateByte\n> ``\n\n### CIP-0123\nThe new bitwise operations that are defined in CIP-0123 extend the set that is provided by CIP-0123 to provide a usefully 'complete' set of bitwise operations.\n\nThe new Plutus primitives defined by CIP-0123 are:\n\n- Bit shifts and rotations\n- Counting the number of set bits (popcount)\n- Finding the first set bit\n\n> ``\n> shiftByteString,\n> rotateByteString,\n> countSetBits,\n> findFirstSetBit\n> ``\n\n\n### CIP-0127\nThe integration of the ECDSA and Schnorr signatures over the secp256k1 curve into Plutus was a significant step towards interoperability with the Ethereum and Bitcoin ecosystems. However, full compatibility is still impossible due to the absence of the RIPEMD-160 hashing algorithm in the Plutus interpreter. This is a fundamental component of Bitcoin's cryptographic framework.\n\nAdding RIPEMD-160 support to Plutus enhances the potential for cross-chain solutions between Cardano and Bitcoin blockchains and complements the set of primitives which are already available. It will allow for the verification of Bitcoin addresses and transactions on-chain. This addition also enables the verification of signed messages that identify the signer by the public key hash, which has not yet been witnessed on the Bitcoin blockchain.\n\nThe new Plutus primitive defined by CIP-0127 is:\n\n- [RIPEMD-160 hashing](https://homes.esat.kuleuven.be/~bosselae/ripemd160/pdf/AB-9601/AB-9601.pdf)\n\n> ``\n> ripemd_160\n> ``\n\nEach of the new primitives has both CPU and memory unit cost models.\n\n\n## Differences to the current Plutus cost model that will be enacted by this governance action.\n\n\nThe full difference from the current on-chain Plutus V3 cost model settings is shown below.  These changes are all additions to the existing Plutus V3 cost model.  There are no changes to the Plutus V1 or V2 cost models.\n\n\n    \"andByteString\": {\n       \"cpu\": {\n           \"arguments\": {\n               \"intercept\": 100181,\n               \"slope1\": 726,\n               \"slope2\": 719\n           },\n           \"type\": \"linear_in_y_and_z\"\n       },\n       \"memory\": {\n           \"arguments\": {\n               \"intercept\": 0,\n               \"slope\": 1\n           },\n           \"type\": \"linear_in_max_yz\"\n       }\n    },\n    \"orByteString\": {\n       \"cpu\": {\n           \"arguments\": {\n               \"intercept\": 100181,\n               \"slope1\": 726,\n               \"slope2\": 719\n           },\n           \"type\": \"linear_in_y_and_z\"\n       },\n       \"memory\": {\n           \"arguments\": {\n               \"intercept\": 0,\n               \"slope\": 1\n           },\n           \"type\": \"linear_in_max_yz\"\n       }\n    },\n    \"xorByteString\": {\n       \"cpu\": {\n           \"arguments\": {\n               \"intercept\": 100181,\n               \"slope1\": 726,\n               \"slope2\": 719\n           },\n           \"type\": \"linear_in_y_and_z\"\n       },\n       \"memory\": {\n           \"arguments\": {\n               \"intercept\": 0,\n               \"slope\": 1\n           },\n           \"type\": \"linear_in_max_yz\"\n       }\n    },\n    \"complementByteString\": {\n       \"cpu\": {\n           \"arguments\": {\n              \"intercept\": 107878,\n               \"slope\": 680\n           },\n           \"type\": \"linear_in_x\"\n       },\n       \"memory\": {\n           \"arguments\": {\n              \"intercept\": 0,\n               \"slope\": 1\n           },\n           \"type\": \"linear_in_x\"\n       }\n    },\n    \"readBit\": {\n       \"cpu\": {\n          \"arguments\": 95336,\n           \"type\": \"constant_cost\"\n       },\n       \"memory\": {\n          \"arguments\": 1,\n           \"type\": \"constant_cost\"\n       }\n    },\n    \"writeBits\": {\n       \"cpu\": {\n           \"arguments\": {\n               \"intercept\": 281145,\n               \"slope\": 18848\n           },\n           \"type\": \"linear_in_y\"\n       },\n       \"memory\": {\n           \"arguments\": {\n               \"intercept\": 0,\n               \"slope\": 1\n           },\n           \"type\": \"linear_in_x\"\n       }\n    },\n    \"replicateByte\": {\n       \"cpu\": {\n           \"arguments\": {\n               \"intercept\": 180194,\n               \"slope\": 159\n           },\n           \"type\": \"linear_in_x\"\n       },\n       \"memory\": {\n           \"arguments\": {\n               \"intercept\": 1,\n               \"slope\": 1\n           },\n           \"type\": \"linear_in_x\"\n       }\n    },\n    \"shiftByteString\": {\n       \"cpu\": {\n           \"arguments\": {\n               \"intercept\": 158519,\n               \"slope\": 8942\n           },\n           \"type\": \"linear_in_x\"\n       },\n       \"memory\": {\n           \"arguments\": {\n               \"intercept\": 0,\n               \"slope\": 1\n           },\n           \"type\": \"linear_in_x\"\n       }\n    },\n    \"rotateByteString\": {\n       \"cpu\": {\n           \"arguments\": {\n               \"intercept\": 159378,\n               \"slope\": 8813\n           },\n           \"type\": \"linear_in_x\"\n       },\n       \"memory\": {\n           \"arguments\": {\n               \"intercept\": 0,\n               \"slope\": 1\n           },\n           \"type\": \"linear_in_x\"\n       }\n    },\n    \"countSetBits\": {\n       \"cpu\": {\n           \"arguments\": {\n               \"intercept\": 107490,\n               \"slope\": 3298\n           },\n           \"type\": \"linear_in_x\"\n       },\n       \"memory\": {\n           \"arguments\": 1,\n           \"type\": \"constant_cost\"\n       }\n    },\n    \"findFirstSetBit\": {\n       \"cpu\": {\n           \"arguments\": {\n               \"intercept\": 106057,\n               \"slope\": 655\n           },\n           \"type\": \"linear_in_x\"\n       },\n       \"memory\": {\n           \"arguments\": 1,\n           \"type\": \"constant_cost\"\n       }\n    },\n    \"ripemd_160\": {\n       \"cpu\": {\n           \"arguments\": {\n               \"intercept\": 1964219,\n               \"slope\": 24520\n           },\n           \"type\": \"linear_in_x\"\n       },\n       \"memory\": {\n           \"arguments\": 3,\n           \"type\": \"constant_cost\"\n       }\n    }\n\n\n## Consistency with Guardrails\n\n\nThe relevant guardrails in the Interim Constitution are:\n\n\n- **PCM-01:** \"Cost model values must be set by benchmarking on a reference architecture\"\n- **PCM-02:** \"The cost model must be updated if new primitives are introduced or a new Plutus language version is added\"\n- **PCM-03:** \"Cost model values should not be negative\"\n\n\nThis governance action is consistent with all three guardrails.  None of these guardrails can be checked by the automated guardrails script.\n\n\n### Consistency with PCM-01\n\nThe new cost model settings have been validated by the IO Engineering Plutus Core developer team against the same reference machine and implementation as the existing mainnet Plutus cost model settings.\n\n\n### Consistency with PCM-02\n\nThe cost model has been updated because new Plutus primitives will be introduced following the upgrade to Protocol Version 10.\n\n\n### Consistency with PCM-03\n\nNone of the new cost model values is negative.\n\n\n\n\n## Reversion Plan\n\n\nThe changes can be reversed if necessary by reinstating the current set of Plutus cost model values, omitting any settings for the new primitives.\n",
+            "references": [
+                {
+                    "label": "Public Cardano Forum Post from the Parameter Committee Describing the Proposal",
+                    "uri": "https://forum.cardano.org/t/oct-10-2024-voltaire-era-parameter-committee-intermediate-state/137361"
+                },
+                {
+                    "label": "CIP-0122",
+                    "uri": "https://github.com/cardano-foundation/CIPs/tree/master/CIP-0122"
+                },
+                {
+                    "label": "CIP-0123",
+                    "uri": "https://github.com/cardano-foundation/CIPs/tree/master/CIP-0123"
+                },
+                {
+                    "label": "CIP-0127",
+                    "uri": "https://github.com/cardano-foundation/CIPs/tree/master/CIP-0127"
+                },
+                {
+                    "label": "RIPEMD-160 hashing",
+                    "uri": "https://homes.esat.kuleuven.be/~bosselae/ripemd160/pdf/AB-9601/AB-9601.pdf"
+                },
+                {
+                    "label": "Overview of the Plutus Primitve Benchmarking Process",
+                    "uri": "https://github.com/IntersectMBO/plutus/blob/master/doc/cost-model-overview/cost-model-overview.pdf"
+                },
+                {
+                    "label": "Generating and Updating the Plutus Cost Model",
+                    "uri": "https://github.com/IntersectMBO/plutus/blob/master/plutus-core/cost-model/CostModelGeneration.md"
+                },
+                {
+                    "label": "Plutus Primitive Benchmarking Code",
+                    "uri": "https://github.com/IntersectMBO/plutus/tree/master/plutus-core/cost-model/create-cost-model"
+                },
+                {
+                    "label": "Plutus Primitive Performance Results (CSV)",
+                    "uri": "https://github.com/IntersectMBO/plutus/blob/master/plutus-core/cost-model/data/benching-conway.csv"
+                },
+                {
+                    "label": "Cardano Node 10.1.1 Performance Report",
+                    "uri": "https://updates.cardano.intersectmbo.org/reports/2024-10-performance-10.1.1/"
+                },
+                {
+                    "label": "All Cardano Node Performance Reports",
+                    "uri": "https://updates.cardano.intersectmbo.org/reports/tags/benchmarking-reports"
+                },
+                {
+                    "label": "Technical Steering Committee Meeting Minutes 204-10-23",
+                    "uri": "https://committees.docs.intersectmbo.org/intersect-technical-steering-committee/tsc-meeting-minutes/23rd-october"
+                }
+            ],
+            "title": "Plutus V3 Cost Model Parameter Changes Prior to Chang#2"
+        },
+        "param_changes": [
+            {
+                "group": "dvt_p_p_technical_group",
+                "param": "cost_model_id"
+            }
+        ],
+        "proposer": {
+            "actions_count": 7,
+            "stake_address": "stake_test1uz6ljatyc7w52z44hskd5pu5cvw7qemwz6re3ux4pmdqumcn2qyrx"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 179,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": null,
+                "role": "constitutional_committee",
+                "threshold": null,
+                "threshold_param": null,
+                "yes_count": 4,
+                "yes_power": 0
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action1kgjjccnea0f9rd2mt2jrzun2afpw5l996gk3arludeee95uc0p3sqh2gnuh": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1kgjjccnea0f9rd2mt2jrzun2afpw5l996gk3arludeee95uc0p3sqh2gnuh",
+            "deposit": 100000000000,
+            "expires_epoch": 283,
+            "id": "b2252c6279ebd251b55b5aa431726aea42ea7ca5d22d1e8ffc6e7392d3987863#0",
+            "last_votable_epoch": 283,
+            "lifecycle": {
+                "dropped_epoch": 284,
+                "enacted_epoch": null,
+                "expired_epoch": 283,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": null,
+                "state": "expired"
+            },
+            "proposed_at": {
+                "epoch": 276,
+                "slot": 117669904,
+                "time": "2026-03-12T22:05:04Z",
+                "tx_hash": "b2252c6279ebd251b55b5aa431726aea42ea7ca5d22d1e8ffc6e7392d3987863"
+            },
+            "return_address": "stake_test1uqt54jc2yxctd2d0rpsaa73sryfkwphl7ax888ew5qny5tsjumf3t",
+            "title": null,
+            "treasury_amount": 50000000000000,
+            "type": "treasury_withdrawals",
+            "votes_cast": 0
+        },
+        "anchor_content": null,
+        "param_changes": [],
+        "proposer": {
+            "actions_count": 4,
+            "stake_address": "stake_test1uqt54jc2yxctd2d0rpsaa73sryfkwphl7ax888ew5qny5tsjumf3t"
+        },
+        "tallies": [],
+        "withdrawals": [
+            {
+                "amount": 50000000000000,
+                "beneficiary": "stake_test1uqt54jc2yxctd2d0rpsaa73sryfkwphl7ax888ew5qny5tsjumf3t",
+                "enacted_at": null,
+                "paid_heuristic": false
+            }
+        ]
+    },
+    "gov_action1nvlup7s040gfxqhuqahyfat0f2wp7qrhc9rwdh42y3rhmkn6c45qqpn3l3l": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1nvlup7s040gfxqhuqahyfat0f2wp7qrhc9rwdh42y3rhmkn6c45qqpn3l3l",
+            "deposit": 1000000000,
+            "expires_epoch": 318,
+            "id": "9b3fc0fa0fabd09302fc076e44f56f4a9c1f0077c146e6deaa24477dda7ac568#0",
+            "last_votable_epoch": 312,
+            "lifecycle": {
+                "dropped_epoch": 313,
+                "enacted_epoch": null,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": null,
+                "state": "dropped"
+            },
+            "proposed_at": {
+                "epoch": 311,
+                "slot": 133104829,
+                "time": "2026-09-07T13:33:49Z",
+                "tx_hash": "9b3fc0fa0fabd09302fc076e44f56f4a9c1f0077c146e6deaa24477dda7ac568"
+            },
+            "return_address": "stake_test1upfr45qwpx5xdh8lw5eadq38vtmxk37vruh6rwelk658k0cdcgqcf",
+            "title": null,
+            "treasury_amount": null,
+            "type": "parameter_change",
+            "votes_cast": 0
+        },
+        "anchor_content": null,
+        "param_changes": [
+            {
+                "group": "dvt_p_p_economic_group",
+                "param": "min_fee_a"
+            }
+        ],
+        "proposer": {
+            "actions_count": 4,
+            "stake_address": "stake_test1upfr45qwpx5xdh8lw5eadq38vtmxk37vruh6rwelk658k0cdcgqcf"
+        },
+        "tallies": [],
+        "withdrawals": []
+    },
+    "gov_action1pmx8fl3x2vkwcx4e52vlpq40csm2ljygegkuplr2ekjrr3fdccxsq0jegy9": {
+        "action": {
+            "abstract": "Withdraw 200000000000 ADA from the treasury so Ryan can buy an island.",
+            "anchor_status": "valid",
+            "bech32": "gov_action1pmx8fl3x2vkwcx4e52vlpq40csm2ljygegkuplr2ekjrr3fdccxsq0jegy9",
+            "deposit": 100000000000,
+            "expires_epoch": 170,
+            "id": "0ecc74fe26532cec1ab9a299f082afc436afc888ca2dc0fc6acda431c52dc60d#0",
+            "last_votable_epoch": 170,
+            "lifecycle": {
+                "dropped_epoch": 171,
+                "enacted_epoch": null,
+                "expired_epoch": 170,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": null,
+                "state": "expired"
+            },
+            "proposed_at": {
+                "epoch": 163,
+                "slot": 69190815,
+                "time": "2024-08-28T19:40:15Z",
+                "tx_hash": "0ecc74fe26532cec1ab9a299f082afc436afc888ca2dc0fc6acda431c52dc60d"
+            },
+            "return_address": "stake_test1upfpm2244k8jf00l357t3adp2hzfsuqrwqvleheqjj08uhswme5cn",
+            "title": "Buy Ryan a island",
+            "treasury_amount": null,
+            "type": "parameter_change",
+            "votes_cast": 0
+        },
+        "anchor_content": {
+            "abstract": "Withdraw 200000000000 ADA from the treasury so Ryan can buy an island.",
+            "motivation": "The current problem is that Ryan does not have an island, but he would really like an island.",
+            "rationale": "With these funds from the treasury will be sold for **cold hard cash**, this cash can then be used to purchase an island for Ryan. An example of this island is provided in the references.",
+            "references": [
+                {
+                    "label": "A cool island for Ryan",
+                    "uri": "https://www.google.com/maps/place/World's+only+5th+order+recursive+island/@62.6511465,-97.7946829,15.75z/data=!4m14!1m7!3m6!1s0x5216a167810cee39:0x11431abdfe4c7421!2sWorld's+only+5th+order+recursive+island!8m2!3d62.651114!4d-97.7872244!16s%2Fg%2F11spwk2b6n!3m5!1s0x5216a167810cee39:0x11431abdfe4c7421!8m2!3d62.651114!4d-97.7872244!16s%2Fg%2F11spwk2b6n?authuser=0&entry=ttu"
+                }
+            ],
+            "title": "Buy Ryan a island"
+        },
+        "param_changes": [
+            {
+                "group": "dvt_p_p_economic_group",
+                "param": "key_deposit"
+            }
+        ],
+        "proposer": {
+            "actions_count": 4,
+            "stake_address": "stake_test1upfpm2244k8jf00l357t3adp2hzfsuqrwqvleheqjj08uhswme5cn"
+        },
+        "tallies": [],
+        "withdrawals": []
+    },
+    "gov_action1puswrxpglcyl9fqtznauu9y0ya904683lprs0kxyaq5tsz8l4hzqqfegux0": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1puswrxpglcyl9fqtznauu9y0ya904683lprs0kxyaq5tsz8l4hzqqfegux0",
+            "deposit": 100000000000,
+            "expires_epoch": 219,
+            "id": "0f20e19828fe09f2a40b14fbce148f274afae8f1f84707d8c4e828b808ffadc4#0",
+            "last_votable_epoch": 219,
+            "lifecycle": {
+                "dropped_epoch": 220,
+                "enacted_epoch": null,
+                "expired_epoch": 219,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": null,
+                "state": "expired"
+            },
+            "proposed_at": {
+                "epoch": 212,
+                "slot": 90328665,
+                "time": "2025-04-30T11:17:45Z",
+                "tx_hash": "0f20e19828fe09f2a40b14fbce148f274afae8f1f84707d8c4e828b808ffadc4"
+            },
+            "return_address": "stake_test1uz6ljatyc7w52z44hskd5pu5cvw7qemwz6re3ux4pmdqumcn2qyrx",
+            "title": null,
+            "treasury_amount": 149000000000000,
+            "type": "treasury_withdrawals",
+            "votes_cast": 0
+        },
+        "anchor_content": null,
+        "param_changes": [],
+        "proposer": {
+            "actions_count": 7,
+            "stake_address": "stake_test1uz6ljatyc7w52z44hskd5pu5cvw7qemwz6re3ux4pmdqumcn2qyrx"
+        },
+        "tallies": [],
+        "withdrawals": [
+            {
+                "amount": 149000000000000,
+                "beneficiary": "stake_test1uz6ljatyc7w52z44hskd5pu5cvw7qemwz6re3ux4pmdqumcn2qyrx",
+                "enacted_at": null,
+                "paid_heuristic": false
+            }
+        ]
+    },
+    "gov_action1ueq7eqptkyy7z58fyrrvqwr7shewl5cfgjjx6zxssgftme2q76wqqvxkqlu": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1ueq7eqptkyy7z58fyrrvqwr7shewl5cfgjjx6zxssgftme2q76wqqvxkqlu",
+            "deposit": 1000000000,
+            "expires_epoch": 310,
+            "id": "e641ec802bb109e150e920c6c0387e85f2efd30944a46d08d08212bde540f69c#0",
+            "last_votable_epoch": 304,
+            "lifecycle": {
+                "dropped_epoch": null,
+                "enacted_epoch": 305,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": 304,
+                "state": "enacted"
+            },
+            "proposed_at": {
+                "epoch": 303,
+                "slot": 129570971,
+                "time": "2026-07-28T15:56:11Z",
+                "tx_hash": "e641ec802bb109e150e920c6c0387e85f2efd30944a46d08d08212bde540f69c"
+            },
+            "return_address": "stake_test1uqpm2m270mxtwlykmhaszuvx7nwa0f0dtp5che4r4zq2npqtgw6vt",
+            "title": null,
+            "treasury_amount": null,
+            "type": "parameter_change",
+            "votes_cast": 8
+        },
+        "anchor_content": null,
+        "param_changes": [
+            {
+                "group": "dvt_p_p_network_group",
+                "param": "max_block_ex_mem"
+            },
+            {
+                "group": "dvt_p_p_network_group",
+                "param": "max_block_ex_steps"
+            },
+            {
+                "group": "dvt_p_p_network_group",
+                "param": "max_tx_ex_mem"
+            },
+            {
+                "group": "dvt_p_p_network_group",
+                "param": "max_tx_ex_steps"
+            },
+            {
+                "group": "dvt_p_p_economic_group",
+                "param": "min_pool_cost"
+            }
+        ],
+        "proposer": {
+            "actions_count": 1,
+            "stake_address": "stake_test1uqpm2m270mxtwlykmhaszuvx7nwa0f0dtp5che4r4zq2npqtgw6vt"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 304,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": null,
+                "role": "constitutional_committee",
+                "threshold": null,
+                "threshold_param": null,
+                "yes_count": 3,
+                "yes_power": 0
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 304,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "drep",
+                "threshold": 0.67,
+                "threshold_param": "greatest(dvt_p_p_network_group, dvt_p_p_economic_group)",
+                "yes_count": 1,
+                "yes_power": 400600067685466
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 304,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "spo",
+                "threshold": 0.51,
+                "threshold_param": "pvtpp_security_group",
+                "yes_count": 4,
+                "yes_power": 1156882925007899
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action1xrt5gav7lg58fafj7mj4qcvlz49jm8tdmumpanynx9mj2q6jd2aq202jxwt": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1xrt5gav7lg58fafj7mj4qcvlz49jm8tdmumpanynx9mj2q6jd2aq202jxwt",
+            "deposit": 100000000000,
+            "expires_epoch": 235,
+            "id": "30d744759efa2874f532f6e550619f154b2d9d6ddf361ecc9331772503526aba#5",
+            "last_votable_epoch": 235,
+            "lifecycle": {
+                "dropped_epoch": 236,
+                "enacted_epoch": null,
+                "expired_epoch": 235,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": null,
+                "state": "expired"
+            },
+            "proposed_at": {
+                "epoch": 228,
+                "slot": 97164133,
+                "time": "2025-07-18T14:02:13Z",
+                "tx_hash": "30d744759efa2874f532f6e550619f154b2d9d6ddf361ecc9331772503526aba"
+            },
+            "return_address": "stake_test1urrfysygca8m9x0qypxrutl5j2n9c252mev4qmwdtzwqr6g6dj7kn",
+            "title": null,
+            "treasury_amount": 69459000000000,
+            "type": "treasury_withdrawals",
+            "votes_cast": 1
+        },
+        "anchor_content": null,
+        "param_changes": [],
+        "proposer": {
+            "actions_count": 57,
+            "stake_address": "stake_test1urrfysygca8m9x0qypxrutl5j2n9c252mev4qmwdtzwqr6g6dj7kn"
+        },
+        "tallies": [
+            {
+                "abstain_count": 1,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 235,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": null,
+                "role": "drep",
+                "threshold": 0.67,
+                "threshold_param": "dvt_treasury_withdrawal",
+                "yes_count": 0,
+                "yes_power": 0
+            }
+        ],
+        "withdrawals": [
+            {
+                "amount": 69459000000000,
+                "beneficiary": "stake_test1urrfysygca8m9x0qypxrutl5j2n9c252mev4qmwdtzwqr6g6dj7kn",
+                "enacted_at": null,
+                "paid_heuristic": false
+            }
+        ]
+    },
+    "gov_action1zk80dvjfklp7cgvuvtg37zuwwe4r2erj6q3m67c7wdh0akth70rqq44samn": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1zk80dvjfklp7cgvuvtg37zuwwe4r2erj6q3m67c7wdh0akth70rqq44samn",
+            "deposit": 100000000000,
+            "expires_epoch": 256,
+            "id": "158ef6b249b7c3ec219c62d11f0b8e766a356472d023bd7b1e736efed977f3c6#0",
+            "last_votable_epoch": 251,
+            "lifecycle": {
+                "dropped_epoch": null,
+                "enacted_epoch": 252,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": 251,
+                "state": "enacted"
+            },
+            "proposed_at": {
+                "epoch": 249,
+                "slot": 106234973,
+                "time": "2025-10-31T13:42:53Z",
+                "tx_hash": "158ef6b249b7c3ec219c62d11f0b8e766a356472d023bd7b1e736efed977f3c6"
+            },
+            "return_address": "stake_test1uz6ljatyc7w52z44hskd5pu5cvw7qemwz6re3ux4pmdqumcn2qyrx",
+            "title": null,
+            "treasury_amount": null,
+            "type": "parameter_change",
+            "votes_cast": 9
+        },
+        "anchor_content": null,
+        "param_changes": [
+            {
+                "group": "dvt_p_p_network_group",
+                "param": "max_block_ex_mem"
+            },
+            {
+                "group": "dvt_p_p_network_group",
+                "param": "max_block_ex_steps"
+            },
+            {
+                "group": "dvt_p_p_network_group",
+                "param": "max_tx_ex_mem"
+            },
+            {
+                "group": "dvt_p_p_network_group",
+                "param": "max_tx_ex_steps"
+            }
+        ],
+        "proposer": {
+            "actions_count": 7,
+            "stake_address": "stake_test1uz6ljatyc7w52z44hskd5pu5cvw7qemwz6re3ux4pmdqumcn2qyrx"
+        },
+        "tallies": [
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 251,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": null,
+                "role": "constitutional_committee",
+                "threshold": null,
+                "threshold_param": null,
+                "yes_count": 3,
+                "yes_power": 0
+            },
+            {
+                "abstain_count": 1,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 251,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "drep",
+                "threshold": 0.67,
+                "threshold_param": "dvt_p_p_network_group",
+                "yes_count": 2,
+                "yes_power": 73503650124398
+            },
+            {
+                "abstain_count": 0,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 251,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 0,
+                "no_power": 0,
+                "ratio": 1.0,
+                "role": "spo",
+                "threshold": 0.51,
+                "threshold_param": "pvtpp_security_group",
+                "yes_count": 3,
+                "yes_power": 1028292913526097
+            }
+        ],
+        "withdrawals": []
+    },
+    "gov_action1zlnc7hsghggj2ztjnkql9qq9e2skrpuz8r0nelz2lxp6hhykl8esqxz5kdd": {
+        "action": {
+            "abstract": null,
+            "anchor_status": "unreachable",
+            "bech32": "gov_action1zlnc7hsghggj2ztjnkql9qq9e2skrpuz8r0nelz2lxp6hhykl8esqxz5kdd",
+            "deposit": 100000000000,
+            "expires_epoch": 256,
+            "id": "17e78f5e08ba112509729d81f28005caa161878238df3cfc4af983abdc96f9f3#0",
+            "last_votable_epoch": 251,
+            "lifecycle": {
+                "dropped_epoch": 252,
+                "enacted_epoch": null,
+                "expired_epoch": null,
+                "formula_id": "gov_action_state_v1",
+                "ratified_epoch": null,
+                "state": "dropped"
+            },
+            "proposed_at": {
+                "epoch": 249,
+                "slot": 106232621,
+                "time": "2025-10-31T13:03:41Z",
+                "tx_hash": "17e78f5e08ba112509729d81f28005caa161878238df3cfc4af983abdc96f9f3"
+            },
+            "return_address": "stake_test1uz6ljatyc7w52z44hskd5pu5cvw7qemwz6re3ux4pmdqumcn2qyrx",
+            "title": null,
+            "treasury_amount": null,
+            "type": "parameter_change",
+            "votes_cast": 2
+        },
+        "anchor_content": null,
+        "param_changes": [
+            {
+                "group": "dvt_p_p_network_group",
+                "param": "max_block_ex_mem"
+            },
+            {
+                "group": "dvt_p_p_network_group",
+                "param": "max_block_ex_steps"
+            },
+            {
+                "group": "dvt_p_p_network_group",
+                "param": "max_tx_ex_mem"
+            },
+            {
+                "group": "dvt_p_p_network_group",
+                "param": "max_tx_ex_steps"
+            }
+        ],
+        "proposer": {
+            "actions_count": 7,
+            "stake_address": "stake_test1uz6ljatyc7w52z44hskd5pu5cvw7qemwz6re3ux4pmdqumcn2qyrx"
+        },
+        "tallies": [
+            {
+                "abstain_count": 1,
+                "abstain_power": 0,
+                "basis": "cast_votes_only",
+                "epoch": 251,
+                "formula_id": "tally_cast_votes_v1",
+                "no_count": 1,
+                "no_power": 3193650124398,
+                "ratio": 0.0,
+                "role": "drep",
+                "threshold": 0.67,
+                "threshold_param": "dvt_p_p_network_group",
+                "yes_count": 0,
+                "yes_power": 0
+            }
+        ],
+        "withdrawals": []
+    }
+}

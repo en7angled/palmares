@@ -1,0 +1,47 @@
+# F1 check 6 — nightly parity against Koios preprod.
+#
+# WARN-ONLY, deliberately. The job needs a live, caught-up stack on both sides, so as a merge gate
+# it would block every pull request whenever the Pi is re-syncing or Koios is having a bad night —
+# and a gate that is red for reasons nobody can fix teaches people to ignore it. The RELEASE gate
+# reads the artifact instead; docs/deployment/koios-parity-gate.md carries that one-liner and what
+# each exit code means.
+#
+# What DOES gate a pull request is the replay test in `cabal test`: it reconciles the committed
+# snapshot pair under test/fixtures/snapshot/ with no network at all, so this workflow's outage can
+# never fail a PR and a PR can never break the reconciliation unnoticed.
+name: reconcile
+
+on:
+  schedule: [{ cron: "0 3 * * *" }]
+  workflow_dispatch:
+
+jobs:
+  koios:
+    # ubuntu-24.04-arm, NOT ubuntu-latest: images.yml publishes linux/arm64 only, so an x86 runner
+    # cannot exec the admin image.
+    runs-on: ubuntu-24.04-arm
+    # An upstream outage must never look like our bug. The step's own exit code still reaches the
+    # log and the artifact; this only keeps the WORKFLOW green.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Koios preprod parity
+        env:
+          PALMARES_API: https://gov.cardano.vip/api
+          KOIOS_API: https://preprod.koios.rest/api/v1
+          # From the secret store, never the repository. Koios answers unauthenticated too, at a
+          # lower rate limit; the token only buys headroom for the 79 requests this makes.
+          KOIOS_API_TOKEN: ${{ secrets.KOIOS_API_TOKEN }}
+          PALMARES_ADMIN_CMD: >-
+            docker run --rm -e PALMARES_API -e KOIOS_API -e KOIOS_API_TOKEN
+            -v ${{ github.workspace }}:/w -w /w
+            ghcr.io/${{ github.repository }}-admin:latest
+        run: ./scripts/reconcile_koios.sh
+
+      # `if: always()`, because the run worth keeping is the one that diverged.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: koios-divergences
+          path: out/

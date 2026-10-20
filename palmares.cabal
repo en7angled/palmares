@@ -31,6 +31,8 @@ extra-source-files:
   sql/*.sql
   test/fixtures/*.sql
   test/fixtures/koios/*.json
+  test/fixtures/snapshot/koios/*.json
+  test/fixtures/snapshot/palmares/*.json
   config/reconcile-exceptions.yaml
   config/reconcile-sample.preprod.json
 
@@ -287,6 +289,8 @@ executable admin
   import:         common-options
   main-is:        Main.hs
   hs-source-dirs: src/exe/admin
+  other-modules:  Reconcile
+
   build-depends:
     , offchain-lib
     , onchain-lib
@@ -295,9 +299,17 @@ executable admin
     , aeson
     , aeson-pretty
     , bytestring
+    , containers
+    , directory
+    , filepath
+    , http-client
+    , http-client-tls
+    , http-types
     , mtl
     , optparse-applicative
     , text
+    , time
+    , vector
 
   --- Cardano specific dependencies
   build-depends:

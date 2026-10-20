@@ -1,0 +1,41 @@
+[
+    {
+        "members": [
+            {
+                "cc_cold_has_script": true,
+                "cc_cold_hex": "615b54137e73f090d2dddb04317bee41624f4013e5cfe4a5efa76d76",
+                "cc_cold_id": "cc_cold1zds4k4qn0eelpyxjmhdsgvtmaeqkyn6qz0jule99a7nk6asezxvlu",
+                "cc_hot_has_script": true,
+                "cc_hot_hex": "5bfa7d850280c54110534065fa91a3635bbcc0eadc69c5c792c35e1e",
+                "cc_hot_id": "cc_hot1qddl5lv9q2qv2sgs2dqxt7535d34h0xqatwxn3w8jtp4u8su5q6z7",
+                "expiration_epoch": 372,
+                "status": "authorized"
+            },
+            {
+                "cc_cold_has_script": true,
+                "cc_cold_hex": "e36d5e45b277bff4962d6c63be2375af8e68e558e6a373137a0ad6f2",
+                "cc_cold_id": "cc_cold1z03k6hj9kfmmlayk94kx803rwkhcu689trn2xucn0g9ddusykdhpl",
+                "cc_hot_has_script": true,
+                "cc_hot_hex": "26648e2c6bc4e4863a373bd28d480b2eb788922545e1df357e76a3d2",
+                "cc_hot_id": "cc_hot1qvnxfr3vd0zwfp36xuaa9r2gpvht0zyjy4z7rhe40em285sq8lgd2",
+                "expiration_epoch": 372,
+                "status": "authorized"
+            },
+            {
+                "cc_cold_has_script": true,
+                "cc_cold_hex": "e883ad4599af7b01fe9d01c92bfa405151226db53982931d445b4a96",
+                "cc_cold_id": "cc_cold1z05g8t29nxhhkq07n5quj2l6gpg4zgndk5uc9ycag3d549svk3hyp",
+                "cc_hot_has_script": true,
+                "cc_hot_hex": "19ebff7033fe1c1f9cd2b346f2c9b0d7ff28b1527ebed1cc071155b4",
+                "cc_hot_id": "cc_hot1qvv7hlmsx0lpc8uu62e5dukfkrtl72932flta5wvqug4tdqaa84y0",
+                "expiration_epoch": 372,
+                "status": "authorized"
+            }
+        ],
+        "proposal_id": "gov_action1h0arqw4rt5verxf5ld07x6chgcy6pswlk3a9gmxdd6jc4f6ju24qqj0haqp",
+        "proposal_index": 0,
+        "proposal_tx_hash": "bbfa303aa35d19919934fb5fe36b174609a0c1dfb47a546ccd6ea58aa752e2aa",
+        "quorum_denominator": 3,
+        "quorum_numerator": 2
+    }
+]

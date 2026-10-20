@@ -57,6 +57,7 @@ module Palmares.Reconcile
 
     -- * The ten rows
     reconcileAll,
+    reconcileAllWith,
     readyMaxLagSeconds,
 
     -- * The pinned sample
@@ -102,26 +103,10 @@ import Data.Time (Day, UTCTime)
 import Data.Yaml qualified as Yaml
 import GHC.Generics (Generic)
 import Palmares.DomainTypes.Core.Types
-  ( ChainPoint (..),
-    DRepId (..),
-    DRepStatus,
+  ( DRepStatus,
     GovActionType,
     Vote (..),
     VoterRole (..),
-  )
-import Palmares.DomainTypes.Transfer.QueryResponses
-  ( CommitteeMemberSummary (..),
-    CommitteeResponse (..),
-    DRepSummary (..),
-    EpochPowerPoint (..),
-    GovActionDetailResponse (..),
-    GovActionLifecycle (..),
-    GovActionSummary (..),
-    StatusResponse (..),
-    SyncStatus (..),
-    TreasuryWithdrawalRow (..),
-    VoteRecord (..),
-    VoteTally (..),
   )
 import Palmares.Reconcile.Koios
 import Palmares.Utils (jsonTag)
@@ -249,7 +234,20 @@ loadExceptions path = do
   r <- Yaml.decodeFileEither path
   pure $ case r of
     Left e -> Left (path <> ": " <> Yaml.prettyPrintParseException e)
-    Right f -> Right (exceptionFileEntries f)
+    Right f -> traverse check (exceptionFileEntries f)
+  where
+    -- A wildcard key with no field would waive the whole row. That is not a documented
+    -- divergence, it is a way to turn a row off, so it is refused at load rather than honoured.
+    check e
+      | exceptionKey e == "*", Nothing <- exceptionField e =
+          Left
+            ( path
+                <> ": the entry for "
+                <> T.unpack (rowIdText (exceptionRow e))
+                <> " has key \"*\" and no field. A wildcard key must name one field; "
+                <> "without it the entry would waive the whole row."
+            )
+      | otherwise = Right e
 
 -- | Split a row's divergences into @(unexplained, explained)@.
 --
@@ -263,9 +261,19 @@ applyExceptions es row ds = (filter (not . explained) ds, filter explained ds)
     explained d = any (`covers` d) mine
 
 -- | Does this entry explain this divergence?
+--
+-- @key: "*"@ matches every key of the row, which is for a divergence that is DEFINITIONAL rather
+-- than per-row. MEASURED, and this is why it exists: 101 DReps differ on @active_until_epoch@
+-- because db-sync records the ledger's deadline only in @drep_distr@ and 90 registered DReps have
+-- never had a row there. That is one fact about one field, not 101 facts about 101 DReps, and
+-- writing it out 101 times would produce a waiver file nobody maintains and a @stale_exceptions@
+-- list that churns with the population.
+--
+-- A @*@ entry MUST name a field — 'loadExceptions' refuses one that does not. @key: "*"@ with no
+-- field would waive a whole row, which is not a documented divergence, it is turning a row off.
 covers :: ExceptionEntry -> Divergence -> Bool
 covers e d =
-  exceptionKey e == divergenceKey d
+  (exceptionKey e == "*" || exceptionKey e == divergenceKey d)
     && maybe True (== divergenceField d) (exceptionField e)
 
 -- | The entries that explained nothing in this run.
@@ -573,7 +581,17 @@ data PalmaresSnapshot = PalmaresSnapshot
 -- Each row is one 'diffKeyed' call. What each one compares is the specification; the signature and
 -- the tests do not determine it, so it is written out beside each row.
 reconcileAll :: KoiosSnapshot -> PalmaresSnapshot -> [ExceptionEntry] -> [RowResult]
-reconcileAll k p es = case checkFreshness (psEpoch p) (koiosTipEpochNo (ksTip k)) (psLagSeconds p) readyMaxLagSeconds of
+reconcileAll = reconcileAllWith readyMaxLagSeconds
+
+-- | 'reconcileAll' with the lag bound the caller is willing to tolerate.
+--
+-- This is the real function; 'reconcileAll' is it at the default bound. The executable always has
+-- a bound of its own — a flag, then @PALMARES_READY_MAX_LAG_SECONDS@, then 300 — and passing it
+-- was MEASURED to be missing: @--max-lag-seconds 0@ parsed, was carried all the way into the run,
+-- and then dropped, so a run that should have aborted reported @ok@. A flag that is read and
+-- ignored is worse than one that does not exist.
+reconcileAllWith :: Int -> KoiosSnapshot -> PalmaresSnapshot -> [ExceptionEntry] -> [RowResult]
+reconcileAllWith lagBound k p es = case checkFreshness (psEpoch p) (koiosTipEpochNo (ksTip k)) (psLagSeconds p) lagBound of
   Aborted why ->
     mkRow es R10 1 [Divergence "freshness" "epoch_skew" (tshow (koiosTipEpochNo (ksTip k))) (tshow (psEpoch p))]
       : [skippedRow r why | r <- [R1 .. R9]]
@@ -741,12 +759,23 @@ reconcileAll k p es = case checkFreshness (psEpoch p) (koiosTipEpochNo (ksTip k)
         <> "/"
         <> tshow (pcommitteeQuorumDenominator (psCommittee p))
 
+    -- Restricted to the SAMPLED actions, because our side can only be: psWithdrawals is built from
+    -- the gov-action DETAIL responses, and those are fetched one per sampled action. MEASURED: over
+    -- all 131 proposals Koios contributes 59 keys where we have 4, and all 55 of the difference was
+    -- reported as one-sided membership divergences — a comparison between two different
+    -- populations, which is not a finding about either index.
+    --
+    -- The sample is read off `ksProposalVotes`, whose keys ARE the sampled actions, rather than
+    -- passed in as a fourth parameter: one source for which actions a run looked at.
     koiosWithdrawals =
       M.fromListWith (+) $
         [ ((koiosWithdrawalStakeAddress w, toInteger (unKoiosLovelace (koiosWithdrawalAmount w))), 1 :: Int)
           | a <- ksProposals k,
+            koiosProposalId a `S.member` sampledActions,
             w <- koiosProposalWithdrawals a
         ]
+
+    sampledActions = M.keysSet (ksProposalVotes k)
 
 -- | A set as a map to unit, so 'diffKeyed' serves a membership-only row too.
 --
@@ -869,12 +898,132 @@ loadKoiosSnapshot dir = runExceptT $ do
     firstOf (t : _) = Right t
     firstOf [] = Left "tip.json: Koios returned no tip"
 
--- | Read our own snapshot from a directory of raw response bodies, and project it.
+-- ---------------------------------------------------------------------------------------------
+
+-- * Our API's wire, read for exactly the compared fields
+
+-- __Purpose-built decoders, NOT the response DTOs,__ and the reason is a fact about those DTOs
+-- rather than a shortcut here: their @FromJSON@ is the SQL-ROW direction, not the client one.
+-- @GovActionSummary@ reads @tx_hash@ and @index@ and EMITS @id@ and @bech32@, because the two
+-- identifier forms are derived once at that boundary; @DRepSummary@ is the same shape. So our own
+-- @\/gov-actions@ response cannot be decoded by the type that defines it — measured, the first
+-- recording failed with @gov_actions.json: Error in $[0]: key \"tx_hash\" not found@ over a file
+-- whose 131 items were all perfectly well formed.
 --
--- The files are what the API SERVED, decoded through the real response DTOs — so a field rename in
--- 'DRepSummary' breaks this at compile time — and then reduced to 'PalmaresSnapshot'. That order
--- matters: decoding first is what makes the recorded pair evidence about the API rather than about
--- the reconciler.
+-- That asymmetry is deliberate and worth keeping. What it means for this module is that the thing
+-- which catches a wire rename is the REPLAY TEST and the smoke suite, not the type checker — so
+-- these records read the nine values the rows compare and nothing else, and a rename shows up as a
+-- decode failure naming the file and the key.
+
+data WStatus = WStatus {wsEpoch :: Int, wsLag :: Int}
+
+instance FromJSON WStatus where
+  parseJSON = withObject "status" $ \o -> do
+    g <- o .: "governance"
+    WStatus <$> g .: "epoch" <*> g .: "lag_seconds"
+
+data WDRep = WDRep
+  { wdrId :: Text,
+    wdrHasScript :: Bool,
+    wdrStatus :: DRepStatus,
+    wdrActiveUntil :: Maybe Int,
+    wdrDelegators :: Int
+  }
+
+instance FromJSON WDRep where
+  parseJSON = withObject "drep" $ \o ->
+    WDRep
+      <$> o .: "id"
+      <*> o .: "has_script"
+      <*> o .: "status"
+      <*> o .:? "active_until_epoch"
+      <*> o .: "delegator_count"
+
+data WPowerPoint = WPowerPoint {wppEpoch :: Int, wppLovelace :: Integer}
+
+instance FromJSON WPowerPoint where
+  parseJSON = withObject "power point" $ \o ->
+    WPowerPoint <$> o .: "epoch" <*> o .: "lovelace"
+
+data WAction = WAction
+  { wacBech32 :: Text,
+    wacType :: GovActionType,
+    wacProposedEpoch :: Int,
+    wacExpires :: Maybe Int,
+    wacRatified :: Maybe Int,
+    wacEnacted :: Maybe Int,
+    wacDropped :: Maybe Int,
+    wacExpired :: Maybe Int
+  }
+
+instance FromJSON WAction where
+  parseJSON = withObject "gov action" $ \o -> do
+    at <- o .: "proposed_at"
+    lc <- o .: "lifecycle"
+    WAction
+      <$> o .: "bech32"
+      <*> o .: "type"
+      <*> at .: "epoch"
+      <*> o .:? "expires_epoch"
+      <*> lc .:? "ratified_epoch"
+      <*> lc .:? "enacted_epoch"
+      <*> lc .:? "dropped_epoch"
+      <*> lc .:? "expired_epoch"
+
+data WTally = WTally {wtRole :: VoterRole, wtYes :: Int, wtNo :: Int, wtAbstain :: Int}
+
+instance FromJSON WTally where
+  parseJSON = withObject "tally" $ \o ->
+    WTally <$> o .: "role" <*> o .: "yes_count" <*> o .: "no_count" <*> o .: "abstain_count"
+
+data WWithdrawal = WWithdrawal {wwBeneficiary :: Text, wwAmount :: Integer}
+
+instance FromJSON WWithdrawal where
+  parseJSON = withObject "withdrawal" $ \o ->
+    WWithdrawal <$> o .: "beneficiary" <*> o .: "amount"
+
+data WDetail = WDetail {wdeTallies :: [WTally], wdeWithdrawals :: [WWithdrawal]}
+
+instance FromJSON WDetail where
+  parseJSON = withObject "gov action detail" $ \o ->
+    WDetail
+      <$> (fromMaybe [] <$> o .:? "tallies")
+      <*> (fromMaybe [] <$> o .:? "withdrawals")
+
+data WVote = WVote
+  { wvAction :: Text,
+    wvRole :: VoterRole,
+    wvVerdict :: Vote,
+    wvTxHash :: Maybe Text
+  }
+
+instance FromJSON WVote where
+  parseJSON = withObject "vote" $ \o -> do
+    at <- o .: "cast_at"
+    WVote
+      <$> o .: "gov_action_bech32"
+      <*> o .: "voter_role"
+      <*> o .: "verdict"
+      <*> at .:? "tx_hash"
+
+data WMember = WMember {wmColdBech32 :: Text, wmHotHash :: Maybe Text, wmExpiration :: Int}
+
+instance FromJSON WMember where
+  parseJSON = withObject "committee member" $ \o ->
+    WMember <$> o .: "cold_bech32" <*> o .:? "hot_hash" <*> o .: "expiration_epoch"
+
+data WCommittee = WCommittee {wcNumerator :: Int, wcDenominator :: Int, wcMembers :: [WMember]}
+
+instance FromJSON WCommittee where
+  parseJSON = withObject "committee" $ \o ->
+    WCommittee
+      <$> o .: "quorum_numerator"
+      <*> o .: "quorum_denominator"
+      <*> (fromMaybe [] <$> o .:? "members")
+
+-- ---------------------------------------------------------------------------------------------
+
+-- | Read our own snapshot from a directory of raw response bodies, and project it.
 loadPalmaresSnapshot :: FilePath -> IO (Either String PalmaresSnapshot)
 loadPalmaresSnapshot dir = runExceptT $ do
   status <- f "status.json"
@@ -900,96 +1049,81 @@ readJsonFile path = do
 
 -- | Build the projection from what our API served.
 --
--- This is the ONLY place the response DTOs are read, which is the point: nine comparison values
--- against twenty-two DTO fields, with the translation in one function instead of scattered through
--- ten rows.
+-- The ONLY place our wire is interpreted: nine comparison values, translated once, instead of the
+-- translation being scattered through ten rows.
 mkPalmaresSnapshot ::
-  StatusResponse ->
-  [DRepSummary] ->
+  WStatus ->
+  [WDRep] ->
   -- | @drep1…@ → its power series
-  Map Text [EpochPowerPoint] ->
-  [GovActionSummary] ->
+  Map Text [WPowerPoint] ->
+  [WAction] ->
   -- | @gov_action1…@ → its detail
-  Map Text GovActionDetailResponse ->
+  Map Text WDetail ->
   -- | @drep1…@ → its vote history
-  Map Text [VoteRecord] ->
-  CommitteeResponse ->
+  Map Text [WVote] ->
+  WCommittee ->
   PalmaresSnapshot
 mkPalmaresSnapshot status dreps power actions details votes committee =
   PalmaresSnapshot
-    { psEpoch = syncEpoch (statusGovernance status),
-      psLagSeconds = syncLagSeconds (statusGovernance status),
+    { psEpoch = wsEpoch status,
+      psLagSeconds = wsLag status,
       psDReps =
         M.fromList
-          [ ( unDRepId (drepSummaryId d),
-              PDRep
-                (drepSummaryHasScript d)
-                (drepSummaryStatus d)
-                (drepSummaryActiveUntilEpoch d)
-                (drepSummaryDelegatorCount d)
-            )
+          [ (wdrId d, PDRep (wdrHasScript d) (wdrStatus d) (wdrActiveUntil d) (wdrDelegators d))
             | d <- dreps
           ],
       psPower =
         M.fromList
-          [ ((i, epochPowerEpoch pt), epochPowerLovelace pt)
+          [ ((i, wppEpoch pt), wppLovelace pt)
             | (i, pts) <- M.toList power,
               pt <- pts
           ],
       psActions =
         M.fromList
-          [ ( govActionSummaryBech32 a,
+          [ ( wacBech32 a,
               PAction
-                (govActionSummaryType a)
-                (chainPointEpoch (govActionSummaryProposedAt a))
-                (govActionSummaryExpiresEpoch a)
-                (govActionLifecycleRatifiedEpoch (govActionSummaryLifecycle a))
-                (govActionLifecycleEnactedEpoch (govActionSummaryLifecycle a))
-                (govActionLifecycleDroppedEpoch (govActionSummaryLifecycle a))
-                (govActionLifecycleExpiredEpoch (govActionSummaryLifecycle a))
+                (wacType a)
+                (wacProposedEpoch a)
+                (wacExpires a)
+                (wacRatified a)
+                (wacEnacted a)
+                (wacDropped a)
+                (wacExpired a)
             )
             | a <- actions
           ],
       -- A tally row carries three counts, so it expands to three keys — and a ZERO count is
-      -- dropped, because Koios has no row for a verdict nobody cast and a 0 on one side against an
+      -- DROPPED, because Koios has no row for a verdict nobody cast and a 0 on one side against an
       -- absent key on the other would be a membership divergence on every action.
       psTallies =
         M.fromList
-          [ ((act, voteTallyRole t, verdict), n)
+          [ ((act, wtRole t, verdict), n)
             | (act, d) <- M.toList details,
-              t <- govActionDetailTallies d,
-              (verdict, n) <-
-                [ (Yes, voteTallyYesCount t),
-                  (No, voteTallyNoCount t),
-                  (Abstain, voteTallyAbstainCount t)
-                ],
+              t <- wdeTallies d,
+              (verdict, n) <- [(Yes, wtYes t), (No, wtNo t), (Abstain, wtAbstain t)],
               n > 0
           ],
       psVotes =
         S.fromList
-          [ (voteRecordGovActionBech32 v, voteRecordVerdict v, txh)
+          [ (wvAction v, wvVerdict v, txh)
             | vs <- M.elems votes,
               v <- vs,
               -- DRep role only: R7 compares DRep history, and preprod's committee vote rows are
               -- 3.24 M of test spam.
-              voteRecordVoterRole v == DRep,
-              Just txh <- [chainPointTxHash (voteRecordCastAt v)]
+              wvRole v == DRep,
+              Just txh <- [wvTxHash v]
           ],
       psCommittee =
         PCommittee
-          (committeeQuorumNumerator committee)
-          (committeeQuorumDenominator committee)
-          ( M.fromList
-              [ (committeeMemberColdBech32 m, (committeeMemberHotHash m, committeeMemberExpirationEpoch m))
-                | m <- committeeMembers committee
-              ]
-          ),
+          (wcNumerator committee)
+          (wcDenominator committee)
+          (M.fromList [(wmColdBech32 m, (wmHotHash m, wmExpiration m)) | m <- wcMembers committee]),
       psWithdrawals =
         M.fromListWith
           (+)
-          [ ((treasuryWithdrawalBeneficiary w, treasuryWithdrawalAmount w), 1 :: Int)
+          [ ((wwBeneficiary w, wwAmount w), 1 :: Int)
             | d <- M.elems details,
-              w <- govActionDetailWithdrawals d
+              w <- wdeWithdrawals d
           ]
     }
 

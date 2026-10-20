@@ -6,14 +6,18 @@
 [extend]
 useDefault = true
 
-# `generic-api-key` on the recorded Koios wire fixtures.
+# `generic-api-key` on the recorded fixtures — BOTH sets.
 #
-# WHAT IT FIRES ON: `test/fixtures/koios/proposal_list.json` is the governance-proposal list as
-# Koios serves it, including each proposal's `meta_json` and `proposal_description` verbatim. A
-# NewCommittee action's description names its members as `"keyHash": "<28 bytes of hex>"`, and
-# `generic-api-key` matches a high-entropy value next to a field name containing "key". Measured:
-# 81 findings, all `generic-api-key`, all in that one file, every one of them an on-chain
-# credential hash.
+# WHAT IT FIRES ON: the governance-proposal list as Koios serves it, including each proposal's
+# `meta_json` and `proposal_description` verbatim. A NewCommittee action's description names its
+# members as `"keyHash": "<28 bytes of hex>"`, and `generic-api-key` matches a high-entropy value
+# next to a field name containing "key". Measured: 81 findings in `test/fixtures/koios/` and 83 in
+# `test/fixtures/snapshot/koios/`, all `generic-api-key`, every one of them an on-chain credential
+# hash.
+#
+# The path covers `test/fixtures/` as a whole rather than the two directories separately, because
+# both hold recorded wire from the same public endpoints and a third recording would otherwise be
+# a surprise failure rather than a decision.
 #
 # WHY IT IS ALLOWLISTED RATHER THAN REMOVED: those hashes are PUBLIC BY CONSTRUCTION. They are on
 # the Cardano chain, served by a public API, and they are the content a parity check compares. The
@@ -39,7 +43,7 @@ useDefault = true
 [[allowlists]]
 description = "Koios wire fixtures: on-chain credential hashes in proposal metadata, not secrets"
 targetRules = ["generic-api-key"]
-paths = ['''test/fixtures/koios/.*\.json''']
+paths = ['''test/fixtures/.*\.json''']
 
 # `generic-api-key` on `cabal.project`'s CHaP root keys.
 #

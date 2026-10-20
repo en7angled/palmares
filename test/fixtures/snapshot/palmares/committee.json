@@ -1,0 +1,53 @@
+{
+    "epoch": 320,
+    "established_by": "bbfa303aa35d19919934fb5fe36b174609a0c1dfb47a546ccd6ea58aa752e2aa#0",
+    "members": [
+        {
+            "authorized_at": {
+                "epoch": 228,
+                "slot": 96856972,
+                "time": "2025-07-15T00:42:52Z",
+                "tx_hash": "bb70cd05900c3057688ddc9ed90189fba19d53ec0fe82f75532a2183afcb45ca"
+            },
+            "cold_bech32": "cc_cold1zds4k4qn0eelpyxjmhdsgvtmaeqkyn6qz0jule99a7nk6asezxvlu",
+            "cold_hash": "615b54137e73f090d2dddb04317bee41624f4013e5cfe4a5efa76d76",
+            "expiration_epoch": 372,
+            "hot_hash": "5bfa7d850280c54110534065fa91a3635bbcc0eadc69c5c792c35e1e",
+            "resigned_at": null,
+            "status": "active",
+            "votes_cast": 6
+        },
+        {
+            "authorized_at": {
+                "epoch": 228,
+                "slot": 96856972,
+                "time": "2025-07-15T00:42:52Z",
+                "tx_hash": "772a5039051d06c9e75d2871a81e8c9768f59c340ea9566c83975eb29594194c"
+            },
+            "cold_bech32": "cc_cold1z03k6hj9kfmmlayk94kx803rwkhcu689trn2xucn0g9ddusykdhpl",
+            "cold_hash": "e36d5e45b277bff4962d6c63be2375af8e68e558e6a373137a0ad6f2",
+            "expiration_epoch": 372,
+            "hot_hash": "26648e2c6bc4e4863a373bd28d480b2eb788922545e1df357e76a3d2",
+            "resigned_at": null,
+            "status": "active",
+            "votes_cast": 6
+        },
+        {
+            "authorized_at": {
+                "epoch": 228,
+                "slot": 96856972,
+                "time": "2025-07-15T00:42:52Z",
+                "tx_hash": "2c6f3437b2f6b662375677408c318854baad0d85798e5525aa38ac52cdd1f3ae"
+            },
+            "cold_bech32": "cc_cold1z05g8t29nxhhkq07n5quj2l6gpg4zgndk5uc9ycag3d549svk3hyp",
+            "cold_hash": "e883ad4599af7b01fe9d01c92bfa405151226db53982931d445b4a96",
+            "expiration_epoch": 372,
+            "hot_hash": "19ebff7033fe1c1f9cd2b346f2c9b0d7ff28b1527ebed1cc071155b4",
+            "resigned_at": null,
+            "status": "active",
+            "votes_cast": 6
+        }
+    ],
+    "quorum_denominator": 3,
+    "quorum_numerator": 2
+}

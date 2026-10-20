@@ -151,6 +151,7 @@ import Query.Gov
     getCommittee,
     listVotes,
     resolveDRepHex,
+    resolveReservedDRep,
     searchQuery,
     DRepFacets (..),
     DashboardTotals (..),
@@ -421,6 +422,21 @@ resolveDRep did = do
   mid <- runRead (resolveDRepHex hex)
   maybe (throwApi DrepNotFound) pure mid
 
+-- | A DRep or a reserved ledger option, with the @target_kind@ its power rows carry.
+--
+-- 'drepIdHex' answers 'Nothing' for a reserved view — it has no credential — which is exactly how
+-- the two cases are told apart without a second parser.
+resolveDRepTarget :: DRepId -> QueryAppMonad (Text, Int64)
+resolveDRepTarget did = case drepIdHex did of
+  Just hex -> do
+    mid <- runRead (resolveDRepHex hex)
+    (,) "drep" <$> maybe (throwApi DrepNotFound) pure mid
+  Nothing -> do
+    let view_ = unDRepId did
+    mid <- runRead (resolveReservedDRep view_)
+    -- The kind in drep_epoch_power is the view without its `drep_` prefix: `always_abstain`.
+    (,) (fromMaybe view_ (T.stripPrefix "drep_" view_)) <$> maybe (throwApi DrepNotFound) pure mid
+
 handleGetDRepDetail :: DRepId -> QueryAppMonad DRepDetailResponse
 handleGetDRepDetail did = do
   dhid <- resolveDRep did
@@ -429,7 +445,7 @@ handleGetDRepDetail did = do
   r <- runRead $ do
     ms <- drepSummaryByIdQuery dhid
     mm <- drepMetricsQuery dhid
-    power <- listEpochPower dhid Nothing Nothing Asc 200
+    power <- listEpochPower "drep" dhid Nothing Nothing Asc 200
     -- The stats are measured at the SAME epoch as the metrics block, from the metrics block's
     -- own as_of_epoch, so the page cannot show a retention rate from one epoch beside a
     -- participation rate from another.
@@ -453,10 +469,15 @@ handleGetDRepDetail did = do
 handleGetDRepPower ::
   DRepId -> Maybe Int -> Maybe Int -> Maybe Int -> Maybe SortOrder -> QueryAppMonad (Page EpochPowerPoint)
 handleGetDRepPower did limit fromEpoch toEpoch sortOrder = do
-  dhid <- resolveDRep did
+  -- The reserved ledger options are served HERE and nowhere else on this route family, and the
+  -- asymmetry is the data rather than an oversight: they have a power series and nothing else — no
+  -- registration, no metadata, no votes — so /drep/{id} still answers 404 for them while this
+  -- answers. D-20's rule is that a consumer must be able to see them; before this they were
+  -- reachable only as an aggregate on /pages/dashboard.
+  (kind, dhid) <- resolveDRepTarget did
   _ <- either throwApi pure (checkRanges Nothing Nothing fromEpoch toEpoch)
   (lim, off) <- either throwApi pure (normalizeLimitOffset epochSeriesBounds limit Nothing)
-  items <- runRead (listEpochPower dhid fromEpoch toEpoch (fromMaybe Asc sortOrder) lim)
+  items <- runRead (listEpochPower kind dhid fromEpoch toEpoch (fromMaybe Asc sortOrder) lim)
   -- total = the number of points returned: the series is at most 200 rows and a second COUNT
   -- query over it would cost as much as the page.
   pure (Page items (Just (length items)) lim off Nothing)

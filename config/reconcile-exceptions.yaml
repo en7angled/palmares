@@ -21,8 +21,91 @@
 # All three of reason/opened/owner are required because an undated, unowned, unexplained waiver is
 # indistinguishable from a bug someone silenced.
 #
-# EMPTY ON PURPOSE. The first real divergence found against Koios was ours and was FIXED rather
-# than waived: palmares.live_delegation compared deregistration EPOCHS where it had to compare
-# certificates, and 55 live delegations were missing. Nothing has yet been accepted as a difference
-# we keep.
-exceptions: []
+# ------------------------------------------------------------------------------------------------
+# R6: Koios drops a vote cast by a DRep that has since RETIRED. We keep it.
+#
+# Measured on gov_action108a5htq… — every other count on that action agrees exactly (committee yes
+# 3, DRep yes 4, SPO yes 12) and the only difference is two DRep abstains that Koios does not list.
+# Both abstainers are retired and absent from Koios's own registered `drep_list`, so its
+# `/proposal_votes` has nothing to join them to.
+#
+# OURS IS THE RIGHT NUMBER, and it is right by our own published rule: the metric catalogue's
+# edge-case list says "votes voided by DRep retirement still count as cast". A tally of cast votes
+# that silently dropped retirees would SHRINK as DReps retire, rewriting what an action's vote
+# looked like at the time it was decided.
+#
+# Five keys, one per affected action. `field` is omitted on each: the whole key is the difference —
+# it is a membership divergence, not a count that is off by two.
+exceptions:
+  - row: R6
+    key: "gov_action108a5htqnmlp89ffn2ucf7u9u33s0r9gpx7eytpdc2q28y50ly42qqf9jcen:drep:abstain"
+    reason: "Koios omits votes by retired DReps from /proposal_votes; we count a cast vote as cast (metric catalogue, 'votes voided by DRep retirement still count as cast'). Both abstainers on this action are retired and absent from Koios's drep_list."
+    opened: 2026-10-21
+    owner: it@blazarlabs.io
+  - row: R6
+    key: "gov_action10md95hawtukx6yqmj33ndwpg7wxd35zdez88gazqkxhna9jzkgnszjwsmss:drep:abstain"
+    reason: "Koios omits votes by retired DReps from /proposal_votes; we count a cast vote as cast."
+    opened: 2026-10-21
+    owner: it@blazarlabs.io
+  - row: R6
+    key: "gov_action18zuuryq7guh3xx85fgeyuazcj3ndwll5ff3u6d0sxj4gnx8u2w4qqfprex0:drep:abstain"
+    reason: "Koios omits votes by retired DReps from /proposal_votes; we count a cast vote as cast."
+    opened: 2026-10-21
+    owner: it@blazarlabs.io
+  - row: R6
+    key: "gov_action1fu4jzn3cwvhdyl80zqrywzn6zc2h0h94ef3qkk222cnp2h7q0v2sqq6ac3a:drep:yes"
+    reason: "Koios omits votes by retired DReps from /proposal_votes; we count a cast vote as cast."
+    opened: 2026-10-21
+    owner: it@blazarlabs.io
+  - row: R6
+    key: "gov_action1xrt5gav7lg58fafj7mj4qcvlz49jm8tdmumpanynx9mj2q6jd2aq202jxwt:drep:abstain"
+    reason: "Koios omits votes by retired DReps from /proposal_votes; we count a cast vote as cast."
+    opened: 2026-10-21
+    owner: it@blazarlabs.io
+
+  # ----------------------------------------------------------------------------------------------
+  # R2: three DEFINITIONAL differences, each one fact about one field rather than a fact about the
+  # DReps that happen to show it. `key: "*"` is the field-level form; it still requires a field.
+  #
+  # active_until_epoch / status — db-sync records the ledger's DRep deadline ONLY in drep_distr,
+  # and drep_distr holds a row only for a DRep the ledger included in that epoch's distribution.
+  # MEASURED at epoch 320: 90 of preprod's 294 registered DReps have NEVER had a drep_distr row,
+  # at any epoch, so we have no deadline for them and `active_until_epoch` is null. `status` then
+  # falls back to `inactive`, which Koios agrees with for 69 of the 90 and contradicts for 21
+  # (Koios computes the deadline itself: 320-340 for those 21, 185-224 for the 69).
+  #
+  # The obvious flip — "unknown deadline means active" — was implemented, measured and REVERTED:
+  # it would be wrong for 69 to fix 21. Deriving the deadline was also measured and rejected:
+  # `max(last cert, last vote) + drep_activity` disagrees with the ledger's own value by up to 5
+  # epochs, because CIP-1694 does not count DORMANT epochs toward inactivity, and reimplementing
+  # that accounting would be a second derivation that can disagree with the ledger.
+  #
+  # THE HONEST FIX IS AN API DECISION, NOT A SCHEMA ONE: publish a third status for "registered,
+  # deadline unknown". DRepStatus is a published enum and adding a value breaks every exhaustive
+  # match a client has written, so it is the user's call, not this file's.
+  - row: R2
+    key: "*"
+    field: active_until_epoch
+    reason: "db-sync records the ledger's DRep deadline only in drep_distr; 90 of 294 registered DReps have never had a row there, so we publish null. Re-deriving it needs CIP-1694's dormant-epoch accounting (measured: a naive derivation is off by up to 5 epochs)."
+    opened: 2026-10-21
+    owner: it@blazarlabs.io
+  - row: R2
+    key: "*"
+    field: status
+    reason: "Follows from active_until_epoch being null: `inactive` is the fallback, right for 69 of those 90 DReps and wrong for 21. The 'unknown means active' flip was tried and reverted — it would be wrong for 69 to fix 21. The fix is a third published status, which is an API decision."
+    opened: 2026-10-21
+    owner: it@blazarlabs.io
+  # delegator_count — two different questions, not two answers to one. Ours counts DELEGATIONS in
+  # force; Koios's live_delegator_count counts delegators with STAKE in the current snapshot.
+  # MEASURED: 7 DReps differ, ours is higher in every one, and every excess delegator has
+  # `lovelace: null` — no row in the latest epoch_stake. The fixture DRep agrees at 13 because all
+  # 13 of its delegators hold stake.
+  #
+  # Ours is the number this registry wants: a delegator with no stake still CHOSE that DRep, and a
+  # count that dropped them would make a DRep's support look like its stake.
+  - row: R2
+    key: "*"
+    field: delegator_count
+    reason: "Ours counts delegations in force; Koios counts delegators with stake in the current epoch_stake snapshot. Measured: 7 DReps differ, ours always higher, and every excess delegator has zero stake. A delegator with no stake still chose that DRep."
+    opened: 2026-10-21
+    owner: it@blazarlabs.io

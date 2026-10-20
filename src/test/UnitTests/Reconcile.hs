@@ -24,7 +24,7 @@ import Data.Aeson (FromJSON, ToJSON (toJSON), Value (Object, String), eitherDeco
 import Data.Aeson.Key qualified as AK
 import Data.Aeson.KeyMap qualified as AKM
 import Data.ByteString.Lazy.Char8 qualified as BL8
-import Data.List (nub, sort)
+import Data.List (isInfixOf, nub, sort)
 import Data.Map.Strict qualified as M
 import Data.Set qualified as S
 import Data.Maybe (isJust, isNothing, mapMaybe)
@@ -56,7 +56,8 @@ reconcileTests =
       primitiveTests,
       rowTests,
       sampleTests,
-      reportJsonTests
+      reportJsonTests,
+      replayTests
     ]
 
 -- ---------------------------------------------------------------------------------------------
@@ -278,6 +279,31 @@ primitiveTests =
               applyExceptions [e] R5 [d1, d2]
             )
               @?= (([d2], [d1]), ([d1, d2], [])),
+      -- `key: "*"` is the FIELD-LEVEL form, for a divergence that is definitional rather than
+      -- per-row: 101 DReps differ on active_until_epoch because db-sync records the ledger's
+      -- deadline only in drep_distr. That is one fact about one field, and writing it out 101
+      -- times would produce a waiver file nobody maintains.
+      testCase "a wildcard key explains that field on every key, and no other field" $
+        let ds =
+              [ Divergence "a" "active_until_epoch" "Just 321" "Nothing",
+                Divergence "b" "active_until_epoch" "Just 263" "Nothing",
+                Divergence "a" "delegator_count" "3" "4"
+              ]
+            e = entry R2 "*" (Just "active_until_epoch") "definitional"
+            (unexpl, expl) = applyExceptions [e] R2 ds
+         in (map divergenceField unexpl, map divergenceKey expl)
+              @?= (["delegator_count"], ["a", "b"]),
+      -- A wildcard with no field would waive the whole row. That is not a documented divergence,
+      -- it is a way to turn a row off, so it is refused at LOAD rather than honoured.
+      testCase "a wildcard key with no field is refused when the file is read" $ do
+        let path = "/tmp/palmares-test-bad-waiver.yaml"
+        writeFile
+          path
+          "exceptions:\n  - row: R2\n    key: \"*\"\n    reason: too broad\n    opened: 2026-10-21\n    owner: it@blazarlabs.io\n"
+        r <- loadExceptions path
+        case r of
+          Left msg -> assertBool ("the message names the problem: " <> msg) ("wildcard" `isInfixOf` msg)
+          Right _ -> assertFailure "a wildcard key with no field must not load",
       testCase "an exception with no field explains every field of that key" $
         let d = Divergence "a" "delegator_count" "13" "12"
          in applyExceptions [entry R2 "a" Nothing "known"] R2 [d] @?= ([], [d]),
@@ -772,3 +798,49 @@ reportJsonTests =
     lookupKey k v = case v of
       Object o -> AKM.lookup (AK.fromText k) o
       _ -> Nothing
+
+-- ---------------------------------------------------------------------------------------------
+
+-- | The committed snapshot pair, reconciled with NO NETWORK.
+--
+-- __This is what gates a pull request__, and the nightly against the live services does not. The
+-- nightly needs a caught-up stack on both sides, so as a merge gate it would block every PR
+-- whenever the Pi is re-syncing or Koios is having a bad night — and a gate that is red for
+-- reasons nobody on the PR can fix teaches people to ignore it. This one reads two directories of
+-- recorded bodies, so an upstream outage can never fail a PR and a PR can never break the
+-- reconciliation unnoticed.
+--
+-- The pair is recorded by @admin reconcile-koios --dump-snapshots test\/fixtures\/snapshot@, which
+-- writes the bodies it fetched and then LOADS THEM BACK through these same two functions. That is
+-- what makes this test meaningful rather than circular: the live run and this test decode through
+-- one code path, so a pair cannot pass here and fail there.
+replayTests :: TestTree
+replayTests =
+  testGroup
+    "Reconcile replay"
+    [ testCase "the recorded preprod pair reconciles with 0 unexplained divergences" $ do
+        k <- loadKoiosSnapshot "test/fixtures/snapshot/koios" >>= either assertFailure pure
+        p <- loadPalmaresSnapshot "test/fixtures/snapshot/palmares" >>= either assertFailure pure
+        es <- loadExceptions "config/reconcile-exceptions.yaml" >>= either assertFailure pure
+        let rs = reconcileAll k p es
+            rp = mkReport "preprod" (UTCTime (fromGregorian 2026 10 21) 0) (psEpoch p) (psLagSeconds p) 320 es rs
+        map rowId rs @?= [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10]
+        -- The divergences themselves, not just the count: a failure here must say WHICH row and
+        -- which key, or the next step is re-running the whole thing to find out.
+        concatMap rowUnexplained rs @?= []
+        map rowStatus rs @?= replicate 10 RowOk
+        (reportStatus rp, reportUnexplained rp, reportExitCode rp) @?= (ReportOk, 0, 0)
+        reportStaleExceptions rp @?= [],
+      -- The two pinned population figures. A row whose compared count collapsed would still
+      -- reconcile cleanly, which is the one way this test can pass while comparing nothing.
+      testCase "the pinned population counts are what the recording captured" $ do
+        k <- loadKoiosSnapshot "test/fixtures/snapshot/koios" >>= either assertFailure pure
+        p <- loadPalmaresSnapshot "test/fixtures/snapshot/palmares" >>= either assertFailure pure
+        let rs = reconcileAll k p []
+            compared r = rowCompared (head (filter ((== r) . rowId) rs))
+        (compared R1, compared R5) @?= (294, 131),
+      testCase "every row compared at least one key" $ do
+        k <- loadKoiosSnapshot "test/fixtures/snapshot/koios" >>= either assertFailure pure
+        p <- loadPalmaresSnapshot "test/fixtures/snapshot/palmares" >>= either assertFailure pure
+        filter ((== 0) . rowCompared) (reconcileAll k p []) @?= []
+    ]

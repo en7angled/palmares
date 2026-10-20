@@ -51,3 +51,7 @@ db/
 *.link
 .pre-commit-config.yaml
 node_modules
+
+# The reconciliation report and the snapshot pair it keeps while running. The COMMITTED pair
+# lives under test/fixtures/snapshot/; this is the scratch copy and the report.
+out/

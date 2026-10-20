@@ -31,6 +31,8 @@ import Palmares.TxBuilding.Transactions
 import Palmares.TxBuilding.Utils
 import Palmares.TxBuilding.Validators (blueprintProtocolParams)
 import Palmares.Utils
+import Reconcile (ReconcileKoiosArgs (..), defaultReconcileKoiosArgs, runReconcileKoios)
+import System.Exit (ExitCode (ExitFailure, ExitSuccess), exitWith)
 
 mnemonicFilePath :: FilePath
 mnemonicFilePath = "operation.prv"
@@ -48,6 +50,7 @@ data Command
   = DeployReferenceScripts
   | WriteBlueprint FilePath
   | WriteMetricsDoc FilePath
+  | ReconcileKoios ReconcileKoiosArgs
   | PauseProtocol
   | UnpauseProtocol
   | SetFees SetFeesArgs
@@ -235,6 +238,62 @@ commandParser =
               )
               (progDesc "Render resources/metric-formulas.json and resources/metrics/*.sql to Markdown")
           )
+        -- F1 check 6. No provider, no signing key, no validator config: CI runs this with no keys
+        -- at all, which is the whole reason it is dispatched before provider loading.
+        <> command
+          "reconcile-koios"
+          ( info
+              ( ReconcileKoios
+                  <$> ( ReconcileKoiosArgs
+                          <$> strOption
+                            ( long "palmares-api"
+                                <> metavar "URL"
+                                <> value ""
+                                <> help "Our own API's base URL (default $PALMARES_API; required)"
+                            )
+                          <*> strOption
+                            ( long "koios-api"
+                                <> metavar "URL"
+                                <> value ""
+                                <> help "Koios base URL (default $KOIOS_API, else preprod.koios.rest/api/v1)"
+                            )
+                          <*> strOption
+                            ( long "sample"
+                                <> metavar "FILE"
+                                <> value ""
+                                <> help "The pinned sample (default config/reconcile-sample.preprod.json)"
+                            )
+                          <*> strOption
+                            ( long "exceptions"
+                                <> metavar "FILE"
+                                <> value ""
+                                <> help "The waiver file (default config/reconcile-exceptions.yaml)"
+                            )
+                          <*> strOption
+                            ( long "out"
+                                <> metavar "FILE"
+                                <> value ""
+                                <> help "Where to write the report (default out/divergences.json)"
+                            )
+                          <*> optional
+                            ( option
+                                auto
+                                ( long "max-lag-seconds"
+                                    <> metavar "N"
+                                    <> help "Abort above this lag (default $PALMARES_READY_MAX_LAG_SECONDS, else 300)"
+                                )
+                            )
+                          <*> optional
+                            ( strOption
+                                ( long "dump-snapshots"
+                                    <> metavar "DIR"
+                                    <> help "Also keep the fetched bodies under DIR/{koios,palmares}/"
+                                )
+                            )
+                      )
+              )
+              (progDesc "Reconcile our governance index against Koios preprod (F1 check 6)")
+          )
         <> command
           "pause-protocol"
           ( info
@@ -338,6 +397,7 @@ executeCommand :: Either ProviderCtx TxBuildingContext -> GYExtendedPaymentSigni
 executeCommand (Left pCtx) signKey cmd = case cmd of
   WriteBlueprint _ -> pure () -- Handled in main before provider loading
   WriteMetricsDoc _ -> pure () -- Handled in main before provider loading
+  ReconcileKoios _ -> pure () -- Handled in main before provider loading
   QueryOracle -> do
     printYellow "No transaction building context found."
     printYellow "Please run 'deploy-reference-scripts' first to set up the system."
@@ -352,6 +412,7 @@ executeCommand (Left pCtx) signKey cmd = case cmd of
 executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   WriteBlueprint _ -> pure () -- Handled in main before provider loading
   WriteMetricsDoc _ -> pure () -- Handled in main before provider loading
+  ReconcileKoios _ -> pure () -- Handled in main before provider loading
   DeployReferenceScripts -> do
     printYellow "Deploying reference scripts..."
     deployedScriptsCtx <- deployReferenceScripts (providerCtx txBuildingCtx) signKey
@@ -445,6 +506,14 @@ main = do
       printGreen $ "Blueprint written successfully to " <> outputPath
     -- No provider, no signing key, no deployed-validators config — which is exactly what lets CI
     -- run this command to check the committed doc for drift.
+    -- Exit codes: 0 clean or explained, 1 unexplained, 2 transport, 3 R10 abort. They are the
+    -- command's whole contract with the nightly, so they are the process's exit status and not a
+    -- line of output somebody has to grep.
+    ReconcileKoios given -> do
+      defaults <- defaultReconcileKoiosArgs
+      code <- runReconcileKoios (withDefaults defaults given)
+      if code == 0 then printGreen "reconcile-koios: no unexplained divergences" else printYellow ("reconcile-koios: exit " <> show code)
+      exitWith (if code == 0 then ExitSuccess else ExitFailure code)
     WriteMetricsDoc outputPath -> case metricCatalog of
       Left err -> die ("resources/metric-formulas.json does not parse: " <> err)
       Right formulas -> do
@@ -480,3 +549,23 @@ executeOnchainCommand cmd = do
       Just validatorsCtx -> do
         let txBuildingContext = TxBuildingContext {deployedScriptsCtx = validatorsCtx, providerCtx = pCtx}
         executeCommand (Right txBuildingContext) signKey cmd
+
+-- | Fill in whatever the flags left empty from the environment-derived defaults.
+--
+-- Spelled out rather than made the parser's @value@, because a default that lives in optparse
+-- cannot read an environment variable: @--palmares-api@ unset must mean @$PALMARES_API@, and
+-- optparse would have to be handed the variable's value before it has run.
+withDefaults :: ReconcileKoiosArgs -> ReconcileKoiosArgs -> ReconcileKoiosArgs
+withDefaults d given =
+  ReconcileKoiosArgs
+    { rkaPalmaresApi = orDefault (rkaPalmaresApi given) (rkaPalmaresApi d),
+      rkaKoiosApi = orDefault (rkaKoiosApi given) (rkaKoiosApi d),
+      rkaSample = orDefault (rkaSample given) (rkaSample d),
+      rkaExceptions = orDefault (rkaExceptions given) (rkaExceptions d),
+      rkaOut = orDefault (rkaOut given) (rkaOut d),
+      rkaMaxLagSeconds = maybe (rkaMaxLagSeconds d) Just (rkaMaxLagSeconds given),
+      rkaDumpSnapshots = rkaDumpSnapshots given
+    }
+  where
+    orDefault "" fallback = fallback
+    orDefault v _ = v

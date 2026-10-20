@@ -1,0 +1,1776 @@
+{
+    "drep1y0glsum6awevrkjz2hjd9r8sh4wppxc454t4ta3maw42s4s0pddmt": [
+        {
+            "block_time": 1782718181,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "Yes",
+            "vote_tx_hash": "6854f0fba85d3e6744b8f844654f4361f680355188617908f573c9fbff2ca92b"
+        },
+        {
+            "block_time": 1756114280,
+            "meta_hash": "26ce09df4e6f64fe5cf248968ab78f4b8a0092580c234d78f68c079c0fce34f0",
+            "meta_url": "https://storage.googleapis.com/biglup/Angel_Castillo.jsonld",
+            "proposal_id": "gov_action1u8gafgcskj6sqvgwqse7adc0h9438m535lg97czcvxntscvw7f5sqgf2n7j",
+            "proposal_index": 0,
+            "proposal_tx_hash": "e1d1d4a310b4b500310e0433eeb70fb96b13ee91a7d05f605861a6b8618ef269",
+            "vote": "Yes",
+            "vote_tx_hash": "3d6e3286b2ccc47054b1536b27f1e40e6705f695ae4cb5e2cb270bec23f31bea"
+        },
+        {
+            "block_time": 1756113554,
+            "meta_hash": "26ce09df4e6f64fe5cf248968ab78f4b8a0092580c234d78f68c079c0fce34f0",
+            "meta_url": "https://storage.googleapis.com/biglup/Angel_Castillo.jsonld",
+            "proposal_id": "gov_action1u8gafgcskj6sqvgwqse7adc0h9438m535lg97czcvxntscvw7f5sqgf2n7j",
+            "proposal_index": 0,
+            "proposal_tx_hash": "e1d1d4a310b4b500310e0433eeb70fb96b13ee91a7d05f605861a6b8618ef269",
+            "vote": "Yes",
+            "vote_tx_hash": "396f8a9cce5785e000ab33c15f51a9e986f38e1c6f55a9610460ff3abaf59dbf"
+        },
+        {
+            "block_time": 1755944290,
+            "meta_hash": "26ce09df4e6f64fe5cf248968ab78f4b8a0092580c234d78f68c079c0fce34f0",
+            "meta_url": "https://storage.googleapis.com/biglup/Angel_Castillo.jsonld",
+            "proposal_id": "gov_action1u8gafgcskj6sqvgwqse7adc0h9438m535lg97czcvxntscvw7f5sqgf2n7j",
+            "proposal_index": 0,
+            "proposal_tx_hash": "e1d1d4a310b4b500310e0433eeb70fb96b13ee91a7d05f605861a6b8618ef269",
+            "vote": "Yes",
+            "vote_tx_hash": "341ff9cae97463757c9a0bd7a70edf908e7dcde7e5b48043f1626c69f0441e31"
+        },
+        {
+            "block_time": 1755870945,
+            "meta_hash": "26ce09df4e6f64fe5cf248968ab78f4b8a0092580c234d78f68c079c0fce34f0",
+            "meta_url": "https://storage.googleapis.com/biglup/Angel_Castillo.jsonld",
+            "proposal_id": "gov_action1u8gafgcskj6sqvgwqse7adc0h9438m535lg97czcvxntscvw7f5sqgf2n7j",
+            "proposal_index": 0,
+            "proposal_tx_hash": "e1d1d4a310b4b500310e0433eeb70fb96b13ee91a7d05f605861a6b8618ef269",
+            "vote": "Yes",
+            "vote_tx_hash": "80555cecc3cb8962361f1e731094b2393d5bc760d1de41aec17e864f557cd2e2"
+        },
+        {
+            "block_time": 1733982218,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1xukk3ra2wls5v7vttqdnytq09xq6jq3hv3ek4hjaztswfeuk47xqqg4644z",
+            "proposal_index": 0,
+            "proposal_tx_hash": "372d688faa77e146798b581b322c0f2981a9023764736ade5d12e0e4e796af8c",
+            "vote": "Yes",
+            "vote_tx_hash": "e38096c202bb6986fd50325cf7434069898c45118fd177475e12e4695f618637"
+        },
+        {
+            "block_time": 1733063013,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1xukk3ra2wls5v7vttqdnytq09xq6jq3hv3ek4hjaztswfeuk47xqqg4644z",
+            "proposal_index": 0,
+            "proposal_tx_hash": "372d688faa77e146798b581b322c0f2981a9023764736ade5d12e0e4e796af8c",
+            "vote": "Yes",
+            "vote_tx_hash": "c24f870adb1760257550fe4a3c070cbf22b2d2d26deb7b5ce94134622bd74062"
+        }
+    ],
+    "drep1y0gwzvemqj60lepzmy2zpeaxslqkgjlk6krk5fny2wet45spxskxu": [
+        {
+            "block_time": 1761829979,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gx2thp4lztrvdgmk9ugftlfnazmmnue6jrshs2gsyr63d6jjphysqazuuj2",
+            "proposal_index": 0,
+            "proposal_tx_hash": "4194bb86bf12c6c6a3762f1095fd33e8b7b9f33a90e178291020f516ea520dc9",
+            "vote": "Abstain",
+            "vote_tx_hash": "c15fcb533cb1162ddb703f936533df01d4f6525cbe3069dc964ebe1d56c0f566"
+        },
+        {
+            "block_time": 1761673249,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1sppenha908vqadxa2vymj3fkm70f4hlzhhj3ypq3lcm7g0mhsecqqvyru9c",
+            "proposal_index": 0,
+            "proposal_tx_hash": "804399dfa579d80eb4dd5309b94536df9e9adfe2bde5120411fe37e43f778670",
+            "vote": "Abstain",
+            "vote_tx_hash": "b5f4aede6ccb1b8b720281024f4cf95c025341223141672eed81aa6f86f76069"
+        },
+        {
+            "block_time": 1761672809,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gx2thp4lztrvdgmk9ugftlfnazmmnue6jrshs2gsyr63d6jjphysqazuuj2",
+            "proposal_index": 0,
+            "proposal_tx_hash": "4194bb86bf12c6c6a3762f1095fd33e8b7b9f33a90e178291020f516ea520dc9",
+            "vote": "Abstain",
+            "vote_tx_hash": "747680e340fa7f4fb58cd442c5a9e952228e620229b5181c132dd4e155abae03"
+        },
+        {
+            "block_time": 1761672482,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1sppenha908vqadxa2vymj3fkm70f4hlzhhj3ypq3lcm7g0mhsecqqvyru9c",
+            "proposal_index": 0,
+            "proposal_tx_hash": "804399dfa579d80eb4dd5309b94536df9e9adfe2bde5120411fe37e43f778670",
+            "vote": "Abstain",
+            "vote_tx_hash": "c72740c9e9dc9bc7058422fa5db2f82398b218f5cc48a557197fd08eef0f8050"
+        },
+        {
+            "block_time": 1761671963,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1sppenha908vqadxa2vymj3fkm70f4hlzhhj3ypq3lcm7g0mhsecqqvyru9c",
+            "proposal_index": 0,
+            "proposal_tx_hash": "804399dfa579d80eb4dd5309b94536df9e9adfe2bde5120411fe37e43f778670",
+            "vote": "Abstain",
+            "vote_tx_hash": "323f671c8d6576cd1d1c8e8bbc624065fb825528edd98812b3856e7e493144e2"
+        },
+        {
+            "block_time": 1761671714,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1sppenha908vqadxa2vymj3fkm70f4hlzhhj3ypq3lcm7g0mhsecqqvyru9c",
+            "proposal_index": 0,
+            "proposal_tx_hash": "804399dfa579d80eb4dd5309b94536df9e9adfe2bde5120411fe37e43f778670",
+            "vote": "Abstain",
+            "vote_tx_hash": "74c4bce63b019dabeb26680e31048efafa2a0bd19777c53640c712ef835ec6ab"
+        },
+        {
+            "block_time": 1761669852,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gx2thp4lztrvdgmk9ugftlfnazmmnue6jrshs2gsyr63d6jjphysqazuuj2",
+            "proposal_index": 0,
+            "proposal_tx_hash": "4194bb86bf12c6c6a3762f1095fd33e8b7b9f33a90e178291020f516ea520dc9",
+            "vote": "Abstain",
+            "vote_tx_hash": "c21f1b21e0cf85c6b95cb80bf9a70d431a7c0d06860cd42608ad1643269ece13"
+        }
+    ],
+    "drep1y0gy6wwyuj6za8kamwm5rwmxxe5rk6pz4ckx3hmsfdjuujsr70shz": [
+        {
+            "block_time": 1732529621,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1svuwl6qsdkmqsgh7l96tny2vh5qjypfr9vuaz5wpwg8vxmn3l60sqtzu73u",
+            "proposal_index": 0,
+            "proposal_tx_hash": "8338efe8106db60822fef974b9914cbd012205232b39d151c1720ec36e71fe9f",
+            "vote": "Abstain",
+            "vote_tx_hash": "8a5ded06581c77f81228dc60f431fea51fc78ee27f3e7aa701f2a0ed0fa1be48"
+        },
+        {
+            "block_time": 1730793000,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1svuwl6qsdkmqsgh7l96tny2vh5qjypfr9vuaz5wpwg8vxmn3l60sqtzu73u",
+            "proposal_index": 0,
+            "proposal_tx_hash": "8338efe8106db60822fef974b9914cbd012205232b39d151c1720ec36e71fe9f",
+            "vote": "Abstain",
+            "vote_tx_hash": "19981e4868bef3d094c86a3246b34561b492085b51c12b6562e60a689a3e2d06"
+        }
+    ],
+    "drep1y2g3nnu6j7vvu39gq4lpmts6hzamtu72lyw9t6nyf46t87c7t84uj": [
+        {
+            "block_time": 1788186582,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action10myecw233nspkdcfx0nrwjmlq977xjsysgu75rwmymegfldy664qq8nycsw",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7ec99c39518ce01b370933e6374b7f017de34a048239ea0ddb26f284fda4d6aa",
+            "vote": "Yes",
+            "vote_tx_hash": "3db940e466e85c01f19b962ea68bd3557804fb1c5ecb1d1bcf4181cb3d4512ab"
+        }
+    ],
+    "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg": [
+        {
+            "block_time": 1789327015,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1vpttu4mg8ek4ns9jfl833zpjdl8esg8dma49jgdcuj6d7p8qv84sqwfzufe",
+            "proposal_index": 0,
+            "proposal_tx_hash": "6056be57683e6d59c0b24fcf1888326fcf9820eddf6a5921b8e4b4df04e061eb",
+            "vote": "Yes",
+            "vote_tx_hash": "05a64317c25d058d0be08db8e9a5728a257ab97af5b8d5d8c0a00df41bd3bcc5"
+        },
+        {
+            "block_time": 1788191321,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action10z564l3wfc2g9rh63n2jqtlvpryed2dqp374dvchk6544qz3pkesq7cqrfs",
+            "proposal_index": 0,
+            "proposal_tx_hash": "78a9aafe2e4e14828efa8cd5202fec08c996a9a00c7d56b317b6a95a80510db3",
+            "vote": "Abstain",
+            "vote_tx_hash": "85f8236bb0701b75737df8a8326eb990e42bc33a848e91d19bf6a80822eb93b9"
+        },
+        {
+            "block_time": 1788191321,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1w7ruxrza8q87jf6rn5r8htahfvj5taugmjxj30zqqvu5zutzq9gsq34qrtc",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7787c30c5d380fe927439d067bafb74b2545f788dc8d28bc4003394171620151",
+            "vote": "No",
+            "vote_tx_hash": "5db330873ed7eab368519693fcaf2dfd2e60685f87ec4db4e3611778cfd363da"
+        },
+        {
+            "block_time": 1788191321,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action10myecw233nspkdcfx0nrwjmlq977xjsysgu75rwmymegfldy664qq8nycsw",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7ec99c39518ce01b370933e6374b7f017de34a048239ea0ddb26f284fda4d6aa",
+            "vote": "No",
+            "vote_tx_hash": "3bf3b89511a7eb08836ceff86559efe4f8e8cb6e08b90e2545275cdd42a5f169"
+        },
+        {
+            "block_time": 1778810597,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action108a5htqnmlp89ffn2ucf7u9u33s0r9gpx7eytpdc2q28y50ly42qqf9jcen",
+            "proposal_index": 0,
+            "proposal_tx_hash": "79fb4bac13dfc272a53357309f70bc8c60f1950137b24585b850147251ff2554",
+            "vote": "Yes",
+            "vote_tx_hash": "3588dc709f7bab84483d6e5c66ebe54d265fc820c99fe10ae328a59f69ab2112"
+        },
+        {
+            "block_time": 1778810597,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1xvzf2tqsvxc3k6pywjpmm8fnz79sngawttn39qs4nxddg6ayz45qq5n7n0j",
+            "proposal_index": 0,
+            "proposal_tx_hash": "3304952c1061b11b68247483bd9d33178b09a3ae5ae7128215999ad46ba41568",
+            "vote": "No",
+            "vote_tx_hash": "3588dc709f7bab84483d6e5c66ebe54d265fc820c99fe10ae328a59f69ab2112"
+        },
+        {
+            "block_time": 1762189467,
+            "meta_hash": "803661fce42f4fa486bd11fc9fb02d0d40f763da112279b05b94564f553a566a",
+            "meta_url": "ipfs://bafkreiew43qm2qfmhxnzlyqd3zbncklxpjrciipnrdluzodubnofh7bfle",
+            "proposal_id": "gov_action1zlnc7hsghggj2ztjnkql9qq9e2skrpuz8r0nelz2lxp6hhykl8esqxz5kdd",
+            "proposal_index": 0,
+            "proposal_tx_hash": "17e78f5e08ba112509729d81f28005caa161878238df3cfc4af983abdc96f9f3",
+            "vote": "No",
+            "vote_tx_hash": "115a8c1fa0290ab88e47595babf9f4fd2688b65c8e3fce16e57dddc7db524948"
+        },
+        {
+            "block_time": 1762189321,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1zk80dvjfklp7cgvuvtg37zuwwe4r2erj6q3m67c7wdh0akth70rqq44samn",
+            "proposal_index": 0,
+            "proposal_tx_hash": "158ef6b249b7c3ec219c62d11f0b8e766a356472d023bd7b1e736efed977f3c6",
+            "vote": "Yes",
+            "vote_tx_hash": "0c77ec9d643ad829ad3591a48d8b0554c035facae36ac49881a9d2889d3ab036"
+        },
+        {
+            "block_time": 1762188790,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gx2thp4lztrvdgmk9ugftlfnazmmnue6jrshs2gsyr63d6jjphysqazuuj2",
+            "proposal_index": 0,
+            "proposal_tx_hash": "4194bb86bf12c6c6a3762f1095fd33e8b7b9f33a90e178291020f516ea520dc9",
+            "vote": "Yes",
+            "vote_tx_hash": "088415cc43d29f66b61607fe56b32522cf98d23635494391f88336344b8e259d"
+        },
+        {
+            "block_time": 1759427121,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1sppenha908vqadxa2vymj3fkm70f4hlzhhj3ypq3lcm7g0mhsecqqvyru9c",
+            "proposal_index": 0,
+            "proposal_tx_hash": "804399dfa579d80eb4dd5309b94536df9e9adfe2bde5120411fe37e43f778670",
+            "vote": "Yes",
+            "vote_tx_hash": "be4e78896e9fa0fbdf9eafe2d1bbee04097c36449811c3977cd7d875ed5451f0"
+        },
+        {
+            "block_time": 1759427025,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1jketqkhruzdpngqxwdfylrl5gf5rncjpplf9vkjj5jv494y2dvusqz0nrfc",
+            "proposal_index": 0,
+            "proposal_tx_hash": "95b2b05ae3e09a19a00673524f8ff4426839e2410fd2565a52a49952d48a6b39",
+            "vote": "No",
+            "vote_tx_hash": "8779e13b39f68cb75e9dcde15eb8d444b43222c30c806d882e527165c3683bd4"
+        },
+        {
+            "block_time": 1756741490,
+            "meta_hash": "0a6a32ff0741c9a84c0dfae9601300a155ce1486542c3446532f6fc32f00f4fe",
+            "meta_url": "ipfs://bafkreihcduwt7myiuyc6blnkpfclhtrmx75owmau2nik3h3ugff47hdqey",
+            "proposal_id": "gov_action1u8gafgcskj6sqvgwqse7adc0h9438m535lg97czcvxntscvw7f5sqgf2n7j",
+            "proposal_index": 0,
+            "proposal_tx_hash": "e1d1d4a310b4b500310e0433eeb70fb96b13ee91a7d05f605861a6b8618ef269",
+            "vote": "No",
+            "vote_tx_hash": "96a62696bb1592edb05c4d6df0d7189c8acda05e91ff7ded1271fa21d9f038f9"
+        },
+        {
+            "block_time": 1754488213,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action19nvvldw9x8cv05q923fyympcgsff0zumvmmy73z86rpvw0ueakrqzp0dlya",
+            "proposal_index": 1,
+            "proposal_tx_hash": "2cd8cfb5c531f0c7d0055452426c384412978b9b66f64f4447d0c2c73f99ed86",
+            "vote": "Yes",
+            "vote_tx_hash": "bd61f936628b29be9e9e35f73941182dfa1184747f9f1b2333ad28109a6b426c"
+        },
+        {
+            "block_time": 1754056881,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1f9tcawsvss8gytsx3zcfzyhnlxa2adga6r35d3dyl8gr6t9ur9fsq2kuh0j",
+            "proposal_index": 0,
+            "proposal_tx_hash": "49578eba0c840e822e0688b09112f3f9baaeb51dd0e346c5a4f9d03d2cbc1953",
+            "vote": "Yes",
+            "vote_tx_hash": "b7d1fca413bedb5addacc2bac5ae37a6da0788c57d9ee2cc4627a0a33d43b76c"
+        },
+        {
+            "block_time": 1749674983,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1grp2gtlry36e5eqdelwmc6009cahledfnzhc6enqxkth906ye8wqqzfxv5t",
+            "proposal_index": 0,
+            "proposal_tx_hash": "40c2a42fe324759a640dcfddbc69ef2e3b7fe5a998af8d6660359772bf44c9dc",
+            "vote": "No",
+            "vote_tx_hash": "3d4613e42e047f04aafc698bc2ca418f3c373d9a36c3667c21564e44c5160178"
+        },
+        {
+            "block_time": 1745352319,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1ryfe3uuw7p23thw2yegzp4s8lwu9c4j3syljg2dns9s06jgan78sq72q85v",
+            "proposal_index": 0,
+            "proposal_tx_hash": "191398f38ef05515ddca265020d607fbb85c5651813f2429b38160fd491d9f8f",
+            "vote": "No",
+            "vote_tx_hash": "04c33099361c3a103ada5bc38e8bad99d15761d155ec6e6132be68ec03cccbf8"
+        }
+    ],
+    "drep1y2tqpgfsagdhhmvn9t288tghk57jxhenr53kvjxc500ce3sv623vp": [
+        {
+            "block_time": 1753026249,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action19nvvldw9x8cv05q923fyympcgsff0zumvmmy73z86rpvw0ueakrqyaqw6c2",
+            "proposal_index": 2,
+            "proposal_tx_hash": "2cd8cfb5c531f0c7d0055452426c384412978b9b66f64f4447d0c2c73f99ed86",
+            "vote": "Abstain",
+            "vote_tx_hash": "9b17887e7c6aa957ee8f636b466390d5b57b3262b62ad62e6694a402b08472ee"
+        },
+        {
+            "block_time": 1753025492,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1zumc8g9f2vheg2k055g3gmhy08v3v9fvgp9ukt0pnd05yylq2f8sqvgzmuh",
+            "proposal_index": 0,
+            "proposal_tx_hash": "173783a0a9532f942acfa511146ee479d916152c404bcb2de19b5f4213e0524f",
+            "vote": "No",
+            "vote_tx_hash": "3f2cddea137ff66d5404de3aabbf574b9bd3800c78a7154a65cd989a2aea187b"
+        },
+        {
+            "block_time": 1753025477,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1fsrad7d448n4hxheytn996dtn5zht5uwxl3fpdc2385tpkj09rgqq3zxnda",
+            "proposal_index": 0,
+            "proposal_tx_hash": "4c07d6f9b5a9e75b9af922e652e9ab9d0575d38e37e290b70a89e8b0da4f28d0",
+            "vote": "No",
+            "vote_tx_hash": "be0024050f9e8640365702f494e6e1b8061d9746200f812f3c23cd7d710c22a2"
+        }
+    ],
+    "drep1y2urtnpqef68w3dm2xrggdsfpp98h00xmkf4qj78r70r3xq8lekef": [
+        {
+            "block_time": 1757281733,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1u8gafgcskj6sqvgwqse7adc0h9438m535lg97czcvxntscvw7f5sqgf2n7j",
+            "proposal_index": 0,
+            "proposal_tx_hash": "e1d1d4a310b4b500310e0433eeb70fb96b13ee91a7d05f605861a6b8618ef269",
+            "vote": "Yes",
+            "vote_tx_hash": "c0dd55aba5d9bad201a3d64ffeb0fbd9c39b312037c39dbe22ed420dfc27331f"
+        },
+        {
+            "block_time": 1747435661,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1grp2gtlry36e5eqdelwmc6009cahledfnzhc6enqxkth906ye8wqqzfxv5t",
+            "proposal_index": 0,
+            "proposal_tx_hash": "40c2a42fe324759a640dcfddbc69ef2e3b7fe5a998af8d6660359772bf44c9dc",
+            "vote": "Yes",
+            "vote_tx_hash": "d01fa00223ee49788b7e9fb5fd1f25c09afc028a348111c7aec249849424a5f2"
+        }
+    ],
+    "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev": [
+        {
+            "block_time": 1781719765,
+            "meta_hash": "b0da569c7bf9cd4a3ddd7db6ffe9fc4eab4f5d167bf14ed2078ce05a2c2a64c5",
+            "meta_url": "ipfs://QmdbLvBSdGShaJU8whf9JoDPgoqCw2GNZTg4meQFWoJbqL",
+            "proposal_id": "gov_action1gmkxlnrzlv65gw9uyktcqau86ffcuc46qg0esdty3nedupjxxfpqqdcsyjk",
+            "proposal_index": 0,
+            "proposal_tx_hash": "46ec6fcc62fb354438bc2597807787d2538e62ba021f9835648cf2de06463242",
+            "vote": "Abstain",
+            "vote_tx_hash": "ab4564da2f49c487f0c5f1d62a797bb6e99731ad95b3a935b46d7225636cc8cb"
+        },
+        {
+            "block_time": 1781719765,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action174sxlcjhny76t2jsxg2zxpsz048hdc8pfwa9vaq474darvpt75aqqs0mnw5",
+            "proposal_index": 0,
+            "proposal_tx_hash": "f5606fe257993da5aa5032142306027d4f76e0e14bba567415f55bd1b02bf53a",
+            "vote": "No",
+            "vote_tx_hash": "ab4564da2f49c487f0c5f1d62a797bb6e99731ad95b3a935b46d7225636cc8cb"
+        },
+        {
+            "block_time": 1781719765,
+            "meta_hash": "0ac82d8980a9403d183f6f659b9522e45ea88c7284dfafd3208a50e7999121d8",
+            "meta_url": "ipfs://QmRt92tgNGjVhBN2TtkUVPPWoKpL3o7TfjYPfwwSyogr7d",
+            "proposal_id": "gov_action1e9d2gwmy6uqvjsf9ga49nzdrvt5kvgjm54x73046m5v0ykst99lsqx2nmuu",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c95aa43b64d700c94125476a5989a362e966225ba54de8bebadd18f25a0b297f",
+            "vote": "No",
+            "vote_tx_hash": "ab4564da2f49c487f0c5f1d62a797bb6e99731ad95b3a935b46d7225636cc8cb"
+        },
+        {
+            "block_time": 1781719765,
+            "meta_hash": "e2099a614bcf581da02ec195982f97124e0d7d49ae759d5a2185bb62bef52d65",
+            "meta_url": "ipfs://QmRucFgwHqMCJC8AxR5j1vCTWZVUfvKNjQZTfh65HX4931",
+            "proposal_id": "gov_action1cfhvkpcvkhaht9pftfd5cjmvn2spgkc6384kvuw3g2a0me37kzkqqvqkvzh",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c26ecb070cb5fb7594295a5b4c4b6c9aa0145b1a89eb6671d142bafde63eb0ac",
+            "vote": "Yes",
+            "vote_tx_hash": "ab4564da2f49c487f0c5f1d62a797bb6e99731ad95b3a935b46d7225636cc8cb"
+        },
+        {
+            "block_time": 1781719765,
+            "meta_hash": "2728bf14d53a1afc0dc5e12c73272a34255a0950023b2b6373e7620334a03e28",
+            "meta_url": "ipfs://Qmbc7JMBYY2n8xwi4y2DCxx3mcYCzgnpcUEAGy9wG9jduy",
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "No",
+            "vote_tx_hash": "ab4564da2f49c487f0c5f1d62a797bb6e99731ad95b3a935b46d7225636cc8cb"
+        },
+        {
+            "block_time": 1781665018,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "Abstain",
+            "vote_tx_hash": "b7dc0395282513a4e5bbefd9e78f580f3a7e23b83dbbf0b64c3019c21b8a5099"
+        },
+        {
+            "block_time": 1781353344,
+            "meta_hash": "8d676d30d5ce003aac913d0acc325fce0a791218483b7f7f677b4e38bfc15a73",
+            "meta_url": "ipfs://QmeXMQ6dpZCLBdc44EvyK6qmsb7hJYhN3WcA7EMQh69MQp",
+            "proposal_id": "gov_action10w936mpzlshl3udp2f4gqfadnhczthy6wqfms8h4r7uxn0xp4azqq6g46e8",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7b8b1d6c22fc2ff8f1a1526a8027ad9df025dc9a7013b81ef51fb869bcc1af44",
+            "vote": "Yes",
+            "vote_tx_hash": "429b9e79d67e16ed72b543ae1317d804e58e0dab3fcc7c8eab10ed81665baf50"
+        },
+        {
+            "block_time": 1781339505,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1ze5w8nf63wuta0098jcea60audpxyqp2mtrrfs97t7yrkj7prqpsqehq7c6",
+            "proposal_index": 0,
+            "proposal_tx_hash": "1668e3cd3a8bb8bebde53cb19ee9fde34262002adac634c0be5f883b4bc11803",
+            "vote": "Abstain",
+            "vote_tx_hash": "ba4c4abc4687d25c7bb06b0719a578e5c985daa572af50af31e8629cf1b540b0"
+        },
+        {
+            "block_time": 1780980511,
+            "meta_hash": "99c41d0b912508eff0930e7eda35f2c91e1f10bda91c0c718002ac5baa9b5ca4",
+            "meta_url": "ipfs://QmR6tazkRjz54Ew3RfReTLb7StyyQiT9biA4BsXrqTmm8h",
+            "proposal_id": "gov_action1ex5guf8xylm30ckseqwqnlkuzgydy20kx06x03wayvmm5y3mfeqsq97cayc",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c9a88e24e627f717e2d0c81c09fedc1208d229f633f467c5dd2337ba123b4e41",
+            "vote": "Yes",
+            "vote_tx_hash": "573cc10315e624f6c9d42b25c4c80b0bdf8d35f0b100f99c1033be06721a67e7"
+        },
+        {
+            "block_time": 1780825103,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1xvzf2tqsvxc3k6pywjpmm8fnz79sngawttn39qs4nxddg6ayz45qq5n7n0j",
+            "proposal_index": 0,
+            "proposal_tx_hash": "3304952c1061b11b68247483bd9d33178b09a3ae5ae7128215999ad46ba41568",
+            "vote": "Abstain",
+            "vote_tx_hash": "47a42a9484937beabf6d5d6e08edf3d4dd55fdebe3a04a84c8c588d534483c0e"
+        },
+        {
+            "block_time": 1780820912,
+            "meta_hash": "21ea5cc46f624b274722f172acf93cb0ea235f2abcf20a794f4f39cd9de7607b",
+            "meta_url": "ipfs://QmUSiFS96A2fjb39cecKq57jruE5kSsPt31DVNgZFgNFRA",
+            "proposal_id": "gov_action108a5htqnmlp89ffn2ucf7u9u33s0r9gpx7eytpdc2q28y50ly42qqf9jcen",
+            "proposal_index": 0,
+            "proposal_tx_hash": "79fb4bac13dfc272a53357309f70bc8c60f1950137b24585b850147251ff2554",
+            "vote": "Yes",
+            "vote_tx_hash": "32adf94ff6c6320221d2a2807d051689ba37de76aa9ca351ca6b2eae7838fb35"
+        },
+        {
+            "block_time": 1780711879,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action108a5htqnmlp89ffn2ucf7u9u33s0r9gpx7eytpdc2q28y50ly42qqf9jcen",
+            "proposal_index": 0,
+            "proposal_tx_hash": "79fb4bac13dfc272a53357309f70bc8c60f1950137b24585b850147251ff2554",
+            "vote": "Abstain",
+            "vote_tx_hash": "bc6c811fb32dbb465be5c67f7cacdef867c84079cef7f900bb44b8bef3f40a3d"
+        }
+    ],
+    "drep1yd0ps49yv4s6fgs45s97xak65yvjyvt74p6n4w6tnt2fkngr36m27": [
+        {
+            "block_time": 1762525870,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1zk80dvjfklp7cgvuvtg37zuwwe4r2erj6q3m67c7wdh0akth70rqq44samn",
+            "proposal_index": 0,
+            "proposal_tx_hash": "158ef6b249b7c3ec219c62d11f0b8e766a356472d023bd7b1e736efed977f3c6",
+            "vote": "Abstain",
+            "vote_tx_hash": "b0713c19f3551dfe6bb444623d2a42d285ba4295964465e13389479930ec8469"
+        },
+        {
+            "block_time": 1762525870,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1zlnc7hsghggj2ztjnkql9qq9e2skrpuz8r0nelz2lxp6hhykl8esqxz5kdd",
+            "proposal_index": 0,
+            "proposal_tx_hash": "17e78f5e08ba112509729d81f28005caa161878238df3cfc4af983abdc96f9f3",
+            "vote": "Abstain",
+            "vote_tx_hash": "b0713c19f3551dfe6bb444623d2a42d285ba4295964465e13389479930ec8469"
+        }
+    ],
+    "drep1ydg4wfrglppa2ltatp5xlkzq5f0jeydd7tkl5989rjuew7ga0r8p8": [
+        {
+            "block_time": 1784119178,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gmkxlnrzlv65gw9uyktcqau86ffcuc46qg0esdty3nedupjxxfpqqdcsyjk",
+            "proposal_index": 0,
+            "proposal_tx_hash": "46ec6fcc62fb354438bc2597807787d2538e62ba021f9835648cf2de06463242",
+            "vote": "No",
+            "vote_tx_hash": "35887da9f9bfc13c34f98291bfd5fdbc60f88843c7e88b63a95ba0d955fd775f"
+        },
+        {
+            "block_time": 1784119178,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "No",
+            "vote_tx_hash": "35887da9f9bfc13c34f98291bfd5fdbc60f88843c7e88b63a95ba0d955fd775f"
+        },
+        {
+            "block_time": 1784119178,
+            "meta_hash": "0688ffcf966fcec9e7b86c485efbc95e3f2aa7a22a13b3c4450bdb2c8902d9c9",
+            "meta_url": "ipfs://Qmdunou5yx1WZaGrbFNnUmyDrjivdotF8y9zZXfBVfDqe6",
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "Yes",
+            "vote_tx_hash": "35887da9f9bfc13c34f98291bfd5fdbc60f88843c7e88b63a95ba0d955fd775f"
+        },
+        {
+            "block_time": 1784119178,
+            "meta_hash": "0688ffcf966fcec9e7b86c485efbc95e3f2aa7a22a13b3c4450bdb2c8902d9c9",
+            "meta_url": "ipfs://Qmdunou5yx1WZaGrbFNnUmyDrjivdotF8y9zZXfBVfDqe6",
+            "proposal_id": "gov_action1cfhvkpcvkhaht9pftfd5cjmvn2spgkc6384kvuw3g2a0me37kzkqqvqkvzh",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c26ecb070cb5fb7594295a5b4c4b6c9aa0145b1a89eb6671d142bafde63eb0ac",
+            "vote": "Abstain",
+            "vote_tx_hash": "35887da9f9bfc13c34f98291bfd5fdbc60f88843c7e88b63a95ba0d955fd775f"
+        },
+        {
+            "block_time": 1784119178,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1e9d2gwmy6uqvjsf9ga49nzdrvt5kvgjm54x73046m5v0ykst99lsqx2nmuu",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c95aa43b64d700c94125476a5989a362e966225ba54de8bebadd18f25a0b297f",
+            "vote": "No",
+            "vote_tx_hash": "35887da9f9bfc13c34f98291bfd5fdbc60f88843c7e88b63a95ba0d955fd775f"
+        }
+    ],
+    "drep1ydmraa6kv8cvmry059v608tehl50nfmg0z764lmsqkvwurs40sw2z": [
+        {
+            "block_time": 1725664968,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action14lefp8upwhhq92xph7t075txshf9huxxh9d2ey05ml2n5hqgvlxqqp92kfl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "aff2909f8175ee02a8c1bf96ff516685d25bf0c6b95aac91f4dfd53a5c0867cc",
+            "vote": "Yes",
+            "vote_tx_hash": "e239058473ab5ab1f5829b9058a93cbd0daaf72f9252cc16b34925cd87b37d35"
+        }
+    ],
+    "drep1yf3dqjh8gfhffd2qn6tteth65pwpcmsvt8pfyzq2rj6weyg0r9z64": [
+        {
+            "block_time": 1789643535,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action15c5vxjafy0y67853ydygnwhmfmpytdypm73ex0slcr0gptujucwsqcvdpj0",
+            "proposal_index": 0,
+            "proposal_tx_hash": "a628c34ba923c9af1e91234889bafb4ec245b481dfa3933e1fc0de80af92e61d",
+            "vote": "No",
+            "vote_tx_hash": "a45cdc26c4c4ac73072bd2807cc8119a3b4754b6897903eb23faadf2fd6f37ef"
+        },
+        {
+            "block_time": 1789643342,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action10myecw233nspkdcfx0nrwjmlq977xjsysgu75rwmymegfldy664qq8nycsw",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7ec99c39518ce01b370933e6374b7f017de34a048239ea0ddb26f284fda4d6aa",
+            "vote": "Yes",
+            "vote_tx_hash": "253daa8f4982b3aa5604c0b3aa618bafafec4b448379afbe03e37b3ee7f4bd91"
+        }
+    ],
+    "drep1yf3uyl8adk8lmnjcmssmdcpmyksfw76tvqs8xapxny9hffq9f3rxu": [
+        {
+            "block_time": 1786155334,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action10z564l3wfc2g9rh63n2jqtlvpryed2dqp374dvchk6544qz3pkesq7cqrfs",
+            "proposal_index": 0,
+            "proposal_tx_hash": "78a9aafe2e4e14828efa8cd5202fec08c996a9a00c7d56b317b6a95a80510db3",
+            "vote": "Yes",
+            "vote_tx_hash": "b6bacbce45103108a39f85b6829713dee5881cc8ee0901421f465327eda7c89c"
+        }
+    ],
+    "drep1yf3yx7ptr0hks02d7k8c8xfq58jn68nje5emscvv7a9ngpqudkpdh": [
+        {
+            "block_time": 1791376832,
+            "meta_hash": "01400c50a139cfc5f40aa474606e095512203a78adce0f9c973eb264af424e72",
+            "meta_url": "https://preprod.dreptalk.com/vote-rationale/01400c50a139cfc5f40aa474606e095512203a78adce0f9c973eb264af424e72.json",
+            "proposal_id": "gov_action1gekg0fcq9gul4kudd6cdyly5uud97d3uly2je37cegqnzhvz73vqqp5s9yg",
+            "proposal_index": 0,
+            "proposal_tx_hash": "466c87a7002a39fadb8d6eb0d27c94e71a5f363cf9152cc7d8ca01315d82f458",
+            "vote": "Yes",
+            "vote_tx_hash": "8ba84240e84031d0656e3e50151325ae50584d0089278572b7611fe3ed3f0056"
+        },
+        {
+            "block_time": 1788972067,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1p9rdy64s4vuva0tdvgs2naw2d7kax8darcfsjqzpw6j62vf9aleqqs6y0gh",
+            "proposal_index": 0,
+            "proposal_tx_hash": "0946d26ab0ab38cebd6d6220a9f5ca6fadd31dbd1e1309004176a5a53125eff2",
+            "vote": "Abstain",
+            "vote_tx_hash": "568b67a6bd9846d4270788722ccfc2b9e37f68dd3d9ddb0160431adc6a3be1f9"
+        },
+        {
+            "block_time": 1784190102,
+            "meta_hash": "b8ba9e7043e0acb4c3d328ba063ac1ec489376adb13b8b6a2505ebbb2647e9b5",
+            "meta_url": "https://preprod.dreptalk.com/vote-rationale/b8ba9e7043e0acb4c3d328ba063ac1ec489376adb13b8b6a2505ebbb2647e9b5.json",
+            "proposal_id": "gov_action1e9d2gwmy6uqvjsf9ga49nzdrvt5kvgjm54x73046m5v0ykst99lsqx2nmuu",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c95aa43b64d700c94125476a5989a362e966225ba54de8bebadd18f25a0b297f",
+            "vote": "Yes",
+            "vote_tx_hash": "c0db4f6f05098ae8d8c027a10a0ccf415d4e71a0b07b38b8271011c7e5e2dae5"
+        },
+        {
+            "block_time": 1784190102,
+            "meta_hash": "080130a8714455bdd75fb3eb6b6914f7ad74b2ceeabf36415dc2d51e2e2d575f",
+            "meta_url": "https://preprod.dreptalk.com/vote-rationale/080130a8714455bdd75fb3eb6b6914f7ad74b2ceeabf36415dc2d51e2e2d575f.json",
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "No",
+            "vote_tx_hash": "c0db4f6f05098ae8d8c027a10a0ccf415d4e71a0b07b38b8271011c7e5e2dae5"
+        },
+        {
+            "block_time": 1784148556,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1cfhvkpcvkhaht9pftfd5cjmvn2spgkc6384kvuw3g2a0me37kzkqqvqkvzh",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c26ecb070cb5fb7594295a5b4c4b6c9aa0145b1a89eb6671d142bafde63eb0ac",
+            "vote": "Abstain",
+            "vote_tx_hash": "41a30bafb18ed940903350b4e0fc8d794e9cfd53a0c150abf12ffaed78b00cb3"
+        },
+        {
+            "block_time": 1784148556,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gmkxlnrzlv65gw9uyktcqau86ffcuc46qg0esdty3nedupjxxfpqqdcsyjk",
+            "proposal_index": 0,
+            "proposal_tx_hash": "46ec6fcc62fb354438bc2597807787d2538e62ba021f9835648cf2de06463242",
+            "vote": "Abstain",
+            "vote_tx_hash": "41a30bafb18ed940903350b4e0fc8d794e9cfd53a0c150abf12ffaed78b00cb3"
+        },
+        {
+            "block_time": 1782473989,
+            "meta_hash": "b0855b24622e6821960768572969116751a12184f6f7da56e9b6d29114b0bae0",
+            "meta_url": "https://preprod.dreptalk.com/vote-rationale/b0855b24622e6821960768572969116751a12184f6f7da56e9b6d29114b0bae0.json",
+            "proposal_id": "gov_action1ex5guf8xylm30ckseqwqnlkuzgydy20kx06x03wayvmm5y3mfeqsq97cayc",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c9a88e24e627f717e2d0c81c09fedc1208d229f633f467c5dd2337ba123b4e41",
+            "vote": "Yes",
+            "vote_tx_hash": "a938d10fc79c11eb0dce120896644b40b32a7ab925d2651a7d73c512152855d7"
+        },
+        {
+            "block_time": 1782473759,
+            "meta_hash": "b0855b24622e6821960768572969116751a12184f6f7da56e9b6d29114b0bae0",
+            "meta_url": "https://preprod.dreptalk.com/vote-rationale/b0855b24622e6821960768572969116751a12184f6f7da56e9b6d29114b0bae0.json",
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "Yes",
+            "vote_tx_hash": "028c6f20e1dfbac94159afec937d410594f7548b95256b5e33f3895d328a2da7"
+        },
+        {
+            "block_time": 1782247355,
+            "meta_hash": "dc645895023189d170891f21b1ef897b05673422da2e1f0610b62a5625492c40",
+            "meta_url": "https://preprod.dreptalk.com/vote-rationale/dc645895023189d170891f21b1ef897b05673422da2e1f0610b62a5625492c40.json",
+            "proposal_id": "gov_action1ze5w8nf63wuta0098jcea60audpxyqp2mtrrfs97t7yrkj7prqpsqehq7c6",
+            "proposal_index": 0,
+            "proposal_tx_hash": "1668e3cd3a8bb8bebde53cb19ee9fde34262002adac634c0be5f883b4bc11803",
+            "vote": "Abstain",
+            "vote_tx_hash": "1d53976b4f3fceede78c3e72ceeea983a0f9ee4895d536086a460edfb6d00869"
+        }
+    ],
+    "drep1yfmg4kvf7vcg4uzgyn0dskumkhccr8rr935z0lfhsep7etgvrh34k": [
+        {
+            "block_time": 1782077351,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action174sxlcjhny76t2jsxg2zxpsz048hdc8pfwa9vaq474darvpt75aqqs0mnw5",
+            "proposal_index": 0,
+            "proposal_tx_hash": "f5606fe257993da5aa5032142306027d4f76e0e14bba567415f55bd1b02bf53a",
+            "vote": "No",
+            "vote_tx_hash": "90fc77900577ae7661d03db71f814dd7b01880a28dfcb69430887357854ea318"
+        },
+        {
+            "block_time": 1782077205,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1ex5guf8xylm30ckseqwqnlkuzgydy20kx06x03wayvmm5y3mfeqsq97cayc",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c9a88e24e627f717e2d0c81c09fedc1208d229f633f467c5dd2337ba123b4e41",
+            "vote": "No",
+            "vote_tx_hash": "4fbbed69e03bb19ebfe2fe03b1a7364dfb53b2dade35bbb529b095cbb14b00a1"
+        },
+        {
+            "block_time": 1782077132,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1e9d2gwmy6uqvjsf9ga49nzdrvt5kvgjm54x73046m5v0ykst99lsqx2nmuu",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c95aa43b64d700c94125476a5989a362e966225ba54de8bebadd18f25a0b297f",
+            "vote": "Yes",
+            "vote_tx_hash": "67082f73ea3f31bfb20e65da7bd6324a437511efa94b723c2085c5a4b476bded"
+        },
+        {
+            "block_time": 1782077058,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "No",
+            "vote_tx_hash": "78163385f11ff15b0e9a2707c282557b07bfdda3cb135f240ff11850e190a57c"
+        },
+        {
+            "block_time": 1782076858,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gmkxlnrzlv65gw9uyktcqau86ffcuc46qg0esdty3nedupjxxfpqqdcsyjk",
+            "proposal_index": 0,
+            "proposal_tx_hash": "46ec6fcc62fb354438bc2597807787d2538e62ba021f9835648cf2de06463242",
+            "vote": "Yes",
+            "vote_tx_hash": "9463cb5cb0386dbcac6b30a9f3bc4b93f1c47c25b9acc2b1722d6c45f35fc3b2"
+        },
+        {
+            "block_time": 1782076832,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1ze5w8nf63wuta0098jcea60audpxyqp2mtrrfs97t7yrkj7prqpsqehq7c6",
+            "proposal_index": 0,
+            "proposal_tx_hash": "1668e3cd3a8bb8bebde53cb19ee9fde34262002adac634c0be5f883b4bc11803",
+            "vote": "Abstain",
+            "vote_tx_hash": "a3b7ca7ae203a5ddf0f2771d07d1b1ef7a27740bcfa8fba013690b331c2d4bfc"
+        },
+        {
+            "block_time": 1782076629,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1cfhvkpcvkhaht9pftfd5cjmvn2spgkc6384kvuw3g2a0me37kzkqqvqkvzh",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c26ecb070cb5fb7594295a5b4c4b6c9aa0145b1a89eb6671d142bafde63eb0ac",
+            "vote": "Yes",
+            "vote_tx_hash": "4d8731e3cad777cfa6f8aa264771898a3ade42a4192784d09c4295bd6c590a07"
+        }
+    ],
+    "drep1yfzsk8cc9kc3qcmmzy0kc4pc225g38h9240qgkxnjlxtvjqn9rm6v": [
+        {
+            "block_time": 1789641379,
+            "meta_hash": "5709e58fd6e19258f18ecb8ee2ae75543b9c223e4cb6e869ffd91ed229ae37cd",
+            "meta_url": "ipfs://QmPRZEz7WLLKT6fWfCaH6qQRYGeVY4TfSkvsuFbVxN8Ye1",
+            "proposal_id": "gov_action1w7ruxrza8q87jf6rn5r8htahfvj5taugmjxj30zqqvu5zutzq9gsq34qrtc",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7787c30c5d380fe927439d067bafb74b2545f788dc8d28bc4003394171620151",
+            "vote": "No",
+            "vote_tx_hash": "d884797ca41626cd1404a46d3b69491ef2c4445b9025f4110687120cd374110d"
+        },
+        {
+            "block_time": 1789640884,
+            "meta_hash": "487d225b78d8fe8f79bf2414468300702690b6f487348aabb6480d0d250b0d2f",
+            "meta_url": "ipfs://QmRyXRzLig9BRnBstrPJ6NLBkQCx5CgkdhsPoxqBKoDGoB",
+            "proposal_id": "gov_action10myecw233nspkdcfx0nrwjmlq977xjsysgu75rwmymegfldy664qq8nycsw",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7ec99c39518ce01b370933e6374b7f017de34a048239ea0ddb26f284fda4d6aa",
+            "vote": "Yes",
+            "vote_tx_hash": "5eab961264ab711d0aa64af38a7a9bef275c01717ebeac98e394538501ddf1aa"
+        }
+    ],
+    "drep1yg8u749fa6jwtx2y5akuvjump2gjammvaf9cvfr8zpt49kqc8l9yp": [
+        {
+            "block_time": 1755191024,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action19nvvldw9x8cv05q923fyympcgsff0zumvmmy73z86rpvw0ueakrqyaqw6c2",
+            "proposal_index": 2,
+            "proposal_tx_hash": "2cd8cfb5c531f0c7d0055452426c384412978b9b66f64f4447d0c2c73f99ed86",
+            "vote": "No",
+            "vote_tx_hash": "c4bf560514545789841509f9fe48dabb020c2a27a4eef72219c6c82ef01e4216"
+        },
+        {
+            "block_time": 1755190863,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action19nvvldw9x8cv05q923fyympcgsff0zumvmmy73z86rpvw0ueakrqgv7gsfd",
+            "proposal_index": 4,
+            "proposal_tx_hash": "2cd8cfb5c531f0c7d0055452426c384412978b9b66f64f4447d0c2c73f99ed86",
+            "vote": "Yes",
+            "vote_tx_hash": "d15716ce8ef658ae2f974a84664b4aa055558bcb517b08632cb4dc53c3976d5c"
+        },
+        {
+            "block_time": 1755188040,
+            "meta_hash": "9458a43487a7148147d4bd4c4857d6af8b3b016e1fc009adcdc49ed0b23ab549",
+            "meta_url": "https://raw.githubusercontent.com/0xBora/gov-tool-register/refs/heads/main/Vote_Context.jsonld",
+            "proposal_id": "gov_action19nvvldw9x8cv05q923fyympcgsff0zumvmmy73z86rpvw0ueakrq2lmfn6q",
+            "proposal_index": 5,
+            "proposal_tx_hash": "2cd8cfb5c531f0c7d0055452426c384412978b9b66f64f4447d0c2c73f99ed86",
+            "vote": "Yes",
+            "vote_tx_hash": "064813730686823fd35d753a2e3ab70ed2ec0cafff098187b8a04362ef5a8c21"
+        }
+    ],
+    "drep1yger3n5rm7dn9uqyktfgxddlajwjg8tcxtn60xsgk9ql9lcc97wv5": [
+        {
+            "block_time": 1783395124,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1ze5w8nf63wuta0098jcea60audpxyqp2mtrrfs97t7yrkj7prqpsqehq7c6",
+            "proposal_index": 0,
+            "proposal_tx_hash": "1668e3cd3a8bb8bebde53cb19ee9fde34262002adac634c0be5f883b4bc11803",
+            "vote": "Abstain",
+            "vote_tx_hash": "30e3de2e04a03255a87a1d15f6a331c4f7c502d03a2b36b38a9f03511a237a4d"
+        },
+        {
+            "block_time": 1783394908,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1e9d2gwmy6uqvjsf9ga49nzdrvt5kvgjm54x73046m5v0ykst99lsqx2nmuu",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c95aa43b64d700c94125476a5989a362e966225ba54de8bebadd18f25a0b297f",
+            "vote": "No",
+            "vote_tx_hash": "d95b5d0d61f303e19e0e2a20d6b56ab42621ea99b0f2366c2b5238fae1481dbf"
+        },
+        {
+            "block_time": 1782838975,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1ze5w8nf63wuta0098jcea60audpxyqp2mtrrfs97t7yrkj7prqpsqehq7c6",
+            "proposal_index": 0,
+            "proposal_tx_hash": "1668e3cd3a8bb8bebde53cb19ee9fde34262002adac634c0be5f883b4bc11803",
+            "vote": "Abstain",
+            "vote_tx_hash": "9c6b20350c911908107d3eb2b6cb218258b97d1158de90a1920001a7e79318d5"
+        },
+        {
+            "block_time": 1781449330,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1ex5guf8xylm30ckseqwqnlkuzgydy20kx06x03wayvmm5y3mfeqsq97cayc",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c9a88e24e627f717e2d0c81c09fedc1208d229f633f467c5dd2337ba123b4e41",
+            "vote": "No",
+            "vote_tx_hash": "8045c79dd4cd545991040689b940040c90911887e96d23c0f51d6c768fb6128d"
+        },
+        {
+            "block_time": 1781449330,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1ze5w8nf63wuta0098jcea60audpxyqp2mtrrfs97t7yrkj7prqpsqehq7c6",
+            "proposal_index": 0,
+            "proposal_tx_hash": "1668e3cd3a8bb8bebde53cb19ee9fde34262002adac634c0be5f883b4bc11803",
+            "vote": "No",
+            "vote_tx_hash": "8045c79dd4cd545991040689b940040c90911887e96d23c0f51d6c768fb6128d"
+        },
+        {
+            "block_time": 1781449330,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action174sxlcjhny76t2jsxg2zxpsz048hdc8pfwa9vaq474darvpt75aqqs0mnw5",
+            "proposal_index": 0,
+            "proposal_tx_hash": "f5606fe257993da5aa5032142306027d4f76e0e14bba567415f55bd1b02bf53a",
+            "vote": "No",
+            "vote_tx_hash": "8045c79dd4cd545991040689b940040c90911887e96d23c0f51d6c768fb6128d"
+        },
+        {
+            "block_time": 1781449330,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1f2j9lepxdsg5yqtn8w7xgytyknf743gssxh7acfdmjfzxk6c73wqqmpu0a4",
+            "proposal_index": 0,
+            "proposal_tx_hash": "4aa45fe4266c114201733bbc641164b4d3eac51081afeee12ddc92235b58f45c",
+            "vote": "No",
+            "vote_tx_hash": "8045c79dd4cd545991040689b940040c90911887e96d23c0f51d6c768fb6128d"
+        },
+        {
+            "block_time": 1781449330,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action10w936mpzlshl3udp2f4gqfadnhczthy6wqfms8h4r7uxn0xp4azqq6g46e8",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7b8b1d6c22fc2ff8f1a1526a8027ad9df025dc9a7013b81ef51fb869bcc1af44",
+            "vote": "No",
+            "vote_tx_hash": "8045c79dd4cd545991040689b940040c90911887e96d23c0f51d6c768fb6128d"
+        }
+    ],
+    "drep1ygg7ul4yxxvdwfj7der264k2lag4h96d62h5luwz2c4y7sctvw67v": [
+        {
+            "block_time": 1732620353,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1svuwl6qsdkmqsgh7l96tny2vh5qjypfr9vuaz5wpwg8vxmn3l60sqtzu73u",
+            "proposal_index": 0,
+            "proposal_tx_hash": "8338efe8106db60822fef974b9914cbd012205232b39d151c1720ec36e71fe9f",
+            "vote": "Yes",
+            "vote_tx_hash": "d6ec956c9a706d3696a2df1f8df4d5494d51f4f4bf7c3eb4c60d56743593680e"
+        }
+    ],
+    "drep1ygnw2fxf00pqwd3dmnluhf3vd06lrmmvxpmx8chjup4x3pcafs46n": [
+        {
+            "block_time": 1784662863,
+            "meta_hash": "c50a03f752e2660020d926c3b24654faffd547bc1956338168783edd03640c35",
+            "meta_url": "https://preprod.dreptalk.com/vote-rationale/c50a03f752e2660020d926c3b24654faffd547bc1956338168783edd03640c35.json",
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "Yes",
+            "vote_tx_hash": "3364758d7057713f1c586bfea46578d31d394bc7a3d0fd2c2b5648dcfb2ea8b9"
+        }
+    ],
+    "drep1ygv58mrmlrye9vu0tussycey3vm2rva2c5djx0e66r3wzuqq5w275": [
+        {
+            "block_time": 1756486453,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1u8gafgcskj6sqvgwqse7adc0h9438m535lg97czcvxntscvw7f5sqgf2n7j",
+            "proposal_index": 0,
+            "proposal_tx_hash": "e1d1d4a310b4b500310e0433eeb70fb96b13ee91a7d05f605861a6b8618ef269",
+            "vote": "Yes",
+            "vote_tx_hash": "94638617cab38923acadb156d8f0f726b05fcce66b406cb097d5947791858ac3"
+        }
+    ],
+    "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm": [
+        {
+            "block_time": 1785352911,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1ueq7eqptkyy7z58fyrrvqwr7shewl5cfgjjx6zxssgftme2q76wqqvxkqlu",
+            "proposal_index": 0,
+            "proposal_tx_hash": "e641ec802bb109e150e920c6c0387e85f2efd30944a46d08d08212bde540f69c",
+            "vote": "Yes",
+            "vote_tx_hash": "a3a6160aecb3ff02e802956c49fff85d6d9d2395735975d5b403aed69a140fe7"
+        },
+        {
+            "block_time": 1784913245,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1h0arqw4rt5verxf5ld07x6chgcy6pswlk3a9gmxdd6jc4f6ju24qqj0haqp",
+            "proposal_index": 0,
+            "proposal_tx_hash": "bbfa303aa35d19919934fb5fe36b174609a0c1dfb47a546ccd6ea58aa752e2aa",
+            "vote": "Yes",
+            "vote_tx_hash": "6a4137a3456a0f308a3aff016d23a37fc41259d7d5b22d5e38a2b778f406b343"
+        },
+        {
+            "block_time": 1781478176,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1f2j9lepxdsg5yqtn8w7xgytyknf743gssxh7acfdmjfzxk6c73wqqmpu0a4",
+            "proposal_index": 0,
+            "proposal_tx_hash": "4aa45fe4266c114201733bbc641164b4d3eac51081afeee12ddc92235b58f45c",
+            "vote": "Yes",
+            "vote_tx_hash": "d61507b430d4bc8563ede5d27a90ee0d740b806f218afab94ca692fcd6e7e314"
+        },
+        {
+            "block_time": 1780111647,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action108a5htqnmlp89ffn2ucf7u9u33s0r9gpx7eytpdc2q28y50ly42qqf9jcen",
+            "proposal_index": 0,
+            "proposal_tx_hash": "79fb4bac13dfc272a53357309f70bc8c60f1950137b24585b850147251ff2554",
+            "vote": "Yes",
+            "vote_tx_hash": "8856adfbb0ed01b9c110cf6bb812c1516c8de66e7c33cb81ec84598edefdc5c8"
+        },
+        {
+            "block_time": 1778287367,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action18cd564yw8jcsj392ggtge8swd3pkxm5k6rdhlf3sv308z0rjy3gsqdgxfqp",
+            "proposal_index": 0,
+            "proposal_tx_hash": "3e1b4d548e3cb10944aa42168c9e0e6c43636e96d0db7fa630645e713c722451",
+            "vote": "Yes",
+            "vote_tx_hash": "51e16c042413bbde068324d4839b71b8970523a3337bd90ac253fb7f23fb49ba"
+        },
+        {
+            "block_time": 1778018953,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1prpdhq24pnrwe7vp5xpyxpsh6hs24x6mkdnq7t7s2ual86utz2vsqrhrycn",
+            "proposal_index": 0,
+            "proposal_tx_hash": "08c2db81550cc6ecf981a182430617d5e0aa9b5bb3660f2fd0573bf3eb8b1299",
+            "vote": "Abstain",
+            "vote_tx_hash": "0902b443afda8f1345aa0d48a5dec3d0e1adf7c3ac5fdcbe9d7865f6d8a633a6"
+        },
+        {
+            "block_time": 1762463847,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1zk80dvjfklp7cgvuvtg37zuwwe4r2erj6q3m67c7wdh0akth70rqq44samn",
+            "proposal_index": 0,
+            "proposal_tx_hash": "158ef6b249b7c3ec219c62d11f0b8e766a356472d023bd7b1e736efed977f3c6",
+            "vote": "Yes",
+            "vote_tx_hash": "b08e2fd1d4130f22c53145fe6abfb98c279b0463a4f0348cfb957ae48fc8c447"
+        },
+        {
+            "block_time": 1753481136,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1f9tcawsvss8gytsx3zcfzyhnlxa2adga6r35d3dyl8gr6t9ur9fsq2kuh0j",
+            "proposal_index": 0,
+            "proposal_tx_hash": "49578eba0c840e822e0688b09112f3f9baaeb51dd0e346c5a4f9d03d2cbc1953",
+            "vote": "Yes",
+            "vote_tx_hash": "992219ea40ddfb03caf35de273eabe313308a9a262160553c9588501bbdb3ce2"
+        },
+        {
+            "block_time": 1753479930,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1d79hpfyzuy9wgpmawpessfh0ylmjkz8pfqgc55t3cuh8lc7x64gsq8nmy5g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "6f8b70a482e10ae4077d70730826ef27f72b08e148118a5171c72e7fe3c6d551",
+            "vote": "Yes",
+            "vote_tx_hash": "1840117fa94d28d744dd9a382b21369608d77cfc038f33231516ac45bb11c3f2"
+        },
+        {
+            "block_time": 1753403655,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1d79hpfyzuy9wgpmawpessfh0ylmjkz8pfqgc55t3cuh8lc7x64gsq8nmy5g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "6f8b70a482e10ae4077d70730826ef27f72b08e148118a5171c72e7fe3c6d551",
+            "vote": "Yes",
+            "vote_tx_hash": "1e689c1f45d95e42e24b96cfbac0351310f82028e64ca86912fe7bdfd4ec1504"
+        },
+        {
+            "block_time": 1752470683,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1hfvgh6dxe8zllwna6stxeu544cyzhefs9pchqpw34m8tvf0x23ssq6ewfg2",
+            "proposal_index": 0,
+            "proposal_tx_hash": "ba588be9a6c9c5ffba7dd4166cf295ae082be53028717005d1aeceb625e65461",
+            "vote": "Yes",
+            "vote_tx_hash": "48a088189dfb1ff0312a29828b48185c46404703c0c0523c3bf0cbb1f794b7db"
+        }
+    ],
+    "drep1yt73a8a38mu6f0wsclj84mctlsr9ajnvftymvyuxrn8jpjcsxfsf0": [
+        {
+            "block_time": 1783689546,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gmkxlnrzlv65gw9uyktcqau86ffcuc46qg0esdty3nedupjxxfpqqdcsyjk",
+            "proposal_index": 0,
+            "proposal_tx_hash": "46ec6fcc62fb354438bc2597807787d2538e62ba021f9835648cf2de06463242",
+            "vote": "Abstain",
+            "vote_tx_hash": "e305d17571915899f373640d27f8db912ef8ec2095bea6638cdb199eae1c1539"
+        },
+        {
+            "block_time": 1783689546,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1e9d2gwmy6uqvjsf9ga49nzdrvt5kvgjm54x73046m5v0ykst99lsqx2nmuu",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c95aa43b64d700c94125476a5989a362e966225ba54de8bebadd18f25a0b297f",
+            "vote": "Yes",
+            "vote_tx_hash": "e305d17571915899f373640d27f8db912ef8ec2095bea6638cdb199eae1c1539"
+        },
+        {
+            "block_time": 1783689546,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1cfhvkpcvkhaht9pftfd5cjmvn2spgkc6384kvuw3g2a0me37kzkqqvqkvzh",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c26ecb070cb5fb7594295a5b4c4b6c9aa0145b1a89eb6671d142bafde63eb0ac",
+            "vote": "Yes",
+            "vote_tx_hash": "e305d17571915899f373640d27f8db912ef8ec2095bea6638cdb199eae1c1539"
+        },
+        {
+            "block_time": 1783689546,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "No",
+            "vote_tx_hash": "e305d17571915899f373640d27f8db912ef8ec2095bea6638cdb199eae1c1539"
+        },
+        {
+            "block_time": 1783689546,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "Yes",
+            "vote_tx_hash": "e305d17571915899f373640d27f8db912ef8ec2095bea6638cdb199eae1c1539"
+        },
+        {
+            "block_time": 1783688969,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "Abstain",
+            "vote_tx_hash": "6b8c32a9dfb407665fa428714be413d79aa2d93c553d9301c42d61f82591a3e8"
+        },
+        {
+            "block_time": 1783688969,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1e9d2gwmy6uqvjsf9ga49nzdrvt5kvgjm54x73046m5v0ykst99lsqx2nmuu",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c95aa43b64d700c94125476a5989a362e966225ba54de8bebadd18f25a0b297f",
+            "vote": "Yes",
+            "vote_tx_hash": "6b8c32a9dfb407665fa428714be413d79aa2d93c553d9301c42d61f82591a3e8"
+        },
+        {
+            "block_time": 1783688969,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "Yes",
+            "vote_tx_hash": "6b8c32a9dfb407665fa428714be413d79aa2d93c553d9301c42d61f82591a3e8"
+        },
+        {
+            "block_time": 1783688969,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gmkxlnrzlv65gw9uyktcqau86ffcuc46qg0esdty3nedupjxxfpqqdcsyjk",
+            "proposal_index": 0,
+            "proposal_tx_hash": "46ec6fcc62fb354438bc2597807787d2538e62ba021f9835648cf2de06463242",
+            "vote": "No",
+            "vote_tx_hash": "6b8c32a9dfb407665fa428714be413d79aa2d93c553d9301c42d61f82591a3e8"
+        },
+        {
+            "block_time": 1783683570,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "No",
+            "vote_tx_hash": "de39656fd7e5433788fb325d012e07de7a6728e0b1419c84ae53704cfaa44c66"
+        },
+        {
+            "block_time": 1783683303,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "Abstain",
+            "vote_tx_hash": "76b94b24be6c0666dbf3140dc89760183934831db19c80cf4aa75deac4c23212"
+        },
+        {
+            "block_time": 1783683303,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "No",
+            "vote_tx_hash": "76b94b24be6c0666dbf3140dc89760183934831db19c80cf4aa75deac4c23212"
+        },
+        {
+            "block_time": 1783683303,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gmkxlnrzlv65gw9uyktcqau86ffcuc46qg0esdty3nedupjxxfpqqdcsyjk",
+            "proposal_index": 0,
+            "proposal_tx_hash": "46ec6fcc62fb354438bc2597807787d2538e62ba021f9835648cf2de06463242",
+            "vote": "Yes",
+            "vote_tx_hash": "76b94b24be6c0666dbf3140dc89760183934831db19c80cf4aa75deac4c23212"
+        },
+        {
+            "block_time": 1783683202,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gmkxlnrzlv65gw9uyktcqau86ffcuc46qg0esdty3nedupjxxfpqqdcsyjk",
+            "proposal_index": 0,
+            "proposal_tx_hash": "46ec6fcc62fb354438bc2597807787d2538e62ba021f9835648cf2de06463242",
+            "vote": "Yes",
+            "vote_tx_hash": "9673becdf1110ffd068fe163853f30598d66282cd4c3aec96d024f4945f13e42"
+        },
+        {
+            "block_time": 1783683202,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "Abstain",
+            "vote_tx_hash": "9673becdf1110ffd068fe163853f30598d66282cd4c3aec96d024f4945f13e42"
+        },
+        {
+            "block_time": 1783683202,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "No",
+            "vote_tx_hash": "9673becdf1110ffd068fe163853f30598d66282cd4c3aec96d024f4945f13e42"
+        },
+        {
+            "block_time": 1783628651,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "No",
+            "vote_tx_hash": "02f1c71770d29e20873ee4f2edac199b4c1d6a1275e38636a33d49fb140e1b93"
+        },
+        {
+            "block_time": 1783628651,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "Abstain",
+            "vote_tx_hash": "02f1c71770d29e20873ee4f2edac199b4c1d6a1275e38636a33d49fb140e1b93"
+        },
+        {
+            "block_time": 1783628651,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gmkxlnrzlv65gw9uyktcqau86ffcuc46qg0esdty3nedupjxxfpqqdcsyjk",
+            "proposal_index": 0,
+            "proposal_tx_hash": "46ec6fcc62fb354438bc2597807787d2538e62ba021f9835648cf2de06463242",
+            "vote": "Yes",
+            "vote_tx_hash": "02f1c71770d29e20873ee4f2edac199b4c1d6a1275e38636a33d49fb140e1b93"
+        }
+    ],
+    "drep1yt9vx24sfcxux9j5dzc93y4crtptpjzhh559d4st8pdxmzs30dr3m": [
+        {
+            "block_time": 1752837623,
+            "meta_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+            "meta_url": "https://pycardano.drepvote.example.com/rationale",
+            "proposal_id": "gov_action1fsrad7d448n4hxheytn996dtn5zht5uwxl3fpdc2385tpkj09rgqq3zxnda",
+            "proposal_index": 0,
+            "proposal_tx_hash": "4c07d6f9b5a9e75b9af922e652e9ab9d0575d38e37e290b70a89e8b0da4f28d0",
+            "vote": "Yes",
+            "vote_tx_hash": "2bb4a3b328f0981cd8102064e426699ad6bcc6756f25d1f4335551f2b88df4ec"
+        },
+        {
+            "block_time": 1752837107,
+            "meta_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+            "meta_url": "https://pycardano.drepvote.example.com/rationale",
+            "proposal_id": "gov_action1c9kneej7qhgmgwwr9sek0z2ktugdt8da7gr59tpxk0yum3u3g60sq23wavm",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c16d3ce65e05d1b439c32c336789565f10d59dbdf20742ac26b3c9cdc791469f",
+            "vote": "Yes",
+            "vote_tx_hash": "2c3bd4c4540c8e9dbf858d58f02ef82ca8f9097d9ad62b1e4ac0f7aaf1e5068c"
+        },
+        {
+            "block_time": 1752836098,
+            "meta_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+            "meta_url": "https://pycardano.drepvote.example.com/rationale",
+            "proposal_id": "gov_action1hfvgh6dxe8zllwna6stxeu544cyzhefs9pchqpw34m8tvf0x23ssq6ewfg2",
+            "proposal_index": 0,
+            "proposal_tx_hash": "ba588be9a6c9c5ffba7dd4166cf295ae082be53028717005d1aeceb625e65461",
+            "vote": "Yes",
+            "vote_tx_hash": "f8b1c04779ecd933d4c3e3377b3bb02e3a691a777dfba4b7fa1ba7e3275136ac"
+        }
+    ],
+    "drep1ytchrruc9hdtlqsyqsga6n7nufkl4l37e5mjpwefxlh7c0q2w53s7": [
+        {
+            "block_time": 1787194888,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action10z564l3wfc2g9rh63n2jqtlvpryed2dqp374dvchk6544qz3pkesq7cqrfs",
+            "proposal_index": 0,
+            "proposal_tx_hash": "78a9aafe2e4e14828efa8cd5202fec08c996a9a00c7d56b317b6a95a80510db3",
+            "vote": "Yes",
+            "vote_tx_hash": "678660f6788c4b522f87c61f2aa513cc5caaa7a8b64266f2dec7447ced1a2e03"
+        },
+        {
+            "block_time": 1784266788,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "Yes",
+            "vote_tx_hash": "94e25504293c34dc7af5dc472ef0e869d607aba8b4ade3c8db52856be8ee771f"
+        },
+        {
+            "block_time": 1784020593,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1cfhvkpcvkhaht9pftfd5cjmvn2spgkc6384kvuw3g2a0me37kzkqqvqkvzh",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c26ecb070cb5fb7594295a5b4c4b6c9aa0145b1a89eb6671d142bafde63eb0ac",
+            "vote": "No",
+            "vote_tx_hash": "715e62c6abf73d9d3a72872ef7f28302e2e4318e4e61d1137f9229db3e076198"
+        },
+        {
+            "block_time": 1784015256,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1e9d2gwmy6uqvjsf9ga49nzdrvt5kvgjm54x73046m5v0ykst99lsqx2nmuu",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c95aa43b64d700c94125476a5989a362e966225ba54de8bebadd18f25a0b297f",
+            "vote": "No",
+            "vote_tx_hash": "4ced20e785c8e9bd8c32575e1674627438fedc0ee0cbd6d9346d77cf21a76f21"
+        },
+        {
+            "block_time": 1784001834,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "Yes",
+            "vote_tx_hash": "96240666f44878d9df2d6633653317c222a4828a0c9c627d86f09ca4480bdc4c"
+        }
+    ],
+    "drep1ytenukatzrvc2a8kyalzj67us4ms568f6jy8p8qu3luw07gjdmlar": [
+        {
+            "block_time": 1750779697,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1fsrad7d448n4hxheytn996dtn5zht5uwxl3fpdc2385tpkj09rgqq3zxnda",
+            "proposal_index": 0,
+            "proposal_tx_hash": "4c07d6f9b5a9e75b9af922e652e9ab9d0575d38e37e290b70a89e8b0da4f28d0",
+            "vote": "Abstain",
+            "vote_tx_hash": "b9ae87102d078e37181d3c17f8c5a12ac82403dbc85ad35d355ae8e8baf5fce8"
+        }
+    ],
+    "drep1ytgmll84qz9qt7gs8smfqn66drfk9t4d0dpen3dpeepqu5q2gp8d4": [
+        {
+            "block_time": 1732150106,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1svuwl6qsdkmqsgh7l96tny2vh5qjypfr9vuaz5wpwg8vxmn3l60sqtzu73u",
+            "proposal_index": 0,
+            "proposal_tx_hash": "8338efe8106db60822fef974b9914cbd012205232b39d151c1720ec36e71fe9f",
+            "vote": "Yes",
+            "vote_tx_hash": "af929a4dbaa0c50a7df5fe1549b26c30a35f4aba849060856af515da49f58415"
+        }
+    ],
+    "drep1ytk3r5ddfk2cq66ygdtkwf9yck6hhy7uzhk2tgl5d53448skyutw7": [
+        {
+            "block_time": 1728304828,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action14lefp8upwhhq92xph7t075txshf9huxxh9d2ey05ml2n5hqgvlxqqp92kfl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "aff2909f8175ee02a8c1bf96ff516685d25bf0c6b95aac91f4dfd53a5c0867cc",
+            "vote": "Yes",
+            "vote_tx_hash": "278d887adc913416e6851106e7ce6e89f29aa7531b93d11e1986550e7a128a2f"
+        }
+    ],
+    "drep1ytmynjuzanlvaxqx5w75y89e9yqpz6whyg6r36ghantdu6shy25n9": [
+        {
+            "block_time": 1787868545,
+            "meta_hash": "059cae30e9402fe83be1de168fde08d166b1382f0bebd2963b496fb26db87bda",
+            "meta_url": "https://preprod.dreptalk.com/vote-rationale/059cae30e9402fe83be1de168fde08d166b1382f0bebd2963b496fb26db87bda.json",
+            "proposal_id": "gov_action10z564l3wfc2g9rh63n2jqtlvpryed2dqp374dvchk6544qz3pkesq7cqrfs",
+            "proposal_index": 0,
+            "proposal_tx_hash": "78a9aafe2e4e14828efa8cd5202fec08c996a9a00c7d56b317b6a95a80510db3",
+            "vote": "Abstain",
+            "vote_tx_hash": "a609a2494a19d72edeaaea12fbb5c50b8e12f387339056e2f1d50a8e7293dcb6"
+        }
+    ],
+    "drep1ytrurplgfmy35xjyufps9v27ucmq9tyw560x6jkfqqu8n8sj6sm7m": [
+        {
+            "block_time": 1784661595,
+            "meta_hash": "e9ecdaabe5f1e1f3502fcd53cfe9063a3239792445e09f211b34dc9f5474b4f7",
+            "meta_url": "https://preprod.dreptalk.com/vote-rationale/e9ecdaabe5f1e1f3502fcd53cfe9063a3239792445e09f211b34dc9f5474b4f7.json",
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "Abstain",
+            "vote_tx_hash": "62c15a700cfac3b05680ccbf5f836c40173e3d43b22abb962cabdcd7f6c9a3d2"
+        }
+    ],
+    "drep1ytvk344upvkmxpnucggm4usffgvgf4ytrrudpnu5d2685cc3xkedh": [
+        {
+            "block_time": 1733061035,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1xukk3ra2wls5v7vttqdnytq09xq6jq3hv3ek4hjaztswfeuk47xqqg4644z",
+            "proposal_index": 0,
+            "proposal_tx_hash": "372d688faa77e146798b581b322c0f2981a9023764736ade5d12e0e4e796af8c",
+            "vote": "Yes",
+            "vote_tx_hash": "382b28b2af90b19a26c2140b7342d09d607389ab912846750b18b3d4faf1f460"
+        }
+    ],
+    "drep1yv4kgvp4t8l4u6rk2069fsktv8v9gv0pf0ehr9wj5a8ukdshdl8u4": [
+        {
+            "block_time": 1789409961,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action197dpq8xa49jntu8xjlw84wuzwndr5zyt50d8t9wn6x6m7j7kzg8sqyj282f",
+            "proposal_index": 0,
+            "proposal_tx_hash": "2f9a101cdda96535f0e697dc7abb8274da3a088ba3da7595d3d1b5bf4bd6120f",
+            "vote": "Abstain",
+            "vote_tx_hash": "c8738b0bab541441be3568fbc66d4bf48e2aa60da90958fbaec81f6ed3906d6b"
+        },
+        {
+            "block_time": 1789405481,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action197dpq8xa49jntu8xjlw84wuzwndr5zyt50d8t9wn6x6m7j7kzg8sqyj282f",
+            "proposal_index": 0,
+            "proposal_tx_hash": "2f9a101cdda96535f0e697dc7abb8274da3a088ba3da7595d3d1b5bf4bd6120f",
+            "vote": "Abstain",
+            "vote_tx_hash": "40a6bb9118b623802021034bb761bc8ce888bc2a3271095c640aae537bef84ce"
+        },
+        {
+            "block_time": 1789400634,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action197dpq8xa49jntu8xjlw84wuzwndr5zyt50d8t9wn6x6m7j7kzg8sqyj282f",
+            "proposal_index": 0,
+            "proposal_tx_hash": "2f9a101cdda96535f0e697dc7abb8274da3a088ba3da7595d3d1b5bf4bd6120f",
+            "vote": "Abstain",
+            "vote_tx_hash": "563231ffa2bc5a944ba43f2d2ea135b13bd3f8e189d2b9df00c761864ced915e"
+        },
+        {
+            "block_time": 1789391751,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action197dpq8xa49jntu8xjlw84wuzwndr5zyt50d8t9wn6x6m7j7kzg8sqyj282f",
+            "proposal_index": 0,
+            "proposal_tx_hash": "2f9a101cdda96535f0e697dc7abb8274da3a088ba3da7595d3d1b5bf4bd6120f",
+            "vote": "Abstain",
+            "vote_tx_hash": "bac08ebcf3d1935b716e1933e22b1bf55a386c78ce97f4602a5e7413d356571a"
+        },
+        {
+            "block_time": 1789323098,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1vpttu4mg8ek4ns9jfl833zpjdl8esg8dma49jgdcuj6d7p8qv84sqwfzufe",
+            "proposal_index": 0,
+            "proposal_tx_hash": "6056be57683e6d59c0b24fcf1888326fcf9820eddf6a5921b8e4b4df04e061eb",
+            "vote": "Abstain",
+            "vote_tx_hash": "0fd0002847d6eabbdab68dc4678475a58473be8eb1bba26302512956e1c83956"
+        },
+        {
+            "block_time": 1789302680,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1vpttu4mg8ek4ns9jfl833zpjdl8esg8dma49jgdcuj6d7p8qv84sqwfzufe",
+            "proposal_index": 0,
+            "proposal_tx_hash": "6056be57683e6d59c0b24fcf1888326fcf9820eddf6a5921b8e4b4df04e061eb",
+            "vote": "Abstain",
+            "vote_tx_hash": "a2a7ae5ed610ed896665d421407dcd1951e397e8ea9189a5ba8ee6b463281604"
+        },
+        {
+            "block_time": 1789231401,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1vpttu4mg8ek4ns9jfl833zpjdl8esg8dma49jgdcuj6d7p8qv84sqwfzufe",
+            "proposal_index": 0,
+            "proposal_tx_hash": "6056be57683e6d59c0b24fcf1888326fcf9820eddf6a5921b8e4b4df04e061eb",
+            "vote": "Abstain",
+            "vote_tx_hash": "ed5e94ac6c19b893ab0f06bb14f3659de70f38ee67a9b75ec336df18ecc6e244"
+        },
+        {
+            "block_time": 1789157909,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1vpttu4mg8ek4ns9jfl833zpjdl8esg8dma49jgdcuj6d7p8qv84sqwfzufe",
+            "proposal_index": 0,
+            "proposal_tx_hash": "6056be57683e6d59c0b24fcf1888326fcf9820eddf6a5921b8e4b4df04e061eb",
+            "vote": "Abstain",
+            "vote_tx_hash": "fc5460ef93c202d657f610daf87d04c8f852c2c2f2450a0bc726dcd800a5c2cc"
+        },
+        {
+            "block_time": 1789139660,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1vpttu4mg8ek4ns9jfl833zpjdl8esg8dma49jgdcuj6d7p8qv84sqwfzufe",
+            "proposal_index": 0,
+            "proposal_tx_hash": "6056be57683e6d59c0b24fcf1888326fcf9820eddf6a5921b8e4b4df04e061eb",
+            "vote": "Abstain",
+            "vote_tx_hash": "3f0ceef87ca2762bdc2fa7778c2f5d42fe1aebcd3cab25dbb430e54b5a1efd66"
+        },
+        {
+            "block_time": 1789130935,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1xa0ha47m8wf75aw58mz5fs2gaudx0uh2huzhz040pgkmtuj8zfmqqy4th9a",
+            "proposal_index": 0,
+            "proposal_tx_hash": "375f7ed7db3b93ea75d43ec544c148ef1a67f2eabf05713eaf0a2db5f2471276",
+            "vote": "Abstain",
+            "vote_tx_hash": "b788a3f4d569af296127d10de9a73128e3721d745aed8833384ace6946f91174"
+        },
+        {
+            "block_time": 1781206244,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action174sxlcjhny76t2jsxg2zxpsz048hdc8pfwa9vaq474darvpt75aqqs0mnw5",
+            "proposal_index": 0,
+            "proposal_tx_hash": "f5606fe257993da5aa5032142306027d4f76e0e14bba567415f55bd1b02bf53a",
+            "vote": "Abstain",
+            "vote_tx_hash": "05e6c6f631684ba4da286b514bd424ff9fe4e1682b08dbeabe2b741eb2bf8789"
+        }
+    ],
+    "drep1yvsah2upqmwdtea8c37pac2aw3lv6z7qggcu76243p72msqjnp259": [
+        {
+            "block_time": 1782463207,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "Abstain",
+            "vote_tx_hash": "988586ffe839f652cedeeb78d3020babf134f1028acad1b5ccdfd76cac079d00"
+        },
+        {
+            "block_time": 1782372898,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1ze5w8nf63wuta0098jcea60audpxyqp2mtrrfs97t7yrkj7prqpsqehq7c6",
+            "proposal_index": 0,
+            "proposal_tx_hash": "1668e3cd3a8bb8bebde53cb19ee9fde34262002adac634c0be5f883b4bc11803",
+            "vote": "Abstain",
+            "vote_tx_hash": "d20239fd73cc7ce5893b431471ce466dde961673574640fdd5acf8b5f20bc805"
+        },
+        {
+            "block_time": 1782368285,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1ze5w8nf63wuta0098jcea60audpxyqp2mtrrfs97t7yrkj7prqpsqehq7c6",
+            "proposal_index": 0,
+            "proposal_tx_hash": "1668e3cd3a8bb8bebde53cb19ee9fde34262002adac634c0be5f883b4bc11803",
+            "vote": "Abstain",
+            "vote_tx_hash": "5aa41495d7d95d7fd5a03c1cf372145653cde3d476cdec25b290d8d62e934634"
+        }
+    ],
+    "drep1yvvxuvh64q9zdqgrjt76d42eclk5wgdxtnsun4808cwg0dquhj65s": [
+        {
+            "block_time": 1788186739,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1w7ruxrza8q87jf6rn5r8htahfvj5taugmjxj30zqqvu5zutzq9gsq34qrtc",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7787c30c5d380fe927439d067bafb74b2545f788dc8d28bc4003394171620151",
+            "vote": "Yes",
+            "vote_tx_hash": "46a468c6706e1b8fb2b2a2e2fefd9521b3b22893f996133a2781db409a2e55ef"
+        }
+    ],
+    "drep1yvxzu7n5jdeytfa30w7cvtux6f77gc5z76sqc0l0hzxejhcqlgn4l": [
+        {
+            "block_time": 1784191964,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gmkxlnrzlv65gw9uyktcqau86ffcuc46qg0esdty3nedupjxxfpqqdcsyjk",
+            "proposal_index": 0,
+            "proposal_tx_hash": "46ec6fcc62fb354438bc2597807787d2538e62ba021f9835648cf2de06463242",
+            "vote": "Abstain",
+            "vote_tx_hash": "ee874b084119f994222f117f6516196577ee656abf66ca4a491407f6ddeaa780"
+        },
+        {
+            "block_time": 1784191964,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "No",
+            "vote_tx_hash": "ee874b084119f994222f117f6516196577ee656abf66ca4a491407f6ddeaa780"
+        },
+        {
+            "block_time": 1784191964,
+            "meta_hash": "efc7db02871091ad469db9049b3837cad638140b06d8b9af48eaf88166569d14",
+            "meta_url": "ipfs://QmeNcWAE8WQaBfiywhke8QFgvKgN7riJMPEN3ya7k1jW9J",
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "Yes",
+            "vote_tx_hash": "ee874b084119f994222f117f6516196577ee656abf66ca4a491407f6ddeaa780"
+        }
+    ],
+    "drep1yw7n46v3kk40ejh7tjnswk9ax65m97rj74lk6wsllg8twac49pyty": [
+        {
+            "block_time": 1789409885,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action197dpq8xa49jntu8xjlw84wuzwndr5zyt50d8t9wn6x6m7j7kzg8sqyj282f",
+            "proposal_index": 0,
+            "proposal_tx_hash": "2f9a101cdda96535f0e697dc7abb8274da3a088ba3da7595d3d1b5bf4bd6120f",
+            "vote": "Abstain",
+            "vote_tx_hash": "c7d01907d62c012a256e509cd1e9d6b515e7204579ce88582e619d5853b68639"
+        },
+        {
+            "block_time": 1789405338,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action197dpq8xa49jntu8xjlw84wuzwndr5zyt50d8t9wn6x6m7j7kzg8sqyj282f",
+            "proposal_index": 0,
+            "proposal_tx_hash": "2f9a101cdda96535f0e697dc7abb8274da3a088ba3da7595d3d1b5bf4bd6120f",
+            "vote": "Abstain",
+            "vote_tx_hash": "27a7b88190dd249e827d0c1503062221b22a9fd11f453bcf2cd17ca71bbc141e"
+        },
+        {
+            "block_time": 1789400569,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action197dpq8xa49jntu8xjlw84wuzwndr5zyt50d8t9wn6x6m7j7kzg8sqyj282f",
+            "proposal_index": 0,
+            "proposal_tx_hash": "2f9a101cdda96535f0e697dc7abb8274da3a088ba3da7595d3d1b5bf4bd6120f",
+            "vote": "Abstain",
+            "vote_tx_hash": "d9e0e8a4defb8b65346bf13ae0fd2ffdf36d3ab32f3cefae19782fa3a543d487"
+        },
+        {
+            "block_time": 1789391671,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action197dpq8xa49jntu8xjlw84wuzwndr5zyt50d8t9wn6x6m7j7kzg8sqyj282f",
+            "proposal_index": 0,
+            "proposal_tx_hash": "2f9a101cdda96535f0e697dc7abb8274da3a088ba3da7595d3d1b5bf4bd6120f",
+            "vote": "Abstain",
+            "vote_tx_hash": "fa683823e3e69ff19deecd4e629d849f1c90536a17903c8da68e7887a4eaf0b0"
+        },
+        {
+            "block_time": 1789323047,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1vpttu4mg8ek4ns9jfl833zpjdl8esg8dma49jgdcuj6d7p8qv84sqwfzufe",
+            "proposal_index": 0,
+            "proposal_tx_hash": "6056be57683e6d59c0b24fcf1888326fcf9820eddf6a5921b8e4b4df04e061eb",
+            "vote": "Abstain",
+            "vote_tx_hash": "cddc690c1cccbe8fdf211b2719db2fb03acd7714e81f06abc02ec2dee499fe78"
+        },
+        {
+            "block_time": 1789302610,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1vpttu4mg8ek4ns9jfl833zpjdl8esg8dma49jgdcuj6d7p8qv84sqwfzufe",
+            "proposal_index": 0,
+            "proposal_tx_hash": "6056be57683e6d59c0b24fcf1888326fcf9820eddf6a5921b8e4b4df04e061eb",
+            "vote": "Abstain",
+            "vote_tx_hash": "e3acc6838c94442c9f95c3f5a9d89c258209a94472550c55c30d22f3ace88634"
+        },
+        {
+            "block_time": 1789231311,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1vpttu4mg8ek4ns9jfl833zpjdl8esg8dma49jgdcuj6d7p8qv84sqwfzufe",
+            "proposal_index": 0,
+            "proposal_tx_hash": "6056be57683e6d59c0b24fcf1888326fcf9820eddf6a5921b8e4b4df04e061eb",
+            "vote": "Abstain",
+            "vote_tx_hash": "b2dd978e529f24b7ba86e9aeef8a556fdb0924d5d651fa81024072b4b6dbdab9"
+        },
+        {
+            "block_time": 1789157852,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1vpttu4mg8ek4ns9jfl833zpjdl8esg8dma49jgdcuj6d7p8qv84sqwfzufe",
+            "proposal_index": 0,
+            "proposal_tx_hash": "6056be57683e6d59c0b24fcf1888326fcf9820eddf6a5921b8e4b4df04e061eb",
+            "vote": "Abstain",
+            "vote_tx_hash": "f77fee7fc36ae7f0b84ccae7a97f438f07e61ece44f58a9482e905ee5aa0496d"
+        },
+        {
+            "block_time": 1789139617,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1vpttu4mg8ek4ns9jfl833zpjdl8esg8dma49jgdcuj6d7p8qv84sqwfzufe",
+            "proposal_index": 0,
+            "proposal_tx_hash": "6056be57683e6d59c0b24fcf1888326fcf9820eddf6a5921b8e4b4df04e061eb",
+            "vote": "Abstain",
+            "vote_tx_hash": "f0e81dd2437e08b0166c6704114aa2cd690271278efff5c0e2dc7b37220b92a7"
+        },
+        {
+            "block_time": 1789130882,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1xa0ha47m8wf75aw58mz5fs2gaudx0uh2huzhz040pgkmtuj8zfmqqy4th9a",
+            "proposal_index": 0,
+            "proposal_tx_hash": "375f7ed7db3b93ea75d43ec544c148ef1a67f2eabf05713eaf0a2db5f2471276",
+            "vote": "Abstain",
+            "vote_tx_hash": "3e9274845ee42f020a1dff9c7a14b1d702cc12f75f607bc756b893141780acfa"
+        },
+        {
+            "block_time": 1781206192,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action174sxlcjhny76t2jsxg2zxpsz048hdc8pfwa9vaq474darvpt75aqqs0mnw5",
+            "proposal_index": 0,
+            "proposal_tx_hash": "f5606fe257993da5aa5032142306027d4f76e0e14bba567415f55bd1b02bf53a",
+            "vote": "Abstain",
+            "vote_tx_hash": "beb72c42252fbf1513888af27dec406a7088a2ee84ad798a114b7d904cd6c93f"
+        }
+    ],
+    "drep1yws20r5a032u44dm67fesv94eyhydz9cs4vfplwxjgjeaxsj6r5zy": [
+        {
+            "block_time": 1784110509,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1gmkxlnrzlv65gw9uyktcqau86ffcuc46qg0esdty3nedupjxxfpqqdcsyjk",
+            "proposal_index": 0,
+            "proposal_tx_hash": "46ec6fcc62fb354438bc2597807787d2538e62ba021f9835648cf2de06463242",
+            "vote": "Yes",
+            "vote_tx_hash": "bd3cefc483632cad157a78a42d3ce28a9769e9e54a8b47f366d0663ba92cdd58"
+        },
+        {
+            "block_time": 1784110509,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action103hksjjnwp3kqv8cxytmak3zud9re9ruu34qu3jcnl2pm74r57dsqsnq50g",
+            "proposal_index": 0,
+            "proposal_tx_hash": "7c6f684a5370636030f83117beda22e34a3c947ce46a0e46589fd41dfaa3a79b",
+            "vote": "No",
+            "vote_tx_hash": "bd3cefc483632cad157a78a42d3ce28a9769e9e54a8b47f366d0663ba92cdd58"
+        },
+        {
+            "block_time": 1784110509,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1jr0g04rwvdz3rrqpm30vwqd5mnjky8l68v0e3g74t6e5apw6wwfqq37hpcl",
+            "proposal_index": 0,
+            "proposal_tx_hash": "90de87d46e6345118c01dc5ec701b4dce5621ffa3b1f98a3d55eb34e85da7392",
+            "vote": "Yes",
+            "vote_tx_hash": "bd3cefc483632cad157a78a42d3ce28a9769e9e54a8b47f366d0663ba92cdd58"
+        },
+        {
+            "block_time": 1784110509,
+            "meta_hash": null,
+            "meta_url": null,
+            "proposal_id": "gov_action1e9d2gwmy6uqvjsf9ga49nzdrvt5kvgjm54x73046m5v0ykst99lsqx2nmuu",
+            "proposal_index": 0,
+            "proposal_tx_hash": "c95aa43b64d700c94125476a5989a362e966225ba54de8bebadd18f25a0b297f",
+            "vote": "No",
+            "vote_tx_hash": "bd3cefc483632cad157a78a42d3ce28a9769e9e54a8b47f366d0663ba92cdd58"
+        }
+    ]
+}

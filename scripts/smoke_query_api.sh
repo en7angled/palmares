@@ -223,6 +223,18 @@ assert "/drep/$D/power?from_epoch=320&to_epoch=320" '.items | map([.epoch, .love
 assert "/drep/$D/delegators?limit=50" '[.total, ([.items[] | select(.is_current)] | length)]' '[13,13]'
 # is_current=false widens to the history, so it can only be a superset
 assert "/drep/$D/delegators?limit=50&is_current=false" '.total >= 13' 'true'
+# The two reserved ledger options have a power series and NOTHING else — no registration, no
+# metadata, no votes — so this route answers for them while /drep/{id} still 404s. That asymmetry
+# is the data, not an oversight, and before it was fixed their power was reachable only as an
+# aggregate on /pages/dashboard: 46% of preprod's total, invisible per epoch. D-20's own numbers.
+assert '/drep/drep_always_abstain/power?from_epoch=315&to_epoch=319' \
+  '[(.items|length), (.items[-1]|[.epoch,.lovelace])]' '[5,[319,431863790957959]]'
+assert '/drep/drep_always_no_confidence/power?from_epoch=315&to_epoch=319' \
+  '[(.items|length), (.items[-1]|[.epoch,.lovelace])]' '[5,[319,325390800383]]'
+[ "$(code '/drep/drep_always_abstain')" = 404 ] \
+  && echo "  ok   /drep/{id} still 404s for a reserved option" \
+  || { echo "  FAIL a reserved option must not have a profile"; fail=1; }
+
 # a DRep with nothing settled serves nulls, not zeros (f1-metric 3.8). The list form is the gate
 # because it does not depend on which DRep happens to be newest.
 assert '/dreps?limit=200' '[.items[] | select(.eligible_actions == 0) | .participation_rate] | unique | . == [] or . == [null]' 'true'

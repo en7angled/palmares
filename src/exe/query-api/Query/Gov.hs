@@ -64,6 +64,7 @@ module Query.Gov
 
     -- * The DRep profile
     resolveDRepHex,
+    resolveReservedDRep,
     drepSummaryByIdQuery,
     drepMetricsQuery,
     listEpochPower,
@@ -671,6 +672,24 @@ drepProjection =
 -- once as a script credential, and in both cases one of the pair has no certificate at all. The
 -- registered row is the DRep; the phantom exists only because someone delegated using the
 -- CIP-105 string, which cannot say which kind it meant. See 'Core.drepIdHex'.
+-- | The @drep_hash@ row id of a reserved ledger option, by its @view@.
+--
+-- The two reserved options are @drep_hash@ rows with @raw IS NULL@, so they have a row id and a
+-- power series but no credential — which is why 'resolveDRepHex' cannot find them: it matches on
+-- @drep_raw@, and @palmares.drep@ deliberately holds no row for them at all (D-20 keeps them out
+-- of the registry and in the distribution).
+--
+-- FOUND BY THE RECONCILER: @\/drep\/drep_always_abstain\/power@ answered 404 while
+-- @\/pages\/dashboard@ published that same option's 431,863,790,957,959 lovelace — 46% of
+-- preprod's total voting power, reachable in aggregate and not as a series. R3 and R4 compare both
+-- options per epoch, so the gap was a row that could not be run.
+resolveReservedDRep :: Text -> SqlPersistT IO (Maybe Int64)
+resolveReservedDRep view_ = do
+  rows <- rawSql "SELECT dh.id FROM public.drep_hash dh WHERE dh.view = ? LIMIT 1" [toPersistValue view_]
+  pure $ case rows of
+    (Single i : _) -> Just i
+    [] -> Nothing
+
 resolveDRepHex :: Text -> SqlPersistT IO (Maybe Int64)
 resolveDRepHex hex = do
   rows <-
@@ -765,22 +784,28 @@ drepMetricsQuery dhid =
 -- Gaps are NOT filled. Measured on the fixture DRep: 141 points over epochs 174-320, with 203-208
 -- genuinely absent from @drep_distr@. Zero-filling them would turn an absence into a measurement,
 -- and a client can see the gap in the @epoch@ series.
-listEpochPower :: Int64 -> Maybe Int -> Maybe Int -> SortOrder -> Limit -> SqlPersistT IO [EpochPowerPoint]
-listEpochPower dhid fromEpoch toEpoch so lim =
+-- | One target's voting-power series.
+--
+-- @targetKind@ is a PARAMETER and not the literal @'drep'@ it used to be, because the two reserved
+-- ledger options carry @target_kind@ of their own in @palmares.drep_epoch_power@ (D-20) and a
+-- hard-coded @'drep'@ returned an empty series for them — which reads as "this target has no
+-- power" for the option holding 46% of preprod's.
+listEpochPower :: Text -> Int64 -> Maybe Int -> Maybe Int -> SortOrder -> Limit -> SqlPersistT IO [EpochPowerPoint]
+listEpochPower targetKind dhid fromEpoch toEpoch so lim =
   queryJson
     ( "SELECT row_to_json(x)::text FROM ( \
       \  SELECT p.epoch_no AS epoch, p.amount AS lovelace, dd.delegator_count \
       \  FROM palmares.drep_epoch_power p \
       \  LEFT JOIN palmares.drep_epoch_delegators dd \
       \    ON dd.drep_hash_id = p.drep_hash_id AND dd.epoch_no = p.epoch_no \
-      \  WHERE p.drep_hash_id = ? AND p.target_kind = 'drep' "
+      \  WHERE p.drep_hash_id = ? AND p.target_kind = ? "
         <> maybe "" (const " AND p.epoch_no >= ? ") fromEpoch
         <> maybe "" (const " AND p.epoch_no <= ? ") toEpoch
         <> " ORDER BY p.epoch_no "
         <> (case so of Asc -> "ASC"; Desc -> "DESC")
         <> " LIMIT ? ) x"
     )
-    ( [toPersistValue dhid]
+    ( [toPersistValue dhid, toPersistValue targetKind]
         <> maybe [] (\e -> [toPersistValue e]) fromEpoch
         <> maybe [] (\e -> [toPersistValue e]) toEpoch
         <> [toPersistValue lim]

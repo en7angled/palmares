@@ -257,6 +257,27 @@ SELECT
   -- COALESCE keeps this two-valued. `active_until IS NULL` already yields false, but on a
   -- database with no blocks yet the sync_state subquery is NULL and the comparison would be too;
   -- a boolean flag that can be NULL invites a three-valued bug in the API layer.
+  --
+  -- __AN UNKNOWN DEADLINE READS AS INACTIVE, AND THAT IS A KNOWN WRONG CLAIM FOR SOME DREPS.__
+  -- db-sync records active_until ONLY in drep_distr, and drep_distr holds a row only for a DRep
+  -- the ledger included in that epoch's distribution. MEASURED on preprod at epoch 320: 90 of the
+  -- 294 registered DReps have NEVER had a drep_distr row — not one, at any epoch — so we have no
+  -- deadline for them at all.
+  --
+  -- Koios, which computes the deadline itself, calls 21 of those 90 ACTIVE (expiry 320-340) and 69
+  -- INACTIVE (expiry 185-224). So `false` is right for 69 and wrong for 21, and the obvious
+  -- "unknown means active" flip was tried and REVERTED: it would be wrong for 69 to fix 21.
+  --
+  -- Deriving the deadline ourselves was measured and rejected: `max(last cert, last vote) +
+  -- drep_activity` disagrees with the ledger's own value by up to 5 epochs, because CIP-1694 does
+  -- not count DORMANT epochs — ones with no proposal pending — toward inactivity. Reimplementing
+  -- that accounting would be a second derivation that can disagree with the ledger, which is the
+  -- thing this schema exists not to do.
+  --
+  -- So this stays as it is and the gap is a DOCUMENTED divergence in
+  -- config/reconcile-exceptions.yaml, with those numbers in its reason. Publishing a third status
+  -- would be the honest fix and it is an API decision, not a schema one: DRepStatus is a published
+  -- enum and adding a value to it breaks every exhaustive match a client has written.
   COALESCE(ld.active_until >= (SELECT epoch_no FROM palmares.sync_state), false) AS is_active,
   ld.active_until AS active_until_epoch,
   la.voting_anchor_id,

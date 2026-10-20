@@ -28,9 +28,11 @@ import GeniusYield.GYConfig (GYCoreConfig (..))
 import Palmares.ChainSync.KupoClient (KupoCheckpoint (..))
 import Palmares.Storage
   ( currentSchemaVersion,
+    ensureAttestSchema,
     putStoredPolicyHexText,
     readSchemaProbe,
     rollbackTo,
+    runAttest,
     runMigrations,
     wipeChainSyncTablesRaw,
   )
@@ -45,7 +47,11 @@ import Palmares.WebAPI.Utils
 import System.IO (BufferMode (LineBuffering), hSetBuffering, stdout)
 
 defaultConnStr :: String
-defaultConnStr = "host=localhost user=postgres password=postgres dbname=chainsync port=5432"
+-- `cexplorer`, which is db-sync's database and the one this service's schema lives beside
+-- (ADR 0001 chose one database with role separation over two). The inherited default said
+-- `chainsync`, a database no deployment here has: `.env.example` and `Dockerfile.attest-sync`
+-- both say `cexplorer`, so the code default was the only place that disagreed.
+defaultConnStr = "host=localhost user=postgres password=postgres dbname=cexplorer port=5432"
 
 defaultKupoUrl :: String
 defaultKupoUrl = "http://localhost:1442"
@@ -80,15 +86,18 @@ main = do
   -- Probe the existing schema BEFORE migrating. Wipe (drop) the chain-sync tables if the schema
   -- version or minting policy changed, so migrateAll only CREATEs fresh tables and never runs an
   -- incompatible in-place ALTER (varchar->bigint / ADD COLUMN NOT NULL) that Postgres would reject.
-  mProbe <- runSqlPool readSchemaProbe pool
+  -- The schema first, and the path pinned to it for everything after: these tables are declared
+  -- unqualified, so without this they land in `palmares`, which query-api drops on every boot.
+  runSqlPool ensureAttestSchema pool
+  mProbe <- runAttest pool readSchemaProbe
   let needWipe = case mProbe of
         Nothing -> False
         Just (storedVersion, storedPolicy) -> storedVersion < currentSchemaVersion || storedPolicy /= policyHexText
   when needWipe $ do
     putStrLn "Schema version or policy changed; dropping chain-sync tables before migration."
-    runSqlPool wipeChainSyncTablesRaw pool
-  runSqlPool runMigrations pool
-  runSqlPool (putStoredPolicyHexText policyHexText) pool
+    runAttest pool wipeChainSyncTablesRaw
+  runAttest pool runMigrations
+  runAttest pool (putStoredPolicyHexText policyHexText)
 
   fetchBatchSize <- do
     mb <- lookupEnv "FETCH_BATCH_SIZE"
@@ -141,11 +150,11 @@ main = do
       Ahead -> do
         liftIO $ putStrLn "Chain is ahead"
         let rollbackSlot = max 0 (ck_slot_no blockchainTip - rollbackMargin)
-        runSqlPool (rollbackTo networkId rollbackSlot) pool
+        runAttest pool (rollbackTo networkId rollbackSlot)
         updateLocalTip pool (KupoCheckpoint rollbackSlot "")
         liftIO $ putStrLn ("Rolled back to slot " <> show rollbackSlot <> "; will re-sync forward")
       UpToDateButDifferentBlockHash -> do
         liftIO $ putStrLn "Same slot, different block hash; rolling back with margin"
         let rollbackSlot = max 0 (ck_slot_no blockchainTip - rollbackMargin)
-        runSqlPool (rollbackTo networkId rollbackSlot) pool
+        runAttest pool (rollbackTo networkId rollbackSlot)
         updateLocalTip pool (KupoCheckpoint rollbackSlot "")

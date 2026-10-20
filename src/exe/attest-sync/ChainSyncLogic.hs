@@ -18,10 +18,10 @@ import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
 import Data.Text qualified as T
 import Data.Time (getCurrentTime)
-import Database.Persist.Sql (ConnectionPool, runSqlPool)
+import Database.Persist.Sql (ConnectionPool)
 import GeniusYield.Types (GYNetworkId)
 import Palmares.ChainSync.KupoClient (KupoCheckpoint (..), KupoMatch (..), runKupoCheckpointsList, runKupoMatches)
-import Palmares.Storage (ChainCursor (..), getCursorValue, putCursor, putMatchAndProjections)
+import Palmares.Storage (ChainCursor (..), getCursorValue, putCursor, putMatchAndProjections, runAttest)
 
 -- | Slot gap beyond which the local tip is considered "way behind" the chain
 -- (drives the 'Behind' flag that selects bulk vs incremental fetching).
@@ -41,24 +41,24 @@ evaluateChainSyncState localTip@(KupoCheckpoint localSlot localHeader) blockchai
 -- | Persist the given checkpoint as the new local tip in the database.
 updateLocalTip :: ConnectionPool -> KupoCheckpoint -> IO ()
 updateLocalTip pool tip = do
-  runSqlPool
+  runAttest
+    pool
     ( do
         putCursor (ChainCursor True (ck_slot_no tip) (ck_header_hash tip) Nothing Nothing)
     )
-    pool
   putStrLn $ "Local tip updated to: " <> show tip
 
 -- | Read the last-persisted local tip from the database (slot 0 if none).
 getLocalTip :: ConnectionPool -> IO KupoCheckpoint
 getLocalTip pool = do
-  runSqlPool
+  runAttest
+    pool
     ( do
         mCur <- getCursorValue
         case mCur of
           Just cur -> return (KupoCheckpoint (chainCursorSlotNo cur) (chainCursorHeaderHash cur))
           Nothing -> return (KupoCheckpoint 0 "")
     )
-    pool
 
 -- | Fetch the current blockchain tip from Kupo, retrying on failure.
 getBlockchainTip :: String -> IO KupoCheckpoint
@@ -117,6 +117,6 @@ applyMatches :: GYNetworkId -> ConnectionPool -> [KupoMatch] -> IO ()
 applyMatches _networkId _pool [] = return ()
 applyMatches networkId pool matches = do
   liftIO $ putStrLn ("-----------------------------------------> Applying matches: " <> show (length matches))
-  runSqlPool
-    (forM_ matches (putMatchAndProjections networkId))
+  runAttest
     pool
+    (forM_ matches (putMatchAndProjections networkId))

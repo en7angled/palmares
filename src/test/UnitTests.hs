@@ -16,6 +16,7 @@ import UnitTests.MetricCatalog qualified as MetricCatalog
 import UnitTests.MetricDoc qualified as MetricDoc
 import UnitTests.MetricFixture qualified as MetricFixture
 import UnitTests.ApplySql qualified as ApplySqlTests
+import UnitTests.AttestSchema qualified as AttestSchema
 import UnitTests.QueryHardening (queryHardeningTests)
 import UnitTests.Reconcile (reconcileTests)
 import UnitTests.Refresh qualified as Refresh
@@ -40,6 +41,7 @@ unitTests =
       MetricFixture.tests,
       queryHardeningTests,
       ApplySqlTests.tests,
+      AttestSchema.tests,
       reconcileTests,
       Refresh.tests,
       storageRoundtripTests,

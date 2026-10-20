@@ -143,6 +143,41 @@ AchievementProjection
     deriving Show
 |]
 
+-- | The schema this service owns, and the only one it may write.
+--
+-- __Why this is a named constant and not a comment.__ Every entity in the @persistLowerCase@ block
+-- above is declared unqualified, so @migrateAll@'s @CREATE TABLE@ lands in whatever the connection's
+-- @search_path@ resolves to first. Nothing in this service used to set that path, and
+-- @sql/050_roles.sql@ gives @palmares_owner@ @search_path = palmares, palmares_attest, public@ — so
+-- the projections landed in @palmares@, which @sql/000_schema.sql@ __drops CASCADE on every
+-- query-api boot__. A restart of the read API would have deleted the chain-sync state and cost a
+-- full Kupo re-sync, silently. (@sql/000_schema.sql@'s own header warns against dropping
+-- @palmares_attest@ for exactly this reason, while the tables were not in it.)
+attestSchema :: Text
+attestSchema = "palmares_attest"
+
+-- | Create 'attestSchema' if it is absent, so a fresh database needs no manual step.
+--
+-- @admin apply-roles@ also creates it, @AUTHORIZATION palmares_owner@; this is the path for a
+-- single-role deployment that never ran that command. Idempotent either way.
+ensureAttestSchema :: (MonadIO m) => SqlPersistT m ()
+ensureAttestSchema = rawExecute ("CREATE SCHEMA IF NOT EXISTS " <> attestSchema) []
+
+-- | Run an action with @search_path@ pinned to 'attestSchema', then @public@.
+--
+-- Every database access in this service goes through here, which is what makes the unqualified
+-- entity declarations safe. @SET LOCAL@ scopes it to the transaction @runSqlPool@ opens, so it
+-- cannot leak onto a pooled connection that some other code path later reuses — the same shape
+-- query-api uses for its read timeout.
+--
+-- @public@ stays on the path because @GYAssetClass@ and friends resolve enum and domain types
+-- db-sync owns, and because 'readSchemaProbe' filters on @current_schema()@, which is the first
+-- entry and therefore ours.
+runAttest :: ConnectionPool -> SqlPersistT IO a -> IO a
+runAttest pool act = runSqlPool (pinSearchPath >> act) pool
+  where
+    pinSearchPath = rawExecute ("SET LOCAL search_path TO " <> attestSchema <> ", public") []
+
 runMigrations :: (MonadIO m) => SqlPersistT m ()
 runMigrations = runMigration migrateAll
 

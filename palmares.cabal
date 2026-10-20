@@ -470,6 +470,7 @@ test-suite test
     UnitTests.Activity
     UnitTests.Anchor
     UnitTests.ApplySql
+    UnitTests.AttestSchema
     UnitTests.ApiHardening
   --   UnitTests.Attestation
     UnitTests.ChainSyncReplay

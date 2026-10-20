@@ -308,6 +308,10 @@ seq AS (
     dv.addr_id,
     dv.drep_hash_id,
     b.epoch_no AS from_epoch,
+    -- The certificate's own position, so the de-registration below is compared against THIS
+    -- CERTIFICATE rather than against its epoch.
+    dv.tx_id AS from_tx,
+    dv.cert_index AS from_cert,
     LEAD(b.epoch_no) OVER w AS next_epoch
   FROM public.delegation_vote dv
   JOIN public.tx ON tx.id = dv.tx_id
@@ -320,10 +324,14 @@ live AS (
     s.drep_hash_id,
     s.from_epoch,
     -- 2147483647 stands in for "no end", keeping the comparison inside word31type's domain.
+    -- The de-registration is matched by CERTIFICATE and only its epoch taken as the end, exactly
+    -- as palmares.drep_epoch_delegators does: comparing epochs let an account's own closure end
+    -- the interval it had just started.
     LEAST(
       COALESCE(s.next_epoch, 2147483647),
       COALESCE((SELECT min(sd.epoch_no) FROM public.stake_deregistration sd
-                WHERE sd.addr_id = s.addr_id AND sd.epoch_no >= s.from_epoch), 2147483647)
+                WHERE sd.addr_id = s.addr_id
+                  AND (sd.tx_id, sd.cert_index) > (s.from_tx, s.from_cert)), 2147483647)
     ) AS to_epoch
   FROM seq s
 ),

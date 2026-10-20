@@ -62,7 +62,16 @@
     "vote_latency_sample": 15,
     "voting_power": 3901077453443,
     "voting_power_epoch": 319,
-    "delegator_count": 12,
+    "_note_delegator_count": [
+   "13, not the 12 this pinned until 2026-10-20. Koios parity found palmares.live_delegation's",
+   "de-registration rule comparing EPOCHS: a stake account closed and reopened inside one epoch",
+   "had its new delegation cancelled by its own closure. One of this DRep's delegators did",
+   "exactly that in epoch 311 (de-registered at slot 132,862,106, re-registered and re-delegated",
+   "1,259 slots later), and Koios counted it while we did not. The rule now compares certificates",
+   "by (tx_id, cert_index); 55 delegations came back across the corpus. prev and retained are",
+   "unchanged because the window's far end (epoch 309) predates that delegation."
+  ],
+  "delegator_count": 13,
     "delegator_count_prev": 11,
     "delegators_retained": 11,
     "delegators_joined": 1,

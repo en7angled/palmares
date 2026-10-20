@@ -1353,23 +1353,29 @@ instance ToSchema DashboardPageResponse where
 -- One row per stake address, not one per certificate: the row is the LATEST @delegation_vote@ for
 -- that address, which is the same set @palmares.live_delegation@ is built from and the same set
 -- @\/drep\/{id}\/delegators@ serves. Measured on preprod: 2,304 addresses have ever delegated,
--- 1,960 of them currently count and 344 do not.
+-- 2,015 of them currently count and 289 do not.
 --
--- @is_current@ is false for exactly one reason — the stake account was deregistered at or after
--- the epoch the delegation was made in. It cannot be false because the delegation was superseded,
--- because a superseded certificate is not the latest one and therefore is not this row.
+-- @is_current@ is false for exactly one reason — the stake account was deregistered AFTER the
+-- delegation's certificate, by @(tx_id, cert_index)@. It cannot be false because the delegation
+-- was superseded, because a superseded certificate is not the latest one and therefore is not
+-- this row.
+--
+-- \"After the certificate\" and not \"in or after its epoch\", which is what it said until Koios
+-- parity found the difference: closing a stake account and opening a new one is normally done in
+-- one go, so the epoch comparison let an account's own closure cancel the delegation it made
+-- moments later. 55 delegations across 2,304 addresses.
 --
 -- @target@ is DERIVED, which is why 'FromJSON' below is hand-written: a credential target is the
 -- CIP-129 @drep1y…@ rendering computed from @(raw, has_script)@, and the two reserved ledger
--- options are the literals 'Core.reservedDRepViews' holds. Measured: of the 1,960 current
--- delegations, 930 name a credential, 992 @drep_always_abstain@ and 38
+-- options are the literals 'Core.reservedDRepViews' holds. Measured: of the 2,015 current
+-- delegations, 955 name a credential, 1,020 @drep_always_abstain@ and 40
 -- @drep_always_no_confidence@ — so the reserved options are the majority and cannot be an
 -- afterthought.
 --
 -- @lovelace@ comes from the latest @epoch_stake@ snapshot and is @null@ for an address with no
--- stake in it: measured, 1,052 of the 1,960 current rows carry one. @target_name@ is the DRep's
+-- stake in it: measured, 1,092 of the 2,015 current rows carry one. @target_name@ is the DRep's
 -- CIP-119 name and is @null@ for a reserved option and for a DRep with no fetched metadata —
--- measured, 184 of the 1,960.
+-- measured, 194 of the 2,015.
 data DelegationRecord = DelegationRecord
   { delegationStakeAddress :: Text,
     delegationTarget :: Core.DRepId,

@@ -899,13 +899,13 @@ type DelegationsAPI =
          "One row per stake address: the delegation it currently holds, and whether that \
          \delegation still counts. Not one row per certificate -- a superseded certificate is not \
          \the latest one, so it is not a row here, and `is_current=false` means one thing only: \
-         \the stake account was deregistered at or after the epoch the delegation was made in. \
-         \preprod has 2,304 addresses that have ever delegated, 1,960 of which currently count. \
+         \the stake account was deregistered AFTER the delegation's certificate. \
+         \preprod has 2,304 addresses that have ever delegated, 2,015 of which currently count. \
          \\n`is_current` DEFAULTS TO TRUE and filters both ways, which is a deliberate difference \
          \from /drep/{id}/delegators, where is_current=false widens to the history instead. \
          \\n`drep_id` accepts a credential in any form -- drep1y..., drep1..., 56 hex characters -- \
-         \and also either reserved ledger option. Those two are not a special case: of the 1,960 \
-         \current delegations, 992 name drep_always_abstain and 38 drep_always_no_confidence, so \
+         \and also either reserved ledger option. Those two are not a special case: of the 2,015 \
+         \current delegations, 1,020 name drep_always_abstain and 40 drep_always_no_confidence, so \
          \the reserved options hold the majority of delegated stake. \
          \\n`lovelace` is the stake the ledger counted at the latest snapshot and is null for an \
          \address with no stake in it."

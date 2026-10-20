@@ -59,13 +59,22 @@ BEGIN
           WHERE drep_hash_id = d AND epoch_no = 320) = 333;
 
   -- ---- delegation ---------------------------------------------------------------------------
-  -- The de-registration rule, as an invariant rather than a count: a stake credential that was
-  -- closed at or after its delegation must not appear in live_delegation, even though
+  -- The de-registration rule, as an invariant rather than a count: a stake credential closed
+  -- AFTER its delegation certificate must not appear in live_delegation, even though
   -- delegation_vote keeps the row forever. Without it a DRep keeps counting closed accounts.
+  --
+  -- Compared by certificate, not by epoch. The epoch form of this assertion passed while the view
+  -- was wrong, because the view made the same mistake: closing an account and reopening it in one
+  -- epoch cancelled the delegation made moments later. Koios parity found it, 55 delegations deep.
   ASSERT (SELECT count(*) FROM palmares.live_delegation l
+          JOIN public.delegation_vote dv ON dv.addr_id = l.addr_id
           WHERE EXISTS (SELECT 1 FROM public.stake_deregistration sd
-                        WHERE sd.addr_id = l.addr_id AND sd.epoch_no >= l.from_epoch)) = 0,
-    'no de-registered credential may remain in live_delegation';
+                        WHERE sd.addr_id = l.addr_id
+                          AND (sd.tx_id, sd.cert_index) > (dv.tx_id, dv.cert_index))
+            AND NOT EXISTS (SELECT 1 FROM public.delegation_vote dv2
+                            WHERE dv2.addr_id = l.addr_id
+                              AND (dv2.tx_id, dv2.cert_index) > (dv.tx_id, dv.cert_index))) = 0,
+    'no credential closed after its latest delegation may remain in live_delegation';
 
   -- The two delegator views must agree at the tip; they are built from different shapes (latest
   -- certificate vs. interval overlap) and disagreeing means one of them is wrong.

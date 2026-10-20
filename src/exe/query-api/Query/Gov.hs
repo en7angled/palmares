@@ -1842,30 +1842,34 @@ delegationOuterSortSpec = \case
 -- @palmares.vote_delegation@ TWICE, once for this page's rows and once inside that view, because
 -- the view computes the same \"latest certificate per address\" set. Measured: 2,929 ms for a
 -- 50-row page against 1,025 ms for this shape, and the two agree exactly — 2,304 addresses,
--- 1,960 current, 344 not, on both.
+-- 2,015 current, 289 not, on both. That equality is checked after every change to either.
 --
 -- The equivalence is not a coincidence and is worth stating, because the duplication is the price:
 -- @dv@ below and @live_delegation@ select the same latest row per address, so
 -- @l.drep_hash_id = dv.drep_hash_id@ is implied by @l.addr_id = dv.addr_id@ and all that
 -- @live_delegation@ adds is this deregistration check. If that view's predicate ever changes, THIS
--- LINE must change with it.
+-- LINE must change with it — and it has: both now compare CERTIFICATES by @(tx_id, cert_index)@
+-- rather than epochs, because the epoch form cancelled a delegation using a deregistration that
+-- happened before it in the same epoch. @sql\/010_gov_views.sql@ carries the measurement; the
+-- views smoke asserts the two still agree row for row, which is what makes the duplication safe.
 delegationIsCurrentExpr :: Text
 delegationIsCurrentExpr =
   "NOT EXISTS (SELECT 1 FROM public.stake_deregistration sd \
-  \            WHERE sd.addr_id = dv.addr_id AND sd.epoch_no >= dv.epoch_no)"
+  \            WHERE sd.addr_id = dv.addr_id \
+  \              AND (sd.tx_id, sd.cert_index) > (dv.tx_id, dv.cert_index))"
 
 -- | The FROM clause the page and the count share, for F-17's reason.
 --
 -- Only the columns the filters and the orderings touch. The identity decoration — the target's
 -- credential and its published name — is joined OUTSIDE the paged subquery in 'listDelegations',
 -- which is also measured: joining @palmares.drep@ inside made the planner re-scan it once per
--- candidate row (1,960 times, +1.37 s on a 50-row page). Neither decoration join can change
+-- candidate row (once per current delegation, +1.37 s on a 50-row page). Neither join can change
 -- cardinality, @drep_hash@ being PK-joined and @palmares.drep@ having exactly one row per
 -- @drep_hash_id@ (measured: 812 rows, 812 distinct ids), so the count stays honest.
 delegationFrom :: Text
 delegationFrom =
   " FROM ( SELECT DISTINCT ON (addr_id) addr_id, stake_address, drep_hash_id, target_kind, \
-  \               slot_no, epoch_no, delegated_at, tx_hash \
+  \               slot_no, epoch_no, delegated_at, tx_hash, tx_id, cert_index \
   \        FROM palmares.vote_delegation \
   \        ORDER BY addr_id, slot_no DESC, tx_index DESC, cert_index DESC ) dv \
   \ LEFT JOIN ( SELECT addr_id, amount FROM public.epoch_stake \

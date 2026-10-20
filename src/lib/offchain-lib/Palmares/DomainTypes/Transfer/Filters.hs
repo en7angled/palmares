@@ -293,7 +293,7 @@ drepFilterFromParams
 --
 -- @delegationFilterIsCurrent@ is a 'Bool' and not a 'Maybe Bool', unlike
 -- @\/drep\/{id}\/delegators@'s: there, @is_current=false@ drops the clause and WIDENS to the
--- history; here it is a two-way filter and @false@ returns only the 344 addresses whose stake
+-- history; here it is a two-way filter and @false@ returns only the 289 addresses whose stake
 -- account closed. Two routes, one parameter name, two meanings — spelled differently in the type
 -- so a reader of either handler can see which one they have. The default is 'True', which is what
 -- makes the unfiltered page a snapshot rather than an archive.

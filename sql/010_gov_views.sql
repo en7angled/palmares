@@ -638,6 +638,10 @@ SELECT
     ELSE 'always_no_confidence'
   END AS target_kind,
   tx.hash AS tx_hash,
+  -- The certificate's own transaction id, not just its hash. db-sync assigns tx.id in chain
+  -- order, so (tx_id, cert_index) is a total order over certificates and the ONLY one available
+  -- without joining block — which is what makes the deregistration rule below exact and indexable.
+  dv.tx_id,
   b.slot_no,
   b.epoch_no,
   b.time AS delegated_at,
@@ -656,13 +660,28 @@ JOIN public.drep_hash dh ON dh.id = dv.drep_hash_id;
 -- supersedes an earlier one (so only the last per address counts), AND de-registering the stake
 -- credential ends the delegation even though `delegation_vote` keeps the row forever. Without the
 -- de-registration rule a DRep keeps counting delegators who have closed their accounts.
+--
+-- The deregistration rule compares CERTIFICATES, by (tx_id, cert_index), not epochs. The epoch
+-- comparison it replaces cancelled a delegation using a deregistration that happened BEFORE it in
+-- the same epoch — which is not a rare shape at all, because closing an account and opening a new
+-- one is normally done in one go. FOUND BY KOIOS PARITY and then traced: Koios reported 13 live
+-- delegators for the fixture DRep where this view reported 12, and the missing stake address
+-- de-registered at slot 132,862,106 and re-registered AND re-delegated at slot 132,863,365 —
+-- 1,259 slots later, same epoch 311. MEASURED over the whole corpus: the epoch rule excluded 344
+-- addresses, of which 52 had re-registered after their delegation.
+--
+-- db-sync assigns tx.id in chain order, so (tx_id, cert_index) is a total order over certificates;
+-- gov_idx_stake_dereg_addr is (addr_id, tx_id), so the comparison is served by an index and needs
+-- no join to block. This is the same ordering palmares.cc_cold_interval uses for the same reason.
 CREATE VIEW palmares.live_delegation AS
 WITH latest AS (
   SELECT DISTINCT ON (dv.addr_id)
     dv.addr_id,
     dv.drep_hash_id,
     b.epoch_no AS from_epoch,
-    b.slot_no AS from_slot
+    b.slot_no AS from_slot,
+    dv.tx_id AS from_tx,
+    dv.cert_index AS from_cert
   FROM public.delegation_vote dv
   JOIN public.tx ON tx.id = dv.tx_id
   JOIN public.block b ON b.id = tx.block_id
@@ -674,5 +693,5 @@ WHERE NOT EXISTS (
   SELECT 1
   FROM public.stake_deregistration sd
   WHERE sd.addr_id = l.addr_id
-    AND sd.epoch_no >= l.from_epoch
+    AND (sd.tx_id, sd.cert_index) > (l.from_tx, l.from_cert)
 );

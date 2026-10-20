@@ -220,9 +220,9 @@ assert "/drep/$D/updates" '[.items[] | [.kind, .deposit]] | sort' '[["registered
 assert "/drep/$D/updates" '[.items[0].kind, .items[0].at.epoch]' '["updated",208]'
 assert "/drep/$D/updates?kind=registered" '[.total, .items[0].at.epoch]' '[1,173]'
 assert "/drep/$D/power?from_epoch=320&to_epoch=320" '.items | map([.epoch, .lovelace])' '[[320,3923709956713]]'
-assert "/drep/$D/delegators?limit=50" '[.total, ([.items[] | select(.is_current)] | length)]' '[12,12]'
+assert "/drep/$D/delegators?limit=50" '[.total, ([.items[] | select(.is_current)] | length)]' '[13,13]'
 # is_current=false widens to the history, so it can only be a superset
-assert "/drep/$D/delegators?limit=50&is_current=false" '.total >= 12' 'true'
+assert "/drep/$D/delegators?limit=50&is_current=false" '.total >= 13' 'true'
 # a DRep with nothing settled serves nulls, not zeros (f1-metric 3.8). The list form is the gate
 # because it does not depend on which DRep happens to be newest.
 assert '/dreps?limit=200' '[.items[] | select(.eligible_actions == 0) | .participation_rate] | unique | . == [] or . == [null]' 'true'
@@ -530,21 +530,27 @@ else
 fi
 
 echo "== delegations, committee, SPOs, treasury (T-API-14)"
-# preprod: 2,304 stake addresses have ever delegated; 1,960 of those delegations still count.
+# preprod: 2,304 stake addresses have ever delegated; 2,015 of those delegations still count.
 # is_current DEFAULTS TO TRUE, so the unfiltered total is the current set, not the archive.
-assert '/delegations?limit=1' '.total' '1960'
+#
+# These numbers were 1,960 and 344 until Koios parity found the deregistration rule comparing
+# EPOCHS: a stake account that closed and reopened in one epoch had its new delegation cancelled
+# by its own closure. 55 delegations came back.
+assert '/delegations?limit=1' '.total' '2015'
 assert '/delegations?limit=200' '[.items[].is_current] | unique' '[true]'
-# the flag filters BOTH ways here (unlike /drep/{id}/delegators, where false widens): the 344 rows
-# are the addresses whose stake account was deregistered at or after the delegation's epoch.
-assert '/delegations?is_current=false&limit=1' '.total' '344'
+# the flag filters BOTH ways here (unlike /drep/{id}/delegators, where false widens): the 289 rows
+# are the addresses whose stake account was deregistered AFTER the delegation's certificate.
+assert '/delegations?is_current=false&limit=1' '.total' '289'
 assert '/delegations?is_current=false&limit=200' '[.items[].is_current] | unique' '[false]'
-# 1960 + 344 = 2304, the whole set. If these three ever stop summing, is_current stopped being a
-# partition and the page is hiding rows.
-assert '/delegations?limit=1' '.total + 344 == 2304' 'true'
-# the fixture DRep. 12, NOT the plan's 13 -- measured, and it agrees with
+# 2015 + 289 = 2304, the whole set. If these three ever stop summing, is_current stopped being a
+# partition and the page is hiding rows. This is the assertion that would have caught the epoch
+# bug if the archive side had been wrong too -- it was not, both sides moved together.
+assert '/delegations?limit=1' '.total + 289 == 2304' 'true'
+# the fixture DRep: 13, which is the plan's number after all -- and it is Koios's too, address
+# for address. It read 12 until the deregistration rule was fixed. It agrees with
 # /drep/$D/delegators?limit=50 .total, which is the same set reached by the other route.
-assert "/delegations?drep_id=$D&limit=50" '.total' '12'
-assert "/delegations?drep_id=$D&limit=50" '[.items[] | select(.is_current)] | length' '12'
+assert "/delegations?drep_id=$D&limit=50" '.total' '13'
+assert "/delegations?drep_id=$D&limit=50" '[.items[] | select(.is_current)] | length' '13'
 if [ "$(j "/delegations?drep_id=$D&limit=50" '.total')" = "$(j "/drep/$D/delegators?limit=50" '.total')" ]; then
   echo "  ok   /delegations?drep_id agrees with /drep/{id}/delegators"
 else
@@ -554,17 +560,17 @@ assert '/delegations?limit=1' '.items[0].target | startswith("drep")' 'true'
 assert '/delegations?limit=1' '.items[0].stake_address | startswith("stake")' 'true'
 assert '/delegations?limit=200' '[.items[].stake_address] | map(startswith("stake")) | unique' '[true]'
 # The two reserved ledger options are ordinary delegation rows pointing at raw IS NULL drep_hash
-# rows -- and they hold the MAJORITY of current delegations: 992 abstain, 38 no-confidence,
-# against 930 that name a credential. 992 + 38 + 930 = 1960.
-assert '/delegations?drep_id=drep_always_abstain&limit=1' '.total' '992'
-assert '/delegations?drep_id=drep_always_no_confidence&limit=1' '.total' '38'
+# rows -- and they hold the MAJORITY of current delegations: 1,020 abstain, 40 no-confidence,
+# against 955 that name a credential. 1020 + 40 + 955 = 2015.
+assert '/delegations?drep_id=drep_always_abstain&limit=1' '.total' '1020'
+assert '/delegations?drep_id=drep_always_no_confidence&limit=1' '.total' '40'
 assert '/delegations?drep_id=drep_always_abstain&limit=200' '[.items[].target] | unique' '["drep_always_abstain"]'
-# a reserved option and a credential in one request mean "either", not "both": 992 + 12 = 1004.
-assert "/delegations?drep_id=drep_always_abstain&drep_id=$D&limit=1" '.total' '1004'
+# a reserved option and a credential in one request mean "either", not "both": 1020 + 13 = 1033.
+assert "/delegations?drep_id=drep_always_abstain&drep_id=$D&limit=1" '.total' '1033'
 # lovelace comes from the latest epoch_stake snapshot and is null for an address with no stake in
-# it: 1,052 of the 1,960 carry one, and 24 carry at least 1 M ADA.
+# it: 1,092 of the 2,015 carry one, and 24 carry at least 1 M ADA.
 assert '/delegations?min_lovelace=1000000000000&limit=1' '.total' '24'
-# stable paging over a key 992 rows tie on
+# stable paging over a key 1,020 rows tie on
 assert '/delegations?order_by=stake_address&limit=200' '[.items[].stake_address] | (length) == (unique | length)' 'true'
 assert '/delegations?order_by=at&sort_order=desc&limit=5' '[.items[].at.slot] | . == (. | sort | reverse)' 'true'
 assert_err '/delegations?from=2026-01-02T00:00:00Z&to=2026-01-01T00:00:00Z' '.code' '"invalid_time_range"'
@@ -660,7 +666,7 @@ assert_err '/treasury-withdrawals?gov_action_id=nope' '.code' '"invalid_gov_acti
 dcsv=$(curl -fsS -H 'Accept: text/csv' "$API/delegations?limit=10000")
 check "/delegations CSV header" \
   "$(printf '%s' "$dcsv" | head -1 | tr -d '\r' | cut -d, -f1-3)" 'stake_address,target,target_name'
-check "/delegations CSV is 1960 current rows plus a header" "$(printf '%s\n' "$dcsv" | grep -c .)" 1961
+check "/delegations CSV is 2015 current rows plus a header" "$(printf '%s\n' "$dcsv" | grep -c .)" 2016
 check "/delegations CSV booleans match the JSON spelling" \
   "$(printf '%s' "$dcsv" | tail -n +2 | awk -F, '{print $NF}' | tr -d '\r' | sort -u | tr '\n' ' ')" 'true '
 scsv=$(curl -fsS -H 'Accept: text/csv' "$API/spos?limit=10000")

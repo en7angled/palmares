@@ -103,6 +103,18 @@ jobs:
           # read as a pass just because the server was missing.
           PALMARES_TEST_PG_CONN_STR: host=localhost user=postgres password=devonly dbname=postgres port=5432
 
+      # docs/metrics.md is generated from the metric catalog and committed. Regenerate and diff:
+      # the published prose and the SQL the API runs come out of the same files, so a formula
+      # cannot change without the documentation changing in the same commit.
+      #
+      # This command needs no provider, no signing key and no deployed-validators config, which
+      # is what makes it runnable here at all.
+      - name: metric documentation is not stale
+        run: |
+          set -euo pipefail
+          cabal run -v0 exe:admin -- write-metrics-doc
+          git diff --exit-code docs/metrics.md
+
   secrets:
     runs-on: ubuntu-24.04-arm
     steps:

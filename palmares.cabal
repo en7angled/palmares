@@ -198,6 +198,7 @@ library offchain-lib
     Palmares.DomainTypes.Transfer.Types
     Palmares.Ingestion
     Palmares.Metrics.Catalog
+    Palmares.Metrics.Doc
     Palmares.Storage
     Palmares.TxBuilding.Context
     Palmares.TxBuilding.Conversions
@@ -439,6 +440,7 @@ test-suite test
     UnitTests.Conversions
     UnitTests.GovIds
     UnitTests.MetricCatalog
+    UnitTests.MetricDoc
     UnitTests.Views
   --   UnitTests.Dispute
   --   UnitTests.Oracle

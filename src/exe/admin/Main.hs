@@ -10,11 +10,14 @@ import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.ByteString.Char8 qualified as LSB8
 import Data.ByteString.Lazy qualified as B
 import Data.Text qualified as T
+import Data.Text.IO qualified as T
 import Palmares.DomainTypes.Core.Actions (AdminActionType (..), ProfileActionType (..), ProfileData (..), ProtocolActionType (..))
 import Palmares.DomainTypes.Core.Types (ProfileType (..))
 import GeniusYield.GYConfig
 import GeniusYield.Imports
 import GeniusYield.Types
+import Palmares.Metrics.Catalog (metricCatalog)
+import Palmares.Metrics.Doc (renderMetricsDoc)
 import Palmares.Onchain.Blueprint (contractBlueprint)
 import Palmares.Onchain.Protocol.Types (FeeConfig (..), OracleParams (..))
 import Options.Applicative
@@ -44,6 +47,7 @@ printGreen = putStrLn . greenColorString
 data Command
   = DeployReferenceScripts
   | WriteBlueprint FilePath
+  | WriteMetricsDoc FilePath
   | PauseProtocol
   | UnpauseProtocol
   | SetFees SetFeesArgs
@@ -217,6 +221,21 @@ commandParser =
               (progDesc "Write the CIP-57 contract blueprint JSON to a file")
           )
         <> command
+          "write-metrics-doc"
+          ( info
+              ( WriteMetricsDoc
+                  <$> strOption
+                    ( long "output"
+                        <> short 'o'
+                        <> metavar "FILE"
+                        <> value "docs/metrics.md"
+                        <> showDefault
+                        <> help "Output file path for the generated metric documentation"
+                    )
+              )
+              (progDesc "Render resources/metric-formulas.json and resources/metrics/*.sql to Markdown")
+          )
+        <> command
           "pause-protocol"
           ( info
               (pure PauseProtocol)
@@ -318,6 +337,7 @@ setFeesToAdminAction UpdateFees {..} =
 executeCommand :: Either ProviderCtx TxBuildingContext -> GYExtendedPaymentSigningKey -> Command -> IO ()
 executeCommand (Left pCtx) signKey cmd = case cmd of
   WriteBlueprint _ -> pure () -- Handled in main before provider loading
+  WriteMetricsDoc _ -> pure () -- Handled in main before provider loading
   QueryOracle -> do
     printYellow "No transaction building context found."
     printYellow "Please run 'deploy-reference-scripts' first to set up the system."
@@ -331,6 +351,7 @@ executeCommand (Left pCtx) signKey cmd = case cmd of
     printYellow "Please run 'deploy-reference-scripts' first to set up the system."
 executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   WriteBlueprint _ -> pure () -- Handled in main before provider loading
+  WriteMetricsDoc _ -> pure () -- Handled in main before provider loading
   DeployReferenceScripts -> do
     printYellow "Deploying reference scripts..."
     deployedScriptsCtx <- deployReferenceScripts (providerCtx txBuildingCtx) signKey
@@ -422,6 +443,14 @@ main = do
       printYellow $ "Writing CIP-57 contract blueprint to " <> outputPath <> " ..."
       B.writeFile outputPath (encodePretty $ contractBlueprint blueprintProtocolParams)
       printGreen $ "Blueprint written successfully to " <> outputPath
+    -- No provider, no signing key, no deployed-validators config — which is exactly what lets CI
+    -- run this command to check the committed doc for drift.
+    WriteMetricsDoc outputPath -> case metricCatalog of
+      Left err -> die ("resources/metric-formulas.json does not parse: " <> err)
+      Right formulas -> do
+        printYellow $ "Writing metric documentation to " <> outputPath <> " ..."
+        T.writeFile outputPath (renderMetricsDoc formulas)
+        printGreen $ "Metric documentation written successfully to " <> outputPath
     _ -> executeOnchainCommand cmd
 
 -- | Execute commands that require blockchain providers and signing keys

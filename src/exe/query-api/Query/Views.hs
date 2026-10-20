@@ -61,8 +61,21 @@ hasStatement =
     . TE.decodeUtf8
 
 -- | Issue each file's bytes in the caller's transaction, in list order, skipping stubs.
+--
+-- A @lock_timeout@ goes first, and it is not belt-and-braces. @000_schema.sql@ opens with
+-- @DROP SCHEMA palmares CASCADE@, which needs an ACCESS EXCLUSIVE lock on every view in it. If a
+-- long read is in flight the DROP waits — and while it waits, PostgreSQL queues every NEW reader
+-- behind it, so one boot during one slow query stalls the whole database rather than just itself.
+-- Observed: a twenty-minute window in which no reader of @palmares.drep@ could run.
+--
+-- Ten seconds, then the statement fails, the transaction rolls back, and 'applyPalmaresSchema'
+-- 'die's. That is the right outcome: a process that cannot take the lock has not applied the
+-- schema and must not serve, and a supervisor restarting it will try again once the reader is
+-- done. @SET LOCAL@ scopes it to this transaction, so it cannot leak onto a pooled connection
+-- that later serves requests.
 applySchemaSql :: [(FilePath, ByteString)] -> SqlPersistT IO ()
-applySchemaSql files =
+applySchemaSql files = do
+  rawExecute "SET LOCAL lock_timeout = '10s'" []
   mapM_ (\(_, sql) -> rawExecute (TE.decodeUtf8 sql) []) (filter (hasStatement . snd) files)
 
 -- | Apply the whole schema in one transaction, or 'die'.

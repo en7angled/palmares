@@ -153,8 +153,20 @@ SELECT
   count(*) FILTER (WHERE w.vote = 'Yes') AS yes_count,
   count(*) FILTER (WHERE w.vote = 'No') AS no_count,
   count(*) FILTER (WHERE w.vote = 'Abstain') AS abstain_count,
-  sum(w.power) FILTER (WHERE w.vote = 'Yes')
-    / NULLIF(sum(w.power) FILTER (WHERE w.vote = 'Yes') + sum(w.power) FILTER (WHERE w.vote = 'No'), 0) AS ratio,
+  -- COALESCE inside the arithmetic, not around it. A FILTERed sum over no matching rows is NULL,
+  -- not 0, so without this a UNANIMOUS action — every vote Yes, no No at all — computes
+  -- yes + NULL = NULL and publishes ratio = NULL. That reads as "no votes were cast", which is the
+  -- opposite of what happened. Measured: 49 of the 129 tallies carry power, and 33 of those 49
+  -- were publishing a null ratio; after the fix none is null and 31 are a unanimous 1.0.
+  --
+  -- NULLIF stays, for the case it was written for: no power behind either side, where there really
+  -- is no ratio to publish.
+  COALESCE(sum(w.power) FILTER (WHERE w.vote = 'Yes'), 0)
+    / NULLIF(
+        COALESCE(sum(w.power) FILTER (WHERE w.vote = 'Yes'), 0)
+          + COALESCE(sum(w.power) FILTER (WHERE w.vote = 'No'), 0),
+        0
+      ) AS ratio,
   -- The threshold in force at the epoch the action's window closed, looked up through the static
   -- map so the parameter name travels with the number. NULL where no threshold applies, which
   -- includes ParameterChange/DRep: that one is a maximum over the parameter groups the proposal

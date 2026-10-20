@@ -57,6 +57,13 @@ module Palmares.DomainTypes.Transfer.QueryResponses
     DRepDetailResponse (..),
     GovActionLifecycle (..),
     GovActionSummary (..),
+    VoteTally (..),
+    ChainPointEpochOnly (..),
+    TreasuryWithdrawalRow (..),
+    ParamChangeRow (..),
+    ProposerSummary (..),
+    GovActionAnchorContent (..),
+    GovActionDetailResponse (..),
   )
 where
 
@@ -884,3 +891,155 @@ instance FromJSON GovActionSummary where
       <*> o .:? "return_address"
       <*> o .:? "treasury_amount"
       <*> o .: "votes_cast"
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * The governance action page
+
+-- | One role's tally on one governance action.
+--
+-- __@basis@ is a field, not a footnote.__ @cast_votes_only@ means @yes_power \/ (yes_power +
+-- no_power)@ over the votes ACTUALLY CAST. The ledger's ratification arithmetic compares against
+-- TOTAL active voting power, which includes everyone who did not vote, so the two numbers differ
+-- and only one of them is what we computed. A client that rendered this ratio as a prediction
+-- would be wrong, which is why @lifecycle@ on the action is the authoritative outcome and this is
+-- an observation.
+--
+-- @threshold@ is the parameter value in force at the epoch the action's voting window closed, and
+-- @threshold_param@ echoes the column it came from so a reader can look the number up in
+-- @palmares.thresholds@ themselves. Both are @null@ where no threshold applies: the committee
+-- ratifies by member quorum and holds no stake, and SPOs do not vote on treasury withdrawals or
+-- constitutional changes at all.
+data VoteTally = VoteTally
+  { voteTallyRole :: Core.VoterRole,
+    voteTallyEpoch :: Int,
+    voteTallyYesPower :: Integer,
+    voteTallyNoPower :: Integer,
+    voteTallyAbstainPower :: Integer,
+    voteTallyYesCount :: Int,
+    voteTallyNoCount :: Int,
+    voteTallyAbstainCount :: Int,
+    voteTallyRatio :: Maybe Double,
+    voteTallyThreshold :: Maybe Double,
+    voteTallyThresholdParam :: Maybe Text,
+    voteTallyBasis :: Core.TallyBasis,
+    voteTallyFormulaId :: Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "voteTally", CamelToSnake]] VoteTally
+
+instance ToSchema VoteTally where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "voteTally")
+
+-- | One payment a treasury withdrawal would make.
+--
+-- @enacted_at@ is an epoch-boundary chain point: no slot and no transaction hash, because the
+-- ledger pays a withdrawal at an epoch boundary and there is no transaction to point at.
+-- Publishing a slot there would be publishing a chain point no explorer could resolve. On preprod
+-- it is always @null@ — 83 withdrawals are recorded and none has ever been enacted.
+--
+-- @paid_heuristic@ carries its warning in its name: @reward_rest@ has no governance-action key, so
+-- matching a payment to a withdrawal by @(stake_address, spendable_epoch)@ is ambiguous when one
+-- address receives two withdrawals in one epoch.
+data TreasuryWithdrawalRow = TreasuryWithdrawalRow
+  { treasuryWithdrawalBeneficiary :: Text,
+    treasuryWithdrawalAmount :: Integer,
+    treasuryWithdrawalEnactedAt :: Maybe ChainPointEpochOnly,
+    treasuryWithdrawalPaidHeuristic :: Maybe Bool
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "treasuryWithdrawal", CamelToSnake]] TreasuryWithdrawalRow
+
+instance ToSchema TreasuryWithdrawalRow where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "treasuryWithdrawal")
+
+-- | A chain point for something that happened at an epoch boundary rather than in a transaction.
+--
+-- The same shape as 'Core.ChainPoint' with @slot@ and @tx_hash@ always absent, as a distinct type
+-- so a handler cannot accidentally fill them: @time@ is the first block of the epoch, which is
+-- the closest thing to a timestamp a ledger event has.
+data ChainPointEpochOnly = ChainPointEpochOnly
+  { chainPointEpochOnlySlot :: Maybe Integer,
+    chainPointEpochOnlyEpoch :: Int,
+    chainPointEpochOnlyTime :: UTCTime,
+    chainPointEpochOnlyTxHash :: Maybe Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "chainPointEpochOnly", CamelToSnake]] ChainPointEpochOnly
+
+instance ToSchema ChainPointEpochOnly where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "chainPointEpochOnly")
+
+-- | One protocol parameter a ParameterChange action would change, and its CIP-1694 group.
+--
+-- The group matters because it decides the DRep threshold: a ParameterChange's threshold is the
+-- MAXIMUM over the groups it touches, so a reader who wants to check our threshold needs to see
+-- which groups we read.
+data ParamChangeRow = ParamChangeRow
+  { paramChangeParam :: Text,
+    paramChangeGroup :: Maybe Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "paramChange", CamelToSnake]] ParamChangeRow
+
+instance ToSchema ParamChangeRow where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "paramChange")
+
+-- | Who proposed an action, and how many they have proposed.
+--
+-- @actions_count@ is the whole point of including this: one proposal says nothing about a
+-- proposer, and a track record is what this registry is for.
+data ProposerSummary = ProposerSummary
+  { proposerStakeAddress :: Text,
+    proposerActionsCount :: Int
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "proposer", CamelToSnake]] ProposerSummary
+
+instance ToSchema ProposerSummary where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "proposer")
+
+-- | A governance action's CIP-108 metadata, served only when its anchor verdict is @valid@.
+--
+-- Same gate as a DRep's CIP-119 content and for the same reason: a document whose hash did not
+-- match the on-chain commitment is not this proposal's statement of itself.
+data GovActionAnchorContent = GovActionAnchorContent
+  { govActionAnchorTitle :: Maybe Text,
+    govActionAnchorAbstract :: Maybe Text,
+    govActionAnchorMotivation :: Maybe Text,
+    govActionAnchorRationale :: Maybe Text,
+    govActionAnchorReferences :: [AnchorReference]
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "govActionAnchor", CamelToSnake]] GovActionAnchorContent
+
+instance ToSchema GovActionAnchorContent where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "govActionAnchor")
+
+-- | @GET \/gov-action\/{id}@ and @GET \/pages\/gov-action\/{id}@: one action's whole record.
+--
+-- One handler, two paths, one response type, for the reason 'DRepDetailResponse' gives.
+--
+-- @tallies@ carries one entry per role that actually voted, not a fixed three: a role with no
+-- votes has no tally, and publishing a zero row would read as \"they voted and it came to zero\".
+--
+-- @votes@ and @timeline@ are absent for the same sequencing reason as on the DRep page — their row
+-- types belong to @GET \/votes@ and @GET \/activity@.
+data GovActionDetailResponse = GovActionDetailResponse
+  { govActionDetailAction :: GovActionSummary,
+    govActionDetailTallies :: [VoteTally],
+    govActionDetailWithdrawals :: [TreasuryWithdrawalRow],
+    govActionDetailParamChanges :: [ParamChangeRow],
+    govActionDetailProposer :: Maybe ProposerSummary,
+    govActionDetailAnchorContent :: Maybe GovActionAnchorContent
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "govActionDetail", CamelToSnake]] GovActionDetailResponse
+
+instance ToSchema GovActionDetailResponse where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "govActionDetail")

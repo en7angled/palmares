@@ -81,6 +81,29 @@
             ],
             "type": "object"
         },
+        "ChainPointEpochOnly": {
+            "properties": {
+                "epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "slot": {
+                    "type": "integer"
+                },
+                "time": {
+                    "$ref": "#/definitions/UTCTime"
+                },
+                "tx_hash": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "epoch",
+                "time"
+            ],
+            "type": "object"
+        },
         "DRepDetailResponse": {
             "properties": {
                 "anchor_content": {
@@ -562,6 +585,70 @@
             ],
             "type": "object"
         },
+        "GovActionAnchorContent": {
+            "properties": {
+                "abstract": {
+                    "type": "string"
+                },
+                "motivation": {
+                    "type": "string"
+                },
+                "rationale": {
+                    "type": "string"
+                },
+                "references": {
+                    "items": {
+                        "$ref": "#/definitions/AnchorReference"
+                    },
+                    "type": "array"
+                },
+                "title": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "references"
+            ],
+            "type": "object"
+        },
+        "GovActionDetailResponse": {
+            "properties": {
+                "action": {
+                    "$ref": "#/definitions/GovActionSummary"
+                },
+                "anchor_content": {
+                    "$ref": "#/definitions/GovActionAnchorContent"
+                },
+                "param_changes": {
+                    "items": {
+                        "$ref": "#/definitions/ParamChangeRow"
+                    },
+                    "type": "array"
+                },
+                "proposer": {
+                    "$ref": "#/definitions/ProposerSummary"
+                },
+                "tallies": {
+                    "items": {
+                        "$ref": "#/definitions/VoteTally"
+                    },
+                    "type": "array"
+                },
+                "withdrawals": {
+                    "items": {
+                        "$ref": "#/definitions/TreasuryWithdrawalRow"
+                    },
+                    "type": "array"
+                }
+            },
+            "required": [
+                "action",
+                "tallies",
+                "withdrawals",
+                "param_changes"
+            ],
+            "type": "object"
+        },
         "GovActionLifecycle": {
             "properties": {
                 "dropped_epoch": {
@@ -784,6 +871,37 @@
             ],
             "type": "object"
         },
+        "ParamChangeRow": {
+            "properties": {
+                "group": {
+                    "type": "string"
+                },
+                "param": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "param"
+            ],
+            "type": "object"
+        },
+        "ProposerSummary": {
+            "properties": {
+                "actions_count": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "stake_address": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "stake_address",
+                "actions_count"
+            ],
+            "type": "object"
+        },
         "ServiceProbeStatus": {
             "properties": {
                 "service": {
@@ -863,6 +981,33 @@
             ],
             "type": "object"
         },
+        "TallyBasis": {
+            "enum": [
+                "cast_votes_only"
+            ],
+            "type": "string"
+        },
+        "TreasuryWithdrawalRow": {
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "beneficiary": {
+                    "type": "string"
+                },
+                "enacted_at": {
+                    "$ref": "#/definitions/ChainPointEpochOnly"
+                },
+                "paid_heuristic": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "beneficiary",
+                "amount"
+            ],
+            "type": "object"
+        },
         "TypeBreakdown": {
             "properties": {
                 "abstain": {
@@ -933,6 +1078,80 @@
                 "abstain"
             ],
             "type": "object"
+        },
+        "VoteTally": {
+            "properties": {
+                "abstain_count": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "abstain_power": {
+                    "type": "integer"
+                },
+                "basis": {
+                    "$ref": "#/definitions/TallyBasis"
+                },
+                "epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "formula_id": {
+                    "type": "string"
+                },
+                "no_count": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "no_power": {
+                    "type": "integer"
+                },
+                "ratio": {
+                    "format": "double",
+                    "type": "number"
+                },
+                "role": {
+                    "$ref": "#/definitions/VoterRole"
+                },
+                "threshold": {
+                    "format": "double",
+                    "type": "number"
+                },
+                "threshold_param": {
+                    "type": "string"
+                },
+                "yes_count": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "yes_power": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "role",
+                "epoch",
+                "yes_power",
+                "no_power",
+                "abstain_power",
+                "yes_count",
+                "no_count",
+                "abstain_count",
+                "basis",
+                "formula_id"
+            ],
+            "type": "object"
+        },
+        "VoterRole": {
+            "enum": [
+                "drep",
+                "spo",
+                "constitutional_committee"
+            ],
+            "type": "string"
         }
     },
     "info": {
@@ -1423,6 +1642,40 @@
                 "summary": "DReps"
             }
         },
+        "/gov-action/{gov-action-id}": {
+            "get": {
+                "description": "One action's whole record: its lifecycle, the tally per role that voted, the threshold each tally is measured against, the payments a treasury withdrawal would make, the parameters a parameter change would change, its proposer's track record, and its CIP-108 metadata -- the last only when the anchor hash verified. `basis` on every tally is `cast_votes_only`: the ratio is over the votes ACTUALLY CAST, while the ledger compares against total active voting power, so the ratio is an observation and never a prediction. `lifecycle` is the authoritative outcome. Both id forms are accepted in the path, but the canonical `<tx_hash>#<index>` contains a `#`, which a URL treats as a fragment delimiter -- it must be sent percent-encoded as `%23`. The CIP-129 `bech32` form that /gov-actions returns has no such character and is the one to put in a link.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "gov-action-id",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/GovActionDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "Governance action"
+            }
+        },
         "/gov-actions": {
             "get": {
                 "description": "Every governance action ever proposed, with its lifecycle. There is no default state filter, unlike /dreps: an expired action is still part of the record, and hiding 103 of preprod's 131 proposals by default would hide the history this registry exists to publish. `state` is single-valued and is a READING of the four lifecycle epochs in a fixed order, so all four travel beside it; `last_votable_epoch`, not `state`, is the authority on whether a vote is still possible. `title` and `abstract` come from CIP-108 metadata and are null for most actions -- measured, 7 of 131 on preprod have it fetched.",
@@ -1697,6 +1950,40 @@
                     }
                 },
                 "summary": "DRep profile (canonical page path)"
+            }
+        },
+        "/pages/gov-action/{gov-action-id}": {
+            "get": {
+                "description": "Identical to GET /gov-action/{gov-action-id}: same handler, same response.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "gov-action-id",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/GovActionDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "Governance action (canonical page path)"
             }
         },
         "/ready": {

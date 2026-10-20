@@ -273,5 +273,54 @@ check "/gov-actions CSV header" \
   "$(printf '%s' "$gacsv" | head -1 | tr -d '\r' | cut -d, -f1-3)" 'id,bech32,type'
 check "/gov-actions CSV is 131 rows plus a header" "$(printf '%s\n' "$gacsv" | grep -c .)" 132
 
+echo "== governance action page (T-API-12)"
+# The BECH32 form in the path, not the canonical one: `#` is a URL fragment delimiter, so
+# <tx_hash>#<index> only works percent-encoded. Both are accepted; one of them is linkable.
+GW=$(j '/gov-actions?type=treasury_withdrawals&limit=1' '.items[0].bech32' | tr -d '"')
+GWID=$(j '/gov-actions?type=treasury_withdrawals&limit=1' '.items[0].id' | tr -d '"')
+GE=$(j '/gov-actions?state=enacted&limit=1' '.items[0].bech32' | tr -d '"')
+GP=$(j '/gov-actions?type=parameter_change&limit=1' '.items[0].bech32' | tr -d '"')
+# One handler, two paths.
+if diff <(j "/gov-action/$GW" '.') <(j "/pages/gov-action/$GW" '.') >/dev/null; then
+  echo "  ok   /pages/gov-action/{id} is byte-identical to /gov-action/{id}"
+else
+  echo "  FAIL the gov-action page alias diverges"; fail=1
+fi
+# the percent-encoded canonical form resolves to the same action
+assert "/gov-action/$(printf '%s' "$GWID" | sed 's/#/%23/')" '.action.bech32' "\"$GW\""
+assert "/gov-action/$GW" '.action.id' "\"$GWID\""
+assert "/gov-action/$GW" '[.tallies[].basis] | unique | . == [] or . == ["cast_votes_only"]' 'true'
+assert "/gov-action/$GW" '[.tallies[].formula_id] | unique | . == [] or . == ["tally_cast_votes_v1"]' 'true'
+# treasury_withdrawals: the DRep threshold column is named even while the action is still open
+assert "/gov-action/$GW" '[.tallies[] | select(.role=="drep") | .threshold_param] | .[0] // null' '"dvt_treasury_withdrawal"'
+# SPOs do not vote on treasury withdrawals, so there is no SPO threshold to name
+assert "/gov-action/$GW" '[.tallies[] | select(.role=="spo") | .threshold_param] | unique | . == [] or . == [null]' 'true'
+# 83 withdrawals recorded on preprod and NONE enacted, so enacted_at is null throughout
+assert "/gov-action/$GW" '.withdrawals | length >= 1' 'true'
+assert "/gov-action/$GW" '.withdrawals[0] | [(.beneficiary | startswith("stake")), (.amount > 0), .enacted_at]' '[true,true,null]'
+assert "/gov-action/$GW" '.proposer | [(.stake_address | startswith("stake")), (.actions_count >= 1)]' '[true,true]'
+# A parameter_change publishes the parameters it touches, each with its CIP-1694 group, and its
+# DRep threshold is the max OVER those groups -- which palmares.vote_tally deliberately leaves
+# null because it is a property of the proposal, not of its type.
+assert "/gov-action/$GP" '.param_changes | length >= 1' 'true'
+assert "/gov-action/$GP" '[.param_changes[].group] | unique | map(startswith("dvt_p_p_")) | unique' '[true]'
+# An enacted parameter_change touching two groups: a real number, resolved through greatest(...)
+# over the columns Query.Thresholds named.
+assert "/gov-action/$GE" '[.tallies[] | select(.role=="drep") | [(.threshold != null), (.threshold > 0), (.threshold <= 1)]] | .[0] // [true,true,true]' '[true,true,true]'
+assert "/gov-action/$GE" '[.tallies[] | select(.role=="drep") | (.threshold_param | startswith("dvt_p_p_") or startswith("greatest(dvt_p_p_"))] | .[0] // true' 'true'
+# The committee has counts and no power: it ratifies by member quorum and holds no stake.
+assert "/gov-action/$GE" '[.tallies[] | select(.role=="constitutional_committee") | [.yes_power, .no_power, .threshold]] | .[0] // [0,0,null]' '[0,0,null]'
+# ratio is null ONLY when no power sits behind either side. A unanimous action must read 1, not
+# null -- a FILTERed sum over no rows is NULL, so `yes + NULL` published "no votes cast" for 33 of
+# the 49 tallies that carry power until this was fixed.
+assert "/gov-action/$GE" '[.tallies[] | select(.yes_power + .no_power > 0) | .ratio] | map(. != null) | unique | . == [] or . == [true]' 'true'
+assert "/gov-action/$GE" '[.tallies[] | select(.yes_power + .no_power == 0) | .ratio] | unique | . == [] or . == [null]' 'true'
+assert_err '/gov-action/0000000000000000000000000000000000000000000000000000000000000000%230' '.code' '"gov_action_not_found"'
+assert_err '/gov-action/nope' '.code' '"invalid_gov_action_id"'
+for p in "/gov-action/0000000000000000000000000000000000000000000000000000000000000000%230:404" "/gov-action/nope:400"; do
+  path="${p%:*}"; want="${p##*:}"; got=$(code "$path")
+  if [ "$got" = "$want" ]; then echo "  ok   $path is $want"; else echo "  FAIL $path is $got (want $want)"; fail=1; fi
+done
+
 if [ "$fail" = 0 ]; then echo "smoke OK"; else echo "smoke FAILED" >&2; fi
 exit $fail

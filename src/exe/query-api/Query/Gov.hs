@@ -77,6 +77,16 @@ module Query.Gov
     govActionSortSpec,
     govActionWhere,
     listGovActions,
+
+    -- * The governance action page
+    resolveGovAction,
+    govActionByIdQuery,
+    listTallies,
+    listWithdrawals,
+    paramChangeColumns,
+    proposerQuery,
+    govActionAnchorQuery,
+    thresholdValueAt,
   )
 where
 
@@ -126,8 +136,12 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     DelegatorStats,
     EpochParamsSummary (..),
     EpochPowerPoint,
+    GovActionAnchorContent,
     GovActionSummary,
+    ProposerSummary,
     SyncStatus (..),
+    TreasuryWithdrawalRow,
+    VoteTally,
   )
 import Palmares.Metrics.Catalog (lookupMetricSql)
 import Palmares.Utils (jsonTag)
@@ -940,3 +954,145 @@ govActionProjection =
   \                   'formula_id', 'gov_action_state_v1') AS lifecycle, \
   \ g.deposit, g.return_address, g.withdrawal_total AS treasury_amount, \
   \ g.votes_cast "
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * The governance action page
+
+-- | Resolve a canonical @\<tx_hash\>#\<index\>@ to the internal proposal id.
+resolveGovAction :: Text -> Int -> SqlPersistT IO (Maybe Int64)
+resolveGovAction txHex ix = do
+  rows <-
+    rawSql
+      "SELECT g.gov_action_id FROM palmares.gov_action g \
+      \ WHERE g.tx_hash = decode(?, 'hex') AND g.index = ? LIMIT 1"
+      [toPersistValue txHex, toPersistValue ix]
+  pure $ case rows of
+    (Single i : _) -> Just i
+    [] -> Nothing
+
+-- | One action's summary row.
+govActionByIdQuery :: Int64 -> SqlPersistT IO (Maybe GovActionSummary)
+govActionByIdQuery gaid =
+  queryJson1
+    ( "SELECT row_to_json(x)::text FROM ( SELECT "
+        <> govActionProjection
+        <> govActionFrom
+        <> " WHERE g.gov_action_id = ? ) x"
+    )
+    [toPersistValue gaid]
+
+-- | The tallies, one per role that actually voted.
+--
+-- Not a fixed three: a role with no votes has no tally, and a zero row would read as \"they voted
+-- and it came to zero\". @threshold@ and @threshold_param@ come from @palmares.vote_tally@, which
+-- resolves them through the static map — except for ParameterChange\/DRep, which the view
+-- deliberately leaves NULL because it is a maximum over parameter groups.
+-- 'fillParamChangeThreshold' is what completes that one case.
+listTallies :: Int64 -> SqlPersistT IO [VoteTally]
+listTallies gaid =
+  queryJson
+    "SELECT row_to_json(x)::text FROM ( \
+    \  SELECT lower(regexp_replace(t.voter_role::text, '([a-z0-9])([A-Z])', '\\1_\\2', 'g')) AS role_raw, \
+    \         CASE t.voter_role WHEN 'DRep' THEN 'drep' WHEN 'SPO' THEN 'spo' \
+    \                           ELSE 'constitutional_committee' END AS role, \
+    \         t.epoch, \
+    \         COALESCE(t.yes_power, 0) AS yes_power, \
+    \         COALESCE(t.no_power, 0) AS no_power, \
+    \         COALESCE(t.abstain_power, 0) AS abstain_power, \
+    \         t.yes_count, t.no_count, t.abstain_count, \
+    \         t.ratio, t.threshold, t.threshold_param, \
+    \         t.basis, 'tally_cast_votes_v1' AS formula_id \
+    \  FROM palmares.vote_tally t \
+    \  WHERE t.gov_action_id = ? \
+    \  ORDER BY t.voter_role \
+    \) x"
+    [toPersistValue gaid]
+
+-- | The payments a treasury withdrawal would make.
+listWithdrawals :: Int64 -> SqlPersistT IO [TreasuryWithdrawalRow]
+listWithdrawals gaid =
+  queryJson
+    "SELECT row_to_json(x)::text FROM ( \
+    \  SELECT w.stake_address AS beneficiary, w.amount, w.paid_heuristic, \
+    \         CASE WHEN w.enacted_epoch IS NULL THEN NULL \
+    \              ELSE json_build_object( \
+    \                     'slot', NULL, 'epoch', w.enacted_epoch, 'tx_hash', NULL, \
+    \                     'time', (SELECT (min(b.time) AT TIME ZONE 'UTC') FROM public.block b \
+    \                               WHERE b.epoch_no = w.enacted_epoch)) END AS enacted_at \
+    \  FROM palmares.treasury_withdrawal w \
+    \  WHERE w.gov_action_id = ? \
+    \  ORDER BY w.amount DESC, w.stake_address \
+    \) x"
+    [toPersistValue gaid]
+
+-- | The protocol parameters a ParameterChange action would change.
+--
+-- Read out of @param_proposal@ as a row of JSON, so the set of columns is the table's rather than
+-- a list this code keeps in step with it. The bookkeeping columns are excluded by name; the group
+-- comes from 'Query.Thresholds.paramGroupColumns', and a @null@ group means a column that table
+-- does not classify — which 'UnitTests.GovThresholds' makes impossible for the current schema.
+paramChangeColumns :: Int64 -> SqlPersistT IO [Text]
+paramChangeColumns gaid = do
+  rows <-
+    rawSql
+      "SELECT t.k FROM public.gov_action_proposal g \
+      \ JOIN public.param_proposal pp ON pp.id = g.param_proposal \
+      \ CROSS JOIN LATERAL jsonb_each_text(to_jsonb(pp)) AS t(k, v) \
+      \ WHERE g.id = ? AND t.v IS NOT NULL \
+      \   AND t.k NOT IN ('id', 'epoch_no', 'key', 'registered_tx_id') \
+      \ ORDER BY t.k"
+      [toPersistValue gaid]
+  pure [k | Single k <- rows]
+
+-- | Who proposed the action, and how many actions they have proposed in total.
+proposerQuery :: Int64 -> SqlPersistT IO (Maybe ProposerSummary)
+proposerQuery gaid =
+  queryJson1
+    "SELECT row_to_json(x)::text FROM ( \
+    \  SELECT g.return_address AS stake_address, \
+    \         (SELECT count(*)::int FROM palmares.gov_action g2 \
+    \           WHERE g2.return_address = g.return_address) AS actions_count \
+    \  FROM palmares.gov_action g \
+    \  WHERE g.gov_action_id = ? AND g.return_address IS NOT NULL \
+    \) x"
+    [toPersistValue gaid]
+
+-- | A governance action's CIP-108 metadata, gated on a @valid@ anchor verdict.
+--
+-- The DISTINCT ON is the db-sync 13.7.x duplicate-child-row bug again: measured, 131 actions read
+-- as 135 through this table, which double-counted six treasury totals before it was pinned.
+govActionAnchorQuery :: Int64 -> SqlPersistT IO (Maybe GovActionAnchorContent)
+govActionAnchorQuery gaid =
+  queryJson1
+    "SELECT row_to_json(x)::text FROM ( \
+    \  SELECT gd.title, gd.abstract, gd.motivation, gd.rationale, \
+    \         COALESCE(( SELECT json_agg(json_build_object('label', r.label, 'uri', r.uri) \
+    \                                    ORDER BY r.id) \
+    \                    FROM public.off_chain_vote_reference r \
+    \                    WHERE r.off_chain_vote_data_id = gd.off_chain_vote_data_id ), '[]'::json) \
+    \           AS references \
+    \  FROM palmares.gov_action g \
+    \  JOIN palmares.anchor a ON a.voting_anchor_id = g.voting_anchor_id \
+    \  JOIN ( SELECT DISTINCT ON (off_chain_vote_data_id) * \
+    \         FROM public.off_chain_vote_gov_action_data ORDER BY off_chain_vote_data_id, id ) gd \
+    \    ON gd.off_chain_vote_data_id = a.off_chain_vote_data_id \
+    \  WHERE g.gov_action_id = ? AND a.verdict = 'valid' \
+    \  LIMIT 1 \
+    \) x"
+    [toPersistValue gaid]
+
+-- | Evaluate a threshold EXPRESSION over @palmares.thresholds@ at one epoch.
+--
+-- The expression comes from 'Query.Thresholds.drepParamChangeThreshold', which builds it from a
+-- closed column table — the same property that makes 'orderClause' safe to splice. No request
+-- text reaches this statement.
+thresholdValueAt :: Text -> Int -> SqlPersistT IO (Maybe Double)
+thresholdValueAt expr epoch = do
+  rows <-
+    rawSql
+      ("SELECT (" <> expr <> ")::float8 FROM palmares.thresholds WHERE epoch_no = ? LIMIT 1")
+      [toPersistValue epoch]
+  pure $ case rows of
+    (Single v : _) -> v
+    [] -> Nothing

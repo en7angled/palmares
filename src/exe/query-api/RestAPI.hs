@@ -37,9 +37,10 @@ import Palmares.DomainTypes.Core.Types
     DRepId,
     DRepStatus,
     DRepUpdateKind,
-    GovActionId,
+    GovActionId (..),
     GovActionState,
     GovActionType,
+    VoterRole (..),
     drepIdHex,
   )
 import Palmares.DomainTypes.Transfer.Filters
@@ -61,8 +62,14 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     DRepUpdateRow,
     DelegatorRow,
     EpochPowerPoint,
+    GovActionAnchorContent,
+    GovActionDetailResponse (..),
     GovActionSummary,
+    ParamChangeRow (..),
+    ProposerSummary,
     StatusResponse (..),
+    TreasuryWithdrawalRow,
+    VoteTally (..),
   )
 import Palmares.Metrics.Catalog (MetricFormula, resolvedMetricCatalog, retentionWindowEpochs)
 import Palmares.Utils (jsonTag)
@@ -80,8 +87,19 @@ import Query.Common
     normalizeQ,
   )
 import Query.Csv ()
+import Data.Text.Read qualified as TRead
+import Database.Persist.Sql (SqlPersistT)
+import Query.Thresholds (drepParamChangeThreshold, paramGroupColumns)
 import Query.Gov
   ( anchorContentQuery,
+    govActionAnchorQuery,
+    govActionByIdQuery,
+    listTallies,
+    listWithdrawals,
+    paramChangeColumns,
+    proposerQuery,
+    resolveGovAction,
+    thresholdValueAt,
     delegatorOrderColumn,
     delegatorStatsQuery,
     drepMetricsQuery,
@@ -506,6 +524,94 @@ govActionsServer = handleGetGovActions
 
 ------------------------------------------------------------------------------------------------
 
+--  The governance action page
+
+------------------------------------------------------------------------------------------------
+
+type GovActionDetailAPI =
+  Summary "Governance action"
+    :> Description
+         "One action's whole record: its lifecycle, the tally per role that voted, the threshold \
+         \each tally is measured against, the payments a treasury withdrawal would make, the \
+         \parameters a parameter change would change, its proposer's track record, and its CIP-108 \
+         \metadata -- the last only when the anchor hash verified. `basis` on every tally is \
+         \`cast_votes_only`: the ratio is over the votes ACTUALLY CAST, while the ledger compares \
+         \against total active voting power, so the ratio is an observation and never a prediction. \
+         \`lifecycle` is the authoritative outcome. \
+         \Both id forms are accepted in the path, but the canonical `<tx_hash>#<index>` contains a \
+         \`#`, which a URL treats as a fragment delimiter -- it must be sent percent-encoded as \
+         \`%23`. The CIP-129 `bech32` form that /gov-actions returns has no such character and is \
+         \the one to put in a link."
+    :> "gov-action"
+    :> Capture "gov-action-id" GovActionId
+    :> Get '[JSON] GovActionDetailResponse
+
+type GovActionPageAPI =
+  Summary "Governance action (canonical page path)"
+    :> Description "Identical to GET /gov-action/{gov-action-id}: same handler, same response."
+    :> "pages"
+    :> "gov-action"
+    :> Capture "gov-action-id" GovActionId
+    :> Get '[JSON] GovActionDetailResponse
+
+handleGetGovActionDetail :: GovActionId -> QueryAppMonad GovActionDetailResponse
+handleGetGovActionDetail (GovActionId gid) = do
+  (txHex, ix) <- maybe (throwApi InvalidGovActionId) pure (splitActionId gid)
+  r <- runRead $ do
+    mid <- resolveGovAction txHex ix
+    case mid of
+      Nothing -> pure Nothing
+      Just gaid -> do
+        maction <- govActionByIdQuery gaid
+        tallies <- listTallies gaid
+        withdrawals <- listWithdrawals gaid
+        touched <- paramChangeColumns gaid
+        proposer <- proposerQuery gaid
+        anchor <- govActionAnchorQuery gaid
+        tallies' <- fillParamChangeThreshold touched tallies
+        pure $
+          (\action ->
+             GovActionDetailResponse
+               { govActionDetailAction = action,
+                 govActionDetailTallies = tallies',
+                 govActionDetailWithdrawals = withdrawals,
+                 govActionDetailParamChanges =
+                   [ParamChangeRow c (lookup c paramGroupColumns) | c <- touched],
+                 govActionDetailProposer = proposer,
+                 govActionDetailAnchorContent = anchor
+               })
+            <$> maction
+  maybe (throwApi GovActionNotFound) pure r
+
+-- | Fill the one threshold @palmares.vote_tally@ deliberately leaves NULL.
+--
+-- A ParameterChange's DRep threshold is the MAXIMUM over the CIP-1694 groups the proposal touches,
+-- which is a property of the proposal and not of its type — so the view cannot resolve it from the
+-- static map and says so in its own comment. Query.Thresholds builds the expression from a closed
+-- column table and this evaluates it at the tally's epoch, echoing the expression as
+-- `threshold_param` so the number stays traceable.
+--
+-- Only the DRep tally, and only when the view left it empty: an SPO's security-group threshold is
+-- a single column the map already resolved.
+fillParamChangeThreshold :: [Text] -> [VoteTally] -> SqlPersistT IO [VoteTally]
+fillParamChangeThreshold touched = mapM fill
+  where
+    fill t
+      | voteTallyRole t == DRep,
+        voteTallyThresholdParam t == Nothing,
+        Just expr <- drepParamChangeThreshold touched = do
+          v <- thresholdValueAt expr (voteTallyEpoch t)
+          pure t {voteTallyThreshold = v, voteTallyThresholdParam = Just expr}
+      | otherwise = pure t
+
+-- | Split a canonical governance action id. The capture already normalised it to this shape.
+splitActionId :: Text -> Maybe (Text, Int)
+splitActionId gid = case T.splitOn "#" gid of
+  [h, i] | Right (n, "") <- TRead.decimal i -> Just (h, n)
+  _ -> Nothing
+
+------------------------------------------------------------------------------------------------
+
 --  Core Function API
 
 ------------------------------------------------------------------------------------------------
@@ -521,6 +627,8 @@ type CoreFunctionAPI =
     :<|> DRepDelegatorsAPI
     :<|> DRepUpdatesAPI
     :<|> GovActionsAPI
+    :<|> GovActionDetailAPI
+    :<|> GovActionPageAPI
 
 coreFunctionServer :: ServerT CoreFunctionAPI QueryAppMonad
 -- Spelled out flat rather than grouped into a drepProfileServer: `:<|>` is right-associative,
@@ -536,6 +644,8 @@ coreFunctionServer =
     :<|> handleGetDRepDelegators
     :<|> handleGetDRepUpdates
     :<|> govActionsServer
+    :<|> handleGetGovActionDetail
+    :<|> handleGetGovActionDetail
 
 ------------------------------------------------------------------------------------------------
 

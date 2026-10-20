@@ -422,6 +422,7 @@ test-suite test
     Test.Pg
   --   TestRuns
     UnitTests
+    UnitTests.Anchor
     UnitTests.ApiHardening
   --   UnitTests.Attestation
     UnitTests.ChainSyncReplay

@@ -34,22 +34,27 @@ tests =
         hasStatement "   \n\n-- still nothing\n   \n" @?= False
         hasStatement "-- a header\nCREATE SCHEMA x;\n" @?= True
         hasStatement "CREATE SCHEMA x; -- trailing comment\n" @?= True,
-      testCase "the stubs the later tasks fill are skipped today, so only 000 runs" $
-        map fst (filter (hasStatement . snd) palmaresSqlFiles) @?= ["000_schema.sql"],
+      -- Which files are stubs changes as later tasks fill them, so the assertion is the
+      -- invariant and not today's snapshot: 000 is never skipped (nothing else can run without
+      -- the schema), and filtering never reorders.
+      testCase "000_schema.sql is always applied, and filtering preserves order" $ do
+        let applied = map fst (filter (hasStatement . snd) palmaresSqlFiles)
+        assertBool "000_schema.sql must never be skipped" ("000_schema.sql" `elem` applied)
+        applied @?= filter (`elem` applied) (map fst palmaresSqlFiles),
       testCase "a failing statement rolls the whole set back — the previous schema survives" $
         withScratchDb $ \pool -> do
           applyPalmaresSchema pool
           -- A marker object, so "the previous schema survived" is a positive assertion and not
           -- just "the count is still zero" (the stub files create nothing yet).
           runPg pool $ rawExecute "CREATE VIEW palmares.marker AS SELECT 1 AS one" []
-          [Single (before :: Int)] <- runPg pool countPalmaresRelations
+          [Single (relsBefore :: Int)] <- runPg pool countPalmaresRelations
           r <-
             try @SomeException $
               runPg pool (applySchemaSql [("999_bad.sql", "DROP SCHEMA palmares CASCADE; SELECT 1/0;")])
           assertBool "the bad set must fail" (isLeft r)
-          [Single (after :: Int)] <- runPg pool countPalmaresRelations
-          after @?= before
-          assertBool "the marker view must still be there" (before >= 1)
+          [Single (relsAfter :: Int)] <- runPg pool countPalmaresRelations
+          relsAfter @?= relsBefore
+          assertBool "the marker view must still be there" (relsBefore >= 1)
     ]
   where
     countPalmaresRelations :: SqlPersistT IO [Single Int]

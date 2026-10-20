@@ -4,6 +4,7 @@ module UnitTests where
 
 import GHC.Stack
 import Test.Tasty
+import UnitTests.Anchor qualified as Anchor
 import UnitTests.ApiHardening (apiHardeningTests)
 import UnitTests.ChainSyncReplay (chainSyncReplayTests)
 import UnitTests.Conversions (conversionsTests)
@@ -15,7 +16,8 @@ unitTests :: (HasCallStack) => TestTree
 unitTests =
   testGroup
     "Unit Tests"
-    [ apiHardeningTests,
+    [ Anchor.tests,
+      apiHardeningTests,
       chainSyncReplayTests,
       conversionsTests,
       govIdsTests,

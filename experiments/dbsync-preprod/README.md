@@ -125,3 +125,19 @@ An earlier attempt added an hourly `measure.sh` loop. It is gone, because it mea
 
 So: run `./measure.sh` whenever you want a snapshot row, and once more when it reaches tip. Nothing has
 to stay running alongside the experiment.
+
+---
+
+## Status 2026-10-20: measurements landed, rig retained on purpose
+
+Experiment A answered its question. db-sync reached the preprod tip from genesis in **≤ 7 h** and now
+follows live; every number is in `docs/adr/0001-governance-data-substrate.md`, and the compose file plus
+both config directories have been promoted to the repo root (`compose.yaml`,
+`deploy/dbsync/db-sync-config.yaml`, `deploy/node-config/`).
+
+By the rule in the repo README this directory should now be deleted. It is not, for one reason: **its
+volumes hold the only synced preprod db-sync database on this machine**, and the SQL/metrics block needs
+a real one to write and check views against. Re-creating it costs another ~7 h plus 34 GB.
+
+**Delete this directory when** the top-level `compose.yaml --profile chain` stack has its own synced
+database, or when the cluster substrate is up. Until then, do not `docker compose down -v` here.

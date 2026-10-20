@@ -1,0 +1,439 @@
+cabal-version: 3.0
+name:          palmares
+version:       0.1.0
+synopsis:
+  Cardano governance reputation and track-record registry: an independently derived explorer over
+  cardano-db-sync, plus a countersigned on-chain attestation protocol.
+
+homepage:      https://github.com/en7angled/palmares
+license:       Apache-2.0
+license-file:  LICENSE
+author:        Marius Georgescu
+maintainer:    georgescumarius@live.com
+category:      Web3
+build-type:    Simple
+
+-- Static assets embedded at compile time via Template Haskell (`file-embed`) must be listed here or
+-- `cabal sdist` / the Docker build silently omit them.
+--
+-- The SQL and metric-catalog globs below are deliberately commented out: a glob that matches nothing
+-- is a build warning today and a silent packaging hole later. The read-path block's `sql/` task and the
+-- metrics-catalog task uncomment their own line in the same commit that creates the files.
+extra-source-files:
+  NOTICE
+  licenses/LICENSE.decentralized-belt-system.MIT
+
+-- sql/*.sql
+-- resources/metrics/*.sql
+-- resources/metric-formulas.json
+
+common common-options
+  ghc-options:      -Wall -Wunused-packages
+  default-language: GHC2021
+  build-depends:    base
+
+common plinth-ghc-options
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+
+  default-language:   GHC2021
+  default-extensions: TemplateHaskell
+
+  -- all Plinth modules should use the following GHC flags
+  ghc-options:
+    -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
+    -fno-full-laziness -fno-spec-constr -fno-specialise -fno-strictness
+    -fno-unbox-strict-fields -fno-unbox-small-strict-fields
+    -fconstraint-solver-iterations=0
+
+  --
+  ghc-options:        -fobject-code -fplugin-opt PlutusTx.Plugin:defer-errors
+
+  -- set target plutus-core version
+  ghc-options:        -fplugin-opt PlutusTx.Plugin:target-version=1.1.0
+
+  -- Compiler flags (defaults): no-remove-trace keeps traces; preserve-logging
+  -- prevents optimization from removing trace messages (see Plutus troubleshooting).
+  -- ghc-options:        -fplugin-opt PlutusTx.Plugin:preserve-logging
+  ghc-options:        -fplugin-opt PlutusTx.Plugin:remove-trace
+  ghc-options:        -fplugin-opt PlutusTx.Plugin:optimize
+
+-- Every `exposed-modules` / `other-modules` list in this file is present but comment-prefixed. The
+-- extraction block uncomments one line per file as that file lands, so "the skeleton compiles empty"
+-- and "the extraction manifest is recorded verbatim" are both true at the same time.
+
+library onchain-lib
+  import:             common-options, plinth-ghc-options
+  default-language:   Haskell2010
+  hs-source-dirs:     src/lib/onchain-lib
+
+  -- exposed-modules:
+  --   Palmares.Onchain.Blueprint
+  --   Palmares.Onchain.CIP68
+  --   Palmares.Onchain.Protocol
+  --   Palmares.Onchain.Protocol.Id
+  --   Palmares.Onchain.Protocol.Lookup
+  --   Palmares.Onchain.Protocol.Types
+  --   Palmares.Onchain.Utils
+  --   Palmares.Onchain.Validators.AttestationsValidator
+  --   Palmares.Onchain.Validators.DisputesValidator
+  --   Palmares.Onchain.Validators.MintingPolicy
+  --   Palmares.Onchain.Validators.OracleNFTPolicy
+  --   Palmares.Onchain.Validators.OracleValidator
+  --   Palmares.Onchain.Validators.ProfilesValidator
+
+  if !(impl(ghcjs) || os(ghcjs))
+    build-depends: plutus-tx-plugin
+
+  build-depends:
+    , bytestring
+    , containers
+
+  --- Cardano specific dependencies
+  build-depends:
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
+
+  default-extensions:
+    BangPatterns
+    BlockArguments
+    DataKinds
+    DeriveAnyClass
+    DeriveGeneric
+    DerivingStrategies
+    DerivingVia
+    FlexibleContexts
+    FlexibleInstances
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    InstanceSigs
+    LambdaCase
+    MultiParamTypeClasses
+    NamedFieldPuns
+    NumericUnderscores
+    OverloadedStrings
+    PatternSynonyms
+    RecordWildCards
+    ScopedTypeVariables
+    StandaloneDeriving
+    TemplateHaskell
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    UndecidableInstances
+    ViewPatterns
+
+library chainsync-lib
+  import:             common-options
+  default-language:   Haskell2010
+  hs-source-dirs:     src/lib/chainsync-lib
+  default-extensions:
+    DataKinds
+    DeriveGeneric
+    NamedFieldPuns
+    OverloadedStrings
+    TemplateHaskell
+    TypeOperators
+
+  -- exposed-modules:
+  --   Palmares.ChainSync.KupoAtlas
+  --   Palmares.ChainSync.KupoClient
+
+  build-depends:
+    , aeson
+    , base16-bytestring
+    , containers
+    , extra
+    , http-client
+    , http-client-tls
+    , persistent
+    , servant
+    , servant-client
+    , text
+
+  --- Cardano specific dependencies
+  build-depends:
+    , atlas-cardano
+    , cardano-api
+
+library offchain-lib
+  import:             common-options
+  default-language:   Haskell2010
+  hs-source-dirs:     src/lib/offchain-lib
+
+  -- exposed-modules:
+  --   Palmares.Constants
+  --   Palmares.DomainTypes.Core.Actions
+  --   Palmares.DomainTypes.Core.Ids
+  --   Palmares.DomainTypes.Core.Types
+  --   Palmares.DomainTypes.Transfer.Filters
+  --   Palmares.DomainTypes.Transfer.OrderBy
+  --   Palmares.DomainTypes.Transfer.QueryResponses
+  --   Palmares.DomainTypes.Transfer.Types
+  --   Palmares.Ingestion
+  --   Palmares.Storage
+  --   Palmares.TxBuilding.Context
+  --   Palmares.TxBuilding.Conversions
+  --   Palmares.TxBuilding.Exceptions
+  --   Palmares.TxBuilding.Interactions
+  --   Palmares.TxBuilding.Lookups
+  --   Palmares.TxBuilding.Operations
+  --   Palmares.TxBuilding.Skeletons
+  --   Palmares.TxBuilding.Transactions
+  --   Palmares.TxBuilding.Utils
+  --   Palmares.TxBuilding.Validators
+  --   Palmares.Utils
+
+  build-depends:
+    , aeson
+    , bytestring
+    , chainsync-lib
+    , containers
+    , deriving-aeson
+    , extra
+    , lens
+    , mtl
+    , onchain-lib
+    , persistent
+    , servant-server
+    , swagger2
+    , text
+    , time
+
+  --- Cardano specific dependencies
+  build-depends:
+    , atlas-cardano
+    , cardano-api
+    , plutus-ledger-api
+    , plutus-tx
+
+library webapi-lib
+  import:             common-options
+  default-language:   Haskell2010
+  hs-source-dirs:     src/lib/webapi-lib
+  default-extensions:
+    DataKinds
+    NamedFieldPuns
+    OverloadedStrings
+    TypeOperators
+
+  -- This library keeps NO project-library dependencies: HTTP, auth, CORS and serialisation only.
+  -- exposed-modules:
+  --   Palmares.WebAPI.Auth
+  --   Palmares.WebAPI.CORS
+  --   Palmares.WebAPI.CSV
+  --   Palmares.WebAPI.Errors
+  --   Palmares.WebAPI.ServiceProbe
+  --   Palmares.WebAPI.Utils
+
+  build-depends:
+    , aeson
+    , bytestring
+    , cassava
+    , http-types
+    , lens
+    , memory
+    , servant-server
+    , swagger2
+    , text
+    , time
+    , wai
+    , wai-cors
+
+executable admin
+  import:         common-options
+  main-is:        Main.hs
+  hs-source-dirs: src/exe/admin
+  build-depends:
+    , offchain-lib
+    , onchain-lib
+
+  build-depends:
+    , aeson
+    , aeson-pretty
+    , bytestring
+    , mtl
+    , optparse-applicative
+    , text
+
+  --- Cardano specific dependencies
+  build-depends:
+    , atlas-cardano
+    , plutus-ledger-api
+
+executable query-api
+  import:         common-options
+  main-is:        Main.hs
+  hs-source-dirs: src/exe/query-api
+  ghc-options:    -threaded -rtsopts -with-rtsopts=-T -with-rtsopts=-N -O2
+
+  -- other-modules:
+  --   Metrics.Catalog
+  --   Query.Aggregates
+  --   Query.Common
+  --   Query.Gov
+  --   Query.Metrics
+  --   Query.Pages
+  --   Query.Projected
+  --   Query.Refresh
+  --   Query.ServiceStatus
+  --   Query.Views
+  --   QueryAppMonad
+  --   RestAPI
+
+  build-depends:
+    , offchain-lib
+    , onchain-lib
+    , webapi-lib
+
+  build-depends:
+    , aeson
+    , aeson-pretty
+    , bytestring             ^>=0.11.5
+    , containers
+    , esqueleto
+    , file-embed
+    , lens                   ^>=5.2.3
+    , monad-logger
+    , mtl
+    , persistent
+    , persistent-postgresql
+    , servant-options
+    , servant-server
+    , servant-swagger
+    , servant-swagger-ui
+    , swagger2
+    , text
+    , time
+    , wai
+    , warp
+
+  --- Cardano specific dependencies
+  build-depends:
+    , atlas-cardano
+    , plutus-ledger-api
+
+executable interaction-api
+  import:         common-options
+  main-is:        Main.hs
+  hs-source-dirs: src/exe/interaction-api
+  ghc-options:    -threaded -rtsopts -with-rtsopts=-T -with-rtsopts=-N -O2
+
+  -- other-modules:
+  --   InteractionAppMonad
+  --   RestAPI
+  --   ServiceHandlers
+  --   ServiceRequests
+
+  build-depends:
+    , offchain-lib
+    , webapi-lib
+
+  build-depends:
+    , aeson
+    , aeson-pretty
+    , bytestring         ^>=0.11.5
+    , deriving-aeson
+    , http-types         ^>=0.12.4
+    , lens               ^>=5.2.3
+    , mtl
+    , servant-options
+    , servant-server
+    , servant-swagger
+    , servant-swagger-ui
+    , swagger2
+    , text
+    , time
+    , wai
+    , wai-extra
+    , warp
+
+  --- Cardano specific dependencies
+  build-depends:    atlas-cardano
+
+executable attest-sync
+  import:         common-options
+  main-is:        Main.hs
+  hs-source-dirs: src/exe/attest-sync
+  ghc-options:    -threaded -rtsopts -with-rtsopts=-T -with-rtsopts=-N -O2
+
+  -- other-modules:
+  --   ChainSyncLogic
+  --   ChainSyncServer
+  --   ChainsyncAPI
+
+  build-depends:
+    , chainsync-lib
+    , offchain-lib
+    , webapi-lib
+
+  build-depends:
+    , bytestring
+    , deriving-aeson
+    , extra
+    , monad-logger
+    , persistent
+    , persistent-postgresql
+    , servant-server
+    , swagger2
+    , text
+    , time
+    , warp
+
+  --- Cardano specific dependencies
+  build-depends:    atlas-cardano
+
+test-suite test
+  import:         common-options
+  type:           exitcode-stdio-1.0
+  hs-source-dirs: src/test
+  main-is:        Main.hs
+
+  -- other-modules:
+  --   PropertyTests
+  --   Test.Fixtures
+  --   Test.Helpers
+  --   TestRuns
+  --   UnitTests
+  --   UnitTests.ApiHardening
+  --   UnitTests.Attestation
+  --   UnitTests.ChainSyncReplay
+  --   UnitTests.Cleanup
+  --   UnitTests.Conversions
+  --   UnitTests.Dispute
+  --   UnitTests.Oracle
+  --   UnitTests.Profile
+  --   UnitTests.StorageRoundtrip
+
+  build-depends:
+    , chainsync-lib
+    , offchain-lib
+    , onchain-lib
+    , webapi-lib
+
+  build-depends:
+    , aeson
+    , bytestring
+    , containers
+    , extra
+    , hedgehog
+    , http-types
+    , mtl
+    , persistent
+    , persistent-sqlite
+    , servant-server
+    , tasty
+    , tasty-hedgehog
+    , tasty-hunit
+    , wai
+    , wai-cors
+    , warp
+
+  --- Cardano specific dependencies
+  build-depends:
+    , atlas-cardano
+    , plutus-ledger-api
+    , plutus-tx

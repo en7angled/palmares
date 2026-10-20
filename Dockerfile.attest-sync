@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1.4
+
+### STAGE 1: Build ###
+FROM --platform=$TARGETPLATFORM palmares-builder:9.6.6 AS builder
+
+WORKDIR /palmares
+
+ENV PATH="/root/.cabal/bin:$PATH"
+ENV CC=musl-gcc
+ENV LD=musl-gcc
+
+# Source copy (only layer that changes on code edits).
+COPY src ./src
+COPY config ./config
+
+RUN cabal install attest-sync \
+    --enable-executable-static \
+    --overwrite-policy=always \
+    --installdir=. \
+    --install-method=copy \
+    --ghc-options="-optl=-static -optl=-pthread -optc=-static"
+
+### STAGE 2: Runtime ###
+FROM --platform=$TARGETPLATFORM palmares-runtime-base:3.20 AS runtime
+
+WORKDIR /app
+COPY --from=builder /palmares/attest-sync /app/attest-sync
+COPY ./config /app/config
+
+# Defaults (overridable)
+ENV KUPO_URL=http://localhost:1442 \
+    PG_CONN_STR="host=postgres user=postgres password=postgres dbname=cexplorer port=5432" \
+    BATCH_SIZE=1000000 \
+    FETCH_BATCH_SIZE=100000
+
+ENTRYPOINT ["/app/attest-sync"]

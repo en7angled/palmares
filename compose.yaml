@@ -1,0 +1,173 @@
+# compose.yaml — the preprod governance stack, re-derivable from scratch.
+# Minimum host: 4 cores, 12 GB RAM, 60 GB free SSD. arm64 and amd64 both work.
+#
+#   docker compose --profile chain up -d        # node + db-sync + postgres
+#   docker compose --profile app   up -d        # + the public query API
+#
+# TIME UNTIL USEFUL (measured 2026-10-20 on an Apple-silicon laptop, Experiment A):
+#   node, via Mithril          : ~20-40 min  (default; RESTORE_SNAPSHOT=false for a genesis audit run)
+#   db-sync from genesis       : <= 7 h      caught up at ~9x real time, then follows live at 1:1
+# FOOTPRINT (same measurement): node 20.2 GB + db-sync state 2.9 GB + Postgres 10.4 GB = ~34 GB.
+# Peak memory: db-sync 5.90 GiB anonymous, node 2.74 GiB, Postgres 0.86 GiB.
+#
+# This file is the promoted Experiment A rig, not a fresh draft: every image is pinned by its
+# multi-arch INDEX digest (each verified 2026-10-19 to carry a linux/arm64 manifest), and the two
+# config directories under deploy/ are the exact bytes that produced the measurements above.
+#
+# `deploy/dbsync/db-sync-config.yaml` is the SINGLE source for db-sync's config. The Kubernetes
+# ConfigMap is generated from it by one `sed` repointing NodeConfigFile. Do not fork it.
+
+name: palmares
+
+services:
+  # Mithril bootstraps THE NODE ONLY. It does nothing for db-sync: db-sync streams every block from
+  # genesis and maintains its own ledger state, and no preprod db-sync snapshot exists. That is
+  # deliberate, not a gap — see docs/adr/0001-governance-data-substrate.md for why a restore would
+  # be a correctness regression on per-epoch DRep voting power.
+  cardano-node:
+    profiles: [chain, app]
+    image: ghcr.io/blinklabs-io/cardano-node:11.1.2@sha256:3620624c4cb9ac4e750b6c5c2d674c478010f4a193fdf7418f4930820562c11d
+    # `run` + explicit --config/--topology, NOT `NETWORK: preprod`: that env var routes the
+    # entrypoint through run-network and the image's own bundled, unpinned config. We pin ours.
+    # NETWORK must still be PRESENT (empty) — see the db-sync service for why that matters there.
+    command:
+      - run
+      - --config
+      - /node-config/config.json
+      - --topology
+      - /node-config/topology.json
+    environment:
+      NETWORK: ""
+      # run-node reads CARDANO_NETWORK (default: mainnet) to resolve the Mithril aggregator path
+      # and /opt/cardano/config/preprod/{genesis,ancillary}.vkey. Setting --config does NOT set it.
+      CARDANO_NETWORK: preprod
+      RESTORE_SNAPSHOT: "${RESTORE_SNAPSHOT:-true}"
+    volumes:
+      # Read-only, and deliberately so: run-node tries `touch ${CARDANO_CONFIG}` and, if it
+      # succeeds, sed-edits PeerSharing/TraceMempool into the file. :ro makes that touch fail (it
+      # is wrapped in `set +e`), which is how the pinned hashes in SOURCES.sha256 stay true.
+      - ./deploy/node-config:/node-config:ro
+      - node-db:/data/db
+      # A NAMED volume, not a bind mount: the node socket lives in the Docker VM's filesystem, and
+      # a UNIX socket in a macOS bind mount does not work.
+      - node-ipc:/ipc
+    healthcheck:
+      test: ["CMD-SHELL", "test -S /ipc/node.socket"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      # The Mithril download runs before the socket appears. Failures inside start_period do not
+      # count, so db-sync waits instead of crash-looping on a missing socket.
+      start_period: 60m
+    restart: unless-stopped
+
+  postgres:
+    profiles: [chain, app]
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    environment:
+      POSTGRES_DB: cexplorer
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devonly}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    # synchronous_commit=off is safe here: on a crash db-sync rolls back to its last stored block
+    # and re-reads from the node. This is the same tuning the cluster runs, so local numbers transfer.
+    command:
+      - -c
+      - shared_buffers=768MB
+      - -c
+      - work_mem=32MB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - max_parallel_maintenance_workers=2
+      - -c
+      - max_wal_size=4GB
+      - -c
+      - checkpoint_timeout=30min
+      - -c
+      - wal_compression=on
+      - -c
+      - synchronous_commit=off
+    ports: ["${POSTGRES_PORT:-5432}:5432"]
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cexplorer"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  cardano-db-sync:
+    profiles: [chain, app]
+    image: ghcr.io/blinklabs-io/cardano-db-sync:13.7.1.0@sha256:2a341eb32f15a3e65435f4123c3186f467bf2ed9d3ea2eac449592b5a54eb950
+    # The entrypoint runs `set -euo pipefail` and then `if [[ -z ${NETWORK} ]]` with no default, so
+    # NETWORK must be PRESENT AND EMPTY: unset is an unbound-variable crash, non-empty makes it
+    # ignore --config and use the image's bundled config. Empty selects the
+    # "Connecting to network specified in configuration.yaml" branch, which execs
+    # `cardano-db-sync --schema-dir ... --state-dir ... "$@"` — i.e. `command:` is appended verbatim.
+    environment:
+      NETWORK: ""
+      # gen-pgpass writes /configuration/pgpass from these five; setting all five keeps it off the
+      # /run/secrets path entirely.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: cexplorer
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devonly}
+      # RESTORE_SNAPSHOT is DELIBERATELY UNSET for db-sync. See the node comment above and ADR 0001.
+    # The entrypoint's snapshot path does `curl -LOC -` and `touch "${__base}.restored"` in the CWD
+    # and the image sets no WORKDIR. Harmless while RESTORE_SNAPSHOT is unset, correct the moment it
+    # is not — keep it.
+    working_dir: /var/lib/cexplorer
+    command:
+      - --config
+      - /dbsync-config/db-sync-config.yaml
+      - --socket-path
+      - /node-ipc/node.socket
+    volumes:
+      - ./deploy/dbsync:/dbsync-config:ro
+      # The SAME pinned directory the node runs from, at the path NodeConfigFile names, so db-sync
+      # replays the ledger against byte-identical genesis files. config.json references the four
+      # genesis files by BARE FILENAME, so they must sit beside it — they do.
+      - ./deploy/node-config:/node-config:ro
+      - db-sync-state:/var/lib/cexplorer
+      - node-ipc:/node-ipc
+    depends_on:
+      cardano-node: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # Measured: 5.90 GiB anonymous at tip, no OOM kill under this cap. It is also the exact
+          # limit planned for the cluster, so a local OOM here is a real signal, not a local quirk.
+          memory: 6144M
+
+  query-api:
+    profiles: [app]
+    image: ghcr.io/${GH_OWNER:-en7angled}/palmares-query-api:${TAG:-latest}
+    environment:
+      PG_CONN_STR: "host=postgres user=postgres password=${POSTGRES_PASSWORD:-devonly} dbname=cexplorer port=5432"
+      PORT: "8083"
+      # Empty allowlist denies all cross-origin: fail-closed. Set it for a local frontend.
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
+      PALMARES_VIEW_REFRESH_SECONDS: "${PALMARES_VIEW_REFRESH_SECONDS:-300}"
+      PALMARES_READY_MAX_LAG_SECONDS: "${PALMARES_READY_MAX_LAG_SECONDS:-300}"
+      PALMARES_AMBER_LAG_SECONDS: "${PALMARES_AMBER_LAG_SECONDS:-120}"
+    ports: ["${QUERY_API_PORT:-8083}:8083"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  node-db:
+  node-ipc:
+  postgres:
+  db-sync-state:

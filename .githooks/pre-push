@@ -12,11 +12,13 @@ for f in .env .env.local operation.prv config/config_atlas.json x.skey x.vkey; d
   git check-ignore -q "$f" || { echo "pre-push: NOT git-ignored: $f"; fail=1; }
 done
 
-# 2. Nothing credential-shaped in what is about to be pushed.
-if git diff --cached --name-only >/dev/null 2>&1; then
-  if git grep -I -nE 'ed25519_sk1[0-9a-z]{50,}|(maestro|blockfrost)[a-z_]*(key|token)[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9]{16,}' -- ':!*.example' ':!.githooks/*' 2>/dev/null; then
-    echo "pre-push: secret-shaped content staged (see matches above)"; fail=1
-  fi
+# 2. Nothing credential-shaped in the tracked tree.
+# The key name may be quoted and camelCased — `"maestroToken": "…"` is the exact shape this project
+# inherited — so the quote before the separator is optional and the match is case-insensitive.
+# ponytail: scans the whole tracked tree, not just the commits being pushed. Broader than needed,
+# never narrower; tighten to `git grep <range>` if the tree ever gets big enough for this to be slow.
+if git grep -I -n -i -E 'ed25519_sk1[0-9a-z]{50,}|(maestro|blockfrost)[a-z_]*(key|token)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9]{16,}' -- ':!*.example' ':!.githooks/*' 2>/dev/null; then
+  echo "pre-push: secret-shaped content is tracked (see matches above)"; fail=1
 fi
 
 # 3. A tracked .env or key file is always a mistake.

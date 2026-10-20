@@ -1,0 +1,14 @@
+# Pinned cardano-node preprod configuration set for Experiment A.
+# Source (official): https://book.play.dev.cardano.org/environments/preprod/<file>
+# Fetched 2026-10-19. Verify with:  shasum -a 256 -c SOURCES.sha256
+# Re-fetch with:  for f in *.json; do curl -fsSLo "$f" "https://book.play.dev.cardano.org/environments/preprod/$f"; done
+# NOTE: peer-snapshot.json is NOT optional — topology.json's `peerSnapshotFile` field names it,
+# and cardano-node 11.1.2 exits 1 at startup if it is missing (not a warning, a hard failure).
+# The first fetch for Experiment A omitted it and the node restart-looped 18 times.
+9d8b377123f2835b999d2a73c9b9466906deafdbc42b0f16af537bb9922c07c6  config.json
+af9d10ae4106ce040bb6ead31cd5c680699bae43dd209c56c1aa217527687726  topology.json
+d88fbffdf78daaccfaddf504e95840c73ce527c06fa4140aefb55d3f91c00cef  byron-genesis.json
+4b9d32c09159c2948e4386ba1f59db5a249a89b43b84dfd8368f465e650095de  shelley-genesis.json
+7333bfafe311589fa09e8bf59a47ec0d85a1959f00748cc0800591d2c7646408  alonzo-genesis.json
+c196814fe2e8f36ad1910e5c287184970339657729e7ad4fc354c34e149be3f8  conway-genesis.json
+fa3b636ef1e1c9f16a1d40ef9aa1486764321320d2db48f2605b571c7f4550b0  peer-snapshot.json

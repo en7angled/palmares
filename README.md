@@ -95,10 +95,66 @@ Apache-2.0 (`LICENSE`). Portions are derived from the author's own MIT-licensed
 [Decentralized Belt System](https://github.com/en7angled/Decentralized-Belt-System); see `NOTICE` and
 `licenses/`.
 
-## 10. Quick start
+## 10. Build from source
+
+The toolchain is pinned: GHC 9.6.6 via Nix + direnv, and every dependency is fixed by `cabal.project`
+plus the committed `cabal.project.freeze`. No version floats, so a build either reproduces or fails
+loudly.
 
 ```bash
-git config core.hooksPath .githooks        # enable the pre-push checks
-docker compose --profile chain up -d       # node + db-sync + Postgres (first sync takes a while)
-cabal build all && cabal test              # the Haskell side (needs the Nix/direnv shell)
+git config core.hooksPath .githooks        # enable the pre-push checks (git never propagates hooks)
+cp .env.example .env                       # then fill it in; .env is gitignored and never committed
+direnv allow                               # first run pulls the devx closure (~8-12 GB, once)
+cabal update
+cabal build all
+cabal test
 ```
+
+Containers, and the read-path stack. Two profiles, matching the two doors of §2:
+
+```bash
+scripts/build-images.sh                    # all four service images, host architecture, loaded locally
+docker compose --profile chain up -d       # node + db-sync + Postgres: the whole read path
+docker compose --profile app   up -d       # + the public query API on :8083
+```
+
+Time until useful, measured 2026-10-20 on an Apple-silicon laptop (Experiment A, numbers in
+`docs/adr/0001-governance-data-substrate.md`):
+
+| Step | Wall clock | Why |
+|---|---|---|
+| node, via Mithril | ~20–40 min | the default; set `RESTORE_SNAPSHOT=false` for a genesis audit run |
+| db-sync from genesis | **≤ 7 h** | caught up at ~9× real time, then follows live at 1:1 |
+
+Footprint when synced: node 20.2 GB + db-sync state 2.9 GB + Postgres 10.4 GB ≈ 34 GB; peak memory
+5.90 GiB for db-sync, 2.74 GiB for the node.
+
+A from-genesis sync is a deliberate correctness requirement, not a default we never got around to
+changing — see §7 and the ADR. `deploy/dbsync/db-sync-config.yaml` is the single source for db-sync's
+configuration; the Kubernetes ConfigMap is generated from it, never forked.
+
+## 11. Configuration
+
+Every name below is read from the environment (direnv sources `.env`). `fail-closed` means the service
+exits rather than starting with an unsafe default.
+
+| Name | Status | Used by |
+|---|---|---|
+| `BASIC_USER` | required, **fail-closed** | interaction-api, admin |
+| `BASIC_PASS` | required, **fail-closed** | interaction-api, admin |
+| `CORS_ALLOWED_ORIGINS` | required; empty = deny all cross-origin (**fail-closed**) | both APIs |
+| `PG_CONN_STR` | required — db-sync's own database, one pool | query-api, attest-sync |
+| `ATLAS_CORE_CONFIG` | required for the write path (JSON blob or file path) | interaction-api, admin |
+| `DEPLOYED_VALIDATORS_CONFIG` | required for the write path (JSON blob or file path) | interaction-api, admin |
+| `PORT` | default `8083` query-api · `8082` interaction-api · `8084` attest-sync | all services |
+| `KUPO_URL` | default `http://localhost:1442` | attest-sync |
+| `BATCH_SIZE` | default `1000000` | attest-sync |
+| `FETCH_BATCH_SIZE` | default `100000` | attest-sync |
+| `ROLLBACK_MARGIN` | default `2160` | attest-sync |
+| `PALMARES_VIEW_REFRESH_SECONDS` | default `300` | query-api |
+| `PALMARES_READY_MAX_LAG_SECONDS` | default `300` — `/ready` red above this | query-api |
+| `PALMARES_AMBER_LAG_SECONDS` | default `120` — UI amber above this | query-api |
+
+`MAESTRO_API_KEY` is **not** in this list: Atlas reads the provider token from the core config, never from
+the environment. `config/config_atlas.example.json` is the committed template and carries `REPLACE_ME`;
+the real `config/config_atlas.json` is gitignored.

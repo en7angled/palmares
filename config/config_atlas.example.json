@@ -1,0 +1,16 @@
+{
+    "coreProvider": {
+        "maestroToken": "REPLACE_ME",
+        "turboSubmit": true
+    },
+    "networkId": "preprod",
+    "logging": [
+        {
+            "type": {
+                "tag": "stderr"
+            },
+            "severity": "Debug",
+            "verbosity": "V2"
+        }
+    ]
+}

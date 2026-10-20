@@ -1,0 +1,90 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  haskell:
+    runs-on: ubuntu-24.04-arm     # arm64: same arch as the target cluster
+    timeout-minutes: 350          # the first uncached run is the expensive one; GitHub's max is 360
+    steps:
+      - uses: actions/checkout@v4
+
+      # NOTE: `libblst-dev` is deliberately absent. It does not exist in the arm64 Ubuntu archive —
+      # measured, not assumed: a probe run on ubuntu-24.04-arm failed with
+      # "E: Unable to locate package libblst-dev". blst is built from source in the next step.
+      - name: System libraries for plutus-tx / cardano-crypto
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libffi-dev libgmp-dev \
+            libssl-dev libtinfo-dev libsystemd-dev zlib1g-dev libpq-dev liblmdb-dev \
+            libsodium-dev libsecp256k1-dev
+
+      - name: blst from source
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v0.3.15 https://github.com/supranational/blst /tmp/blst
+          cd /tmp/blst
+          ./build.sh
+          sudo cp bindings/blst_aux.h bindings/blst.h bindings/blst.hpp /usr/include/
+          sudo cp libblst.a /usr/lib/
+          sudo tee /usr/lib/pkgconfig/libblst.pc >/dev/null <<'PC'
+          prefix=/usr
+          exec_prefix=${prefix}
+          libdir=${exec_prefix}/lib
+          includedir=${prefix}/include
+
+          Name: libblst
+          Description: Multilingual BLS12-381 signature library
+          URL: https://github.com/supranational/blst
+          Version: 0.3.15
+          Cflags: -I${includedir}
+          Libs: -L${libdir} -lblst
+          PC
+
+      # cardano-crypto-class asks pkg-config for `libblst-any`, which no distribution ships under that
+      # name. The probe measured it MISSING before this alias and 0.3.15 after it.
+      - name: libblst-any alias
+        run: |
+          set -euo pipefail
+          sed 's/^Name: libblst/Name: libblst-any/' /usr/lib/pkgconfig/libblst.pc \
+            | sudo tee /usr/lib/pkgconfig/libblst-any.pc >/dev/null
+          pkg-config --modversion libblst libblst-any
+
+      - uses: haskell-actions/setup@v2
+        id: setup
+        with:
+          ghc-version: "9.6.6"      # forced by plutus-tx-plugin; do not widen
+          cabal-version: "3.10"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.setup.outputs.cabal-store }}
+            dist-newstyle
+          key: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-
+
+      - run: cabal update
+      - run: cabal build all --enable-tests
+      - run: cabal test all --test-show-details=direct
+
+  secrets:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }            # full history: leak #2 was a token COMMITTED
+
+      # The repo's own guard, run against the checked-out tree. Cheap, dependency-free, and the same
+      # code the pre-push hook runs, so local and CI cannot disagree.
+      - run: .githooks/pre-push
+
+      # Depth beyond the regex: full-history entropy and rule-based detection.
+      # Free for public repositories; an organisation's PRIVATE repo would need GITLEAKS_LICENSE.
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} }

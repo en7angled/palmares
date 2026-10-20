@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1.4
+
+### STAGE 1: Build ###
+FROM --platform=$TARGETPLATFORM palmares-builder:9.6.6 AS builder
+
+WORKDIR /palmares
+
+ENV PATH="/root/.cabal/bin:$PATH"
+ENV CC=musl-gcc
+ENV LD=musl-gcc
+
+# Source copy (only layer that changes on code edits).
+COPY src ./src
+COPY config ./config
+
+RUN cabal install query-api \
+    --enable-executable-static \
+    --overwrite-policy=always \
+    --installdir=. \
+    --install-method=copy \
+    --ghc-options="-optl=-static -optl=-pthread -optc=-static"
+
+### STAGE 2: Runtime ###
+FROM --platform=$TARGETPLATFORM palmares-runtime-base:3.20 AS runtime
+
+WORKDIR /app
+COPY --from=builder /palmares/query-api /app/query-api
+COPY ./config /app/config
+
+RUN mkdir -p /app/docs/generated/swagger
+
+ENTRYPOINT ["/app/query-api"]

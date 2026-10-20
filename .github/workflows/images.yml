@@ -1,12 +1,20 @@
 name: images
 on:
   push:
-    branches: [main]
     tags: ["v*.*.*"]
   workflow_dispatch:
 
-# A service image is a full musl Haskell build. Two runs of it for two commits on the same ref is pure
-# waste, so a newer push cancels the older run.
+# NOT on every push to main, and that is a measured decision rather than a preference.
+#
+# A service image is a full static musl Haskell build of the whole Cardano dependency tree: the
+# shared builder base alone takes over an hour on an arm64 runner, and there are four services on
+# top of it. With a main trigger plus cancel-in-progress, every run was cancelled by the next
+# commit before it finished — so the workflow had never completed once, never populated its
+# layer cache, and never produced an image. Hours of CI for nothing.
+#
+# Images exist to be deployed, and deployments happen at tags, so tags are when they are built.
+# `workflow_dispatch` covers the case where someone wants an image off main anyway. compose.yaml's
+# `:${TAG:-latest}` keeps working because the tag build pushes `:latest` too.
 concurrency:
   group: images-${{ github.ref }}
   cancel-in-progress: true

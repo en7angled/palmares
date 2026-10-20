@@ -82,6 +82,76 @@
             ],
             "type": "object"
         },
+        "MetricFormula": {
+            "description": "One published formula. `sql` is the statement the server actually executes, inlined from the same embed the query path reads, so the documented formula cannot drift from the served number. Exactly one of `sql_file` and `sql_object` is set, so every formula_id resolves to something a reader can go and look at. `params` names the positional placeholders in bind order.",
+            "properties": {
+                "denominator": {
+                    "type": "string"
+                },
+                "edge_cases": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "expression": {
+                    "type": "string"
+                },
+                "field": {
+                    "type": "string"
+                },
+                "formula_id": {
+                    "type": "string"
+                },
+                "inputs": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "null_when": {
+                    "type": "string"
+                },
+                "params": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "spec": {
+                    "type": "string"
+                },
+                "sql": {
+                    "type": "string"
+                },
+                "sql_file": {
+                    "type": "string"
+                },
+                "sql_object": {
+                    "type": "string"
+                },
+                "version": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "formula_id",
+                "name",
+                "field",
+                "expression",
+                "inputs",
+                "edge_cases",
+                "params",
+                "spec",
+                "version"
+            ],
+            "type": "object"
+        },
         "ServiceProbeStatus": {
             "properties": {
                 "service": {
@@ -200,6 +270,35 @@
                     }
                 },
                 "summary": "Health Check"
+            }
+        },
+        "/metrics/formulas": {
+            "get": {
+                "description": "Every number this API publishes carries the id of the formula that produced it, and this endpoint resolves those ids: what the formula means, what its denominator counts, when it is null rather than zero, which db-sync tables it reads, its edge cases, and - for the six that have one - the exact SQL statement the server executes, inlined. Those statements are read out of the same embed the query path runs, so the published formula and the served number cannot disagree.",
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "items": {
+                                "$ref": "#/definitions/MetricFormula"
+                            },
+                            "type": "array"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "Published metric formulas"
             }
         },
         "/ready": {

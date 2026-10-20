@@ -83,5 +83,21 @@ else
   fail=1
 fi
 
+echo "== metric formulas (T-API-7)"
+assert /metrics/formulas 'length' '8'
+assert /metrics/formulas '[.[].formula_id] | sort' \
+  '["age_days_v1","delegator_retention_rate_v1","gov_action_state_v1","participation_rate_v1","rationale_rate_v1","tally_cast_votes_v1","vote_latency_median_hours_v1","votes_by_type_v1"]'
+# D-9: the statement the server runs IS the statement the endpoint publishes. Six carry one.
+assert /metrics/formulas '[.[] | select(.sql != null)] | length' '6'
+# Exactly one of sql_file / sql_object per formula, so every id resolves to something readable.
+assert /metrics/formulas '[.[] | ((.sql_file != null) != (.sql_object != null))] | unique' '[true]'
+# The published SQL must be the real statement, not a stub: its own leading CTE must be there.
+assert /metrics/formulas '[.[] | select(.formula_id == "participation_rate_v1") | .sql | contains("palmares.eligible_actions")]' '[true]'
+assert /metrics/formulas '[.[] | select(.formula_id=="participation_rate_v1")][0] | [.field, .null_when, .version]' \
+  '["participation_rate","eligible_actions = 0",1]'
+# The window is a BOUND parameter, never a literal in the statement.
+assert /metrics/formulas '[.[] | select(.formula_id=="delegator_retention_rate_v1")][0].params' \
+  '["drep_hash_id","as_of_epoch","retention_window_epochs"]'
+
 if [ "$fail" = 0 ]; then echo "smoke OK"; else echo "smoke FAILED" >&2; fi
 exit $fail

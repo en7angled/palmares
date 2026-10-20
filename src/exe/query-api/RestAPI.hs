@@ -28,6 +28,7 @@ import Data.Text (Text)
 import Network.Wai (Application)
 import Network.Wai.Middleware.Servant.Options (provideOptions)
 import Palmares.DomainTypes.Transfer.QueryResponses (StatusResponse (..))
+import Palmares.Metrics.Catalog (MetricFormula, resolvedMetricCatalog)
 import Palmares.WebAPI.CORS (CorsConfig, mkCorsMiddleware)
 import Palmares.WebAPI.ServiceProbe (ServiceProbe, ServiceProbeStatus)
 import Query.Gov (Freshness, freshnessMiddleware)
@@ -69,15 +70,46 @@ statusServer = getStatusQuery
 
 ------------------------------------------------------------------------------------------------
 
+--  Metric formulas
+
+------------------------------------------------------------------------------------------------
+
+type MetricsFormulasAPI =
+  Summary "Published metric formulas"
+    :> Description
+         "Every number this API publishes carries the id of the formula that produced it, and this \
+         \endpoint resolves those ids: what the formula means, what its denominator counts, when it \
+         \is null rather than zero, which db-sync tables it reads, its edge cases, and - for the six \
+         \that have one - the exact SQL statement the server executes, inlined. Those statements \
+         \are read out of the same embed the query path runs, so the published formula and the \
+         \served number cannot disagree."
+    :> "metrics"
+    :> "formulas"
+    :> Get '[JSON] [MetricFormula]
+
+-- | Serve the catalog resolved at boot.
+--
+-- 'either error id' is unreachable: Main checks 'resolvedMetricCatalog' and dies on a Left before
+-- anything starts listening, so by the time a request arrives the catalog has already parsed and
+-- every @sql_file@ has resolved.
+metricsFormulasServer :: ServerT MetricsFormulasAPI QueryAppMonad
+metricsFormulasServer = pure (either error id resolvedMetricCatalog)
+
+------------------------------------------------------------------------------------------------
+
 --  Core Function API
 
 ------------------------------------------------------------------------------------------------
 
 -- | Every governance route family. One alternative per family; later tasks append.
-type CoreFunctionAPI = StatusAPI
+type CoreFunctionAPI =
+  StatusAPI
+    :<|> MetricsFormulasAPI
 
 coreFunctionServer :: ServerT CoreFunctionAPI QueryAppMonad
-coreFunctionServer = statusServer
+coreFunctionServer =
+  statusServer
+    :<|> metricsFormulasServer
 
 ------------------------------------------------------------------------------------------------
 
@@ -121,6 +153,12 @@ apiSwagger =
          \the ledger sets expiration = proposed_epoch + lifetime + 1."
     & definitions . at "StatusResponse" . mapped . description
       ?~ "Service identity, chain freshness and protocol parameters in one request."
+    & definitions . at "MetricFormula" . mapped . description
+      ?~ "One published formula. `sql` is the statement the server actually executes, inlined \
+         \from the same embed the query path reads, so the documented formula cannot drift \
+         \from the served number. Exactly one of `sql_file` and `sql_object` is set, so every \
+         \formula_id resolves to something a reader can go and look at. `params` names the \
+         \positional placeholders in bind order."
 
 swaggerServer :: ServerT (SwaggerSchemaUI "swagger-ui" "swagger-api.json") QueryAppMonad
 swaggerServer = swaggerSchemaUIServerT apiSwagger

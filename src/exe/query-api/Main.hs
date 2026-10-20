@@ -10,6 +10,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as T
 import Database.Persist.Postgresql (createPostgresqlPool)
 import Network.Wai.Handler.Warp
+import Palmares.Metrics.Catalog (resolvedMetricCatalog)
 import Palmares.WebAPI.CORS (getCorsConfigFromEnv)
 import Palmares.WebAPI.Utils (getPortFromEnvOrDefault)
 import Query.Gov
@@ -24,6 +25,7 @@ import Query.Views (applyPalmaresSchema)
 import QueryAppMonad (QueryAppContext (..))
 import RestAPI (apiSwagger, mkWebApp)
 import System.Environment (lookupEnv)
+import System.Exit (die)
 import System.IO (BufferMode (LineBuffering), hSetBuffering, stdout)
 
 defaultConnStr :: String
@@ -50,6 +52,13 @@ main = do
 
   putStrLn "Writing Swagger file ..."
   BL8.writeFile "docs/generated/swagger/query-swagger-api.json" (encodePretty apiSwagger)
+
+  -- Fail closed on the catalog before anything else touches the network: a malformed
+  -- metric-formulas.json or a sql_file with no embed means /metrics/formulas would publish a
+  -- formula nobody can read, and every metric id a response carries would resolve to nothing.
+  case resolvedMetricCatalog of
+    Left e -> die e
+    Right fs -> putStrLn ("Metric catalog: " <> show (length fs) <> " formulas")
 
   corsCfg <- getCorsConfigFromEnv
   connStr <- fromMaybe defaultConnStr <$> lookupEnv "PG_CONN_STR"

@@ -43,6 +43,26 @@ tests =
       -- Both directions. A referenced-but-missing file would 500 at request time; an
       -- embedded-but-unreferenced file is a formula nobody can discover, which is the same drift
       -- in the other direction.
+      -- D-9 made mechanical: the bytes /metrics/formulas publishes are the bytes the query path
+      -- executes, read out of the same embed. A hand-maintained `sql` in the JSON would be a
+      -- second source to drift.
+      testCase "resolvedMetricCatalog inlines the six statements and leaves the two views alone" $
+        case resolvedMetricCatalog of
+          Left e -> assertFailure e
+          Right fs -> do
+            length [f | f <- fs, isJust (mfSql f)] @?= 6
+            -- a formula with no statement of its own must have no `sql`, not an empty string:
+            -- an empty string reads as "we ran nothing", which is false
+            [mfFormulaId f | f <- fs, mfSqlFile f == Nothing, mfSql f /= Nothing] @?= []
+            forM_ fs $ \f ->
+              case (mfSqlFile f, mfSql f) of
+                (Just name, Just sql) -> do
+                  assertBool
+                    (T.unpack (mfFormulaId f) <> "'s inlined sql must be the embedded file verbatim")
+                    (sql == decodeUtf8 (maybe "" id (lookupMetricSql (pack name))))
+                  assertBool (T.unpack (mfFormulaId f) <> "'s sql must not be empty") (not (T.null sql))
+                (Just name, Nothing) -> assertFailure (name <> " did not resolve")
+                _ -> pure (),
       testCase "every sql_file resolves to an embedded file, and every embedded file is in the catalog" $ do
         fs <- either assertFailure' pure metricCatalog
         let referenced = [f | Just f <- map mfSqlFile fs]

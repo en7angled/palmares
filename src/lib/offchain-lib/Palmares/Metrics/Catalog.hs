@@ -27,6 +27,7 @@ module Palmares.Metrics.Catalog
     catalogJson,
     metricSql,
     metricCatalog,
+    resolvedMetricCatalog,
     lookupMetricSql,
     retentionWindowEpochs,
   )
@@ -35,9 +36,12 @@ where
 import Data.Aeson (eitherDecodeStrict')
 import Data.ByteString (ByteString)
 import Data.FileEmbed (embedFile, makeRelativeToProject)
+import Data.Swagger (ToSchema (..), genericDeclareNamedSchema)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Deriving.Aeson
+import Palmares.Utils (mkStripPrefixSchemaOptions)
 
 -- | One catalog entry.
 --
@@ -66,10 +70,20 @@ data MetricFormula = MetricFormula
     -- | Positional parameter names, in the order the statement's @?@ placeholders bind them.
     mfParams :: [Text],
     mfSpec :: Text,
-    mfVersion :: Int
+    mfVersion :: Int,
+    -- | The statement itself, inlined.
+    --
+    -- Absent from @resources\/metric-formulas.json@ and filled by 'resolvedMetricCatalog', which
+    -- is what makes D-9 true rather than promised: the bytes the endpoint publishes are the bytes
+    -- the server executes, read out of the same embed. A hand-maintained copy in the JSON would
+    -- be a second source to drift.
+    mfSql :: Maybe Text
   }
   deriving stock (Show, Eq, Generic)
   deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "mf", CamelToSnake]] MetricFormula
+
+instance ToSchema MetricFormula where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "mf")
 
 -- | The catalog, as published by @GET \/metrics\/formulas@ and the MCP resource.
 catalogJson :: ByteString
@@ -96,6 +110,25 @@ metricSql =
 -- startup failure for the caller to report, not an exception from a pure value.
 metricCatalog :: Either String [MetricFormula]
 metricCatalog = eitherDecodeStrict' catalogJson
+
+-- | The catalog with every @sql_file@ resolved to its embedded bytes.
+--
+-- A @sql_file@ naming a file that is not embedded is a @Left@, not a silently empty @sql@ field:
+-- it means the catalog and the embed list disagree, which would publish a formula nobody can
+-- read. The caller reports it at startup.
+resolvedMetricCatalog :: Either String [MetricFormula]
+resolvedMetricCatalog = metricCatalog >>= traverse resolve
+  where
+    resolve f = case mfSqlFile f of
+      Nothing -> Right f
+      Just name -> case lookupMetricSql (T.pack name) of
+        Just bytes -> Right f {mfSql = Just (TE.decodeUtf8 bytes)}
+        Nothing ->
+          Left
+            ( "Palmares.Metrics.Catalog: " <> T.unpack (mfFormulaId f) <> " names sql_file "
+                <> show name
+                <> ", which is not in metricSql. Add an embedFile line, and the path to extra-source-files."
+            )
 
 -- | The statement behind a @sql_file@ name.
 lookupMetricSql :: Text -> Maybe ByteString

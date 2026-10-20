@@ -183,3 +183,159 @@ GROUP BY w.gov_action_id, w.voter_role, w.last_votable_epoch, m.threshold_param,
          th.dvt_update_to_constitution, th.dvt_hard_fork_initiation, th.dvt_treasury_withdrawal,
          th.pvt_motion_no_confidence, th.pvt_committee_normal, th.pvt_committee_no_confidence,
          th.pvt_hard_fork_initiation, th.pvtpp_security_group;
+
+-- ---------------------------------------------------------------------------------------------
+-- palmares.gov_action — one row per governance action, with its published lifecycle state.
+--
+-- `state` is the published `gov_action_state_v1` chain, in this exact order:
+--   enacted_epoch  -> 'enacted'
+--   expired_epoch  -> 'expired'
+--   dropped_epoch  -> 'dropped'
+--   ratified_epoch -> 'ratified'
+--   otherwise         'proposed'
+-- The order matters because the columns are not mutually exclusive: an enacted action carries
+-- ratified_epoch too, and 108 of preprod's 131 actions carry dropped_epoch. Reordering the arms
+-- renames a third of the corpus.
+--
+-- `state` and `last_votable_epoch` answer DIFFERENT questions and may disagree. One preprod
+-- action carries `expired_epoch = 320` while its window is still open at epoch 320, so it is
+-- 'expired' by state and votable by window. A UI that derives "can I still vote" from `state`
+-- will be wrong on exactly that row; `palmares.action_window` is the authority for votability.
+--
+-- `withdrawal_total` sums `public.treasury_withdrawal` and NOT `palmares.treasury_withdrawal`:
+-- the latter reads this view, and PostgreSQL rejects the cycle.
+CREATE VIEW palmares.gov_action AS
+WITH action_meta AS (
+  -- ponytail: db-sync 13.7.1.0/13.7.2.1 write DUPLICATE off-chain metadata child rows (release
+  -- notes "Known issues"; PR #2137 fixes it). The design's list named off_chain_vote_author,
+  -- _reference and _external_update; MEASURED, the bug also hits off_chain_vote_gov_action_data
+  -- (2 duplicated off_chain_vote_data_id values on preprod) and off_chain_vote_drep_data. Here it
+  -- fanned 131 actions out to 135 rows, which then double-counted treasury withdrawals through
+  -- palmares.treasury_withdrawal. DISTINCT ON by lowest id picks the first-inserted. Drop this CTE
+  -- and join directly after upgrading past 13.7.2.1.
+  SELECT DISTINCT ON (off_chain_vote_data_id)
+    off_chain_vote_data_id, title, abstract
+  FROM public.off_chain_vote_gov_action_data
+  ORDER BY off_chain_vote_data_id, id
+)
+SELECT
+  aw.gov_action_id,
+  tx.hash AS tx_hash,
+  g.index,
+  aw.action_type,
+  gd.title,
+  gd.abstract,
+  aw.proposed_epoch,
+  aw.proposed_slot,
+  aw.proposed_at,
+  aw.expiration,
+  aw.last_votable_epoch,
+  CASE
+    WHEN g.enacted_epoch IS NOT NULL THEN 'enacted'
+    WHEN g.expired_epoch IS NOT NULL THEN 'expired'
+    WHEN g.dropped_epoch IS NOT NULL THEN 'dropped'
+    WHEN g.ratified_epoch IS NOT NULL THEN 'ratified'
+    ELSE 'proposed'
+  END AS state,
+  g.ratified_epoch,
+  g.enacted_epoch,
+  g.expired_epoch,
+  g.dropped_epoch,
+  g.deposit,
+  sa.view AS return_address,
+  g.prev_gov_action_proposal,
+  (SELECT sum(tw.amount) FROM public.treasury_withdrawal tw
+   WHERE tw.gov_action_proposal_id = g.id) AS withdrawal_total,
+  -- Final votes only: a re-voted action must not count twice.
+  (SELECT count(*) FROM palmares.vote v
+   WHERE v.gov_action_id = aw.gov_action_id AND v.seq_last = 1) AS votes_cast,
+  g.voting_anchor_id
+FROM palmares.action_window aw
+JOIN public.gov_action_proposal g ON g.id = aw.gov_action_id
+JOIN public.tx ON tx.id = g.tx_id
+JOIN public.stake_address sa ON sa.id = g.return_address
+LEFT JOIN palmares.anchor a ON a.voting_anchor_id = g.voting_anchor_id
+LEFT JOIN action_meta gd ON gd.off_chain_vote_data_id = a.off_chain_vote_data_id;
+
+-- ---------------------------------------------------------------------------------------------
+-- palmares.committee_member — the constitutional committee, cold and hot credentials resolved.
+--
+-- ponytail: this view subsumes spec §6's `committee_vote_auth`. Authorising a CC vote is
+-- "the cold credential is an enacted member and has a hot key registered", which is these
+-- columns; a second view would be the same join under another name.
+--
+-- `is_enacted` marks the committee in force at the tip. db-sync's `epoch_state` points at the
+-- committee per epoch, and issue #2155 can leave DUPLICATE epoch_state rows on 13.7.1.0 — so the
+-- committee is taken from the max-id row of the latest epoch rather than from "the" row.
+--
+-- `status` is 'resigned' once the cold credential appears in committee_de_registration, and
+-- 'active' otherwise. A resigned member keeps its row: its past votes are still history.
+CREATE VIEW palmares.committee_member AS
+WITH current_committee AS (
+  -- EXACTLY ONE ROW: the committee in force at the latest epoch that records one.
+  --
+  -- `epoch_state` has a row per epoch, and many epochs point at the same committee, so selecting
+  -- one row per EPOCH and then joining on committee_id multiplies every member by the number of
+  -- epochs that used its committee. Measured: that fanned 3 enacted members out to 1,563.
+  --
+  -- The max-id tie-break matters on its own: issue #2155 can leave duplicate epoch_state rows on
+  -- 13.7.1.0, so "the row for the latest epoch" is not unique either.
+  SELECT es.committee_id, es.epoch_no
+  FROM public.epoch_state es
+  WHERE es.committee_id IS NOT NULL
+  ORDER BY es.epoch_no DESC, es.id DESC
+  LIMIT 1
+)
+SELECT
+  cm.committee_hash_id,
+  ch.raw AS cold_hash,
+  ch.has_script AS cold_has_script,
+  hot.raw AS hot_hash,
+  hot.has_script AS hot_has_script,
+  CASE
+    WHEN EXISTS (SELECT 1 FROM public.committee_de_registration dr
+                 WHERE dr.cold_key_id = cm.committee_hash_id) THEN 'resigned'
+    ELSE 'active'
+  END AS status,
+  cm.expiration_epoch,
+  cm.committee_id,
+  (cc.committee_id IS NOT NULL) AS is_enacted,
+  c.quorum_numerator,
+  c.quorum_denominator
+FROM public.committee_member cm
+JOIN public.committee_hash ch ON ch.id = cm.committee_hash_id
+JOIN public.committee c ON c.id = cm.committee_id
+LEFT JOIN current_committee cc ON cc.committee_id = cm.committee_id
+-- The hot credential in force now: the newest registration for this cold key.
+LEFT JOIN LATERAL (
+  SELECT h.raw, h.has_script
+  FROM public.committee_registration cr
+  JOIN public.committee_hash h ON h.id = cr.hot_key_id
+  WHERE cr.cold_key_id = cm.committee_hash_id
+  ORDER BY cr.tx_id DESC, cr.cert_index DESC
+  LIMIT 1
+) hot ON true;
+
+-- ---------------------------------------------------------------------------------------------
+-- palmares.treasury_withdrawal — the withdrawals an action requests, and whether one was paid.
+--
+-- `paid_heuristic` is named for what it is. `reward_rest` records treasury payouts per
+-- (stake address, epoch) with NO governance-action key, so matching a payout to a withdrawal is
+-- inference: when one address receives two withdrawals in the same epoch the match is ambiguous
+-- and this column will claim both were paid. It is a display hint, never an accounting fact, and
+-- nothing downstream may sum it.
+CREATE VIEW palmares.treasury_withdrawal AS
+SELECT
+  tw.gov_action_proposal_id AS gov_action_id,
+  tw.stake_address_id,
+  sa.view AS stake_address,
+  tw.amount,
+  ga.enacted_epoch,
+  (rr.addr_id IS NOT NULL) AS paid_heuristic
+FROM public.treasury_withdrawal tw
+JOIN public.stake_address sa ON sa.id = tw.stake_address_id
+JOIN palmares.gov_action ga ON ga.gov_action_id = tw.gov_action_proposal_id
+LEFT JOIN public.reward_rest rr
+  ON rr.addr_id = tw.stake_address_id
+ AND rr.type = 'treasury'
+ AND rr.spendable_epoch = ga.enacted_epoch;

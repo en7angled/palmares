@@ -10,7 +10,7 @@ import qualified Data.Text as T
 import PlutusTx.Builtins (toBuiltin)
 import Test.Tasty
 import Test.Tasty.HUnit
-import TxBuilding.Conversions (fromBuiltinByteStringUtf8, textToBuiltinByteString)
+import Palmares.TxBuilding.Conversions (fromBuiltinByteStringUtf8, textToBuiltinByteString)
 
 roundTrip :: T.Text -> T.Text
 roundTrip = fromBuiltinByteStringUtf8 . textToBuiltinByteString

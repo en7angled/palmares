@@ -2,7 +2,7 @@
 
 module Main where
 
-import Constants qualified
+import Palmares.Constants qualified
 import Control.Monad.Reader (runReaderT)
 import Data.Aeson (encode)
 import Data.Aeson qualified as Aeson
@@ -11,25 +11,25 @@ import Data.ByteString.Char8 qualified as LSB8
 import Data.ByteString.Lazy qualified as B
 import Data.Char (toLower, toUpper)
 import Data.Text qualified as T
-import DomainTypes.Core.Actions (AdminActionType (..), ProfileActionType (..), ProfileData (..), ProtocolActionType (..))
-import DomainTypes.Core.BJJ (BJJBelt (..), parseBelt)
-import DomainTypes.Core.Types (ProfileType (..))
+import Palmares.DomainTypes.Core.Actions (AdminActionType (..), ProfileActionType (..), ProfileData (..), ProtocolActionType (..))
+import Palmares.DomainTypes.Core.BJJ (BJJBelt (..), parseBelt)
+import Palmares.DomainTypes.Core.Types (ProfileType (..))
 import GeniusYield.GYConfig
 import GeniusYield.Imports
 import GeniusYield.Types
-import Onchain.Blueprint (contractBlueprint)
-import Onchain.Protocol.Types (FeeConfig (..), OracleParams (..))
+import Palmares.Onchain.Blueprint (contractBlueprint)
+import Palmares.Onchain.Protocol.Types (FeeConfig (..), OracleParams (..))
 import Options.Applicative
 import PlutusLedgerApi.V3
 import System.Exit (die)
 import Text.Read qualified as Text
-import TxBuilding.Context
-import TxBuilding.Interactions
-import TxBuilding.Lookups (getFirstIntervalIdForMembershipNode, queryOracleParams)
-import TxBuilding.Transactions
-import TxBuilding.Utils
-import TxBuilding.Validators (blueprintProtocolParams)
-import Utils
+import Palmares.TxBuilding.Context
+import Palmares.TxBuilding.Interactions
+import Palmares.TxBuilding.Lookups (getFirstIntervalIdForMembershipNode, queryOracleParams)
+import Palmares.TxBuilding.Transactions
+import Palmares.TxBuilding.Utils
+import Palmares.TxBuilding.Validators (blueprintProtocolParams)
+import Palmares.Utils
 
 mnemonicFilePath :: FilePath
 mnemonicFilePath = "operation.prv"
@@ -589,20 +589,20 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   -- Oracle admin commands — routed through the Interaction pipeline
   PauseProtocol -> do
     printYellow "Pausing protocol..."
-    (txId, _) <- runBJJActionWithPK txBuildingCtx signKey (AdminAction PauseProtocolAction) Nothing
+    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction PauseProtocolAction) Nothing
     printGreen $ "Protocol paused successfully! TxId: " <> show txId
   UnpauseProtocol -> do
     printYellow "Unpausing protocol..."
-    (txId, _) <- runBJJActionWithPK txBuildingCtx signKey (AdminAction UnpauseProtocolAction) Nothing
+    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction UnpauseProtocolAction) Nothing
     printGreen $ "Protocol unpaused successfully! TxId: " <> show txId
   SetFees args -> do
     printYellow "Updating fee configuration..."
     let adminAction = setFeesToAdminAction args
-    (txId, _) <- runBJJActionWithPK txBuildingCtx signKey (AdminAction adminAction) Nothing
+    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction adminAction) Nothing
     printGreen $ "Fee configuration updated successfully! TxId: " <> show txId
   SetMinUTxOValue n -> do
     printYellow $ "Setting min UTxO value to " <> show n <> " lovelace..."
-    (txId, _) <- runBJJActionWithPK txBuildingCtx signKey (AdminAction (SetMinUTxOValueAction n)) Nothing
+    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (SetMinUTxOValueAction n)) Nothing
     printGreen $ "Min UTxO value updated successfully! TxId: " <> show txId
   -- Query oracle — read-only, does not go through the Interaction pipeline
   QueryOracle -> do
@@ -630,7 +630,7 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   InitProfile args -> do
     printYellow "Initializing profile..."
     let actionType = initProfileToActionType args
-    (_txId, mAssetClass) <- runBJJActionWithPK txBuildingCtx signKey actionType Nothing
+    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen "Profile initialized successfully!"
     if ipaOutputId args
       then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
@@ -638,7 +638,7 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   UpdateProfile args -> do
     printYellow "Updating profile..."
     let actionType = updateProfileToActionType args
-    (_txId, mAssetClass) <- runBJJActionWithPK txBuildingCtx signKey actionType Nothing
+    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen "Profile updated successfully!"
     if upaOutputId args
       then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
@@ -646,7 +646,7 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   PromoteProfile args -> do
     printYellow "Promoting profile..."
     let actionType = promoteProfileToActionType args
-    (_txId, mAssetClass) <- runBJJActionWithPK txBuildingCtx signKey actionType Nothing
+    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen "Profile promoted successfully!"
     if ppaOutputId args
       then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
@@ -654,13 +654,13 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   AcceptPromotion args -> do
     printYellow "Accepting promotion..."
     let actionType = acceptPromotionToActionType args
-    (_txId, mAssetClass) <- runBJJActionWithPK txBuildingCtx signKey actionType Nothing
+    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen "Promotion accepted successfully!"
     printGreen $ "Rank ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
   CreateProfileWithRank args -> do
     printYellow "Creating profile with rank..."
     let actionType = createProfileWithRankToActionType args
-    (_txId, mAssetClass) <- runBJJActionWithPK txBuildingCtx signKey actionType Nothing
+    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen "Profile with rank created successfully!"
     if cpwraOutputId args
       then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
@@ -669,7 +669,7 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   CreateMembershipHistory args -> do
     printYellow "Creating membership history..."
     let actionType = createMembershipHistoryToActionType args
-    (_txId, mAssetClass) <- runBJJActionWithPK txBuildingCtx signKey actionType Nothing
+    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen "Membership history created successfully!"
     if cmhaOutputId args
       then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
@@ -684,7 +684,7 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   AddMembershipInterval args -> do
     printYellow "Adding membership interval..."
     let actionType = addMembershipIntervalToActionType args
-    (_txId, mAssetClass) <- runBJJActionWithPK txBuildingCtx signKey actionType Nothing
+    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen "Membership interval added successfully!"
     if amiaOutputId args
       then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
@@ -692,7 +692,7 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   AcceptMembershipInterval args -> do
     printYellow "Accepting membership interval..."
     let actionType = acceptMembershipIntervalToActionType args
-    (_txId, mAssetClass) <- runBJJActionWithPK txBuildingCtx signKey actionType Nothing
+    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen "Membership interval accepted successfully!"
     if amiaAcceptOutputId args
       then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
@@ -700,7 +700,7 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   UpdateEndDate args -> do
     printYellow "Updating membership interval end date..."
     let actionType = updateEndDateToActionType args
-    (_txId, mAssetClass) <- runBJJActionWithPK txBuildingCtx signKey actionType Nothing
+    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen "Membership interval end date updated successfully!"
     if uedaOutputId args
       then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
@@ -709,7 +709,7 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   AwardAchievement args -> do
     printYellow "Awarding achievement..."
     let actionType = awardAchievementToActionType args
-    (_txId, mAssetClass) <- runBJJActionWithPK txBuildingCtx signKey actionType Nothing
+    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen "Achievement awarded successfully!"
     if awaOutputId args
       then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
@@ -717,13 +717,13 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   AcceptAchievement args -> do
     printYellow "Accepting achievement..."
     let actionType = acceptAchievementToActionType args
-    (_txId, mAssetClass) <- runBJJActionWithPK txBuildingCtx signKey actionType Nothing
+    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen "Achievement accepted successfully!"
     printGreen $ "Achievement ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
   CleanupDust -> do
     printYellow "Sweeping dust UTxOs from validator addresses..."
     let actionType = ProtocolAction CleanupDustAction
-    (txId, _) <- runBJJActionWithPK txBuildingCtx signKey actionType Nothing
+    (txId, _) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen $ "Dust cleanup successful! TxId: " <> show txId
 
 main :: IO ()

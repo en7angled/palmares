@@ -1,6 +1,6 @@
 module Main where
 
-import Constants
+import Palmares.Constants
   ( defaultAtlasCoreConfig,
     defaultTxBuildingContextFile,
   )
@@ -12,13 +12,13 @@ import GeniusYield.Types
 import IPFS (initIPFSConfig)
 import InteractionAppMonad (InteractionAppContext (..))
 import Network.Wai.Handler.Warp
-import RestAPI (apiSwagger, mkBJJApp)
+import RestAPI (apiSwagger, mkWebApp)
 import System.Exit (die)
-import TxBuilding.Context
-import Utils (decodeConfigEnvOrFile)
-import WebAPI.Auth (getBasicAuthFromEnv)
-import WebAPI.CORS (getCorsConfigFromEnv)
-import WebAPI.Utils (getPortFromEnvOrDefault)
+import Palmares.TxBuilding.Context
+import Palmares.Utils (decodeConfigEnvOrFile)
+import Palmares.WebAPI.Auth (getBasicAuthFromEnv)
+import Palmares.WebAPI.CORS (getCorsConfigFromEnv)
+import Palmares.WebAPI.Utils (getPortFromEnvOrDefault)
 
 main :: IO ()
 main = do
@@ -28,7 +28,7 @@ main = do
   atlasConfig <- maybe (die "Atlas configuration failed") return =<< decodeConfigEnvOrFile "ATLAS_CORE_CONFIG" defaultAtlasCoreConfig
   deployedScriptsContext <- maybe (die "Deployed validators configuration failed") return =<< decodeConfigEnvOrFile "DEPLOYED_VALIDATORS_CONFIG" defaultTxBuildingContextFile
 
-  withCfgProviders atlasConfig (read @GYLogNamespace "BJJDApp") $ \providers -> do
+  withCfgProviders atlasConfig (read @GYLogNamespace "Palmares") $ \providers -> do
     let providersContext = ProviderCtx atlasConfig providers
     let txBuildingContext = TxBuildingContext deployedScriptsContext providersContext
     authContext <- getBasicAuthFromEnv
@@ -40,11 +40,11 @@ main = do
     port <- getPortFromEnvOrDefault 8082
 
     let settings = setHost (fromString host :: HostPreference) $ setPort port defaultSettings
-    let bjjDApp = mkBJJApp corsCfg appContext
+    let webApp = mkWebApp corsCfg appContext
 
     putStrLn $ "Started Interaction API server at " <> host <> " " <> show port
     putStrLn $ "Atlas config: " <> show atlasConfig
     putStrLn $ "Deployed validators config: " <> show deployedScriptsContext
     putStrLn $ "Swagger-UI available at : http://" <> host <> ":" <> show port <> "/swagger-ui"
 
-    runSettings settings bjjDApp
+    runSettings settings webApp

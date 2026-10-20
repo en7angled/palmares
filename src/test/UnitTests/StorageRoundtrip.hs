@@ -19,8 +19,8 @@ import Database.Persist.Sql (SqlBackend)
 import Database.Persist.Sqlite (runSqlite)
 import Data.Text (Text)
 import GeniusYield.Types (GYNetworkId (GYTestnetPreview))
-import KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..))
-import Storage (OnchainMatchEvent, putKupoMatch, rollbackTo, runMigrations)
+import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..))
+import Palmares.Storage (OnchainMatchEvent, putKupoMatch, rollbackTo, runMigrations)
 import Test.Tasty
 import Test.Tasty.HUnit
 

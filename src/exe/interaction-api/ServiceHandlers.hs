@@ -13,18 +13,18 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.List (find)
 import Data.Maybe (isNothing)
 import Data.Text (Text, unpack)
-import DomainTypes.Core.Actions
-import DomainTypes.Core.Types (MembershipHistory (..))
+import Palmares.DomainTypes.Core.Actions
+import Palmares.DomainTypes.Core.Types (MembershipHistory (..))
 import GeniusYield.Types (GYAddress)
 import IPFS (IPFSConfig, uploadToIPFS)
 import InteractionAppMonad
 import Servant.Multipart (FileData (..))
 import ServiceRequests
-import TxBuilding.Context (TxBuildingContext (..), getNetworkId, runQuery)
-import TxBuilding.Interactions (ActionType (..), Interaction (..), UserAddresses)
-import TxBuilding.Lookups (getMembershipHistoriesForOrganization)
-import WebAPI.Errors (genericErrorMessage, mkServantErr)
-import WebAPI.ImageType (detectImageType)
+import Palmares.TxBuilding.Context (TxBuildingContext (..), getNetworkId, runQuery)
+import Palmares.TxBuilding.Interactions (ActionType (..), Interaction (..), UserAddresses)
+import Palmares.TxBuilding.Lookups (getMembershipHistoriesForOrganization)
+import Palmares.WebAPI.Errors (genericErrorMessage, mkServantErr)
+import Palmares.WebAPI.ImageType (detectImageType)
 
 -------------------------------------------------------------------------------
 

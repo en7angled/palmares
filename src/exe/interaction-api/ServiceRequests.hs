@@ -18,13 +18,13 @@ import Data.Text (Text, pack)
 import Data.Text.Encoding (encodeUtf8)
 import Data.Typeable (Typeable, typeRep)
 import Deriving.Aeson
-import DomainTypes.Core.BJJ (BJJBelt)
-import DomainTypes.Core.Types (ProfileRefAC, ProfileType, RankAC)
+import Palmares.DomainTypes.Core.BJJ (BJJBelt)
+import Palmares.DomainTypes.Core.Types (ProfileRefAC, ProfileType, RankAC)
 import GeniusYield.Types (GYAddress, GYAssetClass)
 import GeniusYield.Types.Time (GYTime)
 import Servant.Multipart (FileData (..), FromMultipart (..), Mem, lookupFile, lookupInput)
-import TxBuilding.Interactions (UserAddresses)
-import Utils (mkStripPrefixSchemaOptions)
+import Palmares.TxBuilding.Interactions (UserAddresses)
+import Palmares.Utils (mkStripPrefixSchemaOptions)
 
 -------------------------------------------------------------------------------
 

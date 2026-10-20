@@ -8,7 +8,7 @@
 -- database pool, and optional deployed-script references.
 module QueryAppMonad where
 
-import Constants qualified
+import Palmares.Constants qualified
 import Control.Monad.Reader
 import Data.Text hiding (elem, reverse, take)
 import Data.Time
@@ -18,11 +18,11 @@ import Data.Typeable (cast)
 import GeniusYield.TxBuilder.Errors (GYTxMonadException (GYApplicationException))
 import Servant
 -- import System.Directory.Extra
-import TxBuilding.Context
-import TxBuilding.Exceptions (TxBuildingException, txBuildingExceptionToHttpStatus)
-import WebAPI.Auth (AuthContext)
-import WebAPI.Errors (genericErrorMessage, mkServantErr)
-import WebAPI.ServiceProbe (ServiceProbeStatus (..))
+import Palmares.TxBuilding.Context
+import Palmares.TxBuilding.Exceptions (TxBuildingException, txBuildingExceptionToHttpStatus)
+import Palmares.WebAPI.Auth (AuthContext)
+import Palmares.WebAPI.Errors (genericErrorMessage, mkServantErr)
+import Palmares.WebAPI.ServiceProbe (ServiceProbeStatus (..))
 
 ------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------

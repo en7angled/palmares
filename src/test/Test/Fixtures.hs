@@ -20,7 +20,7 @@ module Test.Fixtures
 where
 
 import Data.Text (Text, pack)
-import DomainTypes.Core.Actions (ProfileData (..))
+import Palmares.DomainTypes.Core.Actions (ProfileData (..))
 
 adminTestProfileData :: ProfileData
 adminTestProfileData =

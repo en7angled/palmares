@@ -13,7 +13,7 @@
 -- transaction-building context, plus standardized error handling.
 module InteractionAppMonad where
 
-import Constants qualified
+import Palmares.Constants qualified
 import Control.Exception (displayException, try)
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -26,15 +26,15 @@ import Data.Typeable (cast)
 import GeniusYield.TxBuilder.Errors (GYTxMonadException (..))
 import GeniusYield.Types
 import Servant
-import TxBuilding.Context
-import TxBuilding.Exceptions (TxBuildingException, txBuildingExceptionCode, txBuildingExceptionToHttpStatus)
+import Palmares.TxBuilding.Context
+import Palmares.TxBuilding.Exceptions (TxBuildingException, txBuildingExceptionCode, txBuildingExceptionToHttpStatus)
 import IPFS (IPFSConfig)
-import TxBuilding.Interactions (Interaction)
-import TxBuilding.Operations (ensureDeployedScriptsAreReady)
-import TxBuilding.Transactions (interactionToHexEncodedCBOR, submitTx)
-import WebAPI.Auth (AuthContext)
-import WebAPI.Errors (genericErrorMessage, mkServantErr)
-import WebAPI.ServiceProbe (ServiceProbeStatus (..))
+import Palmares.TxBuilding.Interactions (Interaction)
+import Palmares.TxBuilding.Operations (ensureDeployedScriptsAreReady)
+import Palmares.TxBuilding.Transactions (interactionToHexEncodedCBOR, submitTx)
+import Palmares.WebAPI.Auth (AuthContext)
+import Palmares.WebAPI.Errors (genericErrorMessage, mkServantErr)
+import Palmares.WebAPI.ServiceProbe (ServiceProbeStatus (..))
 
 ------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------

@@ -9,7 +9,7 @@
 
 module RestAPI where
 
-import Constants (appVersion)
+import Palmares.Constants (appVersion)
 import Control.Lens hiding (Context)
 import Data.Swagger
 import Data.Text hiding (length)
@@ -26,12 +26,12 @@ import Servant.Swagger
 import Servant.Swagger.UI
 import ServiceHandlers
 import ServiceRequests
-import TxBuilding.Interactions
-import WebAPI.Auth
-import WebAPI.CORS
-import WebAPI.ServiceProbe (alwaysHealthy)
-import WebAPI.ServiceProbe qualified
-import WebAPI.Utils (addSharedSwaggerDescriptions)
+import Palmares.TxBuilding.Interactions
+import Palmares.WebAPI.Auth
+import Palmares.WebAPI.CORS
+import Palmares.WebAPI.ServiceProbe (alwaysHealthy)
+import Palmares.WebAPI.ServiceProbe qualified
+import Palmares.WebAPI.Utils (addSharedSwaggerDescriptions)
 
 -- | Orphan 'FromHttpApiData' instance for 'GYTxId' to support URL capture.
 instance FromHttpApiData GYTxId where
@@ -304,8 +304,8 @@ multipartOptions =
 proxyServerContext :: Proxy '[BasicAuthCheck AuthUser, MultipartOptions Mem]
 proxyServerContext = Proxy
 
-mkBJJApp :: WebAPI.CORS.CorsConfig -> InteractionAppContext -> Application
-mkBJJApp corsCfg ctx =
+mkWebApp :: WebAPI.CORS.CorsConfig -> InteractionAppContext -> Application
+mkWebApp corsCfg ctx =
   WebAPI.CORS.mkCorsMiddleware corsCfg $
     provideOptions proxyPublicAPI $
       serveWithContext proxyFullAPI ctxEntries hoistedServer

@@ -21,14 +21,14 @@ import Data.Map.Strict qualified as M
 import Data.Text (Text)
 import Data.Time (addUTCTime, getCurrentTime, nominalDay)
 import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
-import DomainTypes.Core.BJJ (BJJBelt)
-import DomainTypes.Core.Types
-import DomainTypes.Transfer.Types (MembershipHistoryInformation (..), MembershipIntervalInformation (..), PractitionerProfileInformation (..))
+import Palmares.DomainTypes.Core.BJJ (BJJBelt)
+import Palmares.DomainTypes.Core.Types
+import Palmares.DomainTypes.Transfer.Types (MembershipHistoryInformation (..), MembershipIntervalInformation (..), PractitionerProfileInformation (..))
 import GeniusYield.Types (GYTime, timeFromPOSIX)
 import Query.Aggregates qualified as Agg
 import Query.ExplorerMonthly (monthlyAchievementsFromList, monthlyPromotionsFromList)
-import DomainTypes.Transfer.Filters qualified as F
-import DomainTypes.Transfer.QueryResponses
+import Palmares.DomainTypes.Transfer.Filters qualified as F
+import Palmares.DomainTypes.Transfer.QueryResponses
   ( AchievementsPageResponse (..),
     DashboardPageResponse (..),
     HomeExplorerHubPageResponse (..),
@@ -49,12 +49,12 @@ import Query.Common qualified as C
 import Query.Live qualified as L
 import Query.Projected qualified as P
 import QueryAppMonad (QueryAppMonad (..))
-import DomainTypes.Transfer.Filters
+import Palmares.DomainTypes.Transfer.Filters
   ( achievementFilterFromParams,
     profileFilterFromParams,
     promotionsFilterFromParams,
   )
-import DomainTypes.Transfer.OrderBy
+import Palmares.DomainTypes.Transfer.OrderBy
 import RestAPI.Common (withBackend)
 
 -- | Filter profiles by type only (counts and latest lists).

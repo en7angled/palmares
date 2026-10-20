@@ -6,9 +6,9 @@ where
 
 import Control.Monad.Reader (runReaderT)
 import GeniusYield.TxBuilder.Query.Class (GYTxQueryMonad)
-import Onchain.Protocol.Types (OracleParams (..))
-import TxBuilding.Context (DeployedScriptsContext)
-import TxBuilding.Lookups (queryOracleParams)
+import Palmares.Onchain.Protocol.Types (OracleParams (..))
+import Palmares.TxBuilding.Context (DeployedScriptsContext)
+import Palmares.TxBuilding.Lookups (queryOracleParams)
 
 -- | Assert a boolean in the test monad; calls 'error' if False.
 assert :: (GYTxQueryMonad m) => Bool -> m ()

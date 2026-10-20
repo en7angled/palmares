@@ -1,6 +1,6 @@
 module Main where
 
-import Constants (defaultAtlasCoreConfig, defaultTxBuildingContextFile)
+import Palmares.Constants (defaultAtlasCoreConfig, defaultTxBuildingContextFile)
 import Control.Monad.Logger (runStdoutLoggingT)
 import Data.Aeson.Encode.Pretty
 import Data.ByteString.Lazy.Char8 qualified as BL8
@@ -13,14 +13,14 @@ import GeniusYield.GYConfig
 import GeniusYield.Types
 import Network.Wai.Handler.Warp
 import QueryAppMonad (QueryAppContext (..))
-import RestAPI (apiSwagger, mkBJJApp)
+import RestAPI (apiSwagger, mkWebApp)
 import System.Environment
 import System.Exit (die)
-import TxBuilding.Context
-import Utils (decodeConfigEnvOrFile)
-import WebAPI.Auth (getBasicAuthFromEnv)
-import WebAPI.CORS (getCorsConfigFromEnv)
-import WebAPI.Utils (getPortFromEnvOrDefault)
+import Palmares.TxBuilding.Context
+import Palmares.Utils (decodeConfigEnvOrFile)
+import Palmares.WebAPI.Auth (getBasicAuthFromEnv)
+import Palmares.WebAPI.CORS (getCorsConfigFromEnv)
+import Palmares.WebAPI.Utils (getPortFromEnvOrDefault)
 
 defaultConnStr :: String
 defaultConnStr = "host=postgres user=postgres password=postgres dbname=chainsync port=5432"
@@ -37,7 +37,7 @@ main = do
 
   atlasConfig <- maybe (die "Atlas configuration failed") return =<< decodeConfigEnvOrFile "ATLAS_CORE_CONFIG" defaultAtlasCoreConfig
 
-  withCfgProviders atlasConfig (read @GYLogNamespace "BJJDApp") $ \providers -> do
+  withCfgProviders atlasConfig (read @GYLogNamespace "Palmares") $ \providers -> do
     let providerContext = ProviderCtx atlasConfig providers
     authContext <- getBasicAuthFromEnv
     corsCfg <- getCorsConfigFromEnv
@@ -50,11 +50,11 @@ main = do
     port <- getPortFromEnvOrDefault 8083
 
     let settings = setHost (fromString host :: HostPreference) $ setPort port defaultSettings
-    let bjjDApp = mkBJJApp corsCfg appContext
+    let webApp = mkWebApp corsCfg appContext
 
     putStrLn $ "Started Query API server at " <> host <> " " <> show port
     putStrLn $ "Atlas config: " <> show atlasConfig
     putStrLn $ "Postgres: " <> redactConnStr connStr
     putStrLn $ "Swagger-UI available at : http://" <> host <> ":" <> show port <> "/swagger-ui"
 
-    runSettings settings bjjDApp
+    runSettings settings webApp

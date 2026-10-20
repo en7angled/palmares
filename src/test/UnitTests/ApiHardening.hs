@@ -15,11 +15,11 @@ import Servant (BasicAuthData (..), errHTTPCode)
 import Servant.Server (BasicAuthCheck (..), BasicAuthResult (..))
 import Test.Tasty
 import Test.Tasty.HUnit
-import WebAPI.Auth (AuthContext (..), AuthUser (..), authCheck)
-import WebAPI.CORS (CorsConfig (..), corsPolicy, parseCorsOrigins)
-import WebAPI.Errors (genericErrorMessage, mkServantErr)
-import WebAPI.ImageType (ImageType (..), detectImageType)
-import WebAPI.Utils (escapeLikePattern)
+import Palmares.WebAPI.Auth (AuthContext (..), AuthUser (..), authCheck)
+import Palmares.WebAPI.CORS (CorsConfig (..), corsPolicy, parseCorsOrigins)
+import Palmares.WebAPI.Errors (genericErrorMessage, mkServantErr)
+import Palmares.WebAPI.ImageType (ImageType (..), detectImageType)
+import Palmares.WebAPI.Utils (escapeLikePattern)
 
 -- Run a BasicAuthCheck's handler against supplied raw credential bytes.
 runCheck :: AuthContext -> BasicAuthData -> IO (BasicAuthResult AuthUser)

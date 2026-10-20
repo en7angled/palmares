@@ -20,13 +20,13 @@ import Data.Text (Text)
 import Database.Persist (Entity (..))
 import Database.Persist qualified as P
 import Database.Persist.Sql (SqlPersistT, runSqlPool)
-import DomainTypes.Core.Actions (ProfileData (..))
-import DomainTypes.Core.BJJ (BJJBelt (..))
-import DomainTypes.Core.Types
-import DomainTypes.Transfer.Types
+import Palmares.DomainTypes.Core.Actions (ProfileData (..))
+import Palmares.DomainTypes.Core.BJJ (BJJBelt (..))
+import Palmares.DomainTypes.Core.Types
+import Palmares.DomainTypes.Transfer.Types
 import GeniusYield.Types (GYTime, timeFromPOSIX)
-import DomainTypes.Transfer.Filters qualified as F
-import DomainTypes.Transfer.QueryResponses
+import Palmares.DomainTypes.Transfer.Filters qualified as F
+import Palmares.DomainTypes.Transfer.QueryResponses
   ( OrganizationDetailResponse (..),
     OrganizationProfileResponse,
     PractitionerDetailResponse (..),
@@ -43,11 +43,11 @@ import Query.Live qualified as L
 import Query.Projected qualified as P
 import QueryAppMonad (QueryAppContext (..), QueryAppMonad, runWithQueryErrorHandling)
 import RestAPI.Common (withBackend)
-import Storage
-import TxBuilding.Context (runQuery)
-import TxBuilding.Conversions (profileDatumToProfileData)
-import TxBuilding.Exceptions (TxBuildingException (ProfileNotFound))
-import TxBuilding.Lookups (getOrganizationInformation, getPractitionerInformation, getProfileStateDatumAndValue)
+import Palmares.Storage
+import Palmares.TxBuilding.Context (runQuery)
+import Palmares.TxBuilding.Conversions (profileDatumToProfileData)
+import Palmares.TxBuilding.Exceptions (TxBuildingException (ProfileNotFound))
+import Palmares.TxBuilding.Lookups (getOrganizationInformation, getPractitionerInformation, getProfileStateDatumAndValue)
 
 -- | When a promotion edge refers to an organization profile, we still emit
 -- @PractitionerProfileInformation@-shaped JSON (§12): use a placeholder rank

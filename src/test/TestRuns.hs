@@ -2,8 +2,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module TestRuns
-  ( deployBJJValidators,
-    bjjInteraction,
+  ( deployValidators,
+    profileInteraction,
     protocolInteraction,
     adminInteraction,
     sendDustToValidator,
@@ -22,28 +22,28 @@ import Control.Monad (void)
 import Control.Monad.Reader
 import Data.Foldable.Extra
 import Data.Maybe (fromMaybe)
-import DomainTypes.Core.Actions
-import DomainTypes.Core.Types
+import Palmares.DomainTypes.Core.Actions
+import Palmares.DomainTypes.Core.Types
 import GHC.Stack
 import GeniusYield.Test.Clb (sendSkeleton')
 import GeniusYield.Test.Utils
 import GeniusYield.TxBuilder hiding (userAddresses)
 import GeniusYield.TxBuilder.User qualified as User
 import GeniusYield.Types
-import Onchain.CIP68
-import Onchain.Protocol (OnchainProfile (..), OnchainRank (..), getCurrentRankId, promoteProfile)
-import Onchain.Protocol qualified as Onchain
-import Onchain.Protocol.Types (OracleParams (..))
-import Onchain.Validators.ProfilesValidator (ProfilesRedeemer (..))
-import Onchain.Validators.RanksValidator (RanksRedeemer (..))
+import Palmares.Onchain.CIP68
+import Palmares.Onchain.Protocol (OnchainProfile (..), OnchainRank (..), getCurrentRankId, promoteProfile)
+import Palmares.Onchain.Protocol qualified as Onchain
+import Palmares.Onchain.Protocol.Types (OracleParams (..))
+import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (..))
+import Palmares.Onchain.Validators.RanksValidator (RanksRedeemer (..))
 import PlutusLedgerApi.V3
-import TxBuilding.Context
-import TxBuilding.Interactions
-import TxBuilding.Lookups
-import TxBuilding.Skeletons
-import TxBuilding.Utils (tnFromGYAssetClass, txOutRefToV3Plutus)
-import TxBuilding.Validators
-import Utils
+import Palmares.TxBuilding.Context
+import Palmares.TxBuilding.Interactions
+import Palmares.TxBuilding.Lookups
+import Palmares.TxBuilding.Skeletons
+import Palmares.TxBuilding.Utils (tnFromGYAssetClass, txOutRefToV3Plutus)
+import Palmares.TxBuilding.Validators
+import Palmares.Utils
 
 ------------------------------------------------------------------------------------------------
 
@@ -62,8 +62,8 @@ deployReferenceScriptRun validator fromWallet toWallet = asUser fromWallet $ do
 
 ------------------------------------------------------------------------------------------------
 
-deployBJJValidators :: (GYTxGameMonad m, HasCallStack) => User -> m DeployedScriptsContext
-deployBJJValidators w = do
+deployValidators :: (GYTxGameMonad m, HasCallStack) => User -> m DeployedScriptsContext
+deployValidators w = do
   -- Step 1: Deploy spending validators as reference scripts
   (pVhash, refProfilesValidator) <- deployReferenceScriptRun profilesValidatorGY w w
   (rVhash, refRanksValidator) <- deployReferenceScriptRun ranksValidatorGY w w
@@ -91,7 +91,7 @@ deployBJJValidators w = do
         <> "  MembershipsValidator: "
         <> show membershipsValidatorSize
         <> " bytes\n"
-        <> "  AchievementsValidator: "
+        <> "  AttestationsValidator: "
         <> show achievementsValidatorSize
         <> " bytes\n"
         <> "  OracleValidator: "
@@ -253,9 +253,9 @@ maliciousCreateProfileWithBurn txBuildingContext actor victimUserAC actionType =
   logTxBudget gyTxBody
   return gyTxId
 
-bjjInteraction :: (GYTxGameMonad m, HasCallStack) => DeployedScriptsContext -> User -> ProfileActionType -> Maybe GYAddress -> m (GYTxId, GYAssetClass)
-bjjInteraction txBuildingContext user actionType mrecipient = asUser user $ do
-  ((gyTxId, gyAC), balanceDelta) <- withBalance "bjjInteraction" user $ do
+profileInteraction :: (GYTxGameMonad m, HasCallStack) => DeployedScriptsContext -> User -> ProfileActionType -> Maybe GYAddress -> m (GYTxId, GYAssetClass)
+profileInteraction txBuildingContext user actionType mrecipient = asUser user $ do
+  ((gyTxId, gyAC), balanceDelta) <- withBalance "profileInteraction" user $ do
     let interaction =
           Interaction
             { action = ProfileAction actionType,
@@ -263,7 +263,7 @@ bjjInteraction txBuildingContext user actionType mrecipient = asUser user $ do
               recipient = mrecipient
             }
     (skeleton, mGyAC) <- runReaderT (interactionToTxSkeleton interaction) txBuildingContext
-    let gyAC = fromMaybe (error "bjjInteraction: ProfileAction returned Nothing for asset class") mGyAC
+    let gyAC = fromMaybe (error "profileInteraction: ProfileAction returned Nothing for asset class") mGyAC
     (gyTxBody, gyTxId) <- sendSkeleton' skeleton
 
     -- Log execution units / script budget information

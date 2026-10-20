@@ -8,27 +8,27 @@ where
 
 import Control.Monad (void)
 import Control.Monad.Reader (runReaderT)
-import DomainTypes.Core.Actions
-import DomainTypes.Core.Types
+import Palmares.DomainTypes.Core.Actions
+import Palmares.DomainTypes.Core.Types
 import GHC.Stack
 import GeniusYield.Test.Clb
 import GeniusYield.Test.Utils
 import GeniusYield.TxBuilder
 import GeniusYield.TxBuilder.User qualified as User
 import GeniusYield.Types
-import Onchain.Protocol.Types (FeeConfig (..), OracleParams (..))
+import Palmares.Onchain.Protocol.Types (FeeConfig (..), OracleParams (..))
 import PlutusTx.Prelude (isNothing)
 import Test.Fixtures (adminTestProfileData, studentProfileData)
 import Test.Helpers (assert, queryOracle)
 import Test.Tasty
 import TestRuns
   ( adminInteraction,
-    bjjInteraction,
-    deployBJJValidators,
+    profileInteraction,
+    deployValidators,
     maliciousMintOracleNFTWithExtraToken,
     maliciousMintOracleNFTWrongName,
   )
-import TxBuilding.Lookups (queryOracleParams)
+import Palmares.TxBuilding.Lookups (queryOracleParams)
 
 oracleTests :: (HasCallStack) => TestTree
 oracleTests =
@@ -48,7 +48,7 @@ oracleDeploymentTests =
     oracleDeployAndQuery :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     oracleDeployAndQuery TestInfo {..} = do
       waitNSlots_ 1000
-      txBuildingContext <- deployBJJValidators (w1 testWallets)
+      txBuildingContext <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
       -- Query oracle params to verify they are accessible
@@ -81,7 +81,7 @@ oracleAdminTests =
     pauseAndUnpause :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     pauseAndUnpause TestInfo {..} = do
       waitNSlots_ 1000
-      ctx <- deployBJJValidators (w1 testWallets)
+      ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
       params0 <- queryOracle ctx
@@ -107,7 +107,7 @@ oracleAdminTests =
     setAndClearFees :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     setAndClearFees TestInfo {..} = do
       waitNSlots_ 1000
-      ctx <- deployBJJValidators (w1 testWallets)
+      ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
       params0 <- queryOracle ctx
@@ -143,7 +143,7 @@ oracleAdminTests =
     setMinUTxOValue :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     setMinUTxOValue TestInfo {..} = do
       waitNSlots_ 1000
-      ctx <- deployBJJValidators (w1 testWallets)
+      ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
       params0 <- queryOracle ctx
@@ -173,12 +173,12 @@ oracleAdminTests =
       t <- slotToBeginTime s
       let creationDate = timeFromPOSIX $ timeToPOSIX t - 100000
 
-      ctx <- deployBJJValidators (w1 testWallets)
+      ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Step 1: Creating profile while protocol is unpaused..."
       (_txId, profileAC1) <-
-        bjjInteraction
+        profileInteraction
           ctx
           (w2 testWallets)
           (InitProfileAction adminTestProfileData Practitioner creationDate)
@@ -196,7 +196,7 @@ oracleAdminTests =
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Step 3: Attempting profile creation while paused (must fail)."
       mustFail $
         void $
-          bjjInteraction ctx (w1 testWallets) (InitProfileAction studentProfileData Practitioner creationDate) Nothing
+          profileInteraction ctx (w1 testWallets) (InitProfileAction studentProfileData Practitioner creationDate) Nothing
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Paused profile creation correctly rejected (ProtocolPaused)."
 
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Step 4: Setting fees while paused..."
@@ -220,7 +220,7 @@ oracleAdminTests =
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Step 6: Creating profile after unpause..."
       let profileData2 = ProfileData "Admin Test User 2" "Second test profile" "ipfs://QmTest2"
       (_txId, profileAC2) <-
-        bjjInteraction
+        profileInteraction
           ctx
           (w3 testWallets)
           (InitProfileAction profileData2 Practitioner creationDate)
@@ -241,7 +241,7 @@ oracleAdminTests =
 
     nonAdminOracleUpdateFails :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     nonAdminOracleUpdateFails TestInfo {..} = do
-      ctx <- deployBJJValidators (w1 testWallets)
+      ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1
       -- w2 is not opAdminPkh; OracleValidator must reject its admin action.
       mustFail $
@@ -256,7 +256,7 @@ oracleAdminTests =
       s <- slotOfCurrentBlock
       t <- slotToBeginTime s
       let creationDate = timeFromPOSIX $ timeToPOSIX t - 100000
-      ctx <- deployBJJValidators (w1 testWallets)
+      ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
       let feeAddr = addressToPlutus (User.userChangeAddress (w2 testWallets))
       let feeConfig =
@@ -273,7 +273,7 @@ oracleAdminTests =
       -- w2 is the fee recipient (not the actor), so its delta is exactly the fee.
       withWalletBalancesCheck [w2 testWallets := valueFromLovelace 2000000] $
         void $
-          bjjInteraction ctx (w1 testWallets) (InitProfileAction studentProfileData Practitioner creationDate) Nothing
+          profileInteraction ctx (w1 testWallets) (InitProfileAction studentProfileData Practitioner creationDate) Nothing
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Profile-creation fee delivered to fee address!"
       return ()
 

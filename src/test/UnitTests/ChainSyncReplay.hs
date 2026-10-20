@@ -17,14 +17,14 @@ import GeniusYield.Types
     unsafeSlotFromInteger,
     valueFromLovelace,
   )
-import Ingestion (ChainEventProjection (PromotionEvent, RankEvent), projectChainEvent)
-import KupoAtlas (AtlasMatch (..), toGYAssetClass)
-import KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..))
-import Onchain.Protocol.Types (OnchainRank (..), ProtocolParams (..))
+import Palmares.Ingestion (ChainEventProjection (PromotionEvent, RankEvent), projectChainEvent)
+import Palmares.ChainSync.KupoAtlas (AtlasMatch (..), toGYAssetClass)
+import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..))
+import Palmares.Onchain.Protocol.Types (OnchainRank (..), ProtocolParams (..))
 import PlutusLedgerApi.V1.Value (AssetClass (..), CurrencySymbol (..), TokenName (..))
 import PlutusLedgerApi.V3 (POSIXTime (POSIXTime), ScriptHash (..))
 import PlutusTx.Builtins (toBuiltin)
-import Storage
+import Palmares.Storage
   ( OnchainMatchEvent (..),
     onchainMatchEventCreatedOutputIndex,
     onchainMatchEventCreatedSlot,
@@ -33,7 +33,7 @@ import Storage
   )
 import Test.Tasty
 import Test.Tasty.HUnit
-import TxBuilding.Validators (ranksValidatorHashGY)
+import Palmares.TxBuilding.Validators (ranksValidatorHashGY)
 
 -- A raw match whose Kupo payload is irrelevant to ordering.
 dummyMatch :: KupoMatch

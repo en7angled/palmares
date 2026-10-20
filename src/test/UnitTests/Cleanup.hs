@@ -6,8 +6,8 @@ module UnitTests.Cleanup
   )
 where
 
-import DomainTypes.Core.Actions
-import DomainTypes.Core.Types
+import Palmares.DomainTypes.Core.Actions
+import Palmares.DomainTypes.Core.Types
 import GHC.Stack
 import GeniusYield.Test.Clb
 import GeniusYield.Test.Utils
@@ -15,8 +15,8 @@ import GeniusYield.TxBuilder
 import GeniusYield.Types
 import Test.Fixtures (cleanupTestProfileData)
 import Test.Tasty
-import TestRuns (bjjInteraction, deployBJJValidators, logPractitionerProfileInformation, protocolInteraction, sendDustToValidator)
-import TxBuilding.Validators (membershipsValidatorGY, profilesValidatorGY, ranksValidatorGY)
+import TestRuns (profileInteraction, deployValidators, logPractitionerProfileInformation, protocolInteraction, sendDustToValidator)
+import Palmares.TxBuilding.Validators (membershipsValidatorGY, profilesValidatorGY, ranksValidatorGY)
 
 cleanupTests :: (HasCallStack) => TestTree
 cleanupTests =
@@ -33,7 +33,7 @@ cleanupTests =
     cleanupDustAtProfiles :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     cleanupDustAtProfiles TestInfo {..} = do
       waitNSlots_ 1000
-      ctx <- deployBJJValidators (w1 testWallets)
+      ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
       -- Simulate griefing: send ADA-only UTxO to profiles validator
@@ -53,7 +53,7 @@ cleanupTests =
     cleanupDustAtRanks :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     cleanupDustAtRanks TestInfo {..} = do
       waitNSlots_ 1000
-      ctx <- deployBJJValidators (w1 testWallets)
+      ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
       -- Simulate griefing: send ADA-only UTxO to ranks validator
@@ -74,7 +74,7 @@ cleanupTests =
     cleanupDustAtMemberships :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     cleanupDustAtMemberships TestInfo {..} = do
       waitNSlots_ 1000
-      ctx <- deployBJJValidators (w1 testWallets)
+      ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Sending dust UTxO to MembershipsValidator..."
@@ -92,7 +92,7 @@ cleanupTests =
     cleanupDustAtBothValidators :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     cleanupDustAtBothValidators TestInfo {..} = do
       waitNSlots_ 1000
-      ctx <- deployBJJValidators (w1 testWallets)
+      ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
       -- Simulate griefing at both validators
@@ -119,13 +119,13 @@ cleanupTests =
       t <- slotToBeginTime s
       let creationDate = timeFromPOSIX $ timeToPOSIX t - 100000
 
-      ctx <- deployBJJValidators (w1 testWallets)
+      ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
       -- Create a legitimate profile (locks UTxOs at PV and RV)
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Creating legitimate profile..."
       (_txId, profileAC) <-
-        bjjInteraction
+        profileInteraction
           ctx
           (w1 testWallets)
           (InitProfileAction cleanupTestProfileData Practitioner creationDate)

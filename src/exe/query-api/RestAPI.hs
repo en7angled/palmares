@@ -7,14 +7,14 @@
 
 module RestAPI where
 
-import Constants (appVersion)
+import Palmares.Constants (appVersion)
 import Control.Lens hiding (Context)
 import Control.Monad.Reader (lift)
 import Data.Swagger
 import Data.Text hiding (length, map)
-import DomainTypes.Core.BJJ (BJJBelt)
-import DomainTypes.Core.Types
-import DomainTypes.Transfer.Types
+import Palmares.DomainTypes.Core.BJJ (BJJBelt)
+import Palmares.DomainTypes.Core.Types
+import Palmares.DomainTypes.Transfer.Types
 import GeniusYield.Imports
 import GeniusYield.Types hiding (description, title)
 import Network.Wai
@@ -27,22 +27,22 @@ import Query.Projected qualified as P
 import Query.Rules qualified as Rules
 import Query.ServiceStatus (getProtocolStatusQuery, getReadyProbe)
 import QueryAppMonad
-import DomainTypes.Transfer.Filters
+import Palmares.DomainTypes.Transfer.Filters
   ( achievementFilterFromParams,
     activityFilterFromParams,
     profileFilterFromParams,
   )
-import DomainTypes.Transfer.QueryResponses
+import Palmares.DomainTypes.Transfer.QueryResponses
 import RestAPI.Common (withBackend)
 import Servant
 import Servant.Swagger
 import Servant.Swagger.UI
-import TxBuilding.Exceptions (TxBuildingException (..))
-import DomainTypes.Transfer.OrderBy
-import WebAPI.Auth
-import WebAPI.CORS
-import WebAPI.ServiceProbe
-import WebAPI.Utils (addSharedSwaggerDescriptions)
+import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
+import Palmares.DomainTypes.Transfer.OrderBy
+import Palmares.WebAPI.Auth
+import Palmares.WebAPI.CORS
+import Palmares.WebAPI.ServiceProbe
+import Palmares.WebAPI.Utils (addSharedSwaggerDescriptions)
 
 ------------------------------------------------------------------------------------------------
 
@@ -728,8 +728,8 @@ fullServer = swaggerServer :<|> serviceProbeServer :<|> privateRestServer
 
 ------------------------------------------------------------------------------------------------
 
-mkBJJApp :: WebAPI.CORS.CorsConfig -> QueryAppContext -> Application
-mkBJJApp corsCfg ctx =
+mkWebApp :: WebAPI.CORS.CorsConfig -> QueryAppContext -> Application
+mkWebApp corsCfg ctx =
   WebAPI.CORS.mkCorsMiddleware corsCfg $
     provideOptions proxyPublicAPI $
       serveWithContext proxyFullAPI basicCtx hoistedServer

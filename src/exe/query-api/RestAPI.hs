@@ -105,7 +105,7 @@ handleGetProfiles ::
   Maybe SortOrder ->
   QueryAppMonad [ProfileResponse]
 handleGetProfiles limit offset profileRefs profileType q orderBy sortOrder = do
-  let limitOffset = C.normalizeLimitOffset limit offset
+  let limitOffset = C.legacyNormalizeLimitOffset limit offset
   let profileFilter = Just $ profileFilterFromParams profileRefs profileType q
   let order = C.normalizeOrder orderBy sortOrder
   map profileToResponse <$> P.getProfiles limitOffset profileFilter order
@@ -161,7 +161,7 @@ handleGetAchievements ::
   Maybe SortOrder ->
   QueryAppMonad [AchievementResponse]
 handleGetAchievements limit offset achievementIds awardedToRefs awardedByRefs accepted fromTime toTime q orderBy sortOrder = do
-  let limitOffset = C.normalizeLimitOffset limit offset
+  let limitOffset = C.legacyNormalizeLimitOffset limit offset
   let achievementFilter = Just $ achievementFilterFromParams achievementIds awardedToRefs awardedByRefs accepted fromTime toTime q
   let order = C.normalizeOrder orderBy sortOrder
   map achievementToResponse <$> P.getAchievements limitOffset achievementFilter order
@@ -239,7 +239,7 @@ handleGetActivity ::
   Maybe GYTime ->
   QueryAppMonad [ActivityEventResponse]
 handleGetActivity limit offset eventType actor since = do
-  let limitOffset = C.normalizeLimitOffset (Just (fromMaybe 20 limit)) offset
+  let limitOffset = C.legacyNormalizeLimitOffset (Just (fromMaybe 20 limit)) offset
       actFilter = activityFilterFromParams eventType actor since
   -- One slot config per request; row conversion is pure (fix #5).
   slotCfg <- requestSlotConfig

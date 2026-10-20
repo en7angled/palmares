@@ -49,7 +49,7 @@ getAchievementsPage ::
   Maybe SortOrder ->
   QueryAppMonad AchievementsPageResponse
 getAchievementsPage limit offset achievementIds awardedToRefs awardedByRefs accepted fromTime toTime q orderBy sortOrder = do
-  let limitOffset = C.normalizeLimitOffset limit offset
+  let limitOffset = C.legacyNormalizeLimitOffset limit offset
       achFilter = Just $ achievementFilterFromParams achievementIds awardedToRefs awardedByRefs accepted fromTime toTime q
       order = C.normalizeOrder orderBy sortOrder
   items <- P.getAchievements limitOffset achFilter order
@@ -73,7 +73,7 @@ getProfilesPage ::
   Maybe SortOrder ->
   QueryAppMonad ProfilesPageResponse
 getProfilesPage limit offset profileRefs profileType q orderBy sortOrder = do
-  let limitOffset = C.normalizeLimitOffset limit offset
+  let limitOffset = C.legacyNormalizeLimitOffset limit offset
       profileFilter = Just $ profileFilterFromParams profileRefs profileType q
       order = C.normalizeOrder orderBy sortOrder
   profiles <- P.getProfiles limitOffset profileFilter order
@@ -98,7 +98,7 @@ getOrganizationExplorerPage ::
   Maybe SortOrder ->
   QueryAppMonad OrganizationExplorerPageResponse
 getOrganizationExplorerPage limit offset profileRefs q orderBy sortOrder = do
-  let limitOffset = C.normalizeLimitOffset limit offset
+  let limitOffset = C.legacyNormalizeLimitOffset limit offset
       profileFilter = Just $ profileFilterFromParams profileRefs (Just Organization) q
       order = C.normalizeOrder orderBy sortOrder
   profiles <- P.getProfiles limitOffset profileFilter order

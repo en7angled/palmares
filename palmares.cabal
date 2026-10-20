@@ -244,6 +244,7 @@ library webapi-lib
   hs-source-dirs:     src/lib/webapi-lib
   default-extensions:
     DataKinds
+    ImportQualifiedPost
     NamedFieldPuns
     OverloadedStrings
     TypeOperators
@@ -252,7 +253,7 @@ library webapi-lib
   exposed-modules:
     Palmares.WebAPI.Auth
     Palmares.WebAPI.CORS
-  --   Palmares.WebAPI.CSV
+    Palmares.WebAPI.CSV
     Palmares.WebAPI.Envelope
     Palmares.WebAPI.Errors
     Palmares.WebAPI.ServiceProbe
@@ -263,6 +264,7 @@ library webapi-lib
     , bytestring
     , cassava
     , deriving-aeson
+    , http-media
     , http-types
     , lens
     , memory
@@ -428,6 +430,7 @@ test-suite test
   other-modules:
   --   PropertyTests
   --   Test.Fixtures
+    Query.Common
     Query.Refresh
     Query.Views
     Test.Helpers
@@ -446,6 +449,7 @@ test-suite test
     UnitTests.MetricCatalog
     UnitTests.MetricDoc
     UnitTests.MetricFixture
+    UnitTests.QueryHardening
     UnitTests.Refresh
     UnitTests.Views
   --   UnitTests.Dispute
@@ -466,6 +470,7 @@ test-suite test
     , base16-bytestring
     , bech32
     , bytestring
+    , cassava
     , containers
     , extra
     , file-embed
@@ -480,6 +485,7 @@ test-suite test
     , tasty-hunit
     , time
     , unix
+    , vector
     , wai
     , wai-cors
     , warp

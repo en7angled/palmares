@@ -598,5 +598,5 @@ getActivityFeed slotCfg maybeLimitOffset maybeFilter = do
                 }
           }
       sorted = sortOn (Down . activityEventTimestamp) $ map toResponse rawEvents
-  pure $ C.applyLimits maybeLimitOffset sorted
+  pure $ C.legacyApplyLimits maybeLimitOffset sorted
 

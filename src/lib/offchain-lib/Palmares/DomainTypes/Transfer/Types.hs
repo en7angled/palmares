@@ -10,10 +10,8 @@ import Data.Swagger.Internal.Schema ()
 import Data.Swagger.ParamSchema
 import Data.Swagger.SchemaOptions (fromAesonOptions)
 import Data.Text hiding (init, tail)
-import Data.Text qualified as T
 import Deriving.Aeson
 import Palmares.DomainTypes.Core.Types
-import GeniusYield.Types.Time (GYTime)
 import GHC.Generics ()
 import Palmares.Utils
 

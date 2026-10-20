@@ -15,7 +15,6 @@ import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import PlutusLedgerApi.V3
 import PlutusTx.AssocMap qualified as AssocMap
-import PlutusTx.Builtins (fromBuiltin)
 import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteStringUtf8)
 
 -- | Convert domain 'ProfileData' to on-chain CIP-68 metadata fields.

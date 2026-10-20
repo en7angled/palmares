@@ -9,7 +9,6 @@ module RestAPI where
 
 import Palmares.Constants (appVersion)
 import Control.Lens hiding (Context)
-import Control.Monad.Reader (lift)
 import Data.Swagger
 import Data.Text hiding (length, map)
 import Palmares.DomainTypes.Core.Types

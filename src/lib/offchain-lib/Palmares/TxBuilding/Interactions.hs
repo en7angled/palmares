@@ -7,7 +7,6 @@ import Data.Aeson
 import Data.Aeson.Types qualified as AesonTypes
 import Data.Bifunctor qualified
 import Data.List.Extra
-import Data.Maybe (fromMaybe)
 import Data.Swagger (ToSchema (..), genericDeclareNamedSchema)
 import Data.Swagger.Schema (SchemaOptions, fromAesonOptions)
 import Deriving.Aeson
@@ -77,9 +76,7 @@ interactionToTxSkeleton ::
   Interaction ->
   m (GYTxSkeleton 'PlutusV3, Maybe GYAssetClass)
 interactionToTxSkeleton Interaction {..} = do
-  let changeAddr = changeAddress userAddresses
   let usedAddrs = usedAddresses userAddresses
-  let receiveAddr = fromMaybe changeAddr recipient
   case action of
     ProfileAction actionType -> do
       fmap (fmap Just) $ case actionType of

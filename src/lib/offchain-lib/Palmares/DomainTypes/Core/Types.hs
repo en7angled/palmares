@@ -7,7 +7,7 @@ module Palmares.DomainTypes.Core.Types where
 import Data.Aeson
 import Data.Aeson.Types qualified as AesonTypes
 import Data.List.Extra
-import Data.Swagger (NamedSchema (..), ToSchema (..), genericDeclareNamedSchema)
+import Data.Swagger (ToSchema (..), genericDeclareNamedSchema)
 import Data.Swagger.Internal.Schema ()
 import Data.Swagger.ParamSchema
 import Data.Swagger.SchemaOptions (fromAesonOptions)

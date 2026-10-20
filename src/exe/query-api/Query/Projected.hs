@@ -9,35 +9,27 @@
 module Query.Projected where
 
 import Control.Exception (throwIO)
-import Control.Monad (join)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader.Class
 import Data.Aeson (ToJSON)
 import Data.Foldable (for_)
-import Data.List (foldl', maximumBy, nub, sortOn)
-import Data.List qualified as L (groupBy)
+import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as M
 import Data.Maybe
-import Data.Ord (Down (..), comparing)
-import Data.Sequence qualified as Seq
-import Data.Set qualified as S
+import Data.Ord (Down (..))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Database.Esqueleto.Experimental
-import Database.Esqueleto.Internal.Internal (unsafeSqlCastAs, unsafeSqlFunction)
+import Database.Esqueleto.Internal.Internal (unsafeSqlCastAs)
 import Database.Persist qualified as P
 import Palmares.DomainTypes.Core.Types
 import Palmares.DomainTypes.Transfer.Filters qualified as C
 import Palmares.DomainTypes.Transfer.Filters qualified as F
 import Palmares.DomainTypes.Transfer.OrderBy
 import Palmares.DomainTypes.Transfer.QueryResponses
-  ( AchievementsMonthlyStatsResponse (..),
-    ActivityEventDetails (..),
+  ( ActivityEventDetails (..),
     ActivityEventResponse (..),
-    LineageEdge (..),
-    LineageGraphData (..),
-    LineageNode (..),
     SearchGroup (..),
     SearchHit (..),
     SearchResults (..),

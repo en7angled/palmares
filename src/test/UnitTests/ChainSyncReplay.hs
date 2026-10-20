@@ -18,7 +18,7 @@ import GeniusYield.Types
     valueFromLovelace,
     valueSingleton,
   )
-import Palmares.ChainSync.KupoAtlas (AtlasMatch (..), toGYAssetClass)
+import Palmares.ChainSync.KupoAtlas (toGYAssetClass)
 import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..))
 import Palmares.TxBuilding.Utils (authenticateStateUTxO, slotToUTC, utcToSlot)
 import Palmares.Storage

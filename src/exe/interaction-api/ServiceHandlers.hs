@@ -6,12 +6,10 @@
 -- to the existing tx-building pipeline via 'buildInteractionApp'.
 module ServiceHandlers where
 
-import Data.Text (Text)
 import Palmares.DomainTypes.Core.Actions
 import GeniusYield.Types (GYAddress)
 import InteractionAppMonad
 import ServiceRequests
-import Palmares.TxBuilding.Context (TxBuildingContext (..))
 import Palmares.TxBuilding.Interactions (ActionType (..), Interaction (..), UserAddresses)
 
 -------------------------------------------------------------------------------

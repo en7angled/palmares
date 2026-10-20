@@ -10,7 +10,6 @@ import GHC.Stack (HasCallStack)
 import GeniusYield.TxBuilder
 import GeniusYield.Types
 import Palmares.Onchain.CIP68 (CIP68Datum (..), ImageURI, MetadataFields (..), extra, getMetadataFields, mkCIP68Datum, updateCIP68DatumMetadata)
-import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import Palmares.Onchain.Validators.AttestationsValidator (AchievementsRedeemer (..))
@@ -19,12 +18,12 @@ import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer (OracleUpdate
 import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (UpdateProfile))
 import Palmares.Onchain.Validators.ProfilesValidator qualified as ProfilesValidator (ProfilesRedeemer (Cleanup))
 import PlutusLedgerApi.V3
-import Palmares.TxBuilding.Context (DeployedScriptsContext (..), getAchievementsValidatorRef, getMintingPolicyFromCtx, getMintingPolicyRef, getOracleValidatorRef, getProfilesValidatorRef, getProtocolParamsFromCtx)
+import Palmares.TxBuilding.Context (DeployedScriptsContext (..), getAchievementsValidatorRef, getMintingPolicyFromCtx, getMintingPolicyRef, getOracleValidatorRef, getProfilesValidatorRef)
 import Palmares.TxBuilding.Conversions (cip68StandardMetadataKeys)
 import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
 import Palmares.TxBuilding.Lookups (getAchievementDatumAndValue, getDustUTxOs, getProfileStateDatumAndValue, getUTxOWithTokenAtAddresses, queryOracleParams)
 import Palmares.TxBuilding.Skeletons
-import Palmares.TxBuilding.Utils (gySlotFromPOSIXTime, pPOSIXTimeFromGYSlot, txOutRefToV3Plutus)
+import Palmares.TxBuilding.Utils (txOutRefToV3Plutus)
 import Palmares.TxBuilding.Validators
 
 -- | Build a skeleton component that adds the oracle UTxO as a reference input.

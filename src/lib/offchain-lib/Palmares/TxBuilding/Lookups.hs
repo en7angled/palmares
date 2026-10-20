@@ -10,7 +10,7 @@ import Palmares.DomainTypes.Core.Types
 import Palmares.DomainTypes.Transfer.Types
 import GeniusYield.TxBuilder
 import GeniusYield.TxBuilder.Errors ()
-import GeniusYield.Types (GYDatum, GYNetworkId, GYScriptHash, GYTxOutRef, GYUTxO, filterUTxOs, mintingPolicyIdFromCurrencySymbol, utxoRef, utxoValue, utxosToList)
+import GeniusYield.Types (GYTxOutRef, GYUTxO, filterUTxOs, mintingPolicyIdFromCurrencySymbol, utxoRef, utxoValue, utxosToList)
 import GeniusYield.Types.Address
 import GeniusYield.Types.Value
 import Palmares.Onchain.CIP68 (CIP68Datum (..), deriveRefFromUserAC, userTokenPrefixBS)
@@ -20,10 +20,10 @@ import PlutusLedgerApi.V1.Value (CurrencySymbol, Value, adaSymbol, flattenValue)
 import PlutusTx.Builtins (sliceByteString, lengthOfByteString)
 import PlutusLedgerApi.V1.Value qualified as PlutusValue
 import Palmares.TxBuilding.Context (DeployedScriptsContext (..))
-import Palmares.TxBuilding.Conversions (onchainAchievementToAchievement, profileDatumToProfile, profileDatumToProfileData)
+import Palmares.TxBuilding.Conversions (profileDatumToProfileData)
 import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
-import Palmares.TxBuilding.Utils (achievementAndValueFromUTxO, achievementDatumFromDatum, getInlineDatumAndValue, oracleParamsFromDatum, profileAndValueFromUTxO, profileDatumFromDatum)
-import Palmares.TxBuilding.Validators (achievementsValidatorHashGY, oracleValidatorGY, profilesValidatorHashGY)
+import Palmares.TxBuilding.Utils (achievementAndValueFromUTxO, getInlineDatumAndValue, oracleParamsFromDatum, profileAndValueFromUTxO)
+import Palmares.TxBuilding.Validators (oracleValidatorGY)
 
 ------------------------------------------------------------------------------------------------
 

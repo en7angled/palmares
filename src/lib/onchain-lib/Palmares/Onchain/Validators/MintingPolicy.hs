@@ -23,7 +23,6 @@ where
 
 import GHC.Generics (Generic)
 import Palmares.Onchain.CIP68 (MetadataFields, deriveUserFromRefAC, generateRefAndUserTN, mkCIP68Datum, validateMetadataFields)
-import Palmares.Onchain.Protocol (deriveSeededId)
 import Palmares.Onchain.Protocol.Lookup (checkFee, readOracleParams)
 import Palmares.Onchain.Protocol.Types
   ( FeeConfig (fcAttestationFee),
@@ -46,7 +45,6 @@ import Palmares.Onchain.Protocol.Types
 import Palmares.Onchain.Utils (hasCurrencySymbol)
 import Palmares.Onchain.Utils qualified as Utils
   ( checkTxOutAtIndexWithDatumMinValueAndAddress,
-    hasTxInAtAddressWithNFT,
     inputsSpendTxOutRef,
     mkUntypedLambda,
     nameFromTxOutRef,

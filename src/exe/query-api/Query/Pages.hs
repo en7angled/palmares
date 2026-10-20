@@ -10,16 +10,10 @@ module Query.Pages
   )
 where
 
-import Control.Monad.IO.Class (liftIO)
-import Data.List (nub)
 import Data.Map.Strict qualified as M
 import Data.Text (Text)
-import Data.Time (addUTCTime, getCurrentTime, nominalDay)
-import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import Palmares.DomainTypes.Core.Types
-import GeniusYield.Types (GYTime, timeFromPOSIX)
-import Query.Aggregates qualified as Agg
-import Palmares.DomainTypes.Transfer.Filters qualified as F
+import GeniusYield.Types (GYTime)
 import Palmares.DomainTypes.Transfer.QueryResponses
   ( AchievementsPageResponse (..),
     OrganizationExplorerPageResponse (..),
@@ -37,10 +31,6 @@ import Palmares.DomainTypes.Transfer.Filters
   )
 import Palmares.DomainTypes.Transfer.OrderBy
 
--- | Filter profiles by type only (counts and latest lists).
-profileFilterOfType :: ProfileType -> F.ProfileFilter
-profileFilterOfType pt =
-  F.ProfileFilter Nothing (Just pt) Nothing Nothing Nothing Nothing
 
 
 

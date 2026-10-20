@@ -10,12 +10,10 @@
 -- fields, and 'ServiceHandlers' resolves them into 'Interaction' values.
 module ServiceRequests where
 
-import Control.Lens ((&), (.~), (?~), at, mapped)
-import Data.Proxy (Proxy (..))
-import Data.Swagger (ToSchema (..), declareSchemaRef, description, genericDeclareNamedSchema, properties, required, type_)
+import Control.Lens ((&), (?~), at, mapped)
+import Data.Swagger (ToSchema (..), description, genericDeclareNamedSchema, properties)
 import Data.Swagger qualified as Swagger
-import Data.Text (Text, pack)
-import Data.Typeable (Typeable, typeRep)
+import Data.Text (Text)
 import Deriving.Aeson
 import Palmares.DomainTypes.Core.Types (ProfileRefAC)
 import GeniusYield.Types (GYAddress, GYAssetClass)

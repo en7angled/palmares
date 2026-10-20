@@ -28,9 +28,8 @@ where
 
 import GHC.Generics (Generic)
 import Palmares.Onchain.CIP68 (CIP68Datum (CIP68Datum), MetadataFields (..), deriveUserFromRefAC, updateCIP68DatumMetadata, validateMetadataFields)
-import Palmares.Onchain.Protocol (OnchainProfile (..), protocolParams)
+import Palmares.Onchain.Protocol (OnchainProfile (..))
 import Palmares.Onchain.Protocol qualified as Onchain
-import Palmares.Onchain.Utils (hasCurrencySymbol)
 import Palmares.Onchain.Utils qualified as Utils
 import PlutusLedgerApi.V1 qualified as V1
 import PlutusLedgerApi.V3
@@ -90,7 +89,7 @@ profilesLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) scriptInfo
                 let !ownInput = Utils.unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs
                     !ownValue = txOutValue ownInput
                     !ownAddress = txOutAddress ownInput
-                    !profileRefAssetClass@(V1.AssetClass (mintingPolicyCurrencySymbol, _)) = profileId profile --  as in datum.
+                    !profileRefAssetClass = profileId profile --  as in datum.
                     -- It is important to validate that the value of this UTxO contains an NFT of this asset class.
                  in case redeemer of
                       (UpdateProfile newFields profileOutputIdx) ->

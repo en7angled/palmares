@@ -36,7 +36,6 @@ module Palmares.DomainTypes.Transfer.QueryResponses
   )
 where
 
-import Data.Map.Strict (Map)
 import Data.Swagger (ToSchema (..), genericDeclareNamedSchema)
 import Data.Swagger.Internal.Schema ()
 import Data.Text (Text)

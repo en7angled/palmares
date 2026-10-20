@@ -9,7 +9,6 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.ByteString.Char8 qualified as LSB8
 import Data.ByteString.Lazy qualified as B
-import Data.Char (toLower, toUpper)
 import Data.Text qualified as T
 import Palmares.DomainTypes.Core.Actions (AdminActionType (..), ProfileActionType (..), ProfileData (..), ProtocolActionType (..))
 import Palmares.DomainTypes.Core.Types (ProfileType (..))

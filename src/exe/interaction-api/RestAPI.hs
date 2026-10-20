@@ -19,7 +19,6 @@ import GeniusYield.Types hiding (description, title)
 import InteractionAppMonad
 import Network.Wai
 import Network.Wai.Middleware.Servant.Options (provideOptions)
-import Network.Wai.Parse (setMaxRequestFileSize)
 import Servant
 import Servant.Swagger
 import Servant.Swagger.UI

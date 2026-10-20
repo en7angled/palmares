@@ -23,7 +23,6 @@ import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Int (Int64)
 import Data.List qualified as L
-import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)

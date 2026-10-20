@@ -42,6 +42,8 @@ check() { if [ "$2" = "$3" ]; then echo "  ok   $1"; else echo "  FAIL $1 => $2 
 # and why it is skipped, and it does NOT fail the run — so the expectation stays in the suite,
 # visible and un-weakened, instead of being deleted or quietly relaxed into something true.
 # Delete the wrapper, not the assertion, when the defect is fixed.
+# Currently UNUSED, and kept: the committee-page defect it was written for is fixed (four-stage
+# listVotes), and the next one will want it rather than want it rewritten.
 known_defect() { echo "  KNOWN $1"; echo "         expected: $2"; }
 
 has_header() {
@@ -352,16 +354,14 @@ CC=cc_cold1zds4k4qn0eelpyxjmhdsgvtmaeqkyn6qz0jule99a7nk6asezxvlu
 # 3.24 M rows from 648,766 hot keys resolving to 43 cold credentials.
 assert '/votes?voter_role=spo&limit=1' '.total' '90'
 assert '/votes?voter_role=drep&limit=1' '.total >= 819' 'true'
-# KNOWN DEFECT — the committee role is 3,243,802 of preprod's 3,244,711 vote rows, and
-# palmares.vote computes three window functions partitioned by (voter_id_hash, gov_action_id,
-# voter_role), so a page of ONE row sorts and partitions all of them. MEASURED: the page statement
-# 27.5 s and the count 24.0 s through psql, and over 166 s through the service, which now returns
-# 503 at the 30 s read timeout instead of hanging. Every other role answers in seconds because
-# voter_role is a partition column and the qual pushes below the WindowAgg: spo 90 rows, drep 819.
-# The fix is a two-stage page — pick the page's rows from voting_procedure and resolve the three
-# window columns for THOSE partitions only, which pushes down for the same reason — and it is its
-# own task, not a tail of this one. F1-PROGRESS.md carries the measurements.
-known_defect '/votes?voter_role=constitutional_committee&limit=1' '.total >= 3243802'
+# The committee role is 3,243,802 of preprod's 3,244,711 vote rows. This request used to be
+# unanswerable — over 400 s, a 503 at the read ceiling — because the page and the count both read
+# palmares.vote, whose window functions partition every row before the LIMIT. It is now four
+# statements: the count over the base tables with only the joins the filters need (1.09 s where it
+# was 14.2 s), the page's row ids by primary key (6 ms), those ids to their partition keys (291 ms),
+# and the rows through palmares.vote restricted to those partitions (286 ms). Measured end to end:
+# 3.3 s.
+assert '/votes?voter_role=constitutional_committee&limit=1' '.total >= 3243802' 'true'
 assert '/votes?voter_role=drep&limit=200' '[.items[].voter_role] | unique' '["drep"]'
 # has_rationale is spelled anchor_status=valid. Measured: 1 DRep vote and 0 SPO votes carry a
 # verified anchor, which is a statement about IPFS reachability and not about 36 authors.

@@ -14,14 +14,16 @@ import Data.List (nub)
 import Data.Proxy (Proxy (..))
 import Data.Text qualified as T
 import Data.Vector qualified as V
-import Palmares.DomainTypes.Core.Types (AnchorStatus (..), DRepStatus (..), GovActionId (..))
+import Palmares.DomainTypes.Core.Types (AnchorStatus (..), DRepStatus (..), GovActionId (..), VoterRole (..))
 import Palmares.DomainTypes.Transfer.Filters
   ( DRepFilter (..),
+    VoteFilter (..),
+    emptyVoteFilter,
     GovActivityFilter (..),
     emptyDRepFilter,
     emptyGovActivityFilter,
   )
-import Palmares.DomainTypes.Transfer.OrderBy (DRepsOrderBy (..), SortOrder (..))
+import Palmares.DomainTypes.Transfer.OrderBy (DRepsOrderBy (..), SortOrder (..), VotesOrderBy (..))
 import Palmares.WebAPI.CSV (CSV, safeCell)
 import Palmares.WebAPI.Envelope (ErrorCode (..), Page (..), errorCodeFromText)
 import Palmares.WebAPI.Errors (errorCodeFromParserMessage, genericErrorMessage)
@@ -31,12 +33,17 @@ import Query.Common
 import Palmares.DomainTypes.Transfer.QueryResponses (ActivityCursor (..), renderCursor)
 import Query.Gov
   ( FeedDir (..),
+    VoteJoins (..),
     activityWhere,
     activityWindows,
     drepFacetsSql,
     drepSortSpec,
     drepWhere,
     parseCursor,
+    voteBaseFrom,
+    voteBaseSortSpec,
+    voteBaseWhere,
+    voteJoinsFor,
   )
 import Servant (Accept (..), MimeRender (..))
 import Test.Tasty
@@ -56,7 +63,8 @@ instance FromNamedRecord Row where
   parseNamedRecord r = Row <$> r .: "cell"
 
 queryHardeningTests :: TestTree
-queryHardeningTests = testGroup "query hardening" [boundsTests, csvTests, cursorTests, errorCodeTests]
+queryHardeningTests =
+  testGroup "query hardening" [boundsTests, csvTests, cursorTests, errorCodeTests, voteStageTests]
 
 boundsTests :: TestTree
 boundsTests =
@@ -343,3 +351,79 @@ errorCodeTests =
     ]
   where
     codes = [minBound .. maxBound] :: [ErrorCode]
+
+voteStageTests :: TestTree
+voteStageTests =
+  testGroup
+    "the votes page's base shape"
+    [ -- The whole point of the four-stage page is that a join nobody asked for is not paid for.
+      -- MEASURED on preprod's 3.24 M committee vote rows: tx ⋈ block is 8.7 s of a 9.9 s count and
+      -- cc_cold_interval is 9.5 s, so a shape that joined them unconditionally is the difference
+      -- between 1.09 s and 14.2 s.
+      testCase "an unfiltered default page joins nothing but the action" $
+        let frm = voteBaseFrom (voteJoinsFor emptyVoteFilter VotesOrderByCastAt)
+         in ( T.isInfixOf "public.voting_procedure" frm,
+              T.isInfixOf "palmares.gov_action" frm,
+              T.isInfixOf "public.block" frm,
+              T.isInfixOf "cc_cold_interval" frm,
+              T.isInfixOf "drep_epoch_power" frm
+            )
+              @?= (True, True, False, False, False),
+      testCase "a time or epoch bound is what brings in tx and block, and only that" $
+        let withTime = voteJoinsFor emptyVoteFilter {voteFilterFromEpoch = Just 315} VotesOrderByCastAt
+         in (vjBlock withTime, vjAnchor withTime, vjCold withTime, vjPower withTime)
+              @?= (True, False, False, False),
+      testCase "the latency sort needs block; the voter_id sort needs the cold key" $
+        ( vjBlock (voteJoinsFor emptyVoteFilter VotesOrderByLatency),
+          vjCold (voteJoinsFor emptyVoteFilter VotesOrderByVoterId),
+          vjPower (voteJoinsFor emptyVoteFilter VotesOrderByVotingPower)
+        )
+          @?= (True, True, True),
+      testCase "anchor_status brings in the anchor, q brings in the drep" $
+        ( vjAnchor (voteJoinsFor emptyVoteFilter {voteFilterAnchorStatus = [AnchorValid]} VotesOrderByCastAt),
+          vjDRep (voteJoinsFor emptyVoteFilter {voteFilterQ = Just "abc"} VotesOrderByCastAt)
+        )
+          @?= (True, True),
+      -- The default sort orders by voting_procedure.id, which is the fact that removes tx ⋈ block
+      -- from every ordinary page. Verified against the chain: the top 50 by id DESC and the top 50
+      -- by (block.time DESC, id DESC) are the same 50 rows.
+      testCase "the default sort is the primary key, not a block time" $
+        let SortSpec col _ tie = voteBaseSortSpec VotesOrderByCastAt
+         in (col, tie) @?= ("v.id", "v.id"),
+      -- postgresql-simple counts placeholders lexically and complains only at run time, and the
+      -- voter clause binds the same list FOUR times — once per credential table.
+      testCase "every filter shape binds as many values as it has placeholders" $
+        mapM_
+          ( \f ->
+              let (sql, ps) = voteBaseWhere f
+               in assertEqual (T.unpack sql) (T.count "?" sql) (length ps)
+          )
+          [ emptyVoteFilter,
+            emptyVoteFilter {voteFilterVoterIds = ["aa", "bb"]},
+            emptyVoteFilter {voteFilterRoles = [DRep, SPO]},
+            emptyVoteFilter {voteFilterAnchorStatus = [AnchorValid], voteFilterQ = Just "x"},
+            emptyVoteFilter
+              { voteFilterVoterIds = ["aa"],
+                voteFilterRoles = [ConstitutionalCommittee],
+                voteFilterFromEpoch = Just 300,
+                voteFilterToEpoch = Just 320,
+                voteFilterQ = Just "y"
+              }
+          ],
+      -- A voter id must be matched against all four credential sources, and the committee needs
+      -- two of them: a cold id matches its own committee_hash row AND every hot key registered to
+      -- it, because a vote is signed by the hot key and published under the cold one (D-24).
+      testCase "a voter id is matched against drep, pool, and the committee's cold AND hot keys" $
+        let (sql, ps) = voteBaseWhere emptyVoteFilter {voteFilterVoterIds = ["aa"]}
+         in ( T.isInfixOf "drep_hash" sql,
+              T.isInfixOf "pool_hash" sql,
+              T.isInfixOf "committee_hash" sql,
+              T.isInfixOf "committee_registration" sql,
+              length ps
+            )
+              @?= (True, True, True, True, 4),
+      -- And it must do that WITHOUT the interval join, which is the 9.5 s this rewrite removes.
+      testCase "the voter filter does not reach for cc_cold_interval" $
+        T.isInfixOf "cc_cold_interval" (fst (voteBaseWhere emptyVoteFilter {voteFilterVoterIds = ["aa"]}))
+          @?= False
+    ]

@@ -92,6 +92,12 @@ module Query.Gov
     -- * Votes
     voteSortSpec,
     voteWhere,
+    VoteJoins (..),
+    voteJoinsFor,
+    voteBaseFrom,
+    voteBaseWhere,
+    voteBaseSortSpec,
+    voteIdentityJoins,
     listVotes,
     -- * Delegations
     delegationSortSpec,
@@ -147,7 +153,7 @@ import Control.Monad (forever)
 import Data.Aeson (FromJSON, eitherDecodeStrict)
 import Data.ByteString.Char8 qualified as BS8
 import Data.Char (isDigit, isHexDigit)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -1323,24 +1329,104 @@ voteWhere f =
       No -> "No"
       Abstain -> "Abstain"
 
--- | One page of votes, with a total over the same predicate.
+-- | One page of votes, with a total over the same predicate — in FOUR statements.
+--
+-- __Why four.__ Reading the page straight off @palmares.vote@ could not answer at all for the
+-- committee role, which is 3,243,802 of preprod's 3,244,711 vote rows. MEASURED: the page
+-- statement 27.5 s and the count 24.0 s through psql, over 400 s through the service, and the 30 s
+-- read ceiling turned it into a definite 503 rather than a hang. Every other role answered in
+-- seconds, because @voter_role@ is a partition column of that view's window functions and the qual
+-- pushes below the @WindowAgg@ — spo is 90 rows, drep 819.
+--
+-- The cost was measured to its cause and it was NOT the window functions. Over the committee rows:
+-- the base scan is 1.09 s, @tx ⋈ block@ adds 8.7 s, @cc_cold_interval@ adds 9.5 s, and the windows
+-- another 3.5 s. A count needs none of the three; a page of fifty rows needs the windows for fifty
+-- rows. So:
+--
+--   1. __the count__, over @voting_procedure ⋈ gov_action@ plus only the joins the FILTERS need:
+--      1.09 s where it was 14.2 s;
+--   2. __the page's row ids__, the same shape with @ORDER BY@ and @LIMIT@: 6 ms, because the
+--      default sort is @v.id DESC@ and needs no join at all ('voteBaseSortSpec' has the proof);
+--   3. __those ids to their partition keys__, restricted BY the ids: 291 ms, where the same
+--      cold-key join over the whole corpus is 9.5 s;
+--   4. __the page's rows__, through @palmares.vote@ restricted to those partitions: 286 ms.
+--
+-- About 1.7 s in total, from over 400. Stage 3 is a stage of its own because folding it into
+-- stage 2 was measured and cost 3.8 s of a 3.8 s page: resolving the cold credential alongside the
+-- @ORDER BY@ puts that join back over everything the filter matched.
+--
+-- __Stage 4 binds the partition keys as PARAMETERS, and that is load-bearing.__ The same
+-- restriction written as @(voter_id_hash, gov_action_id) IN (SELECT …)@ is 3,340 ms, because a
+-- SubLink is opaque to @qual_is_pushdown_safe@ and the windows are then computed over the whole
+-- corpus before the filter applies. As bound values it is 286 ms. The id list is bound too: the
+-- pairs give the pushdown, the ids give exactness — two rows of one partition can both match the
+-- pairs while only one of them is on this page.
 listVotes :: VoteFilter -> (VotesOrderBy, SortOrder) -> (Limit, Offset) -> SqlPersistT IO (Page VoteRecord)
 listVotes f (ob, so) (lim, off) = do
-  items <-
-    queryJson
-      ( "SELECT row_to_json(x)::text FROM ( SELECT "
-          <> voteProjection
-          <> voteFrom
-          <> whereSql
+  totals <- rawSql ("SELECT count(*)::int" <> baseFrom <> baseWhereSql) baseParams
+  let total = case totals of (Single n : _) -> n; [] -> 0
+
+  idRows <-
+    rawSql
+      ( "SELECT v.id"
+          <> baseFrom
+          <> baseWhereSql
           <> " "
-          <> orderClause (voteSortSpec ob) so
-          <> " LIMIT ? OFFSET ? ) x"
+          <> orderClause (voteBaseSortSpec ob) so
+          <> " LIMIT ? OFFSET ?"
       )
-      (params <> [toPersistValue lim, toPersistValue off])
-  totals <- rawSql ("SELECT count(*)::int" <> voteFrom <> whereSql) params
-  pure (Page items (Just (case totals of (Single n : _) -> n; [] -> 0)) lim off Nothing)
+      (baseParams <> [toPersistValue lim, toPersistValue off])
+  let ids = [i | Single i <- idRows] :: [Int64]
+
+  keys <-
+    if null ids
+      then pure []
+      else
+        rawSql
+          ( "SELECT v.id, encode(COALESCE(ccold.cold_raw, kdh.raw, kph.hash_raw, kch.raw), 'hex'), \
+            \       v.gov_action_proposal_id \
+            \ FROM public.voting_procedure v "
+              <> keyJoins
+              <> " WHERE v.id IN ("
+              <> T.intercalate ", " ["?" | _ <- ids]
+              <> ")"
+          )
+          (map toPersistValue ids)
+  let triples = [(i, h, g) | (Single i, Single h, Single g) <- keys] :: [(Int64, Text, Int64)]
+
+  items <-
+    if null triples
+      then pure []
+      else
+        queryJson
+          ( "SELECT row_to_json(x)::text FROM ( SELECT "
+              <> voteProjection
+              <> voteFrom
+              <> " WHERE (v.voter_id_hash, v.gov_action_id) IN ("
+              <> T.intercalate ", " ["(decode(?, 'hex'), ?)" | _ <- triples]
+              <> ") AND v.voting_procedure_id IN ("
+              <> T.intercalate ", " ["?" | _ <- triples]
+              <> ") "
+              <> orderClause (voteSortSpec ob) so
+              <> " ) x"
+          )
+          ( concat [[toPersistValue h, toPersistValue g] | (_, h, g) <- triples]
+              <> [toPersistValue i | (i, _, _) <- triples]
+          )
+  pure (Page items (Just total) lim off Nothing)
   where
-    (whereSql, params) = voteWhere f
+    joins = voteJoinsFor f ob
+    baseFrom = voteBaseFrom joins <> (if vjCold joins then voteIdentityJoins else "")
+    (baseWhereSql, baseParams) = voteBaseWhere f
+    -- Stage 3's joins: the published identity for fifty primary keys. The cold interval is here
+    -- and NOT in the base shape, which is the whole point of splitting stage 3 off.
+    keyJoins =
+      " LEFT JOIN palmares.cc_cold_interval ccold \
+      \   ON ccold.hot_key_id = v.committee_voter AND ccold.from_tx <= v.tx_id \
+      \  AND (ccold.to_tx IS NULL OR ccold.to_tx > v.tx_id) \
+      \ LEFT JOIN public.drep_hash kdh ON kdh.id = v.drep_voter \
+      \ LEFT JOIN public.pool_hash kph ON kph.id = v.pool_voter \
+      \ LEFT JOIN public.committee_hash kch ON kch.id = v.committee_voter "
 
 -- | The projection list. Keys are 'VoteRecord''s wire names.
 voteProjection :: Text
@@ -2556,3 +2642,183 @@ tipSlot :: SqlPersistT IO Int64
 tipSlot = do
   r <- rawSql "SELECT max(slot_no)::bigint FROM public.block" []
   pure (case r of (Single (Just n) : _) -> n; _ -> 0)
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /votes, in three stages
+
+-- | Which optional joins one request actually needs.
+--
+-- Assembled per request rather than joined unconditionally, and that is the whole fix for this
+-- endpoint. MEASURED on preprod's 3,243,802 committee vote rows, which is 97% of every vote on the
+-- chain: the count through @palmares.vote@ with its four standing joins is __14.2 s__, and the same
+-- count over @voting_procedure ⋈ gov_action@ alone is __1.09 s__. The difference is not the window
+-- functions (3.5 s of it) — it is @tx ⋈ block@ (8.7 s) and @cc_cold_interval@ (9.5 s), neither of
+-- which a count needs unless a filter or a sort reaches for them.
+data VoteJoins = VoteJoins
+  { -- | @tx@ and @block@: a time or epoch bound, or the latency sort
+    vjBlock :: Bool,
+    -- | @palmares.anchor@: the @anchor_status@ filter
+    vjAnchor :: Bool,
+    -- | @palmares.drep@: the @q@ filter, which searches the voter's published name
+    vjDRep :: Bool,
+    -- | @palmares.drep_epoch_power@: the @voting_power@ sort
+    vjPower :: Bool,
+    -- | @palmares.cc_cold_interval@: the @voter_id@ SORT, which orders by the published identity
+    -- and therefore needs the committee's cold credential resolved. The voter_id FILTER does not —
+    -- see 'voteBaseWhere'.
+    vjCold :: Bool
+  }
+
+voteJoinsFor :: VoteFilter -> VotesOrderBy -> VoteJoins
+voteJoinsFor f ob =
+  VoteJoins
+    { vjBlock =
+        any
+          id
+          [ isJust (voteFilterFrom f),
+            isJust (voteFilterTo f),
+            isJust (voteFilterFromEpoch f),
+            isJust (voteFilterToEpoch f),
+            ob == VotesOrderByLatency
+          ],
+      vjAnchor = not (null (voteFilterAnchorStatus f)),
+      vjDRep = isJust (voteFilterQ f),
+      vjPower = ob == VotesOrderByVotingPower,
+      vjCold = ob == VotesOrderByVoterId
+    }
+
+-- | The base @FROM@: @voting_procedure@, the action, and nothing else that was not asked for.
+--
+-- @palmares.gov_action@ is always joined and is an INNER join, as it was before. It does not
+-- filter — every vote references a proposal and all 131 are in the view, measured: the count with
+-- it is 3,243,802, exactly the committee row count check 030 asserts — and it costs a hash build
+-- over 131 rows, which is inside the 1.09 s above.
+voteBaseFrom :: VoteJoins -> Text
+voteBaseFrom j =
+  " FROM public.voting_procedure v \
+  \ JOIN palmares.gov_action w ON w.gov_action_id = v.gov_action_proposal_id "
+    <> onlyIf (vjBlock j) " JOIN public.tx t ON t.id = v.tx_id JOIN public.block b ON b.id = t.block_id "
+    <> onlyIf (vjAnchor j) " LEFT JOIN palmares.anchor a ON a.voting_anchor_id = v.voting_anchor_id "
+    <> onlyIf (vjDRep j) " LEFT JOIN palmares.drep d ON d.drep_hash_id = v.drep_voter "
+    <> onlyIf
+      (vjCold j)
+      " LEFT JOIN palmares.cc_cold_interval cold \
+      \   ON cold.hot_key_id = v.committee_voter AND cold.from_tx <= v.tx_id \
+      \  AND (cold.to_tx IS NULL OR cold.to_tx > v.tx_id) "
+    <> onlyIf
+      (vjPower j)
+      " LEFT JOIN palmares.drep_epoch_power p \
+      \   ON p.target_kind = 'drep' AND p.drep_hash_id = v.drep_voter \
+      \  AND p.epoch_no = w.last_votable_epoch "
+  where
+    onlyIf c s = if c then s else ""
+
+-- | The @WHERE@ over base columns.
+--
+-- __The voter filter needs no cold-key join.__ It is expressed as membership in the tiny hash
+-- tables — 805 @drep_hash@ rows, 686 @pool_hash@, 48 @committee_hash@ — plus, for the committee,
+-- the hot keys ever registered to that cold credential. Each subquery has no outer reference, so
+-- PostgreSQL evaluates it once as an InitPlan and the qual becomes a cheap per-row test. MEASURED:
+-- resolving one cold id to its hot keys is 11 ms, against the 9.5 s the interval join costs.
+--
+-- That is also WHY the committee arm is two clauses: a committee vote is signed by a HOT key and
+-- published under the COLD one (D-24), so a cold id must match both the cold credential's own row
+-- (for a member who never rotated) and every hot key registered to it.
+voteBaseWhere :: VoteFilter -> (Text, [PersistValue])
+voteBaseWhere f =
+  let clauses =
+        concat
+          [ inClause "v.voter_role::text" (map pascalRole (voteFilterRoles f)),
+            voterClause (voteFilterVoterIds f),
+            inClause "encode(w.tx_hash, 'hex') || '#' || w.index" (map unGovActionId (voteFilterGovActionIds f)),
+            inClause "v.vote::text" (map pascalVerdict (voteFilterVerdicts f)),
+            inClause "w.action_type::text" (map (T.pack . show) (voteFilterGovActionTypes f)),
+            inClause "a.verdict" (map jsonTag (voteFilterAnchorStatus f)),
+            one "b.time >= ?" (voteFilterFrom f),
+            one "b.time <= ?" (voteFilterTo f),
+            one "b.epoch_no >= ?" (voteFilterFromEpoch f),
+            one "b.epoch_no <= ?" (voteFilterToEpoch f),
+            qClause (voteFilterQ f)
+          ]
+   in ( if null clauses then "" else " WHERE " <> T.intercalate " AND " (map fst clauses),
+        concatMap snd clauses
+      )
+  where
+    one sql = maybe [] (\v -> [(sql, [toPersistValue v])])
+
+    inClause col vs
+      | null vs = []
+      | otherwise =
+          [(col <> " IN (" <> placeholders vs <> ")", map toPersistValue vs)]
+
+    voterClause vs
+      | null vs = []
+      | otherwise =
+          [ ( "( v.drep_voter IN (SELECT dh.id FROM public.drep_hash dh WHERE dh.raw IN ("
+                <> decoders
+                <> ")) \
+                   \ OR v.pool_voter IN (SELECT ph.id FROM public.pool_hash ph WHERE ph.hash_raw IN ("
+                <> decoders
+                <> ")) \
+                   \ OR v.committee_voter IN (SELECT ch.id FROM public.committee_hash ch WHERE ch.raw IN ("
+                <> decoders
+                <> ")) \
+                   \ OR v.committee_voter IN (SELECT cr.hot_key_id FROM public.committee_registration cr \
+                   \                          JOIN public.committee_hash ch2 ON ch2.id = cr.cold_key_id \
+                   \                          WHERE ch2.raw IN ("
+                <> decoders
+                <> ")) )",
+              concat (replicate 4 (map toPersistValue vs))
+            )
+          ]
+      where
+        decoders = T.intercalate ", " (map (const "decode(?, 'hex')") vs)
+
+    qClause = maybe [] $ \raw ->
+      let p = likePat raw
+       in [ ( "(lower(w.title) LIKE ? OR lower(w.abstract) LIKE ? OR lower(d.given_name) LIKE ?)",
+              [toPersistValue p, toPersistValue p, toPersistValue p]
+            )
+          ]
+
+    placeholders vs = T.intercalate ", " (map (const "?") vs)
+
+    pascalRole r = case r of
+      DRep -> "DRep" :: Text
+      SPO -> "SPO"
+      ConstitutionalCommittee -> "ConstitutionalCommittee"
+
+    pascalVerdict v = case v of
+      Yes -> "Yes" :: Text
+      No -> "No"
+      Abstain -> "Abstain"
+
+-- | The sort, over base columns.
+--
+-- __@cast_at@ orders by @voting_procedure.id@__, not by a block time, and the two are the same
+-- order: db-sync assigns ids in chain order, so @id DESC@ is @block.time DESC@ refined within a
+-- block — which is exactly what the published tie-break @(cast_at DESC, voting_procedure_id DESC)@
+-- already said. VERIFIED rather than assumed: the top 50 by @id DESC@ and the top 50 by
+-- @(b.time DESC, v.id DESC)@ are the same 50 rows, 0 disagreements. It is worth the check because
+-- it removes the @tx ⋈ block@ join from the default sort, and that join is 8.7 s of a 9.9 s page.
+voteBaseSortSpec :: VotesOrderBy -> SortSpec
+voteBaseSortSpec = \case
+  VotesOrderByCastAt -> SortSpec "v.id" False tie
+  VotesOrderByVotingPower -> SortSpec "p.amount" True tie
+  VotesOrderByLatency -> SortSpec "(b.time - w.proposed_at)" True tie
+  VotesOrderByVoterId -> SortSpec "COALESCE(cold.cold_raw, dh2.raw, ph2.hash_raw, ch3.raw)" False tie
+  VotesOrderByGovActionId -> SortSpec "v.gov_action_proposal_id" False tie
+  where
+    tie = "v.id"
+
+-- | The extra joins the @voter_id@ sort needs to order by the PUBLISHED identity.
+--
+-- Only for that one sort, which is why they are not in 'voteBaseFrom': ordering by an opaque
+-- credential is a rare request, and making every other page pay four joins for it would be the
+-- shape this rewrite exists to remove.
+voteIdentityJoins :: Text
+voteIdentityJoins =
+  " LEFT JOIN public.drep_hash dh2 ON dh2.id = v.drep_voter \
+  \ LEFT JOIN public.pool_hash ph2 ON ph2.id = v.pool_voter \
+  \ LEFT JOIN public.committee_hash ch3 ON ch3.id = v.committee_voter "

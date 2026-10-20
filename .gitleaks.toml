@@ -1,0 +1,21 @@
+# gitleaks configuration.
+#
+# It only ADDS allowlists. The default ruleset stays on in full — no rule is disabled, no severity
+# lowered. Every entry below names the exact file and the exact shape it excuses, and says why that
+# value is public by construction.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+CHaP repository root keys in cabal.project. These are the published signing keys of
+https://chap.intersectmbo.org/ — the whole point of a root key is that every client has it, and they
+appear verbatim in CHaP's own documentation and in every Cardano project's cabal.project. gitleaks
+flags them as generic-api-key on entropy alone (3.82).
+Scoped to the file AND to the 64-hex-digit shape, so a real credential pasted into this file in any
+other form is still caught, and the repo's own pre-push guard greps it for credential shapes regardless.
+"""
+paths = ['''^cabal\.project$''']
+regexTarget = "match"
+regexes = ['''^[0-9a-f]{64}$''']

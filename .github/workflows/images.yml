@@ -5,6 +5,12 @@ on:
     tags: ["v*.*.*"]
   workflow_dispatch:
 
+# A service image is a full musl Haskell build. Two runs of it for two commits on the same ref is pure
+# waste, so a newer push cancels the older run.
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-24.04-arm

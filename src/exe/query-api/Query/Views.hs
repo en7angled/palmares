@@ -39,7 +39,12 @@ palmaresSqlFiles =
   [ ("000_schema.sql", $(makeRelativeToProject "sql/000_schema.sql" >>= embedFile)),
     ("010_gov_views.sql", $(makeRelativeToProject "sql/010_gov_views.sql" >>= embedFile)),
     ("020_views.sql", $(makeRelativeToProject "sql/020_views.sql" >>= embedFile)),
-    ("030_metrics.sql", $(makeRelativeToProject "sql/030_metrics.sql" >>= embedFile))
+    ("030_metrics.sql", $(makeRelativeToProject "sql/030_metrics.sql" >>= embedFile)),
+    -- LAST, and that is load-bearing: it grants the serving role USAGE on the schema and SELECT on
+    -- ALL TABLES in it, and `ALL TABLES` resolves to the relations that exist when it runs. Placed
+    -- any earlier it would miss `palmares.drep_metrics`. See the file's own header for why the
+    -- grants cannot live anywhere but inside this transaction.
+    ("040_grants.sql", $(makeRelativeToProject "sql/040_grants.sql" >>= embedFile))
   ]
 
 -- | True when a file contains something to execute.

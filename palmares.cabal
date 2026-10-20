@@ -29,6 +29,7 @@ extra-source-files:
   resources/metric-formulas.json
   resources/metrics/*.sql
   sql/*.sql
+  sql/indexes/*.sql
   test/fixtures/*.sql
   test/fixtures/koios/*.json
   test/fixtures/snapshot/koios/*.json
@@ -202,6 +203,7 @@ library offchain-lib
     Palmares.DomainTypes.Transfer.QueryResponses
     Palmares.DomainTypes.Transfer.Types
     Palmares.Ingestion
+    Palmares.Admin.ApplySql
     Palmares.Metrics.Catalog
     Palmares.Metrics.Doc
     Palmares.Reconcile
@@ -305,8 +307,10 @@ executable admin
     , http-client
     , http-client-tls
     , http-types
+    , monad-logger
     , mtl
     , optparse-applicative
+    , persistent-postgresql
     , text
     , time
     , vector
@@ -465,6 +469,7 @@ test-suite test
     UnitTests
     UnitTests.Activity
     UnitTests.Anchor
+    UnitTests.ApplySql
     UnitTests.ApiHardening
   --   UnitTests.Attestation
     UnitTests.ChainSyncReplay

@@ -1,9 +1,15 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
 import Palmares.Constants qualified as Constants
+import Control.Monad.Logger (runNoLoggingT)
 import Control.Monad.Reader (runReaderT)
+import Data.Text.Encoding qualified as TE
+import Database.Persist.Postgresql (ConnectionPool, createPostgresqlPool)
+import Palmares.Admin.ApplySql (applyIndexes, applyRoles, assertIndexesValid, declaredIndexes)
+import System.Environment (lookupEnv)
 import Data.Aeson (encode)
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty (encodePretty)
@@ -51,6 +57,8 @@ data Command
   | WriteBlueprint FilePath
   | WriteMetricsDoc FilePath
   | ReconcileKoios ReconcileKoiosArgs
+  | ApplyIndexes
+  | ApplyRoles
   | PauseProtocol
   | UnpauseProtocol
   | SetFees SetFeesArgs
@@ -294,6 +302,22 @@ commandParser =
               )
               (progDesc "Reconcile our governance index against Koios preprod (F1 check 6)")
           )
+        -- The two SQL commands the service cannot run itself: one needs to be outside a
+        -- transaction (CONCURRENTLY), the other needs the superuser db-sync owns. Both connect on
+        -- PALMARES_ADMIN_CONN_STR and neither touches the chain, so both are dispatched before
+        -- provider loading.
+        <> command
+          "apply-indexes"
+          ( info
+              (pure ApplyIndexes)
+              (progDesc "Apply sql/indexes/001_gov_indexes.sql (CREATE INDEX CONCURRENTLY, autocommit)")
+          )
+        <> command
+          "apply-roles"
+          ( info
+              (pure ApplyRoles)
+              (progDesc "Apply sql/050_roles.sql and set the two role passwords from the environment")
+          )
         <> command
           "pause-protocol"
           ( info
@@ -398,6 +422,8 @@ executeCommand (Left pCtx) signKey cmd = case cmd of
   WriteBlueprint _ -> pure () -- Handled in main before provider loading
   WriteMetricsDoc _ -> pure () -- Handled in main before provider loading
   ReconcileKoios _ -> pure () -- Handled in main before provider loading
+  ApplyIndexes -> pure () -- Handled in main before provider loading
+  ApplyRoles -> pure () -- Handled in main before provider loading
   QueryOracle -> do
     printYellow "No transaction building context found."
     printYellow "Please run 'deploy-reference-scripts' first to set up the system."
@@ -413,6 +439,8 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   WriteBlueprint _ -> pure () -- Handled in main before provider loading
   WriteMetricsDoc _ -> pure () -- Handled in main before provider loading
   ReconcileKoios _ -> pure () -- Handled in main before provider loading
+  ApplyIndexes -> pure () -- Handled in main before provider loading
+  ApplyRoles -> pure () -- Handled in main before provider loading
   DeployReferenceScripts -> do
     printYellow "Deploying reference scripts..."
     deployedScriptsCtx <- deployReferenceScripts (providerCtx txBuildingCtx) signKey
@@ -514,6 +542,34 @@ main = do
       code <- runReconcileKoios (withDefaults defaults given)
       if code == 0 then printGreen "reconcile-koios: no unexplained divergences" else printYellow ("reconcile-koios: exit " <> show code)
       exitWith (if code == 0 then ExitSuccess else ExitFailure code)
+    -- No provider and no signing key either: these two talk to PostgreSQL only. Both are run by a
+    -- one-shot Kubernetes Job with `backoffLimit`, so both must be safe to re-run and must fail
+    -- the process rather than print a warning — a Job that exits 0 on a half-applied index set is
+    -- a Job whose green tick means nothing.
+    ApplyIndexes -> do
+      pool <- adminPool
+      printYellow "Applying sql/indexes/001_gov_indexes.sql (CONCURRENTLY, one statement at a time) ..."
+      applySql "apply-indexes" (applyIndexes pool)
+      -- And then the check no error code gives you: an interrupted CONCURRENTLY build leaves an
+      -- INVALID index that IF NOT EXISTS will happily skip forever.
+      invalid <- assertIndexesValid pool
+      unless (null invalid) $
+        die $
+          "apply-indexes: "
+            <> show (length invalid)
+            <> " index(es) exist but are INVALID — DROP and re-create each, a retry will not fix them:"
+            <> concatMap (\i -> "\n  " <> T.unpack i) invalid
+      printGreen ("apply-indexes: all " <> show (length declaredIndexes) <> " declared indexes are valid")
+    ApplyRoles -> do
+      -- Read BEFORE the file is applied. A run that creates the two roles and then dies because a
+      -- password is missing leaves two login roles that cannot log in, and the next run would have
+      -- to be told that this is fine.
+      ownerPw <- requiredEnv "PALMARES_OWNER_PASSWORD"
+      roPw <- requiredEnv "PALMARES_RO_PASSWORD"
+      pool <- adminPool
+      printYellow "Applying sql/050_roles.sql ..."
+      applySql "apply-roles" (applyRoles pool ownerPw roPw)
+      printGreen "apply-roles: palmares_owner and palmares_ro are created, granted and given passwords"
     WriteMetricsDoc outputPath -> case metricCatalog of
       Left err -> die ("resources/metric-formulas.json does not parse: " <> err)
       Right formulas -> do
@@ -549,6 +605,38 @@ executeOnchainCommand cmd = do
       Just validatorsCtx -> do
         let txBuildingContext = TxBuildingContext {deployedScriptsCtx = validatorsCtx, providerCtx = pCtx}
         executeCommand (Right txBuildingContext) signKey cmd
+
+-- | A one-connection pool on @PALMARES_ADMIN_CONN_STR@, the @dbsync@ superuser's DSN.
+--
+-- Deliberately NOT @PG_CONN_STR@: that one is @palmares_ro@, which by design can neither create an
+-- index on db-sync's tables nor create a role. One connection, because both commands are strictly
+-- serial — @CREATE INDEX CONCURRENTLY@ on a second connection would just contend for the same
+-- tables.
+--
+-- @runNoLoggingT@: persistent logs every statement, and @apply-roles@'s statements include the one
+-- that carries a password.
+adminPool :: IO ConnectionPool
+adminPool =
+  lookupEnv "PALMARES_ADMIN_CONN_STR" >>= \case
+    Just s | not (null s) -> runNoLoggingT (createPostgresqlPool (TE.encodeUtf8 (T.pack s)) 1)
+    _ ->
+      die
+        "PALMARES_ADMIN_CONN_STR is unset. These commands connect as the Postgres superuser, e.g.\n\
+        \  PALMARES_ADMIN_CONN_STR=\"host=... user=dbsync password=... dbname=cexplorer port=5432\""
+
+-- | An environment variable that has no sensible default, or a 'die' naming it.
+requiredEnv :: String -> IO T.Text
+requiredEnv name =
+  lookupEnv name >>= \case
+    Just v | not (null v) -> pure (T.pack v)
+    _ -> die (name <> " is unset or empty. apply-roles needs both role passwords; it never invents one.")
+
+-- | Report an apply's outcome, and 'die' on failure so the Job's exit status carries it.
+applySql :: String -> IO (Either String Int) -> IO ()
+applySql label act =
+  act >>= \case
+    Left e -> die (label <> ": " <> e)
+    Right n -> printGreen (label <> ": " <> show n <> " statement(s) applied")
 
 -- | Fill in whatever the flags left empty from the environment-derived defaults.
 --

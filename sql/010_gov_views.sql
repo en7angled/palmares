@@ -129,6 +129,9 @@ SELECT
   b.slot_no,
   b.epoch_no,
   b.time AS cert_time,
+  -- Part of the total order palmares.activity's cursor needs: cert_index orders certificates
+  -- WITHIN a transaction, tx_index orders transactions within a block.
+  tx.block_index AS tx_index,
   r.cert_index,
   r.deposit,
   r.voting_anchor_id
@@ -473,6 +476,10 @@ FROM (
 CREATE VIEW palmares.vote AS
 WITH resolved AS (
   SELECT
+    -- The row's own key. palmares.activity's cursor needs it because voting_procedure.index is
+    -- not a per-transaction counter in this data: 3,243,802 CC rows carry only 108,176 distinct
+    -- (tx_id, index) pairs.
+    v.id AS voting_procedure_id,
     v.gov_action_proposal_id AS gov_action_id,
     v.voter_role,
     -- The credential that signed the vote.
@@ -521,6 +528,7 @@ identified AS (
   FROM resolved r
 )
 SELECT
+  i.voting_procedure_id,
   i.gov_action_id,
   i.voter_role,
   i.voter_id_hash,
@@ -597,6 +605,7 @@ SELECT
   b.slot_no,
   b.epoch_no,
   b.time AS delegated_at,
+  tx.block_index AS tx_index,
   dv.cert_index
 FROM public.delegation_vote dv
 JOIN public.tx ON tx.id = dv.tx_id

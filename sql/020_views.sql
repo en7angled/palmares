@@ -227,6 +227,7 @@ SELECT
   gd.abstract,
   aw.proposed_epoch,
   aw.proposed_slot,
+  tx.block_index AS proposed_tx_index,
   aw.proposed_at,
   aw.expiration,
   aw.last_votable_epoch,
@@ -339,3 +340,303 @@ LEFT JOIN public.reward_rest rr
   ON rr.addr_id = tw.stake_address_id
  AND rr.type = 'treasury'
  AND rr.spendable_epoch = ga.enacted_epoch;
+
+-- ---------------------------------------------------------------------------------------------
+-- palmares.activity — one governance feed, eleven arms, thirteen kinds, one total cursor.
+--
+-- The cursor is `(sort_slot, tx_index, arm, item_index)` and it MUST be unique over the whole
+-- feed: it is what a client pages by, and a duplicate either skips an event or repeats one
+-- forever.
+--
+-- MEASURED, and this is why the cursor has four components rather than the three the plan
+-- specified. Against the real preprod corpus (3.9 M feed rows) the triple
+-- (sort_slot, tx_index, item_index) had **108,141 duplicate groups**, from two distinct causes:
+--
+--   1. CROSS-ARM, 108,130 groups. `voting_procedure.index`, `gov_action_proposal.index` and
+--      `cert_index` are three INDEPENDENT per-transaction counters, so a transaction carrying
+--      both a vote and a certificate produces the same triple twice. The epoch-187
+--      AuthCommitteeHotKey stress test did exactly that in bulk: 108,128 groups are
+--      `committee_authorized` colliding with `vote_cast`, the worst with 31 rows.
+--      Fixed by `arm`, a per-arm ordinal that is part of the cursor.
+--
+--   2. WITHIN THE VOTE ARM, 11 groups. `voting_procedure.index` is NOT a per-transaction
+--      counter in this data: the 3,243,802 CC vote rows carry only 108,176 distinct
+--      (tx_id, index) pairs, and the values 0, 1 and 2 each appear about 648,000 times. So it
+--      cannot identify a vote within a transaction at all. The vote arm therefore uses
+--      `voting_procedure.id`, which is unique by construction.
+--
+-- An arm ordinal alone would not have fixed (2), and a unique key alone would not have fixed (1).
+-- `sql/checks/060_activity.sql` asserts the uniqueness, and that assertion is what found both.
+--
+-- Two kinds of arm:
+--
+-- SIX TX-BORNE ARMS have a real transaction, so the cursor is the chain's own order:
+-- `sort_slot = block.slot_no`, `tx_index = tx.block_index`, and `item_index` identifies the item
+-- within the transaction — `cert_index` where it is a genuine per-transaction counter, and the
+-- row's own primary key for the vote arm, where it is not (see above).
+--
+-- FIVE EPOCH-BOUNDARY ARMS have no transaction at all: db-sync records ratification, enactment,
+-- expiry and dropping only as `*_epoch` columns on the proposal. So those rows carry
+-- `slot_no = NULL` and `tx_hash = NULL` — there is no chain point to report and inventing one
+-- would be a lie — while `sort_slot` borrows the first block of the epoch so the feed still
+-- sorts, and `tx_index = -1` puts them before every transaction in that epoch.
+-- `item_index = gov_action_proposal.id` keeps the triple unique when two actions ratify in the
+-- same epoch.
+--
+-- `treasury_withdrawal_enacted` is the one arm at `tx_index = -2`. It fires in the SAME epoch as
+-- `gov_action_enacted` for the SAME proposal id, so at -1 it would collide with it on all three
+-- cursor components. -2 still sorts before every transaction and restores totality. The API's
+-- cursor parser must accept both values.
+--
+-- `actor_id` and `target_id` are text and their meaning depends on `event_type`: a credential in
+-- hex, a stake address in bech32, or a governance action id. That is inherent to a union feed;
+-- the reader dispatches on the kind.
+CREATE VIEW palmares.activity AS
+
+-- (1) DRep certificates: three kinds off one arm.
+SELECT
+  CASE c.cert_kind
+    WHEN 'register' THEN 'drep_registered'
+    WHEN 'retire' THEN 'drep_retired'
+    ELSE 'drep_updated'
+  END AS event_type,
+  'governance' AS source,
+  c.slot_no AS sort_slot,
+  c.tx_index,
+  1 AS arm,
+  c.cert_index AS item_index,
+  c.slot_no,
+  c.epoch_no,
+  c.cert_time AS block_time,
+  encode(c.tx_hash, 'hex') AS tx_hash,
+  encode(h.raw, 'hex') AS actor_id,
+  NULL::text AS target_id
+FROM palmares.drep_cert c
+JOIN public.drep_hash h ON h.id = c.drep_hash_id
+
+UNION ALL
+
+-- (2) Votes. Every row, not just final ones: a re-vote is an event that happened.
+SELECT
+  'vote_cast',
+  'governance',
+  v.vote_slot,
+  v.tx_index,
+  2,
+  -- NOT v.vote_index: voting_procedure.index repeats massively in this data (see the header).
+  v.voting_procedure_id,
+  v.vote_slot,
+  v.vote_epoch,
+  v.cast_at,
+  encode(v.vote_tx_hash, 'hex'),
+  encode(v.voter_id_hash, 'hex'),
+  v.gov_action_id::text
+FROM palmares.vote v
+
+UNION ALL
+
+-- (3) Proposals.
+SELECT
+  'gov_action_proposed',
+  'governance',
+  ga.proposed_slot,
+  ga.proposed_tx_index,
+  3,
+  ga.index,
+  ga.proposed_slot,
+  ga.proposed_epoch,
+  ga.proposed_at,
+  encode(ga.tx_hash, 'hex'),
+  ga.return_address,
+  ga.gov_action_id::text
+FROM palmares.gov_action ga
+
+UNION ALL
+
+-- (4) Vote delegation.
+SELECT
+  'delegation_changed',
+  'governance',
+  vd.slot_no,
+  vd.tx_index,
+  4,
+  vd.cert_index,
+  vd.slot_no,
+  vd.epoch_no,
+  vd.delegated_at,
+  encode(vd.tx_hash, 'hex'),
+  vd.stake_address,
+  CASE WHEN vd.target_kind = 'drep' THEN encode(h.raw, 'hex') ELSE vd.target_kind END
+FROM palmares.vote_delegation vd
+JOIN public.drep_hash h ON h.id = vd.drep_hash_id
+
+UNION ALL
+
+-- (5) Committee hot-key authorisation.
+SELECT
+  'committee_authorized',
+  'governance',
+  b.slot_no,
+  tx.block_index,
+  5,
+  cr.cert_index,
+  b.slot_no,
+  b.epoch_no,
+  b.time,
+  encode(tx.hash, 'hex'),
+  encode(cold.raw, 'hex'),
+  encode(hot.raw, 'hex')
+FROM public.committee_registration cr
+JOIN public.tx ON tx.id = cr.tx_id
+JOIN public.block b ON b.id = tx.block_id
+JOIN public.committee_hash cold ON cold.id = cr.cold_key_id
+JOIN public.committee_hash hot ON hot.id = cr.hot_key_id
+
+UNION ALL
+
+-- (6) Committee resignation.
+SELECT
+  'committee_resigned',
+  'governance',
+  b.slot_no,
+  tx.block_index,
+  6,
+  dr.cert_index,
+  b.slot_no,
+  b.epoch_no,
+  b.time,
+  encode(tx.hash, 'hex'),
+  encode(cold.raw, 'hex'),
+  NULL::text
+FROM public.committee_de_registration dr
+JOIN public.tx ON tx.id = dr.tx_id
+JOIN public.block b ON b.id = tx.block_id
+JOIN public.committee_hash cold ON cold.id = dr.cold_key_id
+
+UNION ALL
+
+-- (7) Ratification.
+SELECT
+  'gov_action_ratified',
+  'governance',
+  eb.first_slot,
+  -1,
+  7,
+  g.gov_action_id,
+  NULL::bigint,
+  g.ratified_epoch,
+  eb.first_time,
+  NULL::text,
+  NULL::text,
+  g.gov_action_id::text
+FROM palmares.gov_action g
+JOIN LATERAL (
+  SELECT b.slot_no AS first_slot, b.time AS first_time
+  FROM public.block b WHERE b.epoch_no = g.ratified_epoch ORDER BY b.id LIMIT 1
+) eb ON true
+WHERE g.ratified_epoch IS NOT NULL
+
+UNION ALL
+
+-- (8) Enactment.
+SELECT
+  'gov_action_enacted',
+  'governance',
+  eb.first_slot,
+  -1,
+  8,
+  g.gov_action_id,
+  NULL::bigint,
+  g.enacted_epoch,
+  eb.first_time,
+  NULL::text,
+  NULL::text,
+  g.gov_action_id::text
+FROM palmares.gov_action g
+JOIN LATERAL (
+  SELECT b.slot_no AS first_slot, b.time AS first_time
+  FROM public.block b WHERE b.epoch_no = g.enacted_epoch ORDER BY b.id LIMIT 1
+) eb ON true
+WHERE g.enacted_epoch IS NOT NULL
+
+UNION ALL
+
+-- (9) Expiry.
+SELECT
+  'gov_action_expired',
+  'governance',
+  eb.first_slot,
+  -1,
+  9,
+  g.gov_action_id,
+  NULL::bigint,
+  g.expired_epoch,
+  eb.first_time,
+  NULL::text,
+  NULL::text,
+  g.gov_action_id::text
+FROM palmares.gov_action g
+JOIN LATERAL (
+  SELECT b.slot_no AS first_slot, b.time AS first_time
+  FROM public.block b WHERE b.epoch_no = g.expired_epoch ORDER BY b.id LIMIT 1
+) eb ON true
+WHERE g.expired_epoch IS NOT NULL
+
+UNION ALL
+
+-- (10) Dropping — and ONLY the genuine case.
+--
+-- `dropped_epoch` is not an independent outcome. db-sync's schema doc says a proposal is dropped
+-- when it expires or is enacted, but that line is stale per its own maintainer (issue #1932):
+-- CHANGELOG 13.6.0.1 stopped marking enacted proposals as dropped, and on EXPIRY db-sync sets
+-- dropped_epoch = expired_epoch + 1. So 102 of the 108 preprod rows carrying dropped_epoch are
+-- expired actions that already emit gov_action_expired, and emitting a drop for them would
+-- duplicate the expiry one epoch later.
+--
+-- The 6 rows that remain are the real thing: actions invalidated because a competing action was
+-- enacted — no expiry, no enactment, no ratification, just removed from the proposals set.
+SELECT
+  'gov_action_dropped',
+  'governance',
+  eb.first_slot,
+  -1,
+  10,
+  g.gov_action_id,
+  NULL::bigint,
+  g.dropped_epoch,
+  eb.first_time,
+  NULL::text,
+  NULL::text,
+  g.gov_action_id::text
+FROM palmares.gov_action g
+JOIN LATERAL (
+  SELECT b.slot_no AS first_slot, b.time AS first_time
+  FROM public.block b WHERE b.epoch_no = g.dropped_epoch ORDER BY b.id LIMIT 1
+) eb ON true
+WHERE g.dropped_epoch IS NOT NULL
+  AND g.ratified_epoch IS NULL
+  AND g.enacted_epoch IS NULL
+  AND g.expired_epoch IS NULL
+
+UNION ALL
+
+-- (11) Treasury payout, at tx_index = -2 so it cannot collide with its own action's enactment.
+SELECT
+  'treasury_withdrawal_enacted',
+  'governance',
+  eb.first_slot,
+  -2,
+  11,
+  t.gov_action_id,
+  NULL::bigint,
+  t.enacted_epoch,
+  eb.first_time,
+  NULL::text,
+  NULL::text,
+  t.stake_address
+FROM palmares.treasury_withdrawal t
+JOIN LATERAL (
+  SELECT b.slot_no AS first_slot, b.time AS first_time
+  FROM public.block b WHERE b.epoch_no = t.enacted_epoch ORDER BY b.id LIMIT 1
+) eb ON true
+WHERE t.enacted_epoch IS NOT NULL;

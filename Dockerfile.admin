@@ -21,6 +21,16 @@ ENV LD=musl-gcc
 COPY src ./src
 COPY config ./config
 
+# `cabal install` of a local package builds an sdist first, and an sdist must contain every path
+# palmares.cabal lists in extra-source-files. Without these the build dies with
+#   cabal: sdist of palmares-0.1.0: filepath wildcard 'NOTICE' does not match any files
+# which is how all four service images failed on the first images run that was not cancelled.
+# Keep this list in step with extra-source-files.
+COPY LICENSE NOTICE ./
+COPY licenses ./licenses
+COPY sql ./sql
+COPY test/fixtures ./test/fixtures
+
 RUN cabal install admin \
     --enable-executable-static \
     --overwrite-policy=always \

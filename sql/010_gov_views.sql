@@ -272,3 +272,91 @@ LEFT JOIN latest_distr ld ON ld.hash_id = h.id
 LEFT JOIN palmares.anchor a ON a.voting_anchor_id = la.voting_anchor_id
 LEFT JOIN drep_meta dd ON dd.off_chain_vote_data_id = a.off_chain_vote_data_id
 WHERE h.raw IS NOT NULL;
+
+-- ---------------------------------------------------------------------------------------------
+-- palmares.action_window — the authoritative voting window of every governance action.
+--
+-- Everything downstream that says "was this actor allowed to vote on this action" reads this view
+-- and nothing else. The ledger rule is: a vote is valid while `currentEpoch <= gasExpiresAfter`
+-- AND the action is still in the proposals set
+-- (cardano-ledger Conway/Rules/Gov.hs, checkVotesAreNotForExpiredActions).
+--
+-- `last_votable_epoch` treats the four lifecycle columns asymmetrically, and that asymmetry is
+-- empirical, not aesthetic. Measured over all 131 preprod proposals (Koios proposal_list,
+-- 2026-10-19):
+--   * `ratified_epoch` is NOT decremented: on 3 of the 9 voted ratified actions the last DRep
+--     vote landed in the SAME epoch as ratified_epoch (228/228, 251/251, 293/293).
+--   * `dropped_epoch` IS decremented: on all 4 voted dropped-only actions the last vote landed at
+--     dropped_epoch - 1 (251/252, 294/296, 304/305, 312/313). Those 6 dropped-only rows are
+--     actions invalidated because a competing action was enacted; the action left the proposals
+--     set at the boundary.
+--   * `expired_epoch = expiration` in 103/103 cases, and no vote was ever observed later than
+--     expired_epoch - 1, so using `expiration` is permissive but never wrong.
+-- Note this contradicts the schema doc's claim that "a proposal is dropped when it's expired or
+-- enacted": enacted actions carry enacted_epoch = ratified_epoch + 1 with dropped_epoch AND
+-- expired_epoch both NULL.
+--
+-- `drep_votable` is the Conway bootstrap test, and it is a test over the WHOLE WINDOW rather than
+-- over the proposing block. During bootstrap a DRep could only vote on InfoAction, so an action
+-- proposed under protocol major 9 but still votable after the fork IS DRep-votable. Using
+-- `proposed_proto_major` instead would silently shrink every participation denominator;
+-- that column is kept for display and audit only.
+CREATE VIEW palmares.action_window AS
+SELECT
+  g.id AS gov_action_id,
+  g.type AS action_type,
+  b.epoch_no AS proposed_epoch,
+  b.slot_no AS proposed_slot,
+  b.time AS proposed_at,
+  b.proto_major AS proposed_proto_major,
+  g.expiration,
+  LEAST(
+    g.expiration,
+    COALESCE(g.ratified_epoch, g.expiration),
+    COALESCE(g.expired_epoch, g.expiration),
+    COALESCE(g.dropped_epoch - 1, g.expiration)
+  ) AS last_votable_epoch,
+  (
+    g.type = 'InfoAction'
+    OR EXISTS (
+      SELECT 1
+      FROM public.epoch_param ep
+      WHERE ep.epoch_no BETWEEN b.epoch_no AND LEAST(
+              g.expiration,
+              COALESCE(g.ratified_epoch, g.expiration),
+              COALESCE(g.expired_epoch, g.expiration),
+              COALESCE(g.dropped_epoch - 1, g.expiration))
+        AND ep.protocol_major <> 9
+    )
+  ) AS drep_votable,
+  -- SPO eligibility. An SPO never votes on a treasury withdrawal or a new constitution, votes on
+  -- everything else, and votes on a ParameterChange only when the update touches the ledger's
+  -- SecurityGroup. The eleven columns below are every `THKD ('PPGroups _ 'SecurityGroup)` field of
+  -- Conway/PParams.hs mapped to param_proposal: a NULL means the proposal does not touch it.
+  CASE g.type
+    WHEN 'TreasuryWithdrawals' THEN FALSE
+    WHEN 'NewConstitution' THEN FALSE
+    WHEN 'ParameterChange' THEN EXISTS (
+      SELECT 1
+      FROM public.param_proposal p
+      WHERE p.id = g.param_proposal
+        AND (
+          p.min_fee_a IS NOT NULL
+          OR p.min_fee_b IS NOT NULL
+          OR p.max_block_size IS NOT NULL
+          OR p.max_tx_size IS NOT NULL
+          OR p.max_bh_size IS NOT NULL
+          OR p.coins_per_utxo_size IS NOT NULL
+          OR p.max_block_ex_mem IS NOT NULL
+          OR p.max_block_ex_steps IS NOT NULL
+          OR p.max_val_size IS NOT NULL
+          OR p.gov_action_deposit IS NOT NULL
+          OR p.min_fee_ref_script_cost_per_byte IS NOT NULL
+        )
+    )
+    ELSE TRUE
+  END AS spo_votable,
+  g.param_proposal
+FROM public.gov_action_proposal g
+JOIN public.tx ON tx.id = g.tx_id
+JOIN public.block b ON b.id = tx.block_id;

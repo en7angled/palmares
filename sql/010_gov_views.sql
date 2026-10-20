@@ -360,3 +360,189 @@ SELECT
 FROM public.gov_action_proposal g
 JOIN public.tx ON tx.id = g.tx_id
 JOIN public.block b ON b.id = tx.block_id;
+
+-- ---------------------------------------------------------------------------------------------
+-- palmares.thresholds — the governance parameters of each epoch, and only those.
+--
+-- `epoch_param` has ~70 columns; this view lists the governance ones EXPLICITLY rather than
+-- scanning for a prefix, because `pvtpp_security_group` does not share the `pvt_` prefix of its
+-- four siblings. A prefix filter in application code silently drops the one threshold that
+-- decides whether an SPO vote on a ParameterChange counts at all.
+CREATE VIEW palmares.thresholds AS
+SELECT
+  ep.epoch_no,
+  -- DRep thresholds
+  ep.dvt_motion_no_confidence,
+  ep.dvt_committee_normal,
+  ep.dvt_committee_no_confidence,
+  ep.dvt_update_to_constitution,
+  ep.dvt_hard_fork_initiation,
+  ep.dvt_p_p_network_group,
+  ep.dvt_p_p_economic_group,
+  ep.dvt_p_p_technical_group,
+  ep.dvt_p_p_gov_group,
+  ep.dvt_treasury_withdrawal,
+  -- SPO thresholds
+  ep.pvt_motion_no_confidence,
+  ep.pvt_committee_normal,
+  ep.pvt_committee_no_confidence,
+  ep.pvt_hard_fork_initiation,
+  ep.pvtpp_security_group,
+  -- committee and action parameters
+  ep.committee_min_size,
+  ep.committee_max_term_length,
+  -- NOTE: gov_action_lifetime is the LIFETIME, not the window. The ledger sets
+  -- `gov_action_proposal.expiration = proposed_epoch + lifetime + 1`, so on preprod this column
+  -- reads 6 while the observed delta is 7 on all 131 actions. Anything that needs the last
+  -- votable epoch must read `palmares.action_window`, never arithmetic over this number.
+  ep.gov_action_lifetime,
+  ep.gov_action_deposit,
+  ep.drep_deposit,
+  ep.drep_activity
+FROM public.epoch_param ep;
+
+-- ---------------------------------------------------------------------------------------------
+-- palmares.threshold_map — which threshold parameter decides a given (action type, voter role).
+--
+-- A static table, not a derivation: the mapping is ledger law (Conway ratification rules), it
+-- changes only with a hard fork, and the API echoes `threshold_param` so a client can look the
+-- number up in `palmares.thresholds` itself.
+--
+-- The NULLs are the informative part, and each is a different reason:
+--   * ConstitutionalCommittee always NULL — the CC ratifies by a quorum of its members
+--     (committee_min_size / the per-member threshold), not by a stake fraction.
+--   * InfoAction, every role — an InfoAction is never ratifiable, so no threshold applies and a
+--     participation metric must not treat a missing vote on one as a failure to reach quorum.
+--   * NewCommittee / NoConfidence for the CC — the committee does not vote on its own
+--     replacement or on a motion of no confidence in itself.
+--   * NewConstitution and TreasuryWithdrawals for the SPO — SPOs do not vote on either.
+--   * ParameterChange for the DRep — the threshold is the MAX over the parameter groups the
+--     proposal actually touches (network / economic / technical / gov), so it is not a single
+--     column and cannot be put in this table.
+--
+-- `pvtpp_security_group` is spelled exactly as db-sync spells it; `pvt_pp_security_group` does
+-- not exist.
+--
+-- NewCommittee maps to the `_normal` thresholds throughout F1: the `_no_confidence` variants apply
+-- only while the committee is in a state of no confidence, which preprod has never been in.
+CREATE VIEW palmares.threshold_map AS
+SELECT *
+FROM (
+  VALUES
+    ('HardForkInitiation'::public.govactiontype, 'ConstitutionalCommittee'::public.voterrole, NULL::text),
+    ('HardForkInitiation', 'DRep', 'dvt_hard_fork_initiation'),
+    ('HardForkInitiation', 'SPO', 'pvt_hard_fork_initiation'),
+    ('InfoAction', 'ConstitutionalCommittee', NULL),
+    ('InfoAction', 'DRep', NULL),
+    ('InfoAction', 'SPO', NULL),
+    ('NewCommittee', 'ConstitutionalCommittee', NULL),
+    ('NewCommittee', 'DRep', 'dvt_committee_normal'),
+    ('NewCommittee', 'SPO', 'pvt_committee_normal'),
+    ('NewConstitution', 'ConstitutionalCommittee', NULL),
+    ('NewConstitution', 'DRep', 'dvt_update_to_constitution'),
+    ('NewConstitution', 'SPO', NULL),
+    ('NoConfidence', 'ConstitutionalCommittee', NULL),
+    ('NoConfidence', 'DRep', 'dvt_motion_no_confidence'),
+    ('NoConfidence', 'SPO', 'pvt_motion_no_confidence'),
+    ('ParameterChange', 'ConstitutionalCommittee', NULL),
+    ('ParameterChange', 'DRep', NULL),
+    ('ParameterChange', 'SPO', 'pvtpp_security_group'),
+    ('TreasuryWithdrawals', 'ConstitutionalCommittee', NULL),
+    ('TreasuryWithdrawals', 'DRep', 'dvt_treasury_withdrawal'),
+    ('TreasuryWithdrawals', 'SPO', NULL)
+) AS t(action_type, voter_role, threshold_param);
+
+-- ---------------------------------------------------------------------------------------------
+-- palmares.vote — every vote row, with the voter resolved and the re-vote sequence numbered.
+--
+-- One row per vote CERTIFICATE, not per voter: an actor may vote repeatedly on the same action and
+-- the ledger keeps only the last (Gov.hs: isVoteReplaced / GovRemovedVotes replacedVotes), while
+-- db-sync keeps every row. So this view keeps every row too and marks them:
+--   seq_last  = 1  the vote that counts
+--   seq_first = 1  the first vote, which is what a latency metric measures
+--   vote_rows      how many times this actor voted on this action
+-- A tally therefore filters `seq_last = 1`, and an audit trail reads the rest.
+--
+-- D-27, and this is the one that matters most in this file: the window is partitioned by
+-- `voter_id_hash`, which is the COLD credential for the constitutional committee and the signing
+-- credential itself for DReps and SPOs. A committee member's votes split across hot-key
+-- rotations, so partitioning by the hot key counts each rotation as a separate voter. On preprod
+-- that is not a rounding error: an AuthCommitteeHotKey stress test in epoch 187 left 648,766 hot
+-- keys mapping to 43 cold keys, so a hot-key partition reports 3,243,798 "final" CC votes where
+-- the truth is 193 — a factor of about 16,800.
+CREATE VIEW palmares.vote AS
+WITH resolved AS (
+  SELECT
+    v.gov_action_proposal_id AS gov_action_id,
+    v.voter_role,
+    -- The credential that signed the vote.
+    CASE v.voter_role
+      WHEN 'DRep' THEN (SELECT dh.raw FROM public.drep_hash dh WHERE dh.id = v.drep_voter)
+      WHEN 'SPO' THEN (SELECT ph.hash_raw FROM public.pool_hash ph WHERE ph.id = v.pool_voter)
+      ELSE (SELECT ch.raw FROM public.committee_hash ch WHERE ch.id = v.committee_voter)
+    END AS voter_hot_hash,
+    -- NULL except for the CC, where it is the cold credential resolved AS OF THIS VOTE'S tx: a
+    -- member's hot key may have been rotated since, and the registration in force at the time is
+    -- the one that identifies them.
+    cold.raw AS voter_cold_hash,
+    CASE v.voter_role
+      WHEN 'DRep' THEN (SELECT dh.has_script FROM public.drep_hash dh WHERE dh.id = v.drep_voter)
+      -- A stake pool is always a key hash; db-sync's pool_hash has no has_script column because
+      -- there is nothing to record.
+      WHEN 'SPO' THEN FALSE
+      ELSE (SELECT ch.has_script FROM public.committee_hash ch WHERE ch.id = v.committee_voter)
+    END AS has_script,
+    v.vote,
+    v.voting_anchor_id,
+    b.epoch_no AS vote_epoch,
+    b.slot_no AS vote_slot,
+    b.time AS cast_at,
+    tx.hash AS vote_tx_hash,
+    tx.block_index AS tx_index,
+    v.index AS vote_index
+  FROM public.voting_procedure v
+  JOIN public.tx ON tx.id = v.tx_id
+  JOIN public.block b ON b.id = tx.block_id
+  LEFT JOIN LATERAL (
+    SELECT ch.raw
+    FROM public.committee_registration cr
+    JOIN public.committee_hash ch ON ch.id = cr.cold_key_id
+    WHERE v.voter_role = 'ConstitutionalCommittee'
+      AND cr.hot_key_id = v.committee_voter
+      AND cr.tx_id <= v.tx_id
+    ORDER BY cr.tx_id DESC, cr.cert_index DESC
+    LIMIT 1
+  ) cold ON true
+),
+identified AS (
+  SELECT
+    r.*,
+    COALESCE(r.voter_cold_hash, r.voter_hot_hash) AS voter_id_hash
+  FROM resolved r
+)
+SELECT
+  i.gov_action_id,
+  i.voter_role,
+  i.voter_id_hash,
+  i.voter_hot_hash,
+  i.voter_cold_hash,
+  i.has_script,
+  i.vote,
+  i.voting_anchor_id,
+  i.vote_epoch,
+  i.vote_slot,
+  i.cast_at,
+  i.vote_tx_hash,
+  i.tx_index,
+  i.vote_index,
+  ROW_NUMBER() OVER w AS seq_first,
+  ROW_NUMBER() OVER (
+    PARTITION BY i.voter_role, i.voter_id_hash, i.gov_action_id
+    ORDER BY i.vote_slot DESC, i.tx_index DESC, i.vote_index DESC
+  ) AS seq_last,
+  COUNT(*) OVER (PARTITION BY i.voter_role, i.voter_id_hash, i.gov_action_id) AS vote_rows
+FROM identified i
+WINDOW w AS (
+  PARTITION BY i.voter_role, i.voter_id_hash, i.gov_action_id
+  ORDER BY i.vote_slot, i.tx_index, i.vote_index
+);

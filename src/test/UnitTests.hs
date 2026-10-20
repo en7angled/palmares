@@ -10,6 +10,7 @@ import UnitTests.ChainSyncReplay (chainSyncReplayTests)
 import UnitTests.Conversions (conversionsTests)
 import UnitTests.GovIds (govIdsTests)
 import UnitTests.StorageRoundtrip (storageRoundtripTests)
+import UnitTests.ThresholdMap qualified as ThresholdMap
 import UnitTests.Views qualified as Views
 
 unitTests :: (HasCallStack) => TestTree
@@ -22,5 +23,6 @@ unitTests =
       conversionsTests,
       govIdsTests,
       storageRoundtripTests,
+      ThresholdMap.tests,
       Views.tests
     ]

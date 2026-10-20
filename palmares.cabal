@@ -434,6 +434,7 @@ test-suite test
   --   UnitTests.Oracle
   --   UnitTests.Profile
     UnitTests.StorageRoundtrip
+    UnitTests.ThresholdMap
 
   build-depends:
     , chainsync-lib

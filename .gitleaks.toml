@@ -1,21 +1,61 @@
-# gitleaks configuration.
+# gitleaks configuration. CI runs `gitleaks git --redact --exit-code 1 .` over the FULL history.
 #
-# It only ADDS allowlists. The default ruleset stays on in full — no rule is disabled, no severity
-# lowered. Every entry below names the exact file and the exact shape it excuses, and says why that
-# value is public by construction.
+# This file EXTENDS the default rule set — it does not replace it. Every rule gitleaks ships with
+# still runs; what follows narrows exactly one of them, on exactly one path, for a reason.
 
 [extend]
 useDefault = true
 
+# `generic-api-key` on the recorded Koios wire fixtures.
+#
+# WHAT IT FIRES ON: `test/fixtures/koios/proposal_list.json` is the governance-proposal list as
+# Koios serves it, including each proposal's `meta_json` and `proposal_description` verbatim. A
+# NewCommittee action's description names its members as `"keyHash": "<28 bytes of hex>"`, and
+# `generic-api-key` matches a high-entropy value next to a field name containing "key". Measured:
+# 81 findings, all `generic-api-key`, all in that one file, every one of them an on-chain
+# credential hash.
+#
+# WHY IT IS ALLOWLISTED RATHER THAN REMOVED: those hashes are PUBLIC BY CONSTRUCTION. They are on
+# the Cardano chain, served by a public API, and they are the content a parity check compares. The
+# alternative — trimming `meta_json` out of the recording — would make the fixture stop being the
+# wire, which is the only thing it is for: a decoder that chokes on real proposal metadata is
+# exactly what a wire fixture exists to catch.
+#
+# WHY THIS IS NOT A HOLE: the narrowing is one RULE on one PATH, not a path exclusion. Every other
+# default rule — AWS keys, GitHub and Slack tokens, private-key blocks, JWTs — still runs over
+# this directory, and `generic-api-key` is the only rule that cannot tell a public key hash from a
+# secret. A real credential dropped in here would still fail the gate, and that is verified rather
+# than assumed: `scripts/check_gitleaks_allowlist.sh` plants one and asserts it is caught.
+#
+# WHY `[[allowlists]]` WITH `targetRules` AND NOT A `[[rules]]` BLOCK: declaring a rule with an id
+# the default config already uses REPLACES that rule, including its own built-in allowlists.
+# Measured — the first attempt did exactly that, and it resurrected a finding the default rule had
+# been suppressing all along: `root-keys:` in `cabal.project`, which is the CHaP package
+# repository's public verification key. A top-level allowlist with `targetRules` leaves the
+# default rule and its allowlists intact and only adds this path to them.
+#
+# The allowlist is by path and rule, not by fingerprint, so re-recording the fixtures does not
+# require editing it.
 [[allowlists]]
-description = """
-CHaP repository root keys in cabal.project. These are the published signing keys of
-https://chap.intersectmbo.org/ — the whole point of a root key is that every client has it, and they
-appear verbatim in CHaP's own documentation and in every Cardano project's cabal.project. gitleaks
-flags them as generic-api-key on entropy alone (3.82).
-Scoped to the file AND to the 64-hex-digit shape, so a real credential pasted into this file in any
-other form is still caught, and the repo's own pre-push guard greps it for credential shapes regardless.
-"""
-paths = ['''^cabal\.project$''']
+description = "Koios wire fixtures: on-chain credential hashes in proposal metadata, not secrets"
+targetRules = ["generic-api-key"]
+paths = ['''test/fixtures/koios/.*\.json''']
+
+# `generic-api-key` on `cabal.project`'s CHaP root keys.
+#
+# `root-keys:` in the `repository cardano-haskell-packages` stanza lists the package repository's
+# PUBLIC verification keys — the fingerprints cabal checks CHaP's index signature against. They
+# are published in CHaP's own README and sit in every Cardano project's cabal.project; the secret
+# would be the signing half, which only CHaP's maintainers hold.
+#
+# This entry exists because `[extend] useDefault = true` plus a top-level allowlist does NOT
+# inherit the default config's own global allowlist, which had been suppressing this. Measured:
+# with no config file at all gitleaks reported 81 findings, all Koios; with the config it reported
+# this one as well. Spelling it out is better than relying on a stopword nobody can see — the
+# reason the value is not a secret is now written down next to it.
+[[allowlists]]
+description = "cabal.project: CHaP's public repository verification keys"
+targetRules = ["generic-api-key"]
+paths = ['''cabal\.project$''']
 regexTarget = "match"
-regexes = ['''^[0-9a-f]{64}$''']
+regexes = ['''root-keys''']

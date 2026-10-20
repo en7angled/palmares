@@ -213,3 +213,10 @@ jobs:
             | tar -xz -C /tmp gitleaks
           /tmp/gitleaks version
           /tmp/gitleaks git --redact --no-banner --exit-code 1 .
+
+      # .gitleaks.toml turns ONE rule off on ONE path: generic-api-key over the Koios wire
+      # recordings, which carry on-chain credential hashes under field names containing "key".
+      # An allowlist that is never tested is an allowlist nobody notices going wide, so this
+      # plants an AWS key and a GitHub token at that exact path and asserts the gate still fails.
+      - name: the gitleaks allowlist is rule-scoped, not path-scoped
+        run: bash scripts/check_gitleaks_allowlist.sh /tmp/gitleaks

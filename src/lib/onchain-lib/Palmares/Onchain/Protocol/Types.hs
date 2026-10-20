@@ -1,7 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wno-partial-fields #-}
 
--- | Core on-chain data types for the BJJ Belt protocol.
+-- | Core on-chain data types for the Palmares attestation protocol.
 module Palmares.Onchain.Protocol.Types where
 
 import GHC.Generics (Generic)

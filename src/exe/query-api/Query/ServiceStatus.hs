@@ -52,8 +52,6 @@ scriptHashesFromCtx DeployedScriptsContext {..} =
   ScriptHashesDTO
     { scriptHashesMintingPolicy = hashToText $ fst mintingPolicyHashAndRef,
       scriptHashesProfilesValidator = hashToText $ fst profilesValidatorHashAndRef,
-      scriptHashesRanksValidator = hashToText $ fst ranksValidatorHashAndRef,
-      scriptHashesMembershipsValidator = hashToText $ fst membershipsValidatorHashAndRef,
       scriptHashesAchievementsValidator = hashToText $ fst achievementsValidatorHashAndRef,
       scriptHashesOracleValidator = hashToText $ fst oracleValidatorHashAndRef
     }
@@ -74,9 +72,6 @@ oracleParamsToProtocolStatus feeAddrText hashes OnchainTypes.OracleParams {..} =
     feeConfigToDTO OnchainTypes.FeeConfig {..} =
       FeeConfigDTO
         { feeConfigProfileCreationFee = fcProfileCreationFee,
-          feeConfigPromotionFee = fcPromotionFee,
-          feeConfigMembershipHistoryFee = fcMembershipHistoryFee,
-          feeConfigMembershipIntervalFee = fcMembershipIntervalFee,
-          feeConfigAchievementFee = fcAchievementFee,
+          feeConfigAttestationFee = fcAttestationFee,
           feeConfigFeeAddress = feeAddrText
         }

@@ -12,7 +12,6 @@ import GeniusYield.TxBuilder
 import GeniusYield.Types
 import Palmares.Onchain.CIP68 (CIP68Datum (..), MetadataFields (..), extra, getMetadataFields)
 import Palmares.Onchain.Protocol qualified as Onchain
-import Palmares.Onchain.Protocol.Id qualified as OnchainId
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import PlutusLedgerApi.V3
 import PlutusTx.AssocMap qualified as AssocMap
@@ -56,53 +55,6 @@ onchainProfileTypeToProfileType :: Onchain.OnchainProfileType -> ProfileType
 onchainProfileTypeToProfileType Onchain.Practitioner = Practitioner
 onchainProfileTypeToProfileType Onchain.Organization = Organization
 
--- | Convert an on-chain rank datum to a domain 'Rank'. Returns 'Nothing' for promotion datums.
-onchainRankToRankInformation :: (MonadError GYTxMonadException m) => Onchain.OnchainRank -> m (Maybe Rank)
-onchainRankToRankInformation (Onchain.Rank {..}) = do
-  gyRankId <- assetClassFromPlutus' rankId
-  gyRankAchievedByProfileId <- assetClassFromPlutus' rankAchievedByProfileId
-  gyRankAwardedByProfileId <- assetClassFromPlutus' rankAwardedByProfileId
-  rankBelt <- safeIntToBelt rankNumber
-
-  return $
-    Just
-      Rank
-        { rankId = gyRankId,
-          rankBelt,
-          rankAchievedByProfileId = gyRankAchievedByProfileId,
-          rankAwardedByProfileId = gyRankAwardedByProfileId,
-          rankAchievementDate = timeFromPlutus rankAchievementDate,
-          -- ponytail: live backend doesn't thread the UTxO ref; tx pointer is projected-only.
-          rankTxHash = Nothing,
-          rankSlot = Nothing,
-          rankOutputIndex = Nothing
-        }
-onchainRankToRankInformation (Onchain.Promotion {}) = return Nothing
-
--- | Convert an on-chain promotion datum to a domain 'Promotion'. Returns 'Nothing' for rank datums.
-onchainPromotionToPromotionInformation :: (MonadError GYTxMonadException m) => Onchain.OnchainRank -> m (Maybe Promotion)
-onchainPromotionToPromotionInformation (Onchain.Promotion {..}) = do
-  gyRankId <- assetClassFromPlutus' promotionId
-  gyRankAchievedByProfileId <- assetClassFromPlutus' promotionAwardedTo
-  gyRankAwardedByProfileId <- assetClassFromPlutus' promotionAwardedBy
-  promotionBelt <- safeIntToBelt promotionRankNumber
-
-  return $
-    Just
-      Promotion
-        { promotionId = gyRankId,
-          promotionBelt,
-          promotionAchievedByProfileId = gyRankAchievedByProfileId,
-          promotionAwardedByProfileId = gyRankAwardedByProfileId,
-          promotionAchievementDate = timeFromPlutus promotionAchievementDate,
-          promotionState = PromotionPending,
-          -- ponytail: live backend doesn't thread the UTxO ref; tx pointer is projected-only.
-          promotionTxHash = Nothing,
-          promotionSlot = Nothing,
-          promotionOutputIndex = Nothing
-        }
-onchainPromotionToPromotionInformation (Onchain.Rank {}) = return Nothing
-
 -- | Extract 'ProfileData' from a CIP-68 profile datum's metadata fields.
 profileDatumToProfileData :: CIP68Datum Onchain.OnchainProfile -> ProfileData
 profileDatumToProfileData = metadataFieldsToProfileData . getMetadataFields
@@ -122,47 +74,6 @@ profileDatumToProfile datum = do
         profileImageURI = profileDataImageURI,
         profileType = profileType
       }
-
-------------------------------------------------------------------------------------------------
-
--- * Membership Conversions
-
-------------------------------------------------------------------------------------------------
-
--- | Convert an on-chain membership history datum to a domain 'MembershipHistory'.
-onchainMembershipHistoryToMembershipHistory :: (MonadError GYTxMonadException m) => OnchainTypes.OnchainMembershipHistory -> m MembershipHistory
-onchainMembershipHistoryToMembershipHistory history@OnchainTypes.OnchainMembershipHistory {..} = do
-  gyHistoryId <- assetClassFromPlutus' (OnchainId.deriveMembershipHistoryIdFromHistory history)
-  gyPractitionerId <- assetClassFromPlutus' membershipHistoryPractitionerId
-  gyOrganizationId <- assetClassFromPlutus' membershipHistoryOrganizationId
-  return
-    MembershipHistory
-      { membershipHistoryId = gyHistoryId,
-        membershipHistoryPractitionerId = gyPractitionerId,
-        membershipHistoryOrganizationId = gyOrganizationId
-      }
-
--- | Convert with a pre-computed interval GYAssetClass (from UTxO value or derivation).
-onchainMembershipIntervalToMembershipInterval :: (MonadError GYTxMonadException m) => GYAssetClass -> OnchainTypes.OnchainMembershipInterval -> m MembershipInterval
-onchainMembershipIntervalToMembershipInterval gyIntervalId OnchainTypes.OnchainMembershipInterval {..} = do
-  gyPractitionerId <- assetClassFromPlutus' membershipIntervalPractitionerId
-  return
-    MembershipInterval
-      { membershipIntervalId = gyIntervalId,
-        membershipIntervalStartDate = timeFromPlutus membershipIntervalStartDate,
-        membershipIntervalEndDate = timeFromPlutus <$> membershipIntervalEndDate,
-        membershipIntervalAccepted = membershipIntervalIsAck,
-        membershipIntervalPractitionerId = gyPractitionerId,
-        membershipIntervalIntervalNumber = membershipIntervalNumber
-      }
-
--- | Derive the interval ID from the organization's ProfileId and convert.
-onchainMembershipIntervalToMembershipIntervalWithOrgId :: (MonadError GYTxMonadException m) => Onchain.ProfileId -> OnchainTypes.OnchainMembershipInterval -> m MembershipInterval
-onchainMembershipIntervalToMembershipIntervalWithOrgId orgId interval@OnchainTypes.OnchainMembershipInterval {..} = do
-  let historyId = Onchain.deriveMembershipHistoryId orgId membershipIntervalPractitionerId
-      intervalId = OnchainId.deriveMembershipIntervalId historyId membershipIntervalNumber
-  gyIntervalId <- assetClassFromPlutus' intervalId
-  onchainMembershipIntervalToMembershipInterval gyIntervalId interval
 
 ------------------------------------------------------------------------------------------------
 

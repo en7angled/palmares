@@ -113,7 +113,7 @@ deployReferenceScript providerCtx script skey = do
 -- Steps:
 --   1. Deploy oracle validator reference script
 --   2. Mint oracle NFT and lock initial OracleParams at oracle validator
---   3. Deploy profiles, ranks, memberships validator reference scripts
+--   3. Deploy the profiles and attestations validator reference scripts
 --   4. Compile minting policy with oracle NFT asset class and deploy its reference script
 deployReferenceScripts :: ProviderCtx -> GYExtendedPaymentSigningKey -> IO DeployedScriptsContext
 deployReferenceScripts providerCtx skey = do
@@ -130,8 +130,6 @@ deployReferenceScripts providerCtx skey = do
   -- Step 3: Deploy spending validator reference scripts
   putStrLn $ yellowColorString "=== Step 3: Deploy Spending Validators ==="
   pv <- deployReferenceScript providerCtx profilesValidatorGY skey
-  rv <- deployReferenceScript providerCtx ranksValidatorGY skey
-  mv <- deployReferenceScript providerCtx membershipsValidatorGY skey
   av <- deployReferenceScript providerCtx achievementsValidatorGY skey
 
   -- Step 4: Compile and deploy the minting policy (parameterized by oracle NFT)
@@ -143,8 +141,6 @@ deployReferenceScripts providerCtx skey = do
     DeployedScriptsContext
       { mintingPolicyHashAndRef = mp,
         profilesValidatorHashAndRef = pv,
-        ranksValidatorHashAndRef = rv,
-        membershipsValidatorHashAndRef = mv,
         achievementsValidatorHashAndRef = av,
         oracleValidatorHashAndRef = ov,
         oracleNFTAssetClass = oracleNFTAC

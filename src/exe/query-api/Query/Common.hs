@@ -1,13 +1,9 @@
--- | Shared pagination helpers and ordering utilities used by both live
--- ('Query.Live') and projected ('Query.Projected') query modules.
+-- | Shared pagination helpers and ordering utilities used by the projected
+-- ('Query.Projected') query modules.
 module Query.Common where
 
 import Data.Maybe (fromMaybe)
 import Palmares.DomainTypes.Transfer.OrderBy (SortOrder (Asc))
-
--- | True when the belt is Black or higher (can award promotions per protocol UX).
-beltIsMasterCapable :: BJJBelt -> Bool
-beltIsMasterCapable b = b >= Black
 
 type Limit = Int
 

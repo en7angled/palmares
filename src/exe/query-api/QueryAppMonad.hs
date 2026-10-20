@@ -8,7 +8,7 @@
 -- database pool, and optional deployed-script references.
 module QueryAppMonad where
 
-import Palmares.Constants qualified
+import Palmares.Constants qualified as Constants
 import Control.Monad.Reader
 import Data.Text hiding (elem, reverse, take)
 import Data.Time

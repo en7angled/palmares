@@ -4,7 +4,7 @@
 {-# HLINT ignore "Use &&" #-}
 {-# HLINT ignore "Use newtype instead of data" #-}
 
--- | Oracle validator for the BJJ Belt protocol.
+-- | Oracle validator for the Palmares attestation protocol.
 -- Holds mutable operational parameters ('OracleParams') in its datum.
 -- Only the current admin (from the datum) can update the oracle.
 -- The oracle UTxO must be returned to the same address with the same value,

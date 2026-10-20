@@ -2,7 +2,7 @@
 
 module Main where
 
-import Palmares.Constants qualified
+import Palmares.Constants qualified as Constants
 import Control.Monad.Reader (runReaderT)
 import Data.Aeson (encode)
 import Data.Aeson qualified as Aeson
@@ -24,7 +24,7 @@ import System.Exit (die)
 import Text.Read qualified as Text
 import Palmares.TxBuilding.Context
 import Palmares.TxBuilding.Interactions
-import Palmares.TxBuilding.Lookups (getFirstIntervalIdForMembershipNode, queryOracleParams)
+import Palmares.TxBuilding.Lookups (queryOracleParams)
 import Palmares.TxBuilding.Transactions
 import Palmares.TxBuilding.Utils
 import Palmares.TxBuilding.Validators (blueprintProtocolParams)
@@ -41,7 +41,7 @@ printGreen = putStrLn . greenColorString
 
 -- Command data types
 -- NOTE: DeleteProfile command was intentionally removed to preserve lineage integrity.
--- BJJ belt records are permanent historical facts that should not be erasable.
+-- An attestation record is a permanent historical fact and must stay resolvable.
 data Command
   = DeployReferenceScripts
   | WriteBlueprint FilePath
@@ -50,16 +50,7 @@ data Command
   | SetFees SetFeesArgs
   | SetMinUTxOValue Integer
   | QueryOracle
-  | InitProfile InitProfileArgs
   | UpdateProfile UpdateProfileArgs
-  | PromoteProfile PromoteProfileArgs
-  | AcceptPromotion AcceptPromotionArgs
-  | CreateProfileWithRank CreateProfileWithRankArgs
-  | CreateMembershipHistory CreateMembershipHistoryArgs
-  | GetFirstMembershipIntervalId GetFirstMembershipIntervalIdArgs
-  | AddMembershipInterval AddMembershipIntervalArgs
-  | AcceptMembershipInterval AcceptMembershipIntervalArgs
-  | UpdateEndDate UpdateEndDateArgs
   | AwardAchievement AwardAchievementArgs
   | AcceptAchievement AcceptAchievementArgs
   | CleanupDust
@@ -70,19 +61,8 @@ data SetFeesArgs
   | UpdateFees
       { sfaFeeAddress :: String,
         sfaProfileCreationFee :: Integer,
-        sfaPromotionFee :: Integer,
-        sfaMembershipHistoryFee :: Integer,
-        sfaMembershipIntervalFee :: Integer,
         sfaAchievementFee :: Integer
       }
-  deriving (Show)
-
-data InitProfileArgs = InitProfileArgs
-  { ipaProfileData :: ProfileData,
-    ipaProfileType :: ProfileType,
-    ipaCreationDate :: GYTime,
-    ipaOutputId :: Bool
-  }
   deriving (Show)
 
 data UpdateProfileArgs = UpdateProfileArgs
@@ -90,66 +70,6 @@ data UpdateProfileArgs = UpdateProfileArgs
     upaDescription :: Maybe T.Text,
     upaImageURI :: T.Text,
     upaOutputId :: Bool
-  }
-  deriving (Show)
-
-data PromoteProfileArgs = PromoteProfileArgs
-  { ppaPromotedProfileId :: GYAssetClass,
-    ppaPromotedByProfileId :: GYAssetClass,
-    ppaAchievementDate :: GYTime,
-    ppaPromotedBelt :: BJJBelt,
-    ppaOutputId :: Bool
-  }
-  deriving (Show)
-
-newtype AcceptPromotionArgs = AcceptPromotionArgs
-  { apaPromotionId :: GYAssetClass
-  }
-  deriving (Show)
-
-data CreateProfileWithRankArgs = CreateProfileWithRankArgs
-  { cpwraProfileData :: ProfileData,
-    cpwraProfileType :: ProfileType,
-    cpwraCreationDate :: GYTime,
-    cpwraBelt :: BJJBelt,
-    cpwraOutputId :: Bool
-  }
-  deriving (Show)
-
-data CreateMembershipHistoryArgs = CreateMembershipHistoryArgs
-  { cmhaOrgProfileId :: GYAssetClass,
-    cmhaPractitionerProfileId :: GYAssetClass,
-    cmhaStartDate :: GYTime,
-    cmhaEndDate :: Maybe GYTime,
-    cmhaOutputId :: Bool
-  }
-  deriving (Show)
-
-newtype GetFirstMembershipIntervalIdArgs = GetFirstMembershipIntervalIdArgs
-  { gfmiiMembershipNodeId :: GYAssetClass
-  }
-  deriving (Show)
-
-data AddMembershipIntervalArgs = AddMembershipIntervalArgs
-  { amiaOrgProfileId :: GYAssetClass,
-    amiaMembershipNodeId :: GYAssetClass,
-    amiaStartDate :: GYTime,
-    amiaEndDate :: Maybe GYTime,
-    amiaOutputId :: Bool
-  }
-  deriving (Show)
-
-data AcceptMembershipIntervalArgs = AcceptMembershipIntervalArgs
-  { amiaIntervalId :: GYAssetClass,
-    amiaAcceptOutputId :: Bool
-  }
-  deriving (Show)
-
-data UpdateEndDateArgs = UpdateEndDateArgs
-  { uedaIntervalId :: GYAssetClass,
-    uedaHistoryNodeId :: GYAssetClass,
-    uedaNewEndDate :: GYTime,
-    uedaOutputId :: Bool
   }
   deriving (Show)
 
@@ -251,31 +171,6 @@ assetClassParser =
         <> help "Asset class identifier"
     )
 
--- BJJ Belt parser
-bjjBeltParser :: Parser BJJBelt
-bjjBeltParser =
-  option
-    (maybeReader parseBeltFromCLI)
-    ( long "belt"
-        <> short 'b'
-        <> metavar "BELT"
-        <> help "BJJ belt type (white, blue, purple, brown, black, black1, black2, black3, black4, black5, black6, red-and-black, red-and-white, red, red10)"
-    )
-
--- Accept case-insensitive and hyphenated values: e.g., "black", "Red-And-Black" -> "Black", "RedAndBlack"
-parseBeltFromCLI :: String -> Maybe BJJBelt
-parseBeltFromCLI = parseBelt . concatMap capitalize . splitOnDash
-  where
-    splitOnDash :: String -> [String]
-    splitOnDash s = case break (== '-') s of
-      (chunk, []) -> [chunk]
-      (chunk, _ : rest) -> chunk : splitOnDash rest
-
-    capitalize :: String -> String
-    capitalize [] = []
-    capitalize (x : xs) = toUpper x : map toLower xs
-
--- Output ID flag parser
 outputIdParser :: Parser Bool
 outputIdParser =
   flag
@@ -294,10 +189,7 @@ setFeesParser =
       <|> ( UpdateFees
               <$> strOption (long "fee-address" <> metavar "ADDRESS" <> help "Bech32 address to receive fees")
               <*> option auto (long "profile-fee" <> metavar "LOVELACE" <> help "Profile creation fee in lovelace")
-              <*> option auto (long "promotion-fee" <> metavar "LOVELACE" <> help "Promotion fee in lovelace")
-              <*> option auto (long "membership-history-fee" <> metavar "LOVELACE" <> help "Membership history fee in lovelace")
-              <*> option auto (long "membership-interval-fee" <> metavar "LOVELACE" <> help "Membership interval fee in lovelace")
-              <*> option auto (long "achievement-fee" <> metavar "LOVELACE" <> help "Achievement fee in lovelace")
+              <*> option auto (long "attestation-fee" <> metavar "LOVELACE" <> help "Attestation fee in lovelace")
           )
 
 -- Main command parser
@@ -308,7 +200,7 @@ commandParser =
         "deploy-reference-scripts"
         ( info
             (pure DeployReferenceScripts)
-            (progDesc "Deploy reference scripts for the BJJ belt system (includes oracle deployment)")
+            (progDesc "Deploy reference scripts for the protocol (includes oracle deployment)")
         )
         <> command
           "write-blueprint"
@@ -356,19 +248,6 @@ commandParser =
               (progDesc "Display current oracle parameters (read-only)")
           )
         <> command
-          "init-profile"
-          ( info
-              ( InitProfile
-                  <$> ( InitProfileArgs
-                          <$> profileDataParser
-                          <*> profileTypeParser
-                          <*> posixTimeParser
-                          <*> outputIdParser
-                      )
-              )
-              (progDesc "Initialize a new profile")
-          )
-        <> command
           "update-profile"
           ( info
               ( UpdateProfile
@@ -380,98 +259,6 @@ commandParser =
                       )
               )
               (progDesc "Update profile metadata (description, image)")
-          )
-        <> command
-          "promote-profile"
-          ( info
-              ( PromoteProfile
-                  <$> ( PromoteProfileArgs
-                          <$> option (maybeReader parseAssetClass) (long "promoted-profile-id" <> short 'p' <> metavar "PROMOTED_PROFILE_ID" <> help "ID of the profile being promoted")
-                          <*> option (maybeReader parseAssetClass) (long "promoted-by-profile-id" <> short 'b' <> metavar "PROMOTED_BY_PROFILE_ID" <> help "ID of the profile doing the promotion")
-                          <*> posixTimeParser
-                          <*> bjjBeltParser
-                          <*> outputIdParser
-                      )
-              )
-              (progDesc "Promote a profile to a new belt")
-          )
-        <> command
-          "accept-promotion"
-          ( info
-              (AcceptPromotion . AcceptPromotionArgs <$> assetClassParser)
-              (progDesc "Accept a promotion")
-          )
-        <> command
-          "create-profile-with-rank"
-          ( info
-              ( CreateProfileWithRank
-                  <$> ( CreateProfileWithRankArgs
-                          <$> profileDataParser
-                          <*> profileTypeParser
-                          <*> posixTimeParser
-                          <*> bjjBeltParser
-                          <*> outputIdParser
-                      )
-              )
-              (progDesc "Create a profile with initial rank")
-          )
-        <> command
-          "create-membership-history"
-          ( info
-              ( CreateMembershipHistory
-                  <$> ( CreateMembershipHistoryArgs
-                          <$> option (maybeReader parseAssetClass) (long "org-profile-id" <> metavar "ORG_PROFILE_ID" <> help "Organization profile asset class")
-                          <*> option (maybeReader parseAssetClass) (long "practitioner-profile-id" <> metavar "PRACTITIONER_PROFILE_ID" <> help "Practitioner profile asset class")
-                          <*> posixTimeParser
-                          <*> optionalPosixTimeParser
-                          <*> outputIdParser
-                      )
-              )
-              (progDesc "Create a new membership history for a practitioner at an organization")
-          )
-        <> command
-          "get-first-interval-id"
-          ( info
-              (GetFirstMembershipIntervalId . GetFirstMembershipIntervalIdArgs <$> option (maybeReader parseAssetClass) (long "membership-node-id" <> metavar "MEMBERSHIP_NODE_ID" <> help "Membership history node asset class"))
-              (progDesc "Get the first (interval 0) membership interval ID for a membership history node (for accepting before adding next interval)")
-          )
-        <> command
-          "add-membership-interval"
-          ( info
-              ( AddMembershipInterval
-                  <$> ( AddMembershipIntervalArgs
-                          <$> option (maybeReader parseAssetClass) (long "org-profile-id" <> metavar "ORG_PROFILE_ID" <> help "Organization profile asset class")
-                          <*> option (maybeReader parseAssetClass) (long "membership-node-id" <> metavar "MEMBERSHIP_NODE_ID" <> help "Membership history node asset class")
-                          <*> posixTimeParser
-                          <*> optionalPosixTimeParser
-                          <*> outputIdParser
-                      )
-              )
-              (progDesc "Add a new membership interval to an existing membership history")
-          )
-        <> command
-          "accept-membership-interval"
-          ( info
-              ( AcceptMembershipInterval
-                  <$> ( AcceptMembershipIntervalArgs
-                          <$> option (maybeReader parseAssetClass) (long "interval-id" <> short 'i' <> metavar "INTERVAL_ID" <> help "Membership interval asset class")
-                          <*> outputIdParser
-                      )
-              )
-              (progDesc "Accept a membership interval (practitioner acknowledges membership)")
-          )
-        <> command
-          "update-end-date"
-          ( info
-              ( UpdateEndDate
-                  <$> ( UpdateEndDateArgs
-                          <$> option (maybeReader parseAssetClass) (long "interval-id" <> short 'i' <> metavar "INTERVAL_ID" <> help "Membership interval asset class")
-                          <*> option (maybeReader parseAssetClass) (long "history-node-id" <> metavar "HISTORY_NODE_ID" <> help "Membership history node asset class (reference input)")
-                          <*> posixTimeParser
-                          <*> outputIdParser
-                      )
-              )
-              (progDesc "Update membership interval end date (org or practitioner; new end date must be in the future)")
           )
         <> command
           "award-achievement"
@@ -502,41 +289,9 @@ commandParser =
     )
 
 -- Action type conversion functions
-initProfileToActionType :: InitProfileArgs -> ActionType
-initProfileToActionType InitProfileArgs {ipaProfileData, ipaProfileType, ipaCreationDate} =
-  ProfileAction $ InitProfileAction ipaProfileData ipaProfileType ipaCreationDate
-
 updateProfileToActionType :: UpdateProfileArgs -> ActionType
 updateProfileToActionType UpdateProfileArgs {upaProfileId, upaDescription, upaImageURI} =
   ProfileAction $ UpdateProfileAction upaProfileId upaDescription upaImageURI
-
-promoteProfileToActionType :: PromoteProfileArgs -> ActionType
-promoteProfileToActionType PromoteProfileArgs {ppaPromotedProfileId, ppaPromotedByProfileId, ppaAchievementDate, ppaPromotedBelt} =
-  ProfileAction $ PromoteProfileAction ppaPromotedProfileId ppaPromotedByProfileId ppaAchievementDate ppaPromotedBelt
-
-acceptPromotionToActionType :: AcceptPromotionArgs -> ActionType
-acceptPromotionToActionType AcceptPromotionArgs {apaPromotionId} =
-  ProfileAction $ AcceptPromotionAction apaPromotionId
-
-createProfileWithRankToActionType :: CreateProfileWithRankArgs -> ActionType
-createProfileWithRankToActionType CreateProfileWithRankArgs {cpwraProfileData, cpwraProfileType, cpwraCreationDate, cpwraBelt} =
-  ProfileAction $ CreateProfileWithRankAction cpwraProfileData cpwraProfileType cpwraCreationDate cpwraBelt
-
-createMembershipHistoryToActionType :: CreateMembershipHistoryArgs -> ActionType
-createMembershipHistoryToActionType CreateMembershipHistoryArgs {cmhaOrgProfileId, cmhaPractitionerProfileId, cmhaStartDate, cmhaEndDate} =
-  ProfileAction $ CreateMembershipHistoryAction cmhaOrgProfileId cmhaPractitionerProfileId cmhaStartDate cmhaEndDate
-
-addMembershipIntervalToActionType :: AddMembershipIntervalArgs -> ActionType
-addMembershipIntervalToActionType AddMembershipIntervalArgs {amiaOrgProfileId, amiaMembershipNodeId, amiaStartDate, amiaEndDate} =
-  ProfileAction $ AddMembershipIntervalAction amiaOrgProfileId amiaMembershipNodeId amiaStartDate amiaEndDate
-
-acceptMembershipIntervalToActionType :: AcceptMembershipIntervalArgs -> ActionType
-acceptMembershipIntervalToActionType AcceptMembershipIntervalArgs {amiaIntervalId} =
-  ProfileAction $ AcceptMembershipIntervalAction amiaIntervalId
-
-updateEndDateToActionType :: UpdateEndDateArgs -> ActionType
-updateEndDateToActionType UpdateEndDateArgs {uedaIntervalId, uedaHistoryNodeId, uedaNewEndDate} =
-  ProfileAction $ UpdateEndDateAction uedaIntervalId uedaHistoryNodeId uedaNewEndDate
 
 awardAchievementToActionType :: AwardAchievementArgs -> ActionType
 awardAchievementToActionType AwardAchievementArgs {awaAwardedToProfileId, awaAwardedByProfileId, awaProfileData, awaAchievementDate} =
@@ -557,10 +312,7 @@ setFeesToAdminAction UpdateFees {..} =
           FeeConfig
             { fcFeeAddress = plutusAddr,
               fcProfileCreationFee = sfaProfileCreationFee,
-              fcPromotionFee = sfaPromotionFee,
-              fcMembershipHistoryFee = sfaMembershipHistoryFee,
-              fcMembershipIntervalFee = sfaMembershipIntervalFee,
-              fcAchievementFee = sfaAchievementFee
+              fcAttestationFee = sfaAchievementFee
             }
 
 -- Execute command function
@@ -621,19 +373,7 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
         printGreen "  Fee Config:"
         printGreen $ "    Fee Address:         " <> show (fcFeeAddress fc)
         printGreen $ "    Profile Creation Fee: " <> show (fcProfileCreationFee fc) <> " lovelace"
-        printGreen $ "    Promotion Fee:        " <> show (fcPromotionFee fc) <> " lovelace"
-        printGreen $ "    Membership History Fee: " <> show (fcMembershipHistoryFee fc) <> " lovelace"
-        printGreen $ "    Membership Interval Fee: " <> show (fcMembershipIntervalFee fc) <> " lovelace"
-        printGreen $ "    Achievement Fee:       " <> show (fcAchievementFee fc) <> " lovelace"
-  -- Profile commands — routed through the Interaction pipeline
-  InitProfile args -> do
-    printYellow "Initializing profile..."
-    let actionType = initProfileToActionType args
-    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
-    printGreen "Profile initialized successfully!"
-    if ipaOutputId args
-      then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
-      else printGreen $ "Profile ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
+        printGreen $ "    Attestation Fee:      " <> show (fcAttestationFee fc) <> " lovelace"
   UpdateProfile args -> do
     printYellow "Updating profile..."
     let actionType = updateProfileToActionType args
@@ -642,68 +382,6 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
     if upaOutputId args
       then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
       else printGreen $ "Profile ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
-  PromoteProfile args -> do
-    printYellow "Promoting profile..."
-    let actionType = promoteProfileToActionType args
-    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
-    printGreen "Profile promoted successfully!"
-    if ppaOutputId args
-      then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
-      else printGreen $ "Promotion ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
-  AcceptPromotion args -> do
-    printYellow "Accepting promotion..."
-    let actionType = acceptPromotionToActionType args
-    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
-    printGreen "Promotion accepted successfully!"
-    printGreen $ "Rank ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
-  CreateProfileWithRank args -> do
-    printYellow "Creating profile with rank..."
-    let actionType = createProfileWithRankToActionType args
-    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
-    printGreen "Profile with rank created successfully!"
-    if cpwraOutputId args
-      then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
-      else printGreen $ "Profile ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
-  -- Membership commands — routed through the Interaction pipeline
-  CreateMembershipHistory args -> do
-    printYellow "Creating membership history..."
-    let actionType = createMembershipHistoryToActionType args
-    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
-    printGreen "Membership history created successfully!"
-    if cmhaOutputId args
-      then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
-      else printGreen $ "Membership History ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
-  GetFirstMembershipIntervalId args -> do
-    printYellow "Looking up first interval ID for membership node..."
-    let pCtx = providerCtx txBuildingCtx
-        dCtx = deployedScriptsCtx txBuildingCtx
-    firstIntervalId <- runQuery pCtx $ runReaderT (getFirstIntervalIdForMembershipNode (gfmiiMembershipNodeId args)) dCtx
-    printGreen "First interval ID:"
-    putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode firstIntervalId
-  AddMembershipInterval args -> do
-    printYellow "Adding membership interval..."
-    let actionType = addMembershipIntervalToActionType args
-    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
-    printGreen "Membership interval added successfully!"
-    if amiaOutputId args
-      then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
-      else printGreen $ "Interval ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
-  AcceptMembershipInterval args -> do
-    printYellow "Accepting membership interval..."
-    let actionType = acceptMembershipIntervalToActionType args
-    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
-    printGreen "Membership interval accepted successfully!"
-    if amiaAcceptOutputId args
-      then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
-      else printGreen $ "Interval ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
-  UpdateEndDate args -> do
-    printYellow "Updating membership interval end date..."
-    let actionType = updateEndDateToActionType args
-    (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
-    printGreen "Membership interval end date updated successfully!"
-    if uedaOutputId args
-      then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
-      else printGreen $ "Interval ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
   -- Achievement commands — routed through the Interaction pipeline
   AwardAchievement args -> do
     printYellow "Awarding achievement..."
@@ -727,7 +405,7 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
 
 main :: IO ()
 main = do
-  printGreen "BJJ Belt System - Decentralized Belt Management"
+  printGreen "Palmares - Cardano governance track record"
 
   -- Parse command line arguments
   cmd <-
@@ -735,8 +413,8 @@ main = do
       info
         (commandParser <**> helper)
         ( fullDesc
-            <> progDesc "A command-line tool for managing Brazilian Jiu Jitsu profiles, belt promotions, and achievements on the Cardano blockchain. Supports deploying reference scripts, writing CIP-57 blueprints, initializing and updating profiles, handling promotions, and more."
-            <> header "BJJ Belt System - Decentralized Belt Management"
+            <> progDesc "A command-line tool for the Palmares attestation protocol on Cardano. Deploys reference scripts, writes the CIP-57 blueprint, administers the oracle, and issues or accepts attestations."
+            <> header "Palmares - Cardano governance track record"
         )
 
   -- Handle commands that don't require blockchain providers
@@ -764,7 +442,7 @@ executeOnchainCommand cmd = do
   atlasConfig <- maybe (die "Atlas configuration file not found") return =<< decodeConfigEnvOrFile "ATLAS_CORE_CONFIG" Constants.defaultAtlasCoreConfig
 
   printYellow "Loading Providers ..."
-  withCfgProviders atlasConfig (Text.read @GYLogNamespace "bjj-belt-system") $ \providers -> do
+  withCfgProviders atlasConfig (Text.read @GYLogNamespace "palmares") $ \providers -> do
     let pCtx = ProviderCtx atlasConfig providers
 
     case mTxBuildingContext of

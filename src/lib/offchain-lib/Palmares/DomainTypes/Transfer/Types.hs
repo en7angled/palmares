@@ -17,28 +17,6 @@ import GeniusYield.Types.Time (GYTime)
 import GHC.Generics ()
 import Palmares.Utils
 
-data PractitionerProfileInformation
-  = PractitionerProfileInformation
-  { practitionerId :: ProfileRefAC,
-    practitionerName :: Text,
-    practitionerDescription :: Text,
-    practitionerImageURI :: Text,
-    practitionerCurrentRank :: Rank,
-    practitionerPreviousRanks :: [Rank]
-  }
-  deriving (Generic)
-  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "practitioner", CamelToSnake]] PractitionerProfileInformation
-
-instance ToSchema PractitionerProfileInformation where
-  declareNamedSchema = genericDeclareNamedSchema practitionerSchemaOptions
-    where
-      practitionerSchemaOptions :: SchemaOptions
-      practitionerSchemaOptions =
-        fromAesonOptions $
-          AesonTypes.defaultOptions
-            { AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "practitioner"
-            }
-
 data OrganizationProfileInformation
   = OrganizationProfileInformation
   { organizationId :: ProfileRefAC,
@@ -59,69 +37,6 @@ instance ToSchema OrganizationProfileInformation where
             { AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "organization"
             }
 
--- | Interval plus organization id (API view for membership intervals).
-data MembershipIntervalInformation = MembershipIntervalInformation
-  { membershipIntervalInformationId :: MembershipIntervalAC,
-    membershipIntervalInformationStartDate :: GYTime,
-    membershipIntervalInformationEndDate :: Maybe GYTime,
-    membershipIntervalInformationAccepted :: Bool,
-    membershipIntervalInformationPractitionerId :: ProfileRefAC,
-    membershipIntervalInformationIntervalNumber :: Integer,
-    membershipIntervalInformationOrganizationId :: ProfileRefAC
-  }
-  deriving (Generic)
-  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "membershipIntervalInformation", CamelToSnake]] MembershipIntervalInformation
-
-instance ToSchema MembershipIntervalInformation where
-  declareNamedSchema = genericDeclareNamedSchema membershipIntervalInformationSchemaOptions
-    where
-      membershipIntervalInformationSchemaOptions :: SchemaOptions
-      membershipIntervalInformationSchemaOptions =
-        fromAesonOptions $
-          AesonTypes.defaultOptions
-            { AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "membershipIntervalInformation"
-            }
-
--- | History plus list of intervals (API view for membership histories).
-data MembershipHistoryInformation = MembershipHistoryInformation
-  { membershipHistoryInformationId :: MembershipHistoryAC,
-    membershipHistoryInformationPractitionerId :: ProfileRefAC,
-    membershipHistoryInformationOrganizationId :: ProfileRefAC,
-    membershipHistoryInformationIntervals :: [MembershipIntervalInformation]
-  }
-  deriving (Generic)
-  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "membershipHistoryInformation", CamelToSnake]] MembershipHistoryInformation
-
-instance ToSchema MembershipHistoryInformation where
-  declareNamedSchema = genericDeclareNamedSchema membershipHistoryInformationSchemaOptions
-    where
-      membershipHistoryInformationSchemaOptions :: SchemaOptions
-      membershipHistoryInformationSchemaOptions =
-        fromAesonOptions $
-          AesonTypes.defaultOptions
-            { AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "membershipHistoryInformation"
-            }
-
--- Custom Show instances for better formatting
-instance Show PractitionerProfileInformation where
-  show :: PractitionerProfileInformation -> String
-  show (PractitionerProfileInformation {..}) =
-    Prelude.unlines
-      [ "🥋 Practitioner Profile",
-        "┌─────────────────────────────────────────────────────────────",
-        "│ Name: " <> T.unpack practitionerName,
-        "│ Description: " <> T.unpack practitionerDescription,
-        "│ Image URI: " <> T.unpack practitionerImageURI,
-        "│ ID: " <> stringFromJSON practitionerId,
-        "│",
-        "│ Current Rank:",
-        show practitionerCurrentRank,
-        "│",
-        "│ Previous Ranks:",
-        showRankChain practitionerPreviousRanks,
-        "└─────────────────────────────────────────────────────────────"
-      ]
-
 instance Show OrganizationProfileInformation where
   show :: OrganizationProfileInformation -> String
   show (OrganizationProfileInformation {..}) =
@@ -132,31 +47,6 @@ instance Show OrganizationProfileInformation where
         "│ Description: " <> stringFromJSON organizationDescription,
         "│ Image URI: " <> stringFromJSON organizationImageURI,
         "│ ID: " <> stringFromJSON organizationId,
-        "└─────────────────────────────────────────────────────────────"
-      ]
-
-instance Show MembershipIntervalInformation where
-  show (MembershipIntervalInformation {..}) =
-    Prelude.unlines
-      [ "┌─────────────────────────────────────────────────────────────",
-        "│ MembershipIntervalInformation ID: " <> stringFromJSON membershipIntervalInformationId,
-        "│ Organization: " <> stringFromJSON membershipIntervalInformationOrganizationId,
-        "│ Practitioner: " <> stringFromJSON membershipIntervalInformationPractitionerId,
-        "│ Start: " <> stringFromJSON membershipIntervalInformationStartDate,
-        "│ End: " <> stringFromJSON membershipIntervalInformationEndDate,
-        "│ Accepted: " <> show membershipIntervalInformationAccepted,
-        "│ Number: " <> show membershipIntervalInformationIntervalNumber,
-        "└─────────────────────────────────────────────────────────────"
-      ]
-
-instance Show MembershipHistoryInformation where
-  show (MembershipHistoryInformation {..}) =
-    Prelude.unlines
-      [ "┌─────────────────────────────────────────────────────────────",
-        "│ MembershipHistoryInformation ID: " <> stringFromJSON membershipHistoryInformationId,
-        "│ Practitioner: " <> stringFromJSON membershipHistoryInformationPractitionerId,
-        "│ Organization: " <> stringFromJSON membershipHistoryInformationOrganizationId,
-        "│ Intervals: " <> show (Prelude.length membershipHistoryInformationIntervals),
         "└─────────────────────────────────────────────────────────────"
       ]
 
@@ -177,10 +67,7 @@ instance ToSchema ProtocolStatus where
 -- | Fee configuration response DTO.
 data FeeConfigDTO = FeeConfigDTO
   { feeConfigProfileCreationFee :: Integer,
-    feeConfigPromotionFee :: Integer,
-    feeConfigMembershipHistoryFee :: Integer,
-    feeConfigMembershipIntervalFee :: Integer,
-    feeConfigAchievementFee :: Integer,
+    feeConfigAttestationFee :: Integer,
     feeConfigFeeAddress :: Maybe Text
   }
   deriving (Generic, Show)
@@ -194,8 +81,6 @@ instance ToSchema FeeConfigDTO where
 data ScriptHashesDTO = ScriptHashesDTO
   { scriptHashesMintingPolicy :: Text,
     scriptHashesProfilesValidator :: Text,
-    scriptHashesRanksValidator :: Text,
-    scriptHashesMembershipsValidator :: Text,
     scriptHashesAchievementsValidator :: Text,
     scriptHashesOracleValidator :: Text
   }
@@ -205,12 +90,3 @@ data ScriptHashesDTO = ScriptHashesDTO
 instance ToSchema ScriptHashesDTO where
   declareNamedSchema = genericDeclareNamedSchema $
     fromAesonOptions AesonTypes.defaultOptions {AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "scriptHashes"}
-
--- Helper function to display rank chain
-showRankChain :: [Rank] -> String
-showRankChain [] = "│   No previous ranks"
-showRankChain ranks =
-  Prelude.unlines $ Prelude.zipWith (curry showRankWithIndex) (Prelude.reverse [0 .. (Prelude.length ranks)]) ranks
-  where
-    showRankWithIndex (i, rank) =
-      "│   " <> show i <> ". \n" <> show rank

@@ -36,9 +36,7 @@ import GeniusYield.Types
 import Palmares.Ingestion
 import Palmares.ChainSync.KupoAtlas (kupoMatchToAtlasMatch)
 import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..))
-import Palmares.Onchain.Protocol.Id (deriveMembershipHistoryId, deriveMembershipIntervalId)
 
-derivePersistFieldJSON "BJJBelt"
 derivePersistFieldJSON "GYAssetClass"
 
 -- | Persist 'Integer' columns (chain slots, interval numbers) as PostgreSQL @bigint@ so SQL
@@ -114,20 +112,6 @@ OnchainMatchEvent
     deriving Show
 
 -- Projection-specific flattened tables (domain fields + created_at)
-RankProjection
-    createdAtSlot    Integer
-    createdAtHash    Text
-    createdTxId      Text
-    createdOutputIndex Int
-    rankId           GYAssetClass
-    rankBelt         BJJBelt
-    rankAchievedByProfileId GYAssetClass
-    rankAwardedByProfileId  GYAssetClass
-    rankAchievementDate     GYTime
-    insertedAt       UTCTime
-    UniqueRankProjection rankId
-    deriving Show
-
 ProfileProjection
     createdAtSlot    Integer
     createdAtHash    Text
@@ -138,44 +122,6 @@ ProfileProjection
     profileType      ProfileType
     insertedAt       UTCTime
     UniqueProfileProjection profileId
-    deriving Show
-
-PromotionProjection
-    createdAtSlot    Integer
-    createdAtHash    Text
-    createdTxId      Text
-    createdOutputIndex Int
-    promotionId      GYAssetClass
-    promotionBelt    BJJBelt
-    promotionAchievedByProfileId GYAssetClass
-    promotionAwardedByProfileId  GYAssetClass
-    promotionAchievementDate     GYTime
-    insertedAt       UTCTime
-    UniquePromotionProjection promotionId
-    deriving Show
-
-MembershipHistoryProjection
-    createdAtSlot             Integer
-    createdAtHash             Text
-    membershipHistoryId       GYAssetClass
-    practitionerProfileId     GYAssetClass
-    organizationProfileId     GYAssetClass
-    insertedAt                UTCTime
-    UniqueMembershipHistoryProjection membershipHistoryId
-    deriving Show
-
-MembershipIntervalProjection
-    createdAtSlot             Integer
-    createdAtHash             Text
-    membershipIntervalId      GYAssetClass
-    startDate                 GYTime
-    endDate                   GYTime Maybe
-    isAccepted                Bool
-    practitionerProfileId     GYAssetClass
-    organizationProfileId     GYAssetClass Maybe
-    intervalNumber            Integer
-    insertedAt                UTCTime
-    UniqueMembershipIntervalProjection membershipIntervalId
     deriving Show
 
 AchievementProjection
@@ -201,9 +147,10 @@ runMigrations :: (MonadIO m) => SqlPersistT m ()
 runMigrations = runMigration migrateAll
 
 -- | Bump when the chain-sync DB schema changes incompatibly; startup wipes + re-syncs on a mismatch.
--- v4: added createdTxId + createdOutputIndex to rank/promotion/achievement projections (R1 tx-hash).
+-- v1: first schema of this registry (profile + attestation projections). Nothing is deployed yet, so
+-- the Belt System's v4 history does not carry over.
 currentSchemaVersion :: Int
-currentSchemaVersion = 4
+currentSchemaVersion = 1
 
 -- | Upsert a record by its unique key: insert if absent, replace if present.
 upsertByUnique ::
@@ -237,12 +184,8 @@ chainSyncTableNames =
   [ "achievement_projection",
     "chain_cursor",
     "chain_sync_config",
-    "membership_history_projection",
-    "membership_interval_projection",
     "onchain_match_event",
-    "profile_projection",
-    "promotion_projection",
-    "rank_projection"
+    "profile_projection"
   ]
 
 -- | Drop all chain-sync tables WITHOUT re-migrating (migration happens separately, after this).
@@ -304,15 +247,7 @@ projectAndStore networkId km =
       case ev of
         Left e -> liftIO $ putStrLn ("PROJECTION ERROR (dropped, raw match retained): " <> show e)
         Right proj -> case proj of
-          RankEvent r -> do
-            putRankProjection slotNoInt header txId outIdx r
-            deletePromotionProjection (rankId r)
           ProfileEvent p -> putProfileProjection slotNoInt header p
-          PromotionEvent pr -> putPromotionProjection slotNoInt header txId outIdx pr
-          MembershipHistoryEvent mh -> putMembershipHistoryProjection slotNoInt header mh
-          MembershipIntervalEvent mi -> do
-            mOrg <- resolveOrganizationForInterval mi
-            putMembershipIntervalProjection slotNoInt header mi mOrg
           AchievementEvent a -> putAchievementProjection slotNoInt header txId outIdx a
           NoEvent _ -> pure ()
 
@@ -333,24 +268,6 @@ putKupoMatch km = do
     )
     ev
 
--- | Store a rank projection, upserting by rank ID.
-putRankProjection :: (MonadIO m) => Integer -> Text -> Text -> Int -> Rank -> SqlPersistT m ()
-putRankProjection createdSlot createdHash createdTxId createdOutIdx r = do
-  now <- liftIO getCurrentTime
-  let ev =
-        RankProjection
-          createdSlot
-          createdHash
-          createdTxId
-          createdOutIdx
-          (rankId r)
-          (rankBelt r)
-          (rankAchievedByProfileId r)
-          (rankAwardedByProfileId r)
-          (rankAchievementDate r)
-          now
-  upsertByUnique (UniqueRankProjection . rankProjectionRankId) ev
-
 -- | Store a profile projection, upserting by profile ID.
 putProfileProjection :: (MonadIO m) => Integer -> Text -> Profile -> SqlPersistT m ()
 putProfileProjection createdSlot createdHash p = do
@@ -366,96 +283,6 @@ putProfileProjection createdSlot createdHash p = do
           (profileType p)
           now
   upsertByUnique (UniqueProfileProjection . profileProjectionProfileId) ev
-
--- | Store a promotion projection, upserting by promotion ID.
-putPromotionProjection :: (MonadIO m) => Integer -> Text -> Text -> Int -> Promotion -> SqlPersistT m ()
-putPromotionProjection createdSlot createdHash createdTxId createdOutIdx pr = do
-  now <- liftIO getCurrentTime
-  let ev =
-        PromotionProjection
-          createdSlot
-          createdHash
-          createdTxId
-          createdOutIdx
-          (promotionId pr)
-          (promotionBelt pr)
-          (promotionAchievedByProfileId pr)
-          (promotionAwardedByProfileId pr)
-          (promotionAchievementDate pr)
-          now
-  upsertByUnique (UniquePromotionProjection . promotionProjectionPromotionId) ev
-
--- | Remove a promotion projection when the corresponding rank is confirmed on-chain.
-deletePromotionProjection :: (MonadIO m) => GYAssetClass -> SqlPersistT m ()
-deletePromotionProjection pid =
-  deleteBy (UniquePromotionProjection pid)
-
--- | Store a membership history projection and backfill any interval projections missing their organization.
-putMembershipHistoryProjection :: (MonadIO m) => Integer -> Text -> MembershipHistory -> SqlPersistT m ()
-putMembershipHistoryProjection createdSlot createdHash mh = do
-  now <- liftIO getCurrentTime
-  let ev =
-        MembershipHistoryProjection
-          createdSlot
-          createdHash
-          (membershipHistoryId mh)
-          (membershipHistoryPractitionerId mh)
-          (membershipHistoryOrganizationId mh)
-          now
-  upsertByUnique (UniqueMembershipHistoryProjection . membershipHistoryProjectionMembershipHistoryId) ev
-  backfillIntervalOrganizationsForHistory mh
-
--- | Resolve the organization profile id for an interval by matching against stored membership histories.
--- Filters by practitioner to avoid loading all history rows.
-resolveOrganizationForInterval :: (MonadIO m) => MembershipInterval -> SqlPersistT m (Maybe ProfileRefAC)
-resolveOrganizationForInterval mi = do
-  histories <-
-    selectList
-      [MembershipHistoryProjectionPractitionerProfileId ==. membershipIntervalPractitionerId mi]
-      []
-  let plutusIntervalId = assetClassToPlutus (membershipIntervalId mi)
-      matches (Entity _ proj) =
-        let plutusOrg = assetClassToPlutus (membershipHistoryProjectionOrganizationProfileId proj)
-            plutusPract = assetClassToPlutus (membershipHistoryProjectionPractitionerProfileId proj)
-            historyId = deriveMembershipHistoryId plutusOrg plutusPract
-            derivedIntervalId = deriveMembershipIntervalId historyId (membershipIntervalIntervalNumber mi)
-         in derivedIntervalId == plutusIntervalId
-  pure $ membershipHistoryProjectionOrganizationProfileId . entityVal <$> L.find matches histories
-
--- | When a membership history is stored, backfill organizationProfileId on any interval
--- projections that belong to this history and currently have NULL org (e.g. interval was
--- processed before the history event in the same block).
-backfillIntervalOrganizationsForHistory :: (MonadIO m) => MembershipHistory -> SqlPersistT m ()
-backfillIntervalOrganizationsForHistory mh = do
-  candidates <-
-    selectList [MembershipIntervalProjectionPractitionerProfileId ==. membershipHistoryPractitionerId mh] []
-  let plutusOrg = assetClassToPlutus (membershipHistoryOrganizationId mh)
-      plutusPract = assetClassToPlutus (membershipHistoryPractitionerId mh)
-      historyId = deriveMembershipHistoryId plutusOrg plutusPract
-      belongsToHistory (Entity _ proj) =
-        isNothing (membershipIntervalProjectionOrganizationProfileId proj)
-          && deriveMembershipIntervalId historyId (membershipIntervalProjectionIntervalNumber proj)
-            == assetClassToPlutus (membershipIntervalProjectionMembershipIntervalId proj)
-  forM_ (filter belongsToHistory candidates) $ \entity ->
-    update (entityKey entity) [MembershipIntervalProjectionOrganizationProfileId =. Just (membershipHistoryOrganizationId mh)]
-
--- | Store a membership interval projection, upserting by interval ID.
-putMembershipIntervalProjection :: (MonadIO m) => Integer -> Text -> MembershipInterval -> Maybe ProfileRefAC -> SqlPersistT m ()
-putMembershipIntervalProjection createdSlot createdHash mi mOrganizationProfileId = do
-  now <- liftIO getCurrentTime
-  let ev =
-        MembershipIntervalProjection
-          createdSlot
-          createdHash
-          (membershipIntervalId mi)
-          (membershipIntervalStartDate mi)
-          (membershipIntervalEndDate mi)
-          (membershipIntervalAccepted mi)
-          (membershipIntervalPractitionerId mi)
-          mOrganizationProfileId
-          (membershipIntervalIntervalNumber mi)
-          now
-  upsertByUnique (UniqueMembershipIntervalProjection . membershipIntervalProjectionMembershipIntervalId) ev
 
 -- | Store an achievement projection, upserting by achievement ID.
 putAchievementProjection :: (MonadIO m) => Integer -> Text -> Text -> Int -> Achievement -> SqlPersistT m ()
@@ -500,10 +327,6 @@ rollbackTo networkId slot = do
   deleteWhere [OnchainMatchEventCreatedSlot >. slot]
   -- 2. Wipe all derived projection tables.
   deleteWhere ([] :: [Filter ProfileProjection])
-  deleteWhere ([] :: [Filter RankProjection])
-  deleteWhere ([] :: [Filter PromotionProjection])
-  deleteWhere ([] :: [Filter MembershipHistoryProjection])
-  deleteWhere ([] :: [Filter MembershipIntervalProjection])
   deleteWhere ([] :: [Filter AchievementProjection])
   -- 3. Replay surviving raw matches in true chain order.
   surviving <- selectList [] []

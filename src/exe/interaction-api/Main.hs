@@ -32,8 +32,7 @@ main = do
     let txBuildingContext = TxBuildingContext deployedScriptsContext providersContext
     authContext <- getBasicAuthFromEnv
     corsCfg <- getCorsConfigFromEnv
-    ipfsCfg <- initIPFSConfig
-    let appContext = InteractionAppContext authContext txBuildingContext ipfsCfg
+    let appContext = InteractionAppContext authContext txBuildingContext
 
     let host = "0.0.0.0"
     port <- getPortFromEnvOrDefault 8082

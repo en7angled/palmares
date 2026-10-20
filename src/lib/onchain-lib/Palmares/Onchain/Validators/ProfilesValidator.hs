@@ -48,7 +48,7 @@ import Prelude qualified
 
 -- | Custom redeemer :
 -- NOTE: Profile deletion is intentionally not supported to preserve lineage integrity.
--- BJJ belt records are permanent historical facts that should not be erasable.
+-- An attestation record is a permanent historical fact and must stay resolvable.
 -- Output indices are passed in the redeemer for efficient O(1) lookup instead of O(n) search.
 data ProfilesRedeemer
   = -- | UpdateProfile newMetadataFields profileOutputIdx

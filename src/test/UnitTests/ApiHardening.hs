@@ -1,12 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | Pure unit tests for the API-hardening security helpers in webapi-lib
--- (fail-closed auth compare, CORS allowlist policy, LIKE escaping, image
--- magic-byte detection). IO wiring (startup die, middleware threading) is
--- covered by build + manual reasoning, not here.
+-- (fail-closed auth compare, CORS allowlist policy, LIKE escaping, error
+-- sanitisation). IO wiring (startup die, middleware threading) is covered
+-- by build + manual reasoning, not here.
 module UnitTests.ApiHardening (apiHardeningTests) where
 
-import qualified Data.ByteString as BS
+import Data.ByteString qualified as BS
 import Data.Maybe (isNothing)
 import Network.HTTP.Types.Header (hOrigin)
 import Network.Wai (Request, defaultRequest, requestHeaders)
@@ -72,15 +72,6 @@ escapeTests =
       testCase "combined" $ escapeLikePattern "\\%_" @?= "\\\\\\%\\_"
     ]
 
-imageTests :: TestTree
-imageTests =
-  testGroup
-    "detectImageType"
-    [ testCase "JPEG magic bytes" $ detectImageType (BS.pack [0xFF, 0xD8, 0xFF, 0xE0, 0x00]) @?= Just JPEG,
-      testCase "PNG magic bytes" $ detectImageType (BS.pack [0x89, 0x50, 0x4E, 0x47, 0x0D]) @?= Just PNG,
-      testCase "other bytes rejected" $ detectImageType (BS.pack [0x00, 0x01, 0x02, 0x03]) @?= Nothing,
-      testCase "too-short input rejected" $ detectImageType (BS.pack [0xFF, 0xD8]) @?= Nothing
-    ]
 
 errorTests :: TestTree
 errorTests =
@@ -96,4 +87,4 @@ errorTests =
     ]
 
 apiHardeningTests :: TestTree
-apiHardeningTests = testGroup "API Hardening (webapi-lib)" [authTests, corsTests, escapeTests, imageTests, errorTests]
+apiHardeningTests = testGroup "API Hardening (webapi-lib)" [authTests, corsTests, escapeTests, errorTests]

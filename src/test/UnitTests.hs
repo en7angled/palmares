@@ -4,26 +4,17 @@ module UnitTests where
 
 import GHC.Stack
 import Test.Tasty
-import UnitTests.Achievement (achievementTests)
 import UnitTests.ApiHardening (apiHardeningTests)
 import UnitTests.ChainSyncReplay (chainSyncReplayTests)
-import UnitTests.Cleanup (cleanupTests)
 import UnitTests.Conversions (conversionsTests)
-import UnitTests.Oracle (oracleTests)
 import UnitTests.StorageRoundtrip (storageRoundtripTests)
 
 unitTests :: (HasCallStack) => TestTree
 unitTests =
   testGroup
-    "BJJ Unit Tests"
-    [ oracleTests,
-      promotionTests,
-      membershipTests,
-      achievementTests,
-      cleanupTests,
-      mcpToolsTests,
+    "Unit Tests"
+    [ apiHardeningTests,
       chainSyncReplayTests,
-      apiHardeningTests,
       conversionsTests,
       storageRoundtripTests
     ]

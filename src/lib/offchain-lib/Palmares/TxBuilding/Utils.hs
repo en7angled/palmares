@@ -16,7 +16,7 @@ import GeniusYield.Types.Time (timeFromPlutus, timeToPlutus)
 import GeniusYield.Types.Wallet
 import Palmares.Onchain.CIP68 (CIP68Datum)
 import Palmares.Onchain.Protocol qualified as Onchain
-import Palmares.Onchain.Protocol.Types (MembershipDatum, OnchainAchievement, OracleParams)
+import Palmares.Onchain.Protocol.Types (OnchainAchievement, OracleParams)
 import PlutusLedgerApi.V1.Tx qualified as V1
 import PlutusLedgerApi.V1.Value (flattenValue)
 import PlutusLedgerApi.V3
@@ -125,32 +125,9 @@ profileDatumFromDatum gyDatum = do
   let plutusDatum = datumToPlutus' gyDatum
   fromBuiltinData plutusDatum
 
-rankAndValueFromUTxO :: GYUTxO -> Maybe (Onchain.OnchainRank, Value)
-rankAndValueFromUTxO rankStateUTxO = do
-  (gyDatum, gyValue) <- getInlineDatumAndValue rankStateUTxO
-  rankDatum <- rankDatumFromDatum gyDatum
-  let pVal = valueToPlutus gyValue
-  return (rankDatum, pVal)
-
-rankDatumFromDatum :: GYDatum -> Maybe Onchain.OnchainRank
-rankDatumFromDatum gyDatum =
-  fromBuiltinData (datumToPlutus' gyDatum)
-
-rankFromGYOutDatum :: GYOutDatum -> Maybe Onchain.OnchainRank
-rankFromGYOutDatum (GYOutDatumInline gyDatum) = rankDatumFromDatum gyDatum
-rankFromGYOutDatum _ = Nothing
-
 profileFromGYOutDatum :: GYOutDatum -> Maybe (CIP68Datum Onchain.OnchainProfile)
 profileFromGYOutDatum (GYOutDatumInline gyDatum) = profileDatumFromDatum gyDatum
 profileFromGYOutDatum _ = Nothing
-
-membershipDatumFromDatum :: GYDatum -> Maybe MembershipDatum
-membershipDatumFromDatum gyDatum =
-  fromBuiltinData (datumToPlutus' gyDatum)
-
-membershipDatumFromGYOutDatum :: GYOutDatum -> Maybe MembershipDatum
-membershipDatumFromGYOutDatum (GYOutDatumInline gyDatum) = membershipDatumFromDatum gyDatum
-membershipDatumFromGYOutDatum _ = Nothing
 
 oracleParamsFromDatum :: GYDatum -> Maybe OracleParams
 oracleParamsFromDatum gyDatum =

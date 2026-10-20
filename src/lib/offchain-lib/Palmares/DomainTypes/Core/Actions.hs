@@ -45,52 +45,12 @@ instance ToSchema ProfileData where
             }
 
 -- NOTE: DeleteProfileAction is intentionally not supported to preserve lineage integrity.
--- BJJ belt records are permanent historical facts that should not be erasable.
+-- An attestation record is a permanent historical fact and must stay resolvable.
 data ProfileActionType
-  = InitProfileAction
-      { profile_data :: ProfileData,
-        profile_type :: ProfileType,
-        creation_date :: GYTime
-      }
-  | UpdateProfileAction
+  = UpdateProfileAction
       { profile_id :: ProfileRefAC,
         new_desc :: Maybe Text,
         image_uri :: Text
-      }
-  | PromoteProfileAction
-      { promoted_profile_id :: ProfileRefAC,
-        promoted_by_profile_id :: ProfileRefAC,
-        achievement_date :: GYTime,
-        promoted_belt :: BJJBelt
-      }
-  | AcceptPromotionAction
-      { promotion_id :: RankAC
-      }
-  | CreateProfileWithRankAction
-      { profile_data :: ProfileData,
-        profile_type :: ProfileType,
-        creation_date :: GYTime,
-        belt :: BJJBelt
-      }
-  | CreateMembershipHistoryAction
-      { cmh_organization_profile_id :: ProfileRefAC,
-        cmh_practitioner_profile_id :: ProfileRefAC,
-        cmh_start_date :: GYTime,
-        cmh_end_date :: Maybe GYTime
-      }
-  | AddMembershipIntervalAction
-      { ami_organization_profile_id :: ProfileRefAC,
-        ami_membership_node_id :: GYAssetClass,
-        ami_start_date :: GYTime,
-        ami_end_date :: Maybe GYTime
-      }
-  | AcceptMembershipIntervalAction
-      { aci_interval_id :: GYAssetClass
-      }
-  | UpdateEndDateAction
-      { ude_membership_interval_id :: GYAssetClass,
-        ude_membership_history_node_id :: GYAssetClass,
-        ude_new_end_date :: GYTime
       }
   | AwardAchievementAction
       { aa_awarded_to_profile_id :: ProfileRefAC,

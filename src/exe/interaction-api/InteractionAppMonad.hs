@@ -13,7 +13,7 @@
 -- transaction-building context, plus standardized error handling.
 module InteractionAppMonad where
 
-import Palmares.Constants qualified
+import Palmares.Constants qualified as Constants
 import Control.Exception (displayException, try)
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -42,8 +42,7 @@ import Palmares.WebAPI.ServiceProbe (ServiceProbeStatus (..))
 -- | Shared environment for all interaction-API request handlers.
 data InteractionAppContext = InteractionAppContext
   { authContext :: AuthContext, -- ^ Basic-auth credentials for protected routes
-    txBuildingContext :: TxBuildingContext, -- ^ Provider, deployed scripts, and network config for building transactions
-    ipfsConfig :: IPFSConfig -- ^ IPFS node configuration for image uploads
+    txBuildingContext :: TxBuildingContext -- ^ Provider, deployed scripts, and network config for building transactions
   }
 
 newtype InteractionAppMonad a = InteractionAppMonad {unInteractionAppMonad :: ReaderT InteractionAppContext Servant.Handler a}

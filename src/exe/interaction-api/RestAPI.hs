@@ -21,7 +21,6 @@ import Network.Wai
 import Network.Wai.Middleware.Servant.Options (provideOptions)
 import Network.Wai.Parse (setMaxRequestFileSize)
 import Servant
-import Servant.Multipart (Mem, MultipartForm, MultipartOptions (..), defaultMultipartOptions)
 import Servant.Swagger
 import Servant.Swagger.UI
 import ServiceHandlers
@@ -30,7 +29,7 @@ import Palmares.TxBuilding.Interactions
 import Palmares.WebAPI.Auth
 import Palmares.WebAPI.CORS
 import Palmares.WebAPI.ServiceProbe (alwaysHealthy)
-import Palmares.WebAPI.ServiceProbe qualified
+import Palmares.WebAPI.ServiceProbe qualified as WebAPI.ServiceProbe
 import Palmares.WebAPI.Utils (addSharedSwaggerDescriptions)
 
 -- | Orphan 'FromHttpApiData' instance for 'GYTxId' to support URL capture.
@@ -45,13 +44,6 @@ instance ToParamSchema GYTxId where
     mempty
       & type_ ?~ SwaggerString
       & Data.Swagger.format ?~ "hex"
-
--- | Orphan HasSwagger instance for MultipartForm.
--- Delegates to ReqBody for schema generation, then overrides consumes to multipart/form-data.
-instance (HasSwagger api, ToSchema a) => HasSwagger (MultipartForm Mem a :> api) where
-  toSwagger _ =
-    toSwagger (Proxy :: Proxy (ReqBody '[JSON] a :> api))
-      & allOperations . consumes ?~ MimeList ["multipart/form-data"]
 
 -- Auth code moved to WebAPI.Auth
 
@@ -133,58 +125,20 @@ transactionsServer = handleBuildTx :<|> handleSubmitTx :<|> handleTxStatus
 ------------------------------------------------------------------------------------------------
 
 type ServiceAPI =
-  -- Smart endpoints (IPFS upload + resolution)
-  ( Summary "Create Profile"
-      :> Description "Creates a profile with IPFS image upload. Auto-selects InitProfile or CreateProfileWithRank based on belt parameter. Multipart form: 'image' (file) + 'data' (JSON)."
-      :> "create-profile"
-      :> MultipartForm Mem (WithImage CreateProfileRequest)
+  ( Summary "Update Profile"
+      :> Description "Updates profile metadata (description, image URI). The name is immutable."
+      :> "update-profile"
+      :> ReqBody '[JSON] UpdateProfileRequest
       :> Post '[JSON] String
   )
-    :<|> ( Summary "New Membership"
-             :> Description "Smart membership: auto-detects whether to create a new membership history or add an interval to an existing one."
-             :> "new-membership"
-             :> ReqBody '[JSON] NewMembershipRequest
-             :> Post '[JSON] String
-         )
-    :<|> ( Summary "Update Profile"
-             :> Description "Updates profile metadata (description, image). Name is immutable. Multipart form: 'image' (file) + 'data' (JSON with optional description)."
-             :> "update-profile"
-             :> MultipartForm Mem (WithImage UpdateProfileRequest)
-             :> Post '[JSON] String
-         )
     :<|> ( Summary "Award Achievement"
-             :> Description "Awards achievement with IPFS image upload. Multipart form: 'image' (file) + 'data' (JSON)."
+             :> Description "Issues a pending attestation about a subject profile."
              :> "award-achievement"
-             :> MultipartForm Mem (WithImage AwardAchievementRequest)
-             :> Post '[JSON] String
-         )
-    -- Pass-through endpoints
-    :<|> ( Summary "Promote Profile"
-             :> Description "Promotes a profile to a new belt rank."
-             :> "promote-profile"
-             :> ReqBody '[JSON] PromoteProfileRequest
-             :> Post '[JSON] String
-         )
-    :<|> ( Summary "Accept Promotion"
-             :> Description "Accepts a pending promotion."
-             :> "accept-promotion"
-             :> ReqBody '[JSON] AcceptPromotionRequest
-             :> Post '[JSON] String
-         )
-    :<|> ( Summary "Accept Membership"
-             :> Description "Accepts a pending membership interval."
-             :> "accept-membership"
-             :> ReqBody '[JSON] AcceptMembershipRequest
-             :> Post '[JSON] String
-         )
-    :<|> ( Summary "Update End Date"
-             :> Description "Updates the end date of a membership interval."
-             :> "update-end-date"
-             :> ReqBody '[JSON] UpdateEndDateRequest
+             :> ReqBody '[JSON] AwardAchievementRequest
              :> Post '[JSON] String
          )
     :<|> ( Summary "Accept Achievement"
-             :> Description "Accepts a pending achievement."
+             :> Description "Accepts a pending attestation; only the subject's wallet can do this."
              :> "accept-achievement"
              :> ReqBody '[JSON] AcceptAchievementRequest
              :> Post '[JSON] String
@@ -192,14 +146,8 @@ type ServiceAPI =
 
 serviceServer :: ServerT ServiceAPI InteractionAppMonad
 serviceServer =
-  handleCreateProfile
-    :<|> handleNewMembership
-    :<|> handleUpdateProfile
+  handleUpdateProfile
     :<|> handleAwardAchievement
-    :<|> handlePromoteProfile
-    :<|> handleAcceptPromotion
-    :<|> handleAcceptMembership
-    :<|> handleUpdateEndDate
     :<|> handleAcceptAchievement
 
 ------------------------------------------------------------------------------------------------
@@ -220,7 +168,6 @@ interactionProbeServer = alwaysHealthy (pack appVersion) "interaction-api" :<|> 
 ------------------------------------------------------------------------------------------------
 
 -- | Public API surface used for Swagger generation (excludes auth wrappers).
--- The HasSwagger instance for MultipartForm comes from servant-multipart-api.
 type PublicAPI = ProbeAPI :<|> Transactions :<|> ServiceAPI
 
 proxyPublicAPI :: Proxy PublicAPI
@@ -231,14 +178,13 @@ apiSwagger =
   toSwagger proxyPublicAPI
     & info . title .~ "Decentralized Belt System Interaction API"
     & info . Data.Swagger.version .~ "2.1.0"
-    & info . Data.Swagger.description ?~ "This is the Interaction API for the Decentralized Belt System — handles transaction building, submission, and dedicated service endpoints with IPFS image upload."
+    & info . Data.Swagger.description ?~ "This is the Palmares Interaction API — transaction building, submission, and the dedicated per-action service endpoints."
     & info . license ?~ "GPL-3.0 license"
     & host .~ Nothing
     -- Response descriptions
     & allOperations . responses . at 200 . mapped . _Inline . description .~ ("Hex-encoded unsigned transaction CBOR. Sign with your wallet and submit via /submit-tx." :: Text)
     & allOperations . responses . at 400 ?~ Inline (mempty {_responseDescription = "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"})
-    & allOperations . responses . at 404 ?~ Inline (mempty {_responseDescription = "Referenced entity not found (profile, rank, membership history, achievement, or NFT)"})
-    & allOperations . responses . at 502 ?~ Inline (mempty {_responseDescription = "IPFS service unavailable (applies to image upload endpoints)"})
+    & allOperations . responses . at 404 ?~ Inline (mempty {_responseDescription = "Referenced entity not found (profile, attestation, or NFT)"})
     & allOperations . responses . at 503 ?~ Inline (mempty {_responseDescription = "Protocol is paused or deployed validator scripts are not yet available"})
     -- Shared type descriptions
     & addSharedSwaggerDescriptions
@@ -294,21 +240,14 @@ fullServer =
 
 ------------------------------------------------------------------------------------------------
 
--- | Cap in-RAM multipart uploads at 10 MB so a large body cannot exhaust memory.
-multipartOptions :: MultipartOptions Mem
-multipartOptions =
-  base {generalOptions = setMaxRequestFileSize (10 * 1024 * 1024) (generalOptions base)}
-  where
-    base = defaultMultipartOptions (Proxy :: Proxy Mem)
-
-proxyServerContext :: Proxy '[BasicAuthCheck AuthUser, MultipartOptions Mem]
+proxyServerContext :: Proxy '[BasicAuthCheck AuthUser]
 proxyServerContext = Proxy
 
-mkWebApp :: WebAPI.CORS.CorsConfig -> InteractionAppContext -> Application
+mkWebApp :: CorsConfig -> InteractionAppContext -> Application
 mkWebApp corsCfg ctx =
-  WebAPI.CORS.mkCorsMiddleware corsCfg $
+  mkCorsMiddleware corsCfg $
     provideOptions proxyPublicAPI $
       serveWithContext proxyFullAPI ctxEntries hoistedServer
   where
-    ctxEntries = authCheck (authContext ctx) :. multipartOptions :. EmptyContext
+    ctxEntries = authCheck (authContext ctx) :. EmptyContext
     hoistedServer = hoistServerWithContext proxyFullAPI proxyServerContext (runInteractionAppMonad ctx) fullServer

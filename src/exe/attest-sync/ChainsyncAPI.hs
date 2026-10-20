@@ -18,7 +18,7 @@ import Data.Text qualified as T
 import Data.Time (UTCTime, defaultTimeLocale, formatTime, getCurrentTime)
 import Deriving.Aeson
 import Servant
-import Palmares.WebAPI.CORS qualified
+import Palmares.WebAPI.CORS qualified as WebAPI.CORS
 import Palmares.WebAPI.ServiceProbe
 
 data ChainSyncState = UpToDate | UpToDateButDifferentBlockHash | Behind {isWayBehind :: Bool}| Ahead
@@ -36,7 +36,7 @@ data SyncMetrics = SyncMetrics
   deriving (Generic, ToSchema, Show)
   deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "sm", CamelToSnake]] SyncMetrics
 
-type ServiceProbeAPI = WebAPI.ServiceProbe.ServiceProbe SyncMetrics SyncMetrics
+type ServiceProbeAPI = ServiceProbe SyncMetrics SyncMetrics
 
 proxyServiceProbeAPI :: Proxy ServiceProbeAPI
 proxyServiceProbeAPI = Proxy

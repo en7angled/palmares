@@ -83,19 +83,6 @@ interactionToTxSkeleton Interaction {..} = do
   case action of
     ProfileAction actionType -> do
       fmap (fmap Just) $ case actionType of
-        CreateProfileWithRankAction profileData profileType creationDate belt -> do
-          createProfileWithRankTX
-            receiveAddr
-            (profileDataToMetadataFields profileData)
-            (profileTypeToOnchainProfileType profileType)
-            (timeToPlutus creationDate)
-            belt
-        InitProfileAction profileData profileType creationDate -> do
-          createProfileTX
-            receiveAddr
-            (profileDataToMetadataFields profileData)
-            (profileTypeToOnchainProfileType profileType)
-            (timeToPlutus creationDate)
         UpdateProfileAction profileRefAC mbDesc imgURI -> do
           (,profileRefAC)
             <$> updateProfileTX
@@ -103,20 +90,6 @@ interactionToTxSkeleton Interaction {..} = do
               (textToBuiltinByteString <$> mbDesc)
               (textToBuiltinByteString imgURI)
               usedAddrs
-        PromoteProfileAction promotedProfileId promotedByProfileId achievementDate belt ->
-          promoteProfileTX promotedProfileId promotedByProfileId (timeToPlutus achievementDate) belt usedAddrs
-        AcceptPromotionAction promotionId ->
-          acceptPromotionTX promotionId usedAddrs
-        CreateMembershipHistoryAction orgProfileId practitionerProfileId startDate mEndDate ->
-          createMembershipHistoryTX orgProfileId practitionerProfileId (timeToPlutus startDate) (timeToPlutus <$> mEndDate) usedAddrs
-        AddMembershipIntervalAction orgProfileId membershipNodeId startDate mEndDate ->
-          addMembershipIntervalTX orgProfileId membershipNodeId (timeToPlutus startDate) (timeToPlutus <$> mEndDate) usedAddrs
-        AcceptMembershipIntervalAction intervalId -> do
-          skeleton <- acceptMembershipIntervalTX intervalId usedAddrs
-          return (skeleton, intervalId)
-        UpdateEndDateAction intervalId historyNodeId newEndDate -> do
-          skeleton <- updateEndDateTX intervalId historyNodeId newEndDate usedAddrs Nothing
-          return (skeleton, intervalId)
         AwardAchievementAction awardedToId awardedById profileData otherMeta achievementDate -> do
           let otherMetadataPlutus = map (Data.Bifunctor.bimap textToBuiltinByteString textToBuiltinByteString) otherMeta
           awardAchievementTX awardedToId awardedById (profileDataToMetadataFields profileData) otherMetadataPlutus (timeToPlutus achievementDate) usedAddrs

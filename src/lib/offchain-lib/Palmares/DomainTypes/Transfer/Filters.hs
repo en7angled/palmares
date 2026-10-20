@@ -3,15 +3,9 @@
 -- | Query listing filter record types and query-param constructors (shared by query-api handlers).
 module Palmares.DomainTypes.Transfer.Filters
   ( ProfileFilter (..),
-    PromotionFilter (..),
-    MembershipHistoryFilter (..),
-    MembershipIntervalFilter (..),
     AchievementFilter (..),
     ActivityFilter (..),
     profileFilterFromParams,
-    promotionsFilterFromParams,
-    membershipHistoryFilterFromParams,
-    membershipIntervalFilterFromParams,
     achievementFilterFromParams,
     activityFilterFromParams,
   )
@@ -32,36 +26,8 @@ data ProfileFilter = ProfileFilter
     profileFilterType :: Maybe ProfileType, -- ^ Practitioner or Organization
     profileFilterName :: Maybe Text, -- ^ Exact or prefix name match
     profileFilterDescription :: Maybe Text, -- ^ Substring match on description
-    profileFilterActiveMembershipOrganization :: Maybe ProfileRefAC, -- ^ Currently active membership in this org
-    profileFilterMembershipOrganization :: Maybe ProfileRefAC, -- ^ Any (active or past) membership in this org
-    profileFilterBelt :: Maybe [BJJBelt], -- ^ Current belt is one of these
     profileFilterTextSearch :: Maybe Text, -- ^ Free-text search across name and description
     profileFilterRegisteredAfter :: Maybe UTCTime -- ^ Registered on or after this timestamp
-  }
-
--- | Optional filters for the promotions listing endpoint.
-data PromotionFilter = PromotionFilter
-  { promotionFilterId :: Maybe [RankAC], -- ^ Restrict to these rank asset classes
-    promotionFilterBelt :: Maybe [BJJBelt], -- ^ Belt level is one of these
-    promotionFilterAchievedByProfileId :: Maybe [ProfileRefAC], -- ^ Promotee profile IDs
-    promotionFilterAwardedByProfileId :: Maybe [ProfileRefAC], -- ^ Promoter profile IDs
-    promotionFilterAchievementDateInterval :: (Maybe GYTime, Maybe GYTime), -- ^ Date range (from, to) inclusive
-    promotionFilterTextSearch :: Maybe Text, -- ^ Free-text search
-    promotionFilterState :: Maybe [PromotionState] -- ^ Pending, accepted, etc.
-  }
-
--- | Optional filters for the membership-history listing endpoint.
-data MembershipHistoryFilter = MembershipHistoryFilter
-  { membershipHistoryFilterOrganizationProfileId :: Maybe [ProfileRefAC], -- ^ Filter by organization
-    membershipHistoryFilterPractitionerProfileId :: Maybe [ProfileRefAC], -- ^ Filter by practitioner
-    membershipHistoryFilterTextSearch :: Maybe Text -- ^ Free-text search
-  }
-
--- | Optional filters for the membership-interval listing endpoint.
-data MembershipIntervalFilter = MembershipIntervalFilter
-  { membershipIntervalFilterPractitionerProfileId :: Maybe [ProfileRefAC], -- ^ Filter by practitioner
-    membershipIntervalFilterIsAccepted :: Maybe Bool, -- ^ Filter by acceptance status
-    membershipIntervalFilterTextSearch :: Maybe Text -- ^ Free-text search
   }
 
 -- | Optional filters for the achievements listing endpoint.
@@ -82,50 +48,15 @@ data ActivityFilter = ActivityFilter
   }
 
 -- | Build profile filter from query params (single source of truth for list handlers).
-profileFilterFromParams :: [ProfileRefAC] -> Maybe ProfileType -> Maybe ProfileRefAC -> Maybe ProfileRefAC -> [BJJBelt] -> Maybe Text -> ProfileFilter
-profileFilterFromParams profileRefs profileType activeMembershipOrg membershipOrg beltRefs q =
+profileFilterFromParams :: [ProfileRefAC] -> Maybe ProfileType -> Maybe Text -> ProfileFilter
+profileFilterFromParams profileRefs profileType q =
   ProfileFilter
     { profileFilterId = optionalNonEmpty profileRefs,
       profileFilterType = profileType,
       profileFilterName = Nothing,
       profileFilterDescription = Nothing,
-      profileFilterActiveMembershipOrganization = activeMembershipOrg,
-      profileFilterMembershipOrganization = membershipOrg,
-      profileFilterBelt = optionalNonEmpty beltRefs,
       profileFilterTextSearch = q,
       profileFilterRegisteredAfter = Nothing
-    }
-
--- | Build promotion filter from query params.
--- The @profileRefs@ param is merged into @achievedByRefs@ (frontend sends "profile" meaning "achieved_by").
-promotionsFilterFromParams :: [RankAC] -> [BJJBelt] -> [ProfileRefAC] -> [ProfileRefAC] -> [ProfileRefAC] -> Maybe Text -> Maybe GYTime -> Maybe GYTime -> [PromotionState] -> PromotionFilter
-promotionsFilterFromParams promotionIds beltRefs achievedByRefs awardedByRefs profileRefs q fromTime toTime states =
-  PromotionFilter
-    { promotionFilterId = optionalNonEmpty promotionIds,
-      promotionFilterBelt = optionalNonEmpty beltRefs,
-      promotionFilterAchievedByProfileId = optionalNonEmpty (achievedByRefs <> profileRefs),
-      promotionFilterAwardedByProfileId = optionalNonEmpty awardedByRefs,
-      promotionFilterAchievementDateInterval = (fromTime, toTime),
-      promotionFilterTextSearch = q,
-      promotionFilterState = optionalNonEmpty states
-    }
-
--- | Build membership history filter from query params.
-membershipHistoryFilterFromParams :: [ProfileRefAC] -> [ProfileRefAC] -> Maybe Text -> MembershipHistoryFilter
-membershipHistoryFilterFromParams orgRefs practRefs q =
-  MembershipHistoryFilter
-    { membershipHistoryFilterOrganizationProfileId = optionalNonEmpty orgRefs,
-      membershipHistoryFilterPractitionerProfileId = optionalNonEmpty practRefs,
-      membershipHistoryFilterTextSearch = q
-    }
-
--- | Build membership interval filter from query params.
-membershipIntervalFilterFromParams :: [ProfileRefAC] -> Maybe Bool -> Maybe Text -> MembershipIntervalFilter
-membershipIntervalFilterFromParams practRefs isAccepted q =
-  MembershipIntervalFilter
-    { membershipIntervalFilterPractitionerProfileId = optionalNonEmpty practRefs,
-      membershipIntervalFilterIsAccepted = isAccepted,
-      membershipIntervalFilterTextSearch = q
     }
 
 -- | Build achievement filter from query params.

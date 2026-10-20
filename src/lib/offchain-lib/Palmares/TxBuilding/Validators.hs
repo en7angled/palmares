@@ -2,7 +2,7 @@
 
 module Palmares.TxBuilding.Validators where
 
-import Palmares.Constants qualified
+import Palmares.Constants qualified as Constants
 import Data.ByteString.Short qualified as SBS
 import GeniusYield.Types
 import Palmares.Onchain.Protocol
@@ -34,42 +34,6 @@ profilesValidatorHashGY = validatorHash profilesValidatorGY
 
 profilesValidatorHashPlutus :: ScriptHash
 profilesValidatorHashPlutus = validatorHashToPlutus profilesValidatorHashGY
-
-------------------------------------------------------------------------------------------------
-
--- * Define Ranks Validator
-
-------------------------------------------------------------------------------------------------
-
-ranksValidatorPlutus :: CompiledCode (BuiltinData -> BuiltinUnit)
-ranksValidatorPlutus = RanksValidator.ranksCompile
-
-ranksValidatorGY :: GYScript 'PlutusV3
-ranksValidatorGY = validatorFromPlutus ranksValidatorPlutus
-
-ranksValidatorHashGY :: GYScriptHash
-ranksValidatorHashGY = validatorHash ranksValidatorGY
-
-ranksValidatorHashPlutus :: ScriptHash
-ranksValidatorHashPlutus = validatorHashToPlutus ranksValidatorHashGY
-
-------------------------------------------------------------------------------------------------
-
--- * Define Memberships Validator
-
-------------------------------------------------------------------------------------------------
-
-membershipsValidatorPlutus :: CompiledCode (BuiltinData -> BuiltinUnit)
-membershipsValidatorPlutus = MembershipsValidator.membershipsCompile
-
-membershipsValidatorGY :: GYScript 'PlutusV3
-membershipsValidatorGY = validatorFromPlutus membershipsValidatorPlutus
-
-membershipsValidatorHashGY :: GYScriptHash
-membershipsValidatorHashGY = validatorHash membershipsValidatorGY
-
-membershipsValidatorHashPlutus :: ScriptHash
-membershipsValidatorHashPlutus = validatorHashToPlutus membershipsValidatorHashGY
 
 ------------------------------------------------------------------------------------------------
 
@@ -127,9 +91,7 @@ compileOracleNFTPolicy seedRef =
 mkProtocolParams :: V1.AssetClass -> ProtocolParams
 mkProtocolParams =
   ProtocolParams
-    ranksValidatorHashPlutus
     profilesValidatorHashPlutus
-    membershipsValidatorHashPlutus
     achievementsValidatorHashPlutus
 
 -- | Protocol params with a placeholder oracle token, for blueprint generation only.
@@ -163,12 +125,6 @@ compiledCodeSize cc = SBS.length (serialiseCompiledCode cc)
 profilesValidatorSize :: Int
 profilesValidatorSize = compiledCodeSize profilesValidatorPlutus
 
-ranksValidatorSize :: Int
-ranksValidatorSize = compiledCodeSize ranksValidatorPlutus
-
-membershipsValidatorSize :: Int
-membershipsValidatorSize = compiledCodeSize membershipsValidatorPlutus
-
 achievementsValidatorSize :: Int
 achievementsValidatorSize = compiledCodeSize achievementsValidatorPlutus
 
@@ -188,12 +144,6 @@ mintingPolicySize oracleAC = compiledCodeSize (MintingPolicy.mintingPolicyCompil
 exportProfilesValidator :: IO ()
 exportProfilesValidator = writeScript @'PlutusV3 Constants.defaultProfilesValidatorFile $ validatorToScript profilesValidatorGY
 
-exportRanksValidator :: IO ()
-exportRanksValidator = writeScript @'PlutusV3 Constants.defaultRanksValidatorFile $ validatorToScript ranksValidatorGY
-
-exportMembershipsValidator :: IO ()
-exportMembershipsValidator = writeScript @'PlutusV3 Constants.defaultMembershipsValidatorFile $ validatorToScript membershipsValidatorGY
-
 exportAchievementsValidator :: IO ()
 exportAchievementsValidator = writeScript @'PlutusV3 Constants.defaultAchievementsValidatorFile $ validatorToScript achievementsValidatorGY
 
@@ -203,7 +153,5 @@ exportOracleValidator = writeScript @'PlutusV3 Constants.defaultOracleValidatorF
 exportValidators :: IO ()
 exportValidators = do
   exportProfilesValidator
-  exportRanksValidator
-  exportMembershipsValidator
   exportAchievementsValidator
   exportOracleValidator

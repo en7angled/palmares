@@ -1,0 +1,164 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StrictData #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+
+-- | Application monad and context for the interaction API server.
+-- Wraps a 'ReaderT' over Servant's 'Handler' with access to auth and
+-- transaction-building context, plus standardized error handling.
+module InteractionAppMonad where
+
+import Constants qualified
+import Control.Exception (displayException, try)
+import Control.Monad.Except
+import Control.Monad.Reader
+import Data.Aeson (encode, object, (.=))
+import Data.ByteString.Lazy.Char8 qualified as BL8
+import Data.Text hiding (elem, reverse, take)
+import Data.Time (defaultTimeLocale, getCurrentTime)
+import Data.Time.Format (formatTime)
+import Data.Typeable (cast)
+import GeniusYield.TxBuilder.Errors (GYTxMonadException (..))
+import GeniusYield.Types
+import Servant
+import TxBuilding.Context
+import TxBuilding.Exceptions (TxBuildingException, txBuildingExceptionCode, txBuildingExceptionToHttpStatus)
+import IPFS (IPFSConfig)
+import TxBuilding.Interactions (Interaction)
+import TxBuilding.Operations (ensureDeployedScriptsAreReady)
+import TxBuilding.Transactions (interactionToHexEncodedCBOR, submitTx)
+import WebAPI.Auth (AuthContext)
+import WebAPI.Errors (genericErrorMessage, mkServantErr)
+import WebAPI.ServiceProbe (ServiceProbeStatus (..))
+
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------
+
+-- | Shared environment for all interaction-API request handlers.
+data InteractionAppContext = InteractionAppContext
+  { authContext :: AuthContext, -- ^ Basic-auth credentials for protected routes
+    txBuildingContext :: TxBuildingContext, -- ^ Provider, deployed scripts, and network config for building transactions
+    ipfsConfig :: IPFSConfig -- ^ IPFS node configuration for image uploads
+  }
+
+newtype InteractionAppMonad a = InteractionAppMonad {unInteractionAppMonad :: ReaderT InteractionAppContext Servant.Handler a}
+  deriving (Functor, Applicative, Monad)
+
+-- | Run an 'InteractionAppMonad' computation with the given context.
+runInteractionAppMonad :: InteractionAppContext -> InteractionAppMonad a -> Servant.Handler a
+runInteractionAppMonad ctx app = runReaderT (unInteractionAppMonad app) ctx
+
+instance MonadIO InteractionAppMonad where
+  liftIO :: IO a -> InteractionAppMonad a
+  liftIO = InteractionAppMonad . liftIO
+
+instance MonadReader InteractionAppContext InteractionAppMonad where
+  ask :: InteractionAppMonad InteractionAppContext
+  ask = InteractionAppMonad ask
+
+  local :: (InteractionAppContext -> InteractionAppContext) -> InteractionAppMonad a -> InteractionAppMonad a
+  local f (InteractionAppMonad app) = InteractionAppMonad (local f app)
+
+-- | Build a 'ServerError' for a 'TxBuildingException' with a structured JSON
+-- body @{"code": <constructor>, "message": <human text>}@. Clients match on the
+-- stable @code@; @message@ stays available for display/fallback text matching.
+txBuildingServantErr :: Int -> TxBuildingException -> ServerError
+txBuildingServantErr status txEx =
+  mkServantErr status $ BL8.unpack $ encode $ object ["code" .= txBuildingExceptionCode txEx, "message" .= displayException txEx]
+
+-- | Run an IO action in the TxBuilding context with standardized error handling.
+-- Maps 'TxBuildingException' constructors to appropriate HTTP status codes
+-- using the centralized 'txBuildingExceptionToHttpStatus' mapping.
+runWithTxErrorHandling :: IO a -> InteractionAppMonad a
+runWithTxErrorHandling action = InteractionAppMonad $ do
+  res <- liftIO $ try action
+  case res of
+    Left ex ->
+      case ex of
+        GYApplicationException appE
+          | Just txEx <- cast appE -> do
+              let status = txBuildingExceptionToHttpStatus txEx
+              liftIO $ putStrLn $ "TxBuildingException (" <> show status <> ") [" <> txBuildingExceptionCode txEx <> "]: " <> displayException txEx
+              throwError $ txBuildingServantErr status txEx
+        -- Atlas builder ran out of funds: empty wallet (no seed UTxO), can't
+        -- balance the fee/deposit, or no collateral. These are normal client
+        -- conditions, not server faults — map to 400 with a clear message
+        -- instead of a misleading 500.
+        GYQueryUTxOException {} -> insufficientFunds ex
+        GYBuildTxException {} -> insufficientFunds ex
+        GYNoSuitableCollateralException {} -> insufficientFunds ex
+        _ -> do
+          liftIO $ putStrLn $ "Unexpected exception: " <> show ex
+          throwError $ mkServantErr 500 (genericErrorMessage 500)
+    Right ok -> pure ok
+  where
+    insufficientFunds ex = do
+      liftIO $ putStrLn $ "Insufficient funds (400) [InsufficientFunds]: " <> show ex
+      throwError $
+        mkServantErr 400 $
+          BL8.unpack $
+            encode $
+              object
+                [ "code" .= ("InsufficientFunds" :: Text),
+                  "message"
+                    .= ("Not enough preview ADA in your wallet to cover the profile fee, deposit and transaction cost." :: Text)
+                ]
+
+-- | Build a transaction from an 'Interaction' and return its hex-encoded CBOR.
+buildInteractionApp :: Interaction -> InteractionAppMonad String
+buildInteractionApp inter = do
+  InteractionAppContext {..} <- ask
+  runWithTxErrorHandling $ runReaderT (interactionToHexEncodedCBOR inter) txBuildingContext
+
+-- | Submit a signed transaction and return its transaction ID.
+submitTxApp :: GYTx -> InteractionAppMonad GYTxId
+submitTxApp tx = do
+  InteractionAppContext {..} <- ask
+  runWithTxErrorHandling $ runReaderT (submitTx tx) txBuildingContext
+
+-- | Poll whether a transaction has been confirmed on-chain.
+-- Performs a single check attempt and returns 'True' if confirmed, 'False' otherwise.
+pollTxConfirmation :: GYTxId -> InteractionAppMonad Bool
+pollTxConfirmation txId = do
+  InteractionAppContext {..} <- ask
+  let providers = ctxProviders (providerCtx txBuildingContext)
+  -- Single attempt, 100ms delay, 1 confirmation
+  let params = GYAwaitTxParameters 1 100000 1
+  res <- liftIO $ try @GYTxMonadException $ gyAwaitTxConfirmed providers params txId
+  case res of
+    Right () -> return True
+    Left _ -> return False
+
+-- | Readiness probe: verify that all deployed validator scripts are available on-chain.
+checkDeployedScriptsAreReady :: InteractionAppMonad (ServiceProbeStatus Text)
+checkDeployedScriptsAreReady = do
+  InteractionAppMonad $ do
+    InteractionAppContext {..} <- ask
+    let queryScriptsReady = runReaderT ensureDeployedScriptsAreReady (deployedScriptsCtx txBuildingContext)
+    res <- liftIO $ try $ runQuery (providerCtx txBuildingContext) queryScriptsReady
+    now <- liftIO getCurrentTime
+    case res of
+      Left ex ->
+        case ex of
+          GYApplicationException appE
+            | Just txEx <- cast appE -> do
+                let status = txBuildingExceptionToHttpStatus txEx
+                liftIO $ putStrLn $ "checkDeployedScriptsAreReady TxBuildingException (" <> show status <> ") [" <> txBuildingExceptionCode txEx <> "]: " <> displayException txEx
+                throwError $ txBuildingServantErr status txEx
+          _ -> do
+            liftIO $ putStrLn $ "checkDeployedScriptsAreReady GYTxMonadException: " <> show ex
+            throwError $ mkServantErr 503 (genericErrorMessage 503)
+      Right () ->
+        return $
+          ServiceProbeStatus
+            { status = "ready" :: Text,
+              service = "interaction-api" :: Text,
+              version = pack Constants.appVersion,
+              timestamp = pack $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" now
+            }

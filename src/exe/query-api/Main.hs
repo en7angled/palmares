@@ -1,6 +1,60 @@
--- | Stub entry point for `query-api`. The real implementation arrives with the extraction block;
--- this stub exists so `cabal build all` is a green gate from the first build.
-module Main (main) where
+module Main where
+
+import Constants (defaultAtlasCoreConfig, defaultTxBuildingContextFile)
+import Control.Monad.Logger (runStdoutLoggingT)
+import Data.Aeson.Encode.Pretty
+import Data.ByteString.Lazy.Char8 qualified as BL8
+import Data.Maybe
+import Data.String (IsString (..))
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as T
+import Database.Persist.Postgresql (createPostgresqlPool)
+import GeniusYield.GYConfig
+import GeniusYield.Types
+import Network.Wai.Handler.Warp
+import QueryAppMonad (QueryAppContext (..))
+import RestAPI (apiSwagger, mkBJJApp)
+import System.Environment
+import System.Exit (die)
+import TxBuilding.Context
+import Utils (decodeConfigEnvOrFile)
+import WebAPI.Auth (getBasicAuthFromEnv)
+import WebAPI.CORS (getCorsConfigFromEnv)
+import WebAPI.Utils (getPortFromEnvOrDefault)
+
+defaultConnStr :: String
+defaultConnStr = "host=postgres user=postgres password=postgres dbname=chainsync port=5432"
+
+-- | Show only the host and dbname fields of a Postgres DSN, hiding the password.
+redactConnStr :: String -> String
+redactConnStr s =
+  unwords [kv | kv <- words s, let k = takeWhile (/= '=') kv, k `elem` ["host", "dbname", "port"]]
 
 main :: IO ()
-main = pure ()
+main = do
+  putStrLn "Writing Swagger file ..."
+  BL8.writeFile "docs/generated/swagger/query-swagger-api.json" (encodePretty apiSwagger)
+
+  atlasConfig <- maybe (die "Atlas configuration failed") return =<< decodeConfigEnvOrFile "ATLAS_CORE_CONFIG" defaultAtlasCoreConfig
+
+  withCfgProviders atlasConfig (read @GYLogNamespace "BJJDApp") $ \providers -> do
+    let providerContext = ProviderCtx atlasConfig providers
+    authContext <- getBasicAuthFromEnv
+    corsCfg <- getCorsConfigFromEnv
+    connStr <- fromMaybe defaultConnStr <$> lookupEnv "PG_CONN_STR"
+    pool <- runStdoutLoggingT $ createPostgresqlPool (T.encodeUtf8 (T.pack connStr)) 10
+    mDeployedCtx <- decodeConfigEnvOrFile "DEPLOYED_VALIDATORS_CONFIG" defaultTxBuildingContextFile
+    liveProj <- (Just "true" ==) <$> lookupEnv "LIVE_PROJECTION"
+    let appContext = QueryAppContext authContext providerContext pool mDeployedCtx liveProj
+    let host = "0.0.0.0"
+    port <- getPortFromEnvOrDefault 8083
+
+    let settings = setHost (fromString host :: HostPreference) $ setPort port defaultSettings
+    let bjjDApp = mkBJJApp corsCfg appContext
+
+    putStrLn $ "Started Query API server at " <> host <> " " <> show port
+    putStrLn $ "Atlas config: " <> show atlasConfig
+    putStrLn $ "Postgres: " <> redactConnStr connStr
+    putStrLn $ "Swagger-UI available at : http://" <> host <> ":" <> show port <> "/swagger-ui"
+
+    runSettings settings bjjDApp

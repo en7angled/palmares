@@ -20,8 +20,13 @@ import Data.Text qualified as T
 import Data.Time (UTCTime)
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Numeric (showFFloat)
-import Palmares.DomainTypes.Core.Types (ChainPoint (..), DRepId (..))
-import Palmares.DomainTypes.Transfer.QueryResponses (DRepSummary (..), DelegatorRow (..))
+import Palmares.DomainTypes.Core.Types (ChainPoint (..), DRepId (..), GovActionId (..))
+import Palmares.DomainTypes.Transfer.QueryResponses
+  ( DRepSummary (..),
+    DelegatorRow (..),
+    GovActionLifecycle (..),
+    GovActionSummary (..),
+  )
 import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.CSV (safeCell)
 
@@ -132,3 +137,54 @@ instance ToNamedRecord DelegatorRow where
         "epoch" .= num (chainPointEpoch (delegatorRowDelegatedAt r)),
         "is_current" .= bool (delegatorRowIsCurrent r)
       ]
+
+instance DefaultOrdered GovActionSummary where
+  headerOrder _ =
+    header
+      [ "id",
+        "bech32",
+        "type",
+        "title",
+        "state",
+        "proposed_at",
+        "proposed_epoch",
+        "expires_epoch",
+        "last_votable_epoch",
+        "ratified_epoch",
+        "enacted_epoch",
+        "expired_epoch",
+        "dropped_epoch",
+        "deposit",
+        "return_address",
+        "treasury_amount",
+        "votes_cast"
+      ]
+
+-- | A governance action row. The lifecycle object is flattened into its columns: all four epochs
+-- travel, because the single-valued @state@ is a reading of them and a spreadsheet reader may
+-- want to apply their own.
+--
+-- @abstract@ is omitted — it is prose, and a paragraph in a CSV cell is noise.
+instance ToNamedRecord GovActionSummary where
+  toNamedRecord g =
+    namedRecord
+      [ "id" .= safeCell (unGovActionId (govActionSummaryId g)),
+        "bech32" .= safeCell (govActionSummaryBech32 g),
+        "type" .= jsonTag (govActionSummaryType g),
+        "title" .= mtext (govActionSummaryTitle g),
+        "state" .= jsonTag (govActionLifecycleState lc),
+        "proposed_at" .= T.pack (iso8601Show (chainPointTime (govActionSummaryProposedAt g))),
+        "proposed_epoch" .= num (chainPointEpoch (govActionSummaryProposedAt g)),
+        "expires_epoch" .= mnum (govActionSummaryExpiresEpoch g),
+        "last_votable_epoch" .= mnum (govActionSummaryLastVotableEpoch g),
+        "ratified_epoch" .= mnum (govActionLifecycleRatifiedEpoch lc),
+        "enacted_epoch" .= mnum (govActionLifecycleEnactedEpoch lc),
+        "expired_epoch" .= mnum (govActionLifecycleExpiredEpoch lc),
+        "dropped_epoch" .= mnum (govActionLifecycleDroppedEpoch lc),
+        "deposit" .= mnum (govActionSummaryDeposit g),
+        "return_address" .= mtext (govActionSummaryReturnAddress g),
+        "treasury_amount" .= mnum (govActionSummaryTreasuryAmount g),
+        "votes_cast" .= num (govActionSummaryVotesCast g)
+      ]
+    where
+      lc = govActionSummaryLifecycle g

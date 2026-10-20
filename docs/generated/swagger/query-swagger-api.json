@@ -562,6 +562,112 @@
             ],
             "type": "object"
         },
+        "GovActionLifecycle": {
+            "properties": {
+                "dropped_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "enacted_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "expired_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "formula_id": {
+                    "type": "string"
+                },
+                "ratified_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "state": {
+                    "$ref": "#/definitions/GovActionState"
+                }
+            },
+            "required": [
+                "state",
+                "formula_id"
+            ],
+            "type": "object"
+        },
+        "GovActionState": {
+            "enum": [
+                "proposed",
+                "ratified",
+                "enacted",
+                "expired",
+                "dropped"
+            ],
+            "type": "string"
+        },
+        "GovActionSummary": {
+            "properties": {
+                "abstract": {
+                    "type": "string"
+                },
+                "anchor_status": {
+                    "$ref": "#/definitions/AnchorStatus"
+                },
+                "bech32": {
+                    "type": "string"
+                },
+                "deposit": {
+                    "type": "integer"
+                },
+                "expires_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_votable_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "lifecycle": {
+                    "$ref": "#/definitions/GovActionLifecycle"
+                },
+                "proposed_at": {
+                    "$ref": "#/definitions/ChainPoint"
+                },
+                "return_address": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "treasury_amount": {
+                    "type": "integer"
+                },
+                "type": {
+                    "$ref": "#/definitions/GovActionType"
+                },
+                "votes_cast": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "id",
+                "bech32",
+                "type",
+                "proposed_at",
+                "lifecycle",
+                "votes_cast"
+            ],
+            "type": "object"
+        },
         "GovActionType": {
             "enum": [
                 "parameter_change",
@@ -648,7 +754,7 @@
             "properties": {
                 "items": {
                     "items": {
-                        "$ref": "#/definitions/DRepUpdateRow"
+                        "$ref": "#/definitions/GovActionSummary"
                     },
                     "type": "array"
                 },
@@ -1315,6 +1421,193 @@
                     }
                 },
                 "summary": "DReps"
+            }
+        },
+        "/gov-actions": {
+            "get": {
+                "description": "Every governance action ever proposed, with its lifecycle. There is no default state filter, unlike /dreps: an expired action is still part of the record, and hiding 103 of preprod's 131 proposals by default would hide the history this registry exists to publish. `state` is single-valued and is a READING of the four lifecycle epochs in a fixed order, so all four travel beside it; `last_votable_epoch`, not `state`, is the authority on whether a vote is still possible. `title` and `abstract` come from CIP-108 metadata and are null for most actions -- measured, 7 of 131 on preprod have it fetched.",
+                "parameters": [
+                    {
+                        "in": "header",
+                        "name": "Accept",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "parameter_change",
+                                "hard_fork_initiation",
+                                "treasury_withdrawals",
+                                "no_confidence",
+                                "new_committee",
+                                "new_constitution",
+                                "info_action"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "type",
+                        "type": "array"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "proposed",
+                                "ratified",
+                                "enacted",
+                                "expired",
+                                "dropped"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "state",
+                        "type": "array"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "valid",
+                                "invalid_schema",
+                                "hash_mismatch",
+                                "oversized",
+                                "unreachable",
+                                "inline",
+                                "not_fetched"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "anchor_status",
+                        "type": "array"
+                    },
+                    {
+                        "format": "yyyy-mm-ddThh:MM:ssZ",
+                        "in": "query",
+                        "name": "proposed_from",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "format": "yyyy-mm-ddThh:MM:ssZ",
+                        "in": "query",
+                        "name": "proposed_to",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "expires_before_epoch",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "expires_after_epoch",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "name": "proposer_stake_address",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "format": "int64",
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "min_treasury_amount",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "format": "int64",
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "max_treasury_amount",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "name": "q",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "proposed_at",
+                            "expires_epoch",
+                            "type",
+                            "deposit",
+                            "treasury_amount",
+                            "votes_cast"
+                        ],
+                        "in": "query",
+                        "name": "order_by",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8",
+                    "text/csv;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "Governance actions"
             }
         },
         "/health": {

@@ -72,6 +72,11 @@ module Query.Gov
     listDRepUpdates,
     anchorContentQuery,
     delegatorOrderColumn,
+
+    -- * Governance actions
+    govActionSortSpec,
+    govActionWhere,
+    listGovActions,
   )
 where
 
@@ -104,8 +109,13 @@ import Palmares.DomainTypes.Core.Types
     DRepStatus (..),
     GovActionId (..),
   )
-import Palmares.DomainTypes.Transfer.Filters (DRepFilter (..))
-import Palmares.DomainTypes.Transfer.OrderBy (DRepsOrderBy (..), DelegatorsOrderBy (..), SortOrder (..))
+import Palmares.DomainTypes.Transfer.Filters (DRepFilter (..), GovActionFilter (..))
+import Palmares.DomainTypes.Transfer.OrderBy
+  ( DRepsOrderBy (..),
+    DelegatorsOrderBy (..),
+    GovActionsOrderBy (..),
+    SortOrder (..),
+  )
 import Data.Int (Int64)
 import Palmares.DomainTypes.Transfer.QueryResponses
   ( AnchorContent,
@@ -116,6 +126,7 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     DelegatorStats,
     EpochParamsSummary (..),
     EpochPowerPoint,
+    GovActionSummary,
     SyncStatus (..),
   )
 import Palmares.Metrics.Catalog (lookupMetricSql)
@@ -814,3 +825,118 @@ delegatorOrderColumn = \case
   DelegatorsOrderByLovelace -> "es.amount"
   DelegatorsOrderByDelegatedAt -> "dv.slot_no"
   DelegatorsOrderByStakeAddress -> "dv.stake_address"
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * GET /gov-actions
+
+-- | The ordering each @order_by@ value means. Closed and total, as 'drepSortSpec' is.
+--
+-- @NULLS LAST@ on the two columns that are legitimately absent: a non-treasury action has no
+-- treasury amount, and an action with no expiration recorded has no expiry epoch.
+govActionSortSpec :: GovActionsOrderBy -> SortSpec
+govActionSortSpec = \case
+  GovActionsOrderByProposedAt -> SortSpec "g.proposed_slot" False tie
+  GovActionsOrderByExpiresEpoch -> SortSpec "g.expiration" True tie
+  GovActionsOrderByType -> SortSpec "g.action_type" False tie
+  GovActionsOrderByDeposit -> SortSpec "g.deposit" True tie
+  GovActionsOrderByTreasuryAmount -> SortSpec "g.withdrawal_total" True tie
+  GovActionsOrderByVotesCast -> SortSpec "g.votes_cast" False tie
+  where
+    tie = "g.gov_action_id"
+
+-- | The FROM clause the page and the count share, for F-17's reason.
+-- No join to stake_address: palmares.gov_action already publishes `return_address` as the bech32
+-- string, not as the row id. Joining on it compared a bigint to a varchar, which PostgreSQL
+-- rejects outright rather than coercing — the right behaviour, and the reason this was a boot-time
+-- 503 rather than a wrong answer.
+govActionFrom :: Text
+govActionFrom =
+  " FROM palmares.gov_action g \
+  \ LEFT JOIN palmares.anchor a ON a.voting_anchor_id = g.voting_anchor_id "
+
+-- | The @WHERE@ fragment and its parameters.
+govActionWhere :: GovActionFilter -> (Text, [PersistValue])
+govActionWhere f =
+  let clauses =
+        concat
+          [ inClause "g.action_type::text" (map pascalTag (govActionFilterTypes f)),
+            inClause "g.state" (map jsonTag (govActionFilterStates f)),
+            inClause "a.verdict" (map jsonTag (govActionFilterAnchorStatus f)),
+            one "g.proposed_at >= ?" (govActionFilterProposedFrom f),
+            one "g.proposed_at <= ?" (govActionFilterProposedTo f),
+            one "g.expiration < ?" (govActionFilterExpiresBeforeEpoch f),
+            one "g.expiration > ?" (govActionFilterExpiresAfterEpoch f),
+            one "g.return_address = ?" (govActionFilterProposerStakeAddress f),
+            one "g.withdrawal_total >= ?" (govActionFilterMinTreasuryAmount f),
+            one "g.withdrawal_total <= ?" (govActionFilterMaxTreasuryAmount f),
+            one
+              "(lower(g.title) LIKE ? OR lower(g.abstract) LIKE ?)"
+              (likePat <$> govActionFilterQ f)
+          ]
+   in ( if null clauses then "" else "WHERE " <> T.intercalate " AND " (map fst clauses),
+        concatMap snd clauses
+      )
+  where
+    -- `q` binds the same pattern to two placeholders, so it is duplicated here rather than in the
+    -- clause: one `?` per bind is the invariant the placeholder-count test checks.
+    one sql v
+      | sql == "(lower(g.title) LIKE ? OR lower(g.abstract) LIKE ?)" =
+          maybe [] (\p -> [(sql, [toPersistValue p, toPersistValue p])]) v
+      | otherwise = maybe [] (\x -> [(sql, [toPersistValue x])]) v
+
+    inClause col vs
+      | null vs = []
+      | otherwise =
+          [ ( col <> " IN (" <> T.intercalate ", " (map (const "?") vs) <> ")",
+              map toPersistValue vs
+            )
+          ]
+
+    -- action_type is db-sync's govactiontype enum, whose labels are PascalCase; the wire form is
+    -- snake_case. Mapping back through the enum's own Show is safe because the constructor names
+    -- and the db labels are the same strings — which is why GovActionType was spelled db-sync's
+    -- way rather than the ledger's (UpdateCommittee vs NewCommittee).
+    pascalTag = T.pack . show
+
+-- | One page of governance actions, with a total over the same predicate.
+listGovActions ::
+  GovActionFilter ->
+  (GovActionsOrderBy, SortOrder) ->
+  (Limit, Offset) ->
+  SqlPersistT IO (Page GovActionSummary)
+listGovActions f (ob, so) (lim, off) = do
+  items <-
+    queryJson
+      ( "SELECT row_to_json(x)::text FROM ( SELECT "
+          <> govActionProjection
+          <> govActionFrom
+          <> whereSql
+          <> " "
+          <> orderClause (govActionSortSpec ob) so
+          <> " LIMIT ? OFFSET ? ) x"
+      )
+      (params <> [toPersistValue lim, toPersistValue off])
+  totals <- rawSql ("SELECT count(*)::int" <> govActionFrom <> whereSql) params
+  pure (Page items (Just (case totals of (Single n : _) -> n; [] -> 0)) lim off Nothing)
+  where
+    (whereSql, params) = govActionWhere f
+
+-- | The projection list. Keys are 'GovActionSummary''s wire names.
+govActionProjection :: Text
+govActionProjection =
+  " encode(g.tx_hash, 'hex') AS tx_hash, g.index, \
+  \ lower(regexp_replace(g.action_type::text, '([a-z0-9])([A-Z])', '\\1_\\2', 'g')) AS type, \
+  \ g.title, g.abstract, a.verdict AS anchor_status, \
+  \ json_build_object('slot', g.proposed_slot, 'epoch', g.proposed_epoch, \
+  \                   'time', (g.proposed_at AT TIME ZONE 'UTC'), \
+  \                   'tx_hash', encode(g.tx_hash, 'hex')) AS proposed_at, \
+  \ g.expiration AS expires_epoch, g.last_votable_epoch, \
+  \ json_build_object('state', g.state, \
+  \                   'ratified_epoch', g.ratified_epoch, \
+  \                   'enacted_epoch', g.enacted_epoch, \
+  \                   'expired_epoch', g.expired_epoch, \
+  \                   'dropped_epoch', g.dropped_epoch, \
+  \                   'formula_id', 'gov_action_state_v1') AS lifecycle, \
+  \ g.deposit, g.return_address, g.withdrawal_total AS treasury_amount, \
+  \ g.votes_cast "

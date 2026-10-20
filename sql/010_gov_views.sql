@@ -473,6 +473,35 @@ FROM (
 -- that is not a rounding error: an AuthCommitteeHotKey stress test in epoch 187 left 648,766 hot
 -- keys mapping to 43 cold keys, so a hot-key partition reports 3,243,798 "final" CC votes where
 -- the truth is 193 — a factor of about 16,800.
+-- ---------------------------------------------------------------------------------------------
+-- palmares.cc_cold_interval — which cold credential a committee HOT key belonged to, and when.
+--
+-- One row per registration, carrying the transaction range it was in force for. Its own view
+-- because two things need it — palmares.vote, to identify who cast a committee vote, and
+-- palmares.gov_action, to count distinct voters on an action — and a second copy of a
+-- "registration in force at time T" rule is a second chance to get it wrong.
+--
+-- An INTERVAL rather than a per-row lookup, and that is a performance decision with a measured
+-- reason. Expressed as "the latest registration with tx_id <= the vote's", PostgreSQL executes
+-- one index lookup PER VOTE ROW. preprod has 3.24 M committee vote rows, from an
+-- AuthCommitteeHotKey stress test in epoch 187 that registered 648,766 hot keys, concentrated so
+-- that five governance actions each carry ~648,755 of them: selecting votes_cast for all 131
+-- actions took 87 SECONDS. As an interval join the 648,767 registrations hash once and every vote
+-- row is a hash probe plus a range test, which brought the same query to 5.7 s and left every
+-- number identical (193 final committee votes by 43 cold keys, before and after).
+CREATE VIEW palmares.cc_cold_interval AS
+SELECT
+  cr.hot_key_id,
+  cr.tx_id AS from_tx,
+  cr.cert_index AS from_cert,
+  LEAD(cr.tx_id) OVER w AS to_tx,
+  ch.raw AS cold_raw,
+  ch.has_script AS cold_has_script
+FROM public.committee_registration cr
+JOIN public.committee_hash ch ON ch.id = cr.cold_key_id
+WINDOW w AS (PARTITION BY cr.hot_key_id ORDER BY cr.tx_id, cr.cert_index);
+
+-- ---------------------------------------------------------------------------------------------
 CREATE VIEW palmares.vote AS
 WITH resolved AS (
   SELECT
@@ -494,7 +523,7 @@ WITH resolved AS (
     -- NULL except for the CC, where it is the cold credential resolved AS OF THIS VOTE'S tx: a
     -- member's hot key may have been rotated since, and the registration in force at the time is
     -- the one that identifies them.
-    cold.raw AS voter_cold_hash,
+    cold.cold_raw AS voter_cold_hash,
     CASE v.voter_role
       WHEN 'DRep' THEN (SELECT dh.has_script FROM public.drep_hash dh WHERE dh.id = v.drep_voter)
       -- A stake pool is always a key hash; db-sync's pool_hash has no has_script column because
@@ -513,16 +542,12 @@ WITH resolved AS (
   FROM public.voting_procedure v
   JOIN public.tx ON tx.id = v.tx_id
   JOIN public.block b ON b.id = tx.block_id
-  LEFT JOIN LATERAL (
-    SELECT ch.raw
-    FROM public.committee_registration cr
-    JOIN public.committee_hash ch ON ch.id = cr.cold_key_id
-    WHERE v.voter_role = 'ConstitutionalCommittee'
-      AND cr.hot_key_id = v.committee_voter
-      AND cr.tx_id <= v.tx_id
-    ORDER BY cr.tx_id DESC, cr.cert_index DESC
-    LIMIT 1
-  ) cold ON true
+  -- The cold credential in force at this vote's transaction. See palmares.cc_cold_interval for
+  -- why this is an interval join rather than a per-row lookup.
+  LEFT JOIN palmares.cc_cold_interval cold
+    ON cold.hot_key_id = v.committee_voter
+   AND cold.from_tx <= v.tx_id
+   AND (cold.to_tx IS NULL OR cold.to_tx > v.tx_id)
 ),
 identified AS (
   SELECT

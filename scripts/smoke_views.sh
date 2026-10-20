@@ -34,9 +34,13 @@ expect() {
   fi
 }
 
-# 1. A boot recreates the whole schema. The counts are the deliverable of the SQL block: eighteen
+# 1. A boot recreates the whole schema. The counts are the deliverable of the SQL block: nineteen
 #    plain views, the one materialized view, and the one function.
-expect "plain views" 18 "$(psql_at "SELECT count(*) FROM pg_views WHERE schemaname = 'palmares'")"
+#
+#    Nineteen, not the eighteen the plan's table listed: palmares.cc_cold_interval was factored
+#    out of palmares.vote so that the committee hot-to-cold mapping has ONE definition, which two
+#    objects now use. See its own comment for the 87s-to-2s measurement that forced it.
+expect "plain views" 19 "$(psql_at "SELECT count(*) FROM pg_views WHERE schemaname = 'palmares'")"
 expect "materialized views" 1 "$(psql_at "SELECT count(*) FROM pg_matviews WHERE schemaname = 'palmares'")"
 expect "functions" 1 "$(psql_at "SELECT count(*) FROM pg_proc p
                                   JOIN pg_namespace n ON n.oid = p.pronamespace

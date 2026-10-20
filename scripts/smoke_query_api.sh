@@ -231,5 +231,47 @@ for p in '/drep/drep1yt0dahk7mm0dahk7mm0dahk7mm0dahk7mm0dahk7mm0dahs0s7gtm:404' 
   if [ "$got" = "$want" ]; then echo "  ok   $path is $want"; else echo "  FAIL $path is $got (want $want)"; fail=1; fi
 done
 
+echo "== governance actions (T-API-11)"
+assert '/gov-actions?limit=1' '.total' '131'
+assert '/gov-actions?limit=1' '.items[0].id | test("^[0-9a-f]{64}#[0-9]+$")' 'true'
+assert '/gov-actions?limit=1' '.items[0].bech32 | startswith("gov_action1")' 'true'
+# `state` is SINGLE-VALUED: gov_action_state_v1 reads the four lifecycle columns in a fixed order,
+# so these are NOT the per-column counts. 0 ratified because every ratified action was enacted the
+# next epoch, and 102 of the 108 rows carrying dropped_epoch also carry expired_epoch.
+#
+# The plan's draft had `proposed` at 12, which made the five sum to 132 against 131 rows. Read off
+# the database: 11. That was the plan's own OPEN, and the database closed it.
+assert '/gov-actions?state=enacted&limit=1'  '.total' '11'
+assert '/gov-actions?state=ratified&limit=1' '.total' '0'
+assert '/gov-actions?state=expired&limit=1'  '.total' '103'
+assert '/gov-actions?state=dropped&limit=1'  '.total' '6'
+assert '/gov-actions?state=proposed&limit=1' '.total' '11'
+# THE assertion: the five states partition all 131 rows. This is what catches a mis-ordered CASE.
+assert '/gov-actions?limit=200' '[([.items[].lifecycle.state] | length), ([.items[].lifecycle.state] | group_by(.) | map(length) | add)]' '[131,131]'
+assert '/gov-actions?limit=200' '[.items[].type] | unique | sort' \
+  '["hard_fork_initiation","info_action","new_committee","new_constitution","no_confidence","parameter_change","treasury_withdrawals"]'
+# The observed window is 7 epochs on all 131, while gov_action_lifetime reads 6: the ledger sets
+# expiration = proposed_epoch + lifetime + 1. Both numbers are published, and this is why.
+assert '/gov-actions?limit=200' '[.items[] | select(.expires_epoch != null) | .expires_epoch - .proposed_at.epoch] | unique' '[7]'
+# treasury_amount is set for exactly the TreasuryWithdrawals actions and null for the rest
+assert '/gov-actions?type=treasury_withdrawals&limit=200' '[.total, ([.items[] | select(.treasury_amount == null)] | length)]' '[82,0]'
+assert '/gov-actions?limit=200' '[.items[] | select(.type != "treasury_withdrawals" and .treasury_amount != null)] | length' '0'
+assert '/gov-actions?order_by=deposit&sort_order=desc&limit=5' '[.items[].deposit] | . == (. | sort | reverse)' 'true'
+# an enacted action carries enacted_epoch = ratified_epoch + 1 and no expiry or drop
+assert '/gov-actions?state=enacted&limit=200' '[.items[] | .lifecycle | [(.enacted_epoch - .ratified_epoch), .expired_epoch, .dropped_epoch]] | unique' '[[1,null,null]]'
+assert '/gov-actions?state=enacted&limit=1' '.items[0].lifecycle.formula_id' '"gov_action_state_v1"'
+# stable paging over a heavily tied key: 103 rows share a state and 82 share a type
+assert '/gov-actions?order_by=type&limit=200' '[.items[].id] | (length) == (unique | length)' 'true'
+# the filters reach SQL
+assert '/gov-actions?type=info_action' '.total' '17'
+assert '/gov-actions?type=info_action&type=no_confidence' '.total' '19'
+assert '/gov-actions?expires_after_epoch=320' '.total' '11'
+assert_err '/gov-actions?q=a' '.code' '"query_too_short"'
+assert_err '/gov-actions?state=nonsense' '.code' '"invalid_parameter"'
+gacsv=$(curl -fsS -H 'Accept: text/csv' "$API/gov-actions?limit=10000")
+check "/gov-actions CSV header" \
+  "$(printf '%s' "$gacsv" | head -1 | tr -d '\r' | cut -d, -f1-3)" 'id,bech32,type'
+check "/gov-actions CSV is 131 rows plus a header" "$(printf '%s\n' "$gacsv" | grep -c .)" 132
+
 if [ "$fail" = 0 ]; then echo "smoke OK"; else echo "smoke FAILED" >&2; fi
 exit $fail

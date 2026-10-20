@@ -10,6 +10,8 @@ module Palmares.DomainTypes.Transfer.Filters
     activityFilterFromParams,
     DRepFilter (..),
     emptyDRepFilter,
+    GovActionFilter (..),
+    emptyGovActionFilter,
   )
 where
 
@@ -166,4 +168,44 @@ emptyDRepFilter =
       drepFilterLanguage = Nothing,
       drepFilterActiveInEpoch = Nothing,
       drepFilterQ = Nothing
+    }
+
+-- | Every filter @GET \/gov-actions@ accepts. Same conventions as 'DRepFilter': an empty
+-- repeatable list is no filter, and across parameters the clauses are AND'd.
+--
+-- There is no default state filter here, unlike @\/dreps@: an expired action is still part of the
+-- record and a list that hid 103 of preprod's 131 proposals by default would be hiding the
+-- history the registry exists to publish.
+data GovActionFilter = GovActionFilter
+  { govActionFilterTypes :: [Core.GovActionType],
+    govActionFilterStates :: [Core.GovActionState],
+    govActionFilterAnchorStatus :: [Core.AnchorStatus],
+    govActionFilterProposedFrom :: Maybe UTCTime,
+    govActionFilterProposedTo :: Maybe UTCTime,
+    govActionFilterExpiresBeforeEpoch :: Maybe Int,
+    govActionFilterExpiresAfterEpoch :: Maybe Int,
+    govActionFilterProposerStakeAddress :: Maybe Text,
+    govActionFilterMinTreasuryAmount :: Maybe Int64,
+    govActionFilterMaxTreasuryAmount :: Maybe Int64,
+    -- | Free text against the action's CIP-108 title and abstract. Measured: only 7 of preprod's
+    -- 131 proposals have fetched metadata, so this filter is sparse by nature and not by bug.
+    govActionFilterQ :: Maybe Text
+  }
+  deriving stock (Show, Eq)
+
+-- | The filter with nothing set: every proposal, newest first.
+emptyGovActionFilter :: GovActionFilter
+emptyGovActionFilter =
+  GovActionFilter
+    { govActionFilterTypes = [],
+      govActionFilterStates = [],
+      govActionFilterAnchorStatus = [],
+      govActionFilterProposedFrom = Nothing,
+      govActionFilterProposedTo = Nothing,
+      govActionFilterExpiresBeforeEpoch = Nothing,
+      govActionFilterExpiresAfterEpoch = Nothing,
+      govActionFilterProposerStakeAddress = Nothing,
+      govActionFilterMinTreasuryAmount = Nothing,
+      govActionFilterMaxTreasuryAmount = Nothing,
+      govActionFilterQ = Nothing
     }

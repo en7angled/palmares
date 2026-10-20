@@ -245,3 +245,22 @@ instance ToParamSchema DelegatorsOrderBy where
 
 instance FromHttpApiData DelegatorsOrderBy where
   parseQueryParam = parseJsonEnumParam "invalid_parameter"
+
+-- | @order_by@ on @GET \/gov-actions@. Default is @proposed_at@, descending: the question a
+-- governance list answers first is what is happening now.
+data GovActionsOrderBy
+  = GovActionsOrderByProposedAt
+  | GovActionsOrderByExpiresEpoch
+  | GovActionsOrderByType
+  | GovActionsOrderByDeposit
+  | GovActionsOrderByTreasuryAmount
+  | GovActionsOrderByVotesCast
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[ConstructorTagModifier '[StripPrefix "GovActionsOrderBy", CamelToSnake]] GovActionsOrderBy
+
+instance ToParamSchema GovActionsOrderBy where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData GovActionsOrderBy where
+  parseQueryParam = parseJsonEnumParam "invalid_parameter"

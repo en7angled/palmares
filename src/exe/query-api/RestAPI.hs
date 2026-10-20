@@ -38,12 +38,20 @@ import Palmares.DomainTypes.Core.Types
     DRepStatus,
     DRepUpdateKind,
     GovActionId,
+    GovActionState,
+    GovActionType,
     drepIdHex,
   )
-import Palmares.DomainTypes.Transfer.Filters (DRepFilter (..), emptyDRepFilter)
+import Palmares.DomainTypes.Transfer.Filters
+  ( DRepFilter (..),
+    GovActionFilter (..),
+    emptyDRepFilter,
+    emptyGovActionFilter,
+  )
 import Palmares.DomainTypes.Transfer.OrderBy
   ( DRepsOrderBy (..),
     DelegatorsOrderBy (..),
+    GovActionsOrderBy (..),
     SortOrder (..),
   )
 import Palmares.DomainTypes.Transfer.QueryResponses
@@ -53,6 +61,7 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     DRepUpdateRow,
     DelegatorRow,
     EpochPowerPoint,
+    GovActionSummary,
     StatusResponse (..),
   )
 import Palmares.Metrics.Catalog (MetricFormula, resolvedMetricCatalog, retentionWindowEpochs)
@@ -81,6 +90,7 @@ import Query.Gov
     listDReps,
     listDelegators,
     listEpochPower,
+    listGovActions,
     resolveDRepHex,
   )
 import Palmares.WebAPI.CORS (CorsConfig, mkCorsMiddleware)
@@ -413,14 +423,86 @@ handleGetDRepUpdates did limit offset kinds sortOrder = do
   bounds <- either throwApi pure (normalizeLimitOffset jsonBounds limit offset)
   runRead (listDRepUpdates dhid (map jsonTag kinds) (fromMaybe Desc sortOrder) bounds)
 
-drepProfileServer ::
-  ServerT (DRepDetailAPI :<|> DRepPageAPI :<|> DRepPowerAPI :<|> DRepDelegatorsAPI :<|> DRepUpdatesAPI) QueryAppMonad
-drepProfileServer =
-  handleGetDRepDetail
-    :<|> handleGetDRepDetail
-    :<|> handleGetDRepPower
-    :<|> handleGetDRepDelegators
-    :<|> handleGetDRepUpdates
+------------------------------------------------------------------------------------------------
+
+--  Governance actions
+
+------------------------------------------------------------------------------------------------
+
+type GovActionsAPI =
+  Summary "Governance actions"
+    :> Description
+         "Every governance action ever proposed, with its lifecycle. There is no default state \
+         \filter, unlike /dreps: an expired action is still part of the record, and hiding 103 of \
+         \preprod's 131 proposals by default would hide the history this registry exists to \
+         \publish. `state` is single-valued and is a READING of the four lifecycle epochs in a \
+         \fixed order, so all four travel beside it; `last_votable_epoch`, not `state`, is the \
+         \authority on whether a vote is still possible. `title` and `abstract` come from CIP-108 \
+         \metadata and are null for most actions -- measured, 7 of 131 on preprod have it fetched."
+    :> "gov-actions"
+    :> Header "Accept" Text
+    :> QueryParam "limit" Int
+    :> QueryParam "offset" Int
+    :> QueryParams "type" GovActionType
+    :> QueryParams "state" GovActionState
+    :> QueryParams "anchor_status" AnchorStatus
+    :> QueryParam "proposed_from" UTCTime
+    :> QueryParam "proposed_to" UTCTime
+    :> QueryParam "expires_before_epoch" Int
+    :> QueryParam "expires_after_epoch" Int
+    :> QueryParam "proposer_stake_address" Text
+    :> QueryParam "min_treasury_amount" Int64
+    :> QueryParam "max_treasury_amount" Int64
+    :> QueryParam "q" Text
+    :> QueryParam "order_by" GovActionsOrderBy
+    :> QueryParam "sort_order" SortOrder
+    :> Get '[JSON, CSV] (Page GovActionSummary)
+
+handleGetGovActions ::
+  Maybe Text ->
+  Maybe Int ->
+  Maybe Int ->
+  [GovActionType] ->
+  [GovActionState] ->
+  [AnchorStatus] ->
+  Maybe UTCTime ->
+  Maybe UTCTime ->
+  Maybe Int ->
+  Maybe Int ->
+  Maybe Text ->
+  Maybe Int64 ->
+  Maybe Int64 ->
+  Maybe Text ->
+  Maybe GovActionsOrderBy ->
+  Maybe SortOrder ->
+  QueryAppMonad (Page GovActionSummary)
+handleGetGovActions accept limit offset types states anchorStatus pFrom pTo expBefore expAfter proposer minT maxT q orderBy sortOrder = do
+  q' <- either throwApi pure (normalizeQ q)
+  _ <- either throwApi pure (checkRanges pFrom pTo expAfter expBefore)
+  bounds <- either throwApi pure (normalizeLimitOffset (boundsFor accept) limit offset)
+  let filt =
+        emptyGovActionFilter
+          { govActionFilterTypes = types,
+            govActionFilterStates = states,
+            govActionFilterAnchorStatus = anchorStatus,
+            govActionFilterProposedFrom = pFrom,
+            govActionFilterProposedTo = pTo,
+            govActionFilterExpiresBeforeEpoch = expBefore,
+            govActionFilterExpiresAfterEpoch = expAfter,
+            govActionFilterProposerStakeAddress = proposer,
+            govActionFilterMinTreasuryAmount = minT,
+            govActionFilterMaxTreasuryAmount = maxT,
+            govActionFilterQ = q'
+          }
+  runRead
+    ( listGovActions
+        filt
+        (fromMaybe GovActionsOrderByProposedAt orderBy, fromMaybe Desc sortOrder)
+        bounds
+    )
+
+govActionsServer :: ServerT GovActionsAPI QueryAppMonad
+govActionsServer = handleGetGovActions
 
 ------------------------------------------------------------------------------------------------
 
@@ -438,13 +520,22 @@ type CoreFunctionAPI =
     :<|> DRepPowerAPI
     :<|> DRepDelegatorsAPI
     :<|> DRepUpdatesAPI
+    :<|> GovActionsAPI
 
 coreFunctionServer :: ServerT CoreFunctionAPI QueryAppMonad
+-- Spelled out flat rather than grouped into a drepProfileServer: `:<|>` is right-associative,
+-- so a grouped sub-server's own nesting would not match this chain's once another family is
+-- appended after it. One handler per line, in the type's order.
 coreFunctionServer =
   statusServer
     :<|> metricsFormulasServer
     :<|> drepsServer
-    :<|> drepProfileServer
+    :<|> handleGetDRepDetail
+    :<|> handleGetDRepDetail
+    :<|> handleGetDRepPower
+    :<|> handleGetDRepDelegators
+    :<|> handleGetDRepUpdates
+    :<|> govActionsServer
 
 ------------------------------------------------------------------------------------------------
 

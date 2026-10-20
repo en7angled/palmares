@@ -27,7 +27,12 @@ import GHC.Generics ()
 import GeniusYield.Types (GYAssetClass)
 import GeniusYield.Types.Time
 import Servant (FromHttpApiData (..))
-import Palmares.DomainTypes.Core.Ids (drepIdCip129, parseDrepIdAny, parseGovActionIdCip129)
+import Palmares.DomainTypes.Core.Ids
+  ( drepIdCip129,
+    govActionIdCip129,
+    parseDrepIdAny,
+    parseGovActionIdCip129,
+  )
 import Palmares.Utils
 
 type ProfileRefAC = GYAssetClass
@@ -272,6 +277,24 @@ instance FromHttpApiData GovActionId where
 
   parseQueryParam :: Text -> Either Text GovActionId
   parseQueryParam = parseUrlPiece
+
+-- | The canonical id and the CIP-129 bech32 of a governance action, from the pair the
+-- @palmares@ views publish: the proposal transaction's hash as hex, and its index.
+--
+-- Both forms go out. @\<tx_hash\>#\<index\>@ is what db-sync, cardano-cli and every explorer
+-- print and is readable in a URL; the bech32 is what a CIP-129-aware wallet shows. Publishing one
+-- and making the client derive the other would push a bech32 implementation into every consumer.
+govActionIdForms :: Text -> Int -> Maybe (GovActionId, Text)
+govActionIdForms txHex ix
+  | ix < 0 || ix > 255 = Nothing
+  | otherwise = case B16.decode (TE.encodeUtf8 txHex) of
+      Right raw
+        | BS.length raw == 32 ->
+            Just
+              ( GovActionId (txHex <> "#" <> T.pack (show ix)),
+                govActionIdCip129 raw (fromIntegral ix)
+              )
+      _ -> Nothing
 
 -- | Where on the chain something happened.
 --

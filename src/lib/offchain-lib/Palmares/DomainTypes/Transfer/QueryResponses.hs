@@ -55,6 +55,8 @@ module Palmares.DomainTypes.Transfer.QueryResponses
     AnchorReference (..),
     AnchorContent (..),
     DRepDetailResponse (..),
+    GovActionLifecycle (..),
+    GovActionSummary (..),
   )
 where
 
@@ -787,3 +789,98 @@ data DRepDetailResponse = DRepDetailResponse
 
 instance ToSchema DRepDetailResponse where
   declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "drepDetail")
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * Governance actions
+
+-- | A governance action's outcome and the four epochs behind it.
+--
+-- The four @*_epoch@ columns are published ALONGSIDE the single-valued @state@, because they are
+-- not mutually exclusive and the @state@ is a reading of them in a fixed order: an enacted action
+-- carries @ratified_epoch@ too, and most expired actions carry @dropped_epoch@. A reader who
+-- disagrees with our reading can apply their own to the same four numbers.
+--
+-- Measured on preprod's 131 proposals: the five states partition them exactly — 103 expired, 11
+-- enacted, 11 proposed, 6 dropped, 0 ratified. Zero @ratified@ because every ratified action was
+-- enacted the following epoch, and @enacted_epoch = ratified_epoch + 1@ on all eleven.
+--
+-- @state@ and VOTABILITY can disagree: an action whose @expired_epoch@ is the current epoch reads
+-- as @expired@ while its window is still open, which is why @last_votable_epoch@ is published
+-- separately and is the authority on whether a vote is still possible.
+data GovActionLifecycle = GovActionLifecycle
+  { govActionLifecycleState :: Core.GovActionState,
+    govActionLifecycleRatifiedEpoch :: Maybe Int,
+    govActionLifecycleEnactedEpoch :: Maybe Int,
+    govActionLifecycleExpiredEpoch :: Maybe Int,
+    govActionLifecycleDroppedEpoch :: Maybe Int,
+    govActionLifecycleFormulaId :: Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "govActionLifecycle", CamelToSnake]] GovActionLifecycle
+
+instance ToSchema GovActionLifecycle where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "govActionLifecycle")
+
+-- | One row of @GET \/gov-actions@.
+--
+-- @title@ and @abstract@ come from the action's CIP-108 metadata and are @null@ far more often
+-- than a reader expects: measured, only 7 of preprod's 131 proposals have fetched metadata, so a
+-- list that showed only titled actions would show 7 rows.
+data GovActionSummary = GovActionSummary
+  { govActionSummaryId :: Core.GovActionId,
+    -- | The same action in CIP-129 form, so no consumer needs a bech32 implementation.
+    govActionSummaryBech32 :: Text,
+    govActionSummaryType :: Core.GovActionType,
+    govActionSummaryTitle :: Maybe Text,
+    govActionSummaryAbstract :: Maybe Text,
+    govActionSummaryAnchorStatus :: Maybe Core.AnchorStatus,
+    govActionSummaryProposedAt :: Core.ChainPoint,
+    govActionSummaryExpiresEpoch :: Maybe Int,
+    -- | The LAST epoch a vote can still be cast in. The authority on votability, which @state@
+    -- is not: the ledger's rule is @currentEpoch \<= gasExpiresAfter@ AND the action still being
+    -- in the proposals set, and this column is that rule applied.
+    govActionSummaryLastVotableEpoch :: Maybe Int,
+    govActionSummaryLifecycle :: GovActionLifecycle,
+    govActionSummaryDeposit :: Maybe Integer,
+    govActionSummaryReturnAddress :: Maybe Text,
+    -- | Lovelace, for a TreasuryWithdrawals action; @null@ for every other type.
+    govActionSummaryTreasuryAmount :: Maybe Integer,
+    govActionSummaryVotesCast :: Int
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "govActionSummary", CamelToSnake]] GovActionSummary
+
+instance ToSchema GovActionSummary where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "govActionSummary")
+
+-- | Decode a @palmares.gov_action@ row, computing both id forms from @tx_hash@ and @index@.
+--
+-- Hand-written for the same reason 'DRepSummary''s instance is: the identifiers are derived, and
+-- deriving them here means no row can reach a client carrying one form and not the other.
+instance FromJSON GovActionSummary where
+  parseJSON = withObject "GovActionSummary" $ \o -> do
+    txHex <- o .: "tx_hash"
+    ix <- o .: "index"
+    (gid, bech) <-
+      maybe
+        (fail ("GovActionSummary: not a proposal id: " <> show (txHex :: Text) <> "#" <> show (ix :: Int)))
+        pure
+        (Core.govActionIdForms txHex ix)
+    GovActionSummary
+      <$> pure gid
+      <*> pure bech
+      <*> o .: "type"
+      <*> o .:? "title"
+      <*> o .:? "abstract"
+      <*> o .:? "anchor_status"
+      <*> o .: "proposed_at"
+      <*> o .:? "expires_epoch"
+      <*> o .:? "last_votable_epoch"
+      <*> o .: "lifecycle"
+      <*> o .:? "deposit"
+      <*> o .:? "return_address"
+      <*> o .:? "treasury_amount"
+      <*> o .: "votes_cast"

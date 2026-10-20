@@ -200,6 +200,7 @@ library offchain-lib
     Palmares.Ingestion
     Palmares.Metrics.Catalog
     Palmares.Metrics.Doc
+    Palmares.Reconcile.Koios
     Palmares.Storage
     Palmares.TxBuilding.Context
     Palmares.TxBuilding.Conversions
@@ -458,6 +459,7 @@ test-suite test
     UnitTests.MetricDoc
     UnitTests.MetricFixture
     UnitTests.QueryHardening
+    UnitTests.Reconcile
     UnitTests.Refresh
     UnitTests.Views
   --   UnitTests.Dispute

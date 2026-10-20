@@ -16,6 +16,7 @@ import UnitTests.MetricCatalog qualified as MetricCatalog
 import UnitTests.MetricDoc qualified as MetricDoc
 import UnitTests.MetricFixture qualified as MetricFixture
 import UnitTests.QueryHardening (queryHardeningTests)
+import UnitTests.Reconcile (reconcileTests)
 import UnitTests.Refresh qualified as Refresh
 import UnitTests.StorageRoundtrip (storageRoundtripTests)
 import UnitTests.ThresholdMap qualified as ThresholdMap
@@ -37,6 +38,7 @@ unitTests =
       MetricDoc.tests,
       MetricFixture.tests,
       queryHardeningTests,
+      reconcileTests,
       Refresh.tests,
       storageRoundtripTests,
       ThresholdMap.tests,

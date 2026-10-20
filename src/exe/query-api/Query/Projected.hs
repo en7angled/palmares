@@ -23,7 +23,11 @@ import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Database.Esqueleto.Experimental
 import Database.Esqueleto.Internal.Internal (unsafeSqlCastAs)
 import Database.Persist qualified as P
-import Palmares.DomainTypes.Core.Types
+-- The Belt System's PascalCase ActivityEventType (ProfileCreated | AchievementAwarded |
+-- AchievementAccepted) still lives in Transfer.OrderBy and still backs the inherited /activity
+-- feed. Palmares.DomainTypes.Core.Types now exports the snake_case GOVERNANCE one of the same
+-- name, so the inherited name is hidden here until T-API-15 replaces that feed and deletes it.
+import Palmares.DomainTypes.Core.Types hiding (ActivityEventType)
 import Palmares.DomainTypes.Transfer.Filters qualified as C
 import Palmares.DomainTypes.Transfer.Filters qualified as F
 import Palmares.DomainTypes.Transfer.OrderBy

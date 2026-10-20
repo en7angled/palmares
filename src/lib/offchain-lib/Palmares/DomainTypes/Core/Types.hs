@@ -6,19 +6,25 @@ module Palmares.DomainTypes.Core.Types where
 
 import Data.Aeson
 import Data.Aeson.Types qualified as AesonTypes
+import Data.Char (isHexDigit)
 import Data.List.Extra
-import Data.Swagger (ToSchema (..), genericDeclareNamedSchema)
+import Data.Maybe (fromMaybe)
+import Data.Proxy (Proxy (..))
+import Data.Swagger (NamedSchema (..), ToSchema (..), genericDeclareNamedSchema)
 import Data.Swagger.Internal.Schema ()
 import Data.Swagger.ParamSchema
 import Data.Swagger.SchemaOptions (fromAesonOptions)
 import Data.Text hiding (init, tail)
 import Data.Text as T
+import Data.Text.Read qualified as TRead
+import Data.Time (UTCTime)
 import Database.Persist.TH
 import Deriving.Aeson
 import GHC.Generics ()
 import GeniusYield.Types (GYAssetClass)
 import GeniusYield.Types.Time
 import Servant (FromHttpApiData (..))
+import Palmares.DomainTypes.Core.Ids (drepIdCip129, parseDrepIdAny, parseGovActionIdCip129)
 import Palmares.Utils
 
 type ProfileRefAC = GYAssetClass
@@ -145,3 +151,360 @@ instance ToSchema Achievement where
           AesonTypes.defaultOptions
             { AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "achievement"
             }
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * Governance ids and enums
+
+--
+-- The wire vocabulary of the public API. Two rules hold throughout:
+--
+--   1. Every enum's wire strings are written ONCE, in its @ToJSON@ instance. The Swagger @enum@
+--      and the query-parameter parser are both read back out of it with 'jsonEnumSchema' and
+--      'parseJsonEnumParam', so a documented value cannot drift from an accepted one.
+--   2. The values mirror what the @palmares@ views emit. Where a view computes a verdict — the
+--      anchor status, the governance-action state, the committee status — Haskell CONSUMES it and
+--      never recomputes it (D-10). A second classifier is a second answer.
+
+-- | A DRep, in the CIP-129 rendering (@drep1y…@ for a key credential, @drep1yw…@ for a script
+-- one), or one of the two reserved ledger options verbatim.
+--
+-- Responses always carry this form, built from the database's @(drep_raw, has_script)@ pair.
+-- 'drep_hash.view' is deliberately never published: it is the CIP-105 rendering, which uses one
+-- HRP for both credential kinds and therefore cannot be compared against Koios, GovTool or a
+-- wallet.
+newtype DRepId = DRepId {unDRepId :: Text}
+  deriving stock (Show, Eq, Ord, Generic)
+  deriving newtype (FromJSON, ToJSON)
+
+instance ToSchema DRepId where
+  declareNamedSchema _ = declareNamedSchema (Proxy :: Proxy Text)
+
+instance ToParamSchema DRepId where
+  toParamSchema _ = toParamSchema (Proxy :: Proxy Text)
+
+-- | The two reserved ledger voting options. They are not DReps — they hold no credential and
+-- cannot vote — but they do hold stake, and @palmares.drep_epoch_power@ publishes them, so a
+-- client may legitimately name one.
+reservedDRepViews :: [Text]
+reservedDRepViews = ["drep_always_abstain", "drep_always_no_confidence"]
+
+-- | Accept all three credential forms a client may paste, plus the two reserved views.
+--
+-- NOTE for handlers: the script bit of a CIP-105 or raw-hex input cannot be known here, because
+-- @drep@ is the HRP for both kinds and only the database knows which this credential is. This
+-- instance therefore normalises an unflagged input to the KEY form, and a handler must look the
+-- row up by the 28-byte hash — never by this string — and re-render the id from the row's own
+-- @has_script@. Matching on the string would miss every script DRep pasted in CIP-105.
+instance FromHttpApiData DRepId where
+  parseUrlPiece :: Text -> Either Text DRepId
+  parseUrlPiece t
+    | t `Prelude.elem` reservedDRepViews = Right (DRepId t)
+    | otherwise = case parseDrepIdAny t of
+        Right (mScript, raw) -> Right (DRepId (drepIdCip129 (fromMaybe False mScript) raw))
+        Left _ -> Left "invalid_drep_id"
+
+  parseQueryParam :: Text -> Either Text DRepId
+  parseQueryParam = parseUrlPiece
+
+-- | A governance action, canonically @\<proposal_tx_hash_hex\>#\<index\>@.
+--
+-- That form and not the CIP-129 bech32, because it is the form db-sync, cardano-cli and every
+-- explorer print, and because it is readable in a URL. The bech32 is accepted on input.
+newtype GovActionId = GovActionId {unGovActionId :: Text}
+  deriving stock (Show, Eq, Ord, Generic)
+  deriving newtype (FromJSON, ToJSON)
+
+instance ToSchema GovActionId where
+  declareNamedSchema _ = declareNamedSchema (Proxy :: Proxy Text)
+
+instance ToParamSchema GovActionId where
+  toParamSchema _ = toParamSchema (Proxy :: Proxy Text)
+
+instance FromHttpApiData GovActionId where
+  parseUrlPiece :: Text -> Either Text GovActionId
+  parseUrlPiece t = case T.splitOn "#" t of
+    [h, i]
+      | T.length h == 64,
+        T.all isHexDigit h,
+        Just (ix, "") <- parseDecimal i ->
+          Right (GovActionId (h <> "#" <> T.pack (show (ix :: Int))))
+    [_] -> case parseGovActionIdCip129 t of
+      Right (txId, ix) -> Right (GovActionId (txId <> "#" <> T.pack (show ix)))
+      Left _ -> Left "invalid_gov_action_id"
+    _ -> Left "invalid_gov_action_id"
+    where
+      parseDecimal s = case TRead.decimal s of
+        Right r -> Just r
+        Left _ -> Nothing
+
+  parseQueryParam :: Text -> Either Text GovActionId
+  parseQueryParam = parseUrlPiece
+
+-- | Where on the chain something happened.
+--
+-- @slot@ and @tx_hash@ are 'Nothing' together, for the events that have no transaction: a
+-- governance action's ratification, enactment, expiry and drop all happen at an epoch boundary,
+-- in the ledger, with no transaction to point at. Publishing a slot there would be publishing a
+-- chain point no explorer could resolve.
+data ChainPoint = ChainPoint
+  { chainPointSlot :: Maybe Integer,
+    chainPointEpoch :: Int,
+    chainPointTime :: UTCTime,
+    chainPointTxHash :: Maybe Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "chainPoint", CamelToSnake]] ChainPoint
+
+instance ToSchema ChainPoint where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "chainPoint")
+
+-- | A DRep's registration state, as @palmares.drep@ computes it.
+--
+-- @inactive@ is the one that surprises people: the ledger drops a DRep's voting power after
+-- @drep_activity@ epochs without a vote, so a DRep can be registered, in good standing, and
+-- powerless. @reserved@ is the two ledger options.
+data DRepStatus = DRepActive | DRepInactive | DRepRetired | DRepReserved
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "DRep", CamelToSnake]] DRepStatus
+
+instance ToSchema DRepStatus where
+  declareNamedSchema _ = pure (NamedSchema (Just "DRepStatus") (jsonEnumSchema (Proxy :: Proxy DRepStatus)))
+
+instance ToParamSchema DRepStatus where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData DRepStatus where
+  parseUrlPiece = parseJsonEnumParam "invalid_parameter"
+
+-- | What a DRep certificate did. db-sync encodes this in the deposit column and nowhere else:
+-- positive is a registration, negative a retirement, NULL a metadata update.
+data DRepUpdateKind = UpdateKindRegistered | UpdateKindUpdated | UpdateKindRetired
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "UpdateKind", CamelToSnake]] DRepUpdateKind
+
+instance ToSchema DRepUpdateKind where
+  declareNamedSchema _ = pure (NamedSchema (Just "DRepUpdateKind") (jsonEnumSchema (Proxy :: Proxy DRepUpdateKind)))
+
+instance ToParamSchema DRepUpdateKind where
+  toParamSchema = jsonEnumParamSchema
+
+-- | The seven CIP-1694 governance action types, spelled as db-sync's @govactiontype@ enum does.
+--
+-- @NewCommittee@, not @UpdateCommittee@: the ledger's own constructor name is
+-- @UpdateCommittee@, but db-sync writes @NewCommittee@, and this registry's job is to publish
+-- what the chain index holds rather than to rename it.
+data GovActionType
+  = ParameterChange
+  | HardForkInitiation
+  | TreasuryWithdrawals
+  | NoConfidence
+  | NewCommittee
+  | NewConstitution
+  | InfoAction
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[CamelToSnake]] GovActionType
+
+instance ToSchema GovActionType where
+  declareNamedSchema _ = pure (NamedSchema (Just "GovActionType") (jsonEnumSchema (Proxy :: Proxy GovActionType)))
+
+instance ToParamSchema GovActionType where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData GovActionType where
+  parseUrlPiece = parseJsonEnumParam "invalid_parameter"
+
+-- | A governance action's outcome, as @palmares.gov_action@ computes it.
+--
+-- The arms are ORDERED in the view because the lifecycle columns are not mutually exclusive: an
+-- enacted action carries @ratified_epoch@ too, and most expired actions carry @dropped_epoch@.
+-- State and votability can also disagree — an action with @expired_epoch@ equal to the current
+-- epoch reads as @expired@ while its window is still open — so @palmares.action_window@, not
+-- this value, decides whether a vote is still possible.
+data GovActionState = Proposed | Ratified | Enacted | Expired | Dropped
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[CamelToSnake]] GovActionState
+
+instance ToSchema GovActionState where
+  declareNamedSchema _ = pure (NamedSchema (Just "GovActionState") (jsonEnumSchema (Proxy :: Proxy GovActionState)))
+
+instance ToParamSchema GovActionState where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData GovActionState where
+  parseUrlPiece = parseJsonEnumParam "invalid_parameter"
+
+-- | Who cast a vote.
+--
+-- The one enum where @CamelToSnake@ is wrong: it would produce @d_rep@ and @s_p_o@. The three
+-- strings are written out, once, in the 'ConstructorTagModifier' — the Swagger enum and the
+-- query parser both read them back from 'toJSON'.
+data VoterRole = DRep | SPO | ConstitutionalCommittee
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON
+          '[ ConstructorTagModifier
+               '[ Rename "DRep" "drep",
+                  Rename "SPO" "spo",
+                  Rename "ConstitutionalCommittee" "constitutional_committee"
+                ]
+           ]
+          VoterRole
+
+instance ToSchema VoterRole where
+  declareNamedSchema _ = pure (NamedSchema (Just "VoterRole") (jsonEnumSchema (Proxy :: Proxy VoterRole)))
+
+instance ToParamSchema VoterRole where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData VoterRole where
+  parseUrlPiece = parseJsonEnumParam "invalid_parameter"
+
+-- | A vote, as cast. @abstain@ removes the voter's stake from the question rather than voting
+-- against, which is why @palmares.vote_tally@ keeps it out of the denominator.
+data Vote = Yes | No | Abstain
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[CamelToSnake]] Vote
+
+instance ToSchema Vote where
+  declareNamedSchema _ = pure (NamedSchema (Just "Vote") (jsonEnumSchema (Proxy :: Proxy Vote)))
+
+instance ToParamSchema Vote where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData Vote where
+  parseUrlPiece = parseJsonEnumParam "invalid_parameter"
+
+-- | What a published tally is a tally OF, carried as a field on every tally so it can never be
+-- mistaken for the ledger's ratification arithmetic.
+--
+-- @cast_votes_only@ means yes-power over (yes + no) power of the votes actually cast. The ledger
+-- compares against TOTAL active voting power instead, which includes everyone who did not vote.
+-- The two numbers differ, both are defensible, and only one of them is what we computed.
+-- 'TagSingleConstructors' is load-bearing, not decoration: with one nullary constructor aeson
+-- treats the type as a non-sum and encodes it as @[]@, an empty ARRAY, because
+-- @tagSingleConstructors@ defaults to False. Measured — that is what this type shipped as until a
+-- golden test caught it.
+data TallyBasis = CastVotesOnly
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[TagSingleConstructors, ConstructorTagModifier '[CamelToSnake]] TallyBasis
+
+instance ToSchema TallyBasis where
+  declareNamedSchema _ = pure (NamedSchema (Just "TallyBasis") (jsonEnumSchema (Proxy :: Proxy TallyBasis)))
+
+-- | What became of a metadata anchor, consumed verbatim from @palmares.anchor@.
+--
+-- Seven values, and the last two are the ones that keep the published rationale rate honest:
+-- @inline@ is a @data:@ URI, where the rationale IS the URL and hash verification is vacuous, and
+-- @not_fetched@ means db-sync has not tried yet, which is not the author's failure.
+data AnchorStatus
+  = AnchorValid
+  | AnchorInvalidSchema
+  | AnchorHashMismatch
+  | AnchorOversized
+  | AnchorUnreachable
+  | AnchorInline
+  | AnchorNotFetched
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "Anchor", CamelToSnake]] AnchorStatus
+
+instance ToSchema AnchorStatus where
+  declareNamedSchema _ = pure (NamedSchema (Just "AnchorStatus") (jsonEnumSchema (Proxy :: Proxy AnchorStatus)))
+
+instance ToParamSchema AnchorStatus where
+  toParamSchema = jsonEnumParamSchema
+
+-- | Which feed an activity row came from.
+--
+-- One value in Plan A, because @palmares.activity@ emits exactly one. Attestations arrive as
+-- their own source when Plan B lands, which is a new enum value on an existing field — a minor
+-- Swagger bump, not a rewrite.
+data ActivitySource = SourceGovernance
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON
+          '[TagSingleConstructors, ConstructorTagModifier '[StripPrefix "Source", CamelToSnake]]
+          ActivitySource
+
+instance ToSchema ActivitySource where
+  declareNamedSchema _ = pure (NamedSchema (Just "ActivitySource") (jsonEnumSchema (Proxy :: Proxy ActivitySource)))
+
+instance ToParamSchema ActivitySource where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData ActivitySource where
+  parseUrlPiece = parseJsonEnumParam "invalid_parameter"
+
+-- | The thirteen kinds of thing the governance feed reports, matching
+-- @palmares.activity.event_type@ one for one.
+--
+-- Two of them are unreachable on preprod — no committee has ever resigned and no treasury
+-- withdrawal has ever been enacted there — which is why the thirteen-value assertion lives in a
+-- seeded unit test rather than in a check against live data.
+data ActivityEventType
+  = EvtDrepRegistered
+  | EvtDrepUpdated
+  | EvtDrepRetired
+  | EvtDelegationChanged
+  | EvtVoteCast
+  | EvtGovActionProposed
+  | EvtGovActionRatified
+  | EvtGovActionEnacted
+  | EvtGovActionExpired
+  | EvtGovActionDropped
+  | EvtCommitteeAuthorized
+  | EvtCommitteeResigned
+  | EvtTreasuryWithdrawalEnacted
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "Evt", CamelToSnake]] ActivityEventType
+
+instance ToSchema ActivityEventType where
+  declareNamedSchema _ = pure (NamedSchema (Just "ActivityEventType") (jsonEnumSchema (Proxy :: Proxy ActivityEventType)))
+
+instance ToParamSchema ActivityEventType where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData ActivityEventType where
+  parseUrlPiece = parseJsonEnumParam "invalid_parameter"
+
+-- | The groups @\/search@ returns, one per result group in the response.
+--
+-- @profile@ and @attestation@ exist and serve empty in Plan A: the palette renders six groups,
+-- and a kind a client cannot name is a kind it cannot filter to once Plan B fills it.
+-- @stake_address@ is deliberately absent — the response record has no group for it.
+data SearchKind
+  = SearchDrep
+  | SearchGovAction
+  | SearchSpo
+  | SearchCommitteeMember
+  | SearchProfile
+  | SearchAttestation
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "Search", CamelToSnake]] SearchKind
+
+instance ToSchema SearchKind where
+  declareNamedSchema _ = pure (NamedSchema (Just "SearchKind") (jsonEnumSchema (Proxy :: Proxy SearchKind)))
+
+instance ToParamSchema SearchKind where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData SearchKind where
+  parseUrlPiece = parseJsonEnumParam "invalid_parameter"
+
+-- | A committee member's standing, as @palmares.committee_member@ computes it.
+--
+-- Two values, not Koios's four. Our view derives the status from
+-- @committee_de_registration@ alone, and expiry is published as @expiration_epoch@ beside it
+-- rather than folded in — a member whose term ends next epoch is still serving today. The
+-- Koios-facing mapping belongs to the parity work, which reads Koios's own value set first.
+data CommitteeMemberStatus = CommitteeActive | CommitteeResigned
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "Committee", CamelToSnake]] CommitteeMemberStatus
+
+instance ToSchema CommitteeMemberStatus where
+  declareNamedSchema _ =
+    pure (NamedSchema (Just "CommitteeMemberStatus") (jsonEnumSchema (Proxy :: Proxy CommitteeMemberStatus)))
+
+instance ToParamSchema CommitteeMemberStatus where
+  toParamSchema = jsonEnumParamSchema

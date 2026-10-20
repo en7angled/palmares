@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 -- | ANSI-colored console output helpers and JSON configuration file/env loaders.
 module Palmares.Utils where
 
@@ -7,7 +9,12 @@ import qualified Data.Aeson.Types as AesonTypes
 import Data.ByteString.Char8 qualified as BS8
 import Data.ByteString.Lazy.Char8 qualified as BL8
 import Data.List.Extra (dropPrefix)
+import Data.Proxy (Proxy)
+import Data.Swagger (ParamSchema, Schema, SwaggerType (SwaggerString), enum_, paramSchema, type_)
 import Data.Swagger.SchemaOptions (SchemaOptions, fromAesonOptions)
+import Data.Text (Text)
+import Data.Text qualified as T
+import Control.Lens ((&), (.~), (?~))
 import System.Directory.Extra
 import System.Environment
 import System.Exit (die)
@@ -81,3 +88,31 @@ mkStripPrefixSchemaOptions prefix =
     AesonTypes.defaultOptions
       { AesonTypes.fieldLabelModifier = AesonTypes.camelTo2 '_' . dropPrefix prefix
       }
+
+-- | A string 'ParamSchema' whose @enum_@ is the values' own JSON tags.
+--
+-- Swagger's generic derivation would print the Haskell constructor names, which for a
+-- @ConstructorTagModifier@-carrying enum are not what goes on the wire. Reading the tags back out
+-- of 'toJSON' keeps the wire strings in ONE place — the @ToJSON@ instance — so a documented
+-- @enum@ cannot drift from the values the server actually accepts.
+jsonEnumParamSchema :: forall a t. (ToJSON a, Enum a, Bounded a) => Proxy a -> ParamSchema t
+jsonEnumParamSchema _ =
+  mempty
+    & type_ ?~ SwaggerString
+    & enum_ ?~ fmap toJSON ([minBound .. maxBound] :: [a])
+
+-- | The same enum as a 'Schema', for 'Data.Swagger.ToSchema' instances.
+jsonEnumSchema :: (ToJSON a, Enum a, Bounded a) => Proxy a -> Schema
+jsonEnumSchema p = mempty & paramSchema .~ jsonEnumParamSchema p
+
+-- | Parse a query parameter by matching the value's own JSON tag, for the same reason.
+--
+-- The error string is the caller's, because it becomes an @ApiError@ code: the parameter's own
+-- name is what tells a client which one it got wrong.
+parseJsonEnumParam :: forall a. (ToJSON a, Enum a, Bounded a) => Text -> Text -> Either Text a
+parseJsonEnumParam err t =
+  maybe (Left err) Right (lookup t [(tag v, v) | v <- [minBound .. maxBound] :: [a]])
+  where
+    tag v = case toJSON v of
+      Aeson.String s -> s
+      other -> T.pack (BL8.unpack (Aeson.encode other))

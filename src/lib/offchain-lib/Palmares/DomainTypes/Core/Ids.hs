@@ -25,6 +25,7 @@ module Palmares.DomainTypes.Core.Ids
     ccHotIdCip129,
     ccColdIdCip129,
     govActionIdCip129,
+    parseGovActionIdCip129,
     parseDrepIdAny,
   )
 where
@@ -102,3 +103,22 @@ parseDrepIdAny t = case Bech32.decode t of
   _ -> invalid
   where
     invalid = Left "invalid_drep_id"
+
+-- | Decode a CIP-129 governance action id back to its hex transaction id and index.
+--
+-- The inverse of 'govActionIdCip129'. The length check is the whole validation: the payload is a
+-- 32-byte transaction id followed by a single index byte, with no header byte to disambiguate, so
+-- a payload of any other length is not a governance action id whatever its HRP says.
+--
+-- The index is one byte because the ledger\'s @GovActionIx@ is a @Word16@ in the CDDL but CIP-129
+-- fixes the encoding at one byte; a transaction with more than 256 proposals could not be
+-- addressed either way, and none exists.
+parseGovActionIdCip129 :: Text -> Either Text (Text, Word8)
+parseGovActionIdCip129 t = case Bech32.decode t of
+  Right (hrp, dp)
+    | Bech32.humanReadablePartToText hrp == "gov_action",
+      Just bs <- Bech32.dataPartToBytes dp,
+      BS.length bs == 33,
+      Just (txId, ix) <- BS.unsnoc bs ->
+        Right (TE.decodeUtf8 (B16.encode txId), ix)
+  _ -> Left "invalid_gov_action_id"

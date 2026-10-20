@@ -11,7 +11,11 @@ import Palmares.Constants (appVersion)
 import Control.Lens hiding (Context)
 import Data.Swagger
 import Data.Text hiding (length, map)
-import Palmares.DomainTypes.Core.Types
+-- The Belt System's PascalCase ActivityEventType (ProfileCreated | AchievementAwarded |
+-- AchievementAccepted) still lives in Transfer.OrderBy and still backs the inherited /activity
+-- feed. Palmares.DomainTypes.Core.Types now exports the snake_case GOVERNANCE one of the same
+-- name, so the inherited name is hidden here until T-API-15 replaces that feed and deletes it.
+import Palmares.DomainTypes.Core.Types hiding (ActivityEventType)
 import Palmares.DomainTypes.Transfer.Types
 import GeniusYield.Imports
 import GeniusYield.Types hiding (description, title)

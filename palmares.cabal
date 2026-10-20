@@ -439,6 +439,7 @@ test-suite test
     UnitTests.ChainSyncReplay
   --   UnitTests.Cleanup
     UnitTests.Conversions
+    UnitTests.GovDto
     UnitTests.GovIds
     UnitTests.MetricCatalog
     UnitTests.MetricDoc

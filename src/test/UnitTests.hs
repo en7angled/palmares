@@ -9,6 +9,7 @@ import UnitTests.Anchor qualified as Anchor
 import UnitTests.ApiHardening (apiHardeningTests)
 import UnitTests.ChainSyncReplay (chainSyncReplayTests)
 import UnitTests.Conversions (conversionsTests)
+import UnitTests.GovDto (govDtoTests)
 import UnitTests.GovIds (govIdsTests)
 import UnitTests.MetricCatalog qualified as MetricCatalog
 import UnitTests.MetricDoc qualified as MetricDoc
@@ -27,6 +28,7 @@ unitTests =
       apiHardeningTests,
       chainSyncReplayTests,
       conversionsTests,
+      govDtoTests,
       govIdsTests,
       MetricCatalog.tests,
       MetricDoc.tests,

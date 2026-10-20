@@ -41,12 +41,16 @@ module Palmares.DomainTypes.Transfer.QueryResponses
     topOrganizationResponse,
     ActivityEventDetails (..),
     ActivityEventResponse (..),
+    SyncStatus (..),
+    EpochParamsSummary (..),
+    StatusResponse (..),
   )
 where
 
 import Data.Swagger (ToSchema (..), genericDeclareNamedSchema)
 import Data.Swagger.Internal.Schema ()
 import Data.Text (Text)
+import Data.Time (UTCTime)
 import Deriving.Aeson
 import Palmares.DomainTypes.Core.Types qualified as Core
 import Palmares.DomainTypes.Transfer.OrderBy (ActivityEventType (..))
@@ -379,3 +383,81 @@ instance ToSchema ActivityEventResponse where
 -- Today mirrors @image_uri@; may later resolve cached or CDN URLs.
 deriveThumbnailUri :: Text -> Text
 deriveThumbnailUri = id
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * Governance service status
+
+--
+-- The freshness contract. Every one of these fields exists so a reader can tell "the chain says
+-- nothing happened" from "our index has not caught up yet" — a registry that cannot distinguish
+-- those two publishes an absence as a fact.
+
+-- | How far behind the chain our index is.
+data SyncStatus = SyncStatus
+  { syncEpoch :: Int,
+    syncSlot :: Integer,
+    syncBlockTime :: UTCTime,
+    -- | Seconds between the tip block's time and now. Pre-cast in @palmares.sync_state@ because
+    -- it is the one value there that is arithmetic rather than a column.
+    syncLagSeconds :: Int,
+    -- | The probe's verdict, so a client sees the same answer @\/ready@ gave without a second
+    -- request and without reimplementing the thresholds.
+    syncIsReady :: Bool,
+    -- | What produced these numbers. A constant today, and published anyway: when a second
+    -- indexer exists, a consumer must be able to tell which one answered.
+    syncSource :: Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "sync", CamelToSnake]] SyncStatus
+
+instance ToSchema SyncStatus where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "sync")
+
+-- | The protocol parameters a governance client needs to interpret a tally.
+--
+-- Echoed rather than applied: the API publishes the thresholds and the numbers, and a reader
+-- checks our arithmetic. A tally without the threshold it was measured against is a number
+-- nobody can audit.
+--
+-- The threshold lists are @(name, value)@ pairs rather than a record, because the set is
+-- protocol-version dependent — a hard fork adds a parameter group — and a record would turn that
+-- into a breaking schema change. The names are db-sync's own column names, so a reader can look
+-- any of them up in @palmares.thresholds@.
+data EpochParamsSummary = EpochParamsSummary
+  { epochParamsEpoch :: Int,
+    -- | The LIFETIME, not the voting window: the ledger sets
+    -- @expiration = proposed_epoch + lifetime + 1@, so this reads 6 on preprod while the observed
+    -- delta on all 131 actions is 7. Anything that needs the last votable epoch reads
+    -- @palmares.action_window@; this is the parameter, published as the parameter.
+    epochParamsGovActionLifetime :: Int,
+    epochParamsGovActionDeposit :: Integer,
+    epochParamsDrepDeposit :: Integer,
+    epochParamsDrepActivity :: Int,
+    epochParamsCommitteeMinSize :: Int,
+    epochParamsCommitteeMaxTermLength :: Int,
+    epochParamsDrepThresholds :: [(Text, Double)],
+    epochParamsPoolThresholds :: [(Text, Double)]
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "epochParams", CamelToSnake]] EpochParamsSummary
+
+instance ToSchema EpochParamsSummary where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "epochParams")
+
+-- | @GET \/status@: what this service is, how fresh it is, and the parameters its numbers mean
+-- something against.
+data StatusResponse = StatusResponse
+  { -- | The network this instance serves, from configuration, and compared against
+    -- @meta.network_name@ by @\/ready@. A registry pointed at the wrong network would answer
+    -- every question confidently and wrongly.
+    statusNetwork :: Text,
+    statusGovernance :: SyncStatus,
+    statusEpochParams :: EpochParamsSummary
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "status", CamelToSnake]] StatusResponse
+
+instance ToSchema StatusResponse where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "status")

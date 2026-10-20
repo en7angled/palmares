@@ -1,0 +1,259 @@
+{
+    "definitions": {
+        "EpochParamsSummary": {
+            "description": "The protocol parameters a client needs to audit a published tally. Threshold lists are (name, value) pairs under db-sync's own column names, so any of them can be looked up in palmares.thresholds. `gov_action_lifetime` is the parameter, not the voting window: the ledger sets expiration = proposed_epoch + lifetime + 1.",
+            "properties": {
+                "committee_max_term_length": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "committee_min_size": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "drep_activity": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "drep_deposit": {
+                    "type": "integer"
+                },
+                "drep_thresholds": {
+                    "items": {
+                        "items": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "format": "double",
+                                "type": "number"
+                            }
+                        ],
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                    },
+                    "type": "array"
+                },
+                "epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "gov_action_deposit": {
+                    "type": "integer"
+                },
+                "gov_action_lifetime": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "pool_thresholds": {
+                    "items": {
+                        "items": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "format": "double",
+                                "type": "number"
+                            }
+                        ],
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                    },
+                    "type": "array"
+                }
+            },
+            "required": [
+                "epoch",
+                "gov_action_lifetime",
+                "gov_action_deposit",
+                "drep_deposit",
+                "drep_activity",
+                "committee_min_size",
+                "committee_max_term_length",
+                "drep_thresholds",
+                "pool_thresholds"
+            ],
+            "type": "object"
+        },
+        "ServiceProbeStatus": {
+            "properties": {
+                "service": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "status",
+                "service",
+                "version",
+                "timestamp"
+            ],
+            "type": "object"
+        },
+        "StatusResponse": {
+            "description": "Service identity, chain freshness and protocol parameters in one request.",
+            "properties": {
+                "epoch_params": {
+                    "$ref": "#/definitions/EpochParamsSummary"
+                },
+                "governance": {
+                    "$ref": "#/definitions/SyncStatus"
+                },
+                "network": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "network",
+                "governance",
+                "epoch_params"
+            ],
+            "type": "object"
+        },
+        "SyncStatus": {
+            "description": "How far behind the chain this index is. `lag_seconds` is measured from the tip block's time; `is_ready` is /ready's own verdict.",
+            "properties": {
+                "block_time": {
+                    "$ref": "#/definitions/UTCTime"
+                },
+                "epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "is_ready": {
+                    "type": "boolean"
+                },
+                "lag_seconds": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "slot": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "epoch",
+                "slot",
+                "block_time",
+                "lag_seconds",
+                "is_ready",
+                "source"
+            ],
+            "type": "object"
+        },
+        "UTCTime": {
+            "example": "2016-07-22T00:00:00Z",
+            "format": "yyyy-mm-ddThh:MM:ssZ",
+            "type": "string"
+        }
+    },
+    "info": {
+        "description": "Read-only queries over the Cardano governance record: DReps, governance actions, votes, delegations, the constitutional committee and treasury withdrawals. Every row comes from a view over cardano-db-sync — there is no projection table and no second derivation — and every published metric carries the id of the formula that produced it, resolvable at /metrics/formulas.",
+        "license": {
+            "name": "Apache-2.0"
+        },
+        "title": "Palmares Query API",
+        "version": "0.1.0"
+    },
+    "paths": {
+        "/health": {
+            "get": {
+                "description": "Returns the health status of the service",
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/ServiceProbeStatus"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "Health Check"
+            }
+        },
+        "/ready": {
+            "get": {
+                "description": "Returns the readiness status of the service",
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/ServiceProbeStatus"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "Readiness Check"
+            }
+        },
+        "/status": {
+            "get": {
+                "description": "What this instance serves, how far behind the chain its index is, and the protocol parameters its published numbers mean something against. `governance.is_ready` is the same verdict /ready gives, so a client needs one request rather than two that can disagree.",
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "Service and chain status"
+            }
+        }
+    },
+    "swagger": "2.0"
+}

@@ -302,14 +302,17 @@ executable query-api
   hs-source-dirs: src/exe/query-api
   ghc-options:    -threaded -rtsopts -with-rtsopts=-T -with-rtsopts=-N -O2
 
+  -- The inherited profile/attestation query modules are comment-prefixed, not deleted: they
+  -- served the Belt System's projections, and Plan B rebuilds the attestation read surface over
+  -- the attestation schema rather than over those tables. Uncommenting one is how it re-lands.
   other-modules:
   --   Metrics.Catalog
-    Query.Aggregates
+  --   Query.Aggregates
     Query.Common
-  --   Query.Gov
+    Query.Gov
   --   Query.Metrics
-    Query.Pages
-    Query.Projected
+  --   Query.Pages
+  --   Query.Projected
     Query.Refresh
     Query.ServiceStatus
     Query.Views
@@ -318,16 +321,18 @@ executable query-api
 
   build-depends:
     , offchain-lib
-    , onchain-lib
     , webapi-lib
 
+  -- No atlas-cardano and no plutus-ledger-api: this service reads `palmares` views over db-sync
+  -- and never queries the chain (D-1), so it needs no provider and no on-chain types. That is
+  -- also why it boots with nothing but a Postgres DSN.
   build-depends:
     , aeson
     , aeson-pretty
     , bytestring             ^>=0.11.5
-    , containers
-    , esqueleto
+    , deriving-aeson
     , file-embed
+    , http-types
     , lens                   ^>=5.2.3
     , monad-logger
     , mtl
@@ -337,16 +342,12 @@ executable query-api
     , servant-server
     , servant-swagger
     , servant-swagger-ui
+    , stm
     , swagger2
     , text
     , time
     , wai
     , warp
-
-  --- Cardano specific dependencies
-  build-depends:
-    , atlas-cardano
-    , plutus-ledger-api
 
 executable interaction-api
   import:         common-options
@@ -431,6 +432,7 @@ test-suite test
   --   PropertyTests
   --   Test.Fixtures
     Query.Common
+    Query.Gov
     Query.Refresh
     Query.Views
     Test.Helpers
@@ -477,10 +479,12 @@ test-suite test
     , http-types
     , monad-logger
     , mtl
+    , deriving-aeson
     , persistent
     , persistent-postgresql
     , persistent-sqlite
     , servant-server
+    , stm
     , tasty
     , tasty-hunit
     , time

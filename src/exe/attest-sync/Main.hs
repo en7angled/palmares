@@ -42,6 +42,7 @@ import Palmares.TxBuilding.Context
 import Palmares.Utils (decodeConfigEnvOrFile)
 import Palmares.WebAPI.CORS (getCorsConfigFromEnv)
 import Palmares.WebAPI.Utils
+import System.IO (BufferMode (LineBuffering), hSetBuffering, stdout)
 
 defaultConnStr :: String
 defaultConnStr = "host=localhost user=postgres password=postgres dbname=chainsync port=5432"
@@ -56,6 +57,11 @@ redactConnStr s =
 
 main :: IO ()
 main = do
+  -- Line-buffer stdout: GHC block-buffers it when it is not a TTY, which is the case under
+  -- Docker and Kubernetes, so boot lines would sit in a buffer while the service already serves.
+  -- Measured on query-api, fixed in all three servers at once.
+  hSetBuffering stdout LineBuffering
+
   port <- getPortFromEnvOrDefault 8084
   corsCfg <- getCorsConfigFromEnv
 

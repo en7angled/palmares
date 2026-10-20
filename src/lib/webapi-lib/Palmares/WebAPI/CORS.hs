@@ -43,6 +43,20 @@ getCorsConfigFromEnv = do
         allowCredentials = False
       }
 
+-- | The freshness headers every response carries, named here so the browser can read them.
+--
+-- A response header is invisible to @fetch()@ unless it is in @Access-Control-Expose-Headers@.
+-- Without this list the server would send the chain point on every cross-origin response and the
+-- staleness chip would silently show nothing — a failure with no error anywhere to find it by.
+freshnessExposedHeaders :: [HttpTypes.HeaderName]
+freshnessExposedHeaders =
+  [ "X-Chain-Epoch",
+    "X-Chain-Slot",
+    "X-Chain-Block-Time",
+    "X-Data-Lag-Seconds",
+    "X-Data-Source"
+  ]
+
 -- | Policy: reflect the request 'Origin' only if it is in the allowlist,
 -- otherwise emit no CORS headers.
 corsPolicy :: CorsConfig -> Request -> Maybe CorsResourcePolicy
@@ -55,7 +69,7 @@ corsPolicy cfg req =
               { corsOrigins = Just ([o], allowCredentials cfg),
                 corsMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"],
                 corsRequestHeaders = simpleHeaders <> [HttpTypes.hAuthorization],
-                corsExposedHeaders = Just $ simpleHeaders <> [HttpTypes.hAuthorization],
+                corsExposedHeaders = Just $ simpleHeaders <> [HttpTypes.hAuthorization] <> freshnessExposedHeaders,
                 corsVaryOrigin = True,
                 corsRequireOrigin = False,
                 corsIgnoreFailures = False,

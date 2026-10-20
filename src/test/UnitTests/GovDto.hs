@@ -16,8 +16,10 @@ module UnitTests.GovDto (govDtoTests) where
 import Data.Aeson (decode, encode, toJSON)
 import Data.Text (Text)
 import Data.Time (UTCTime)
+import Data.Aeson (eitherDecode)
 import Network.HTTP.Types.Header (hContentType)
 import Palmares.DomainTypes.Core.Types
+import Palmares.DomainTypes.Transfer.QueryResponses (SyncStatus (..))
 import Palmares.WebAPI.Envelope
   ( ApiError (..),
     Cursor (..),
@@ -26,6 +28,7 @@ import Palmares.WebAPI.Envelope
     errorCodeToHttpStatus,
   )
 import Palmares.WebAPI.Errors (genericErrorMessage, mkServantErr)
+import Query.Gov (ReadyInputs (..), amberLagDefault, readyMaxLagDefault, readyVerdict)
 import Servant (errBody, errHTTPCode, parseUrlPiece)
 import Servant.Server.Internal.ServerError (errHeaders)
 import Test.Tasty
@@ -225,6 +228,36 @@ govDtoTests =
       -- untested rather than failing.
       testCase "the status map covers every ErrorCode" $
         length ([minBound .. maxBound] :: [ErrorCode]) @?= 24,
+      -- The decode boundary: this exact object is what Query.Gov's projection builds, so a
+      -- renamed view column fails here rather than silently reaching a client as null.
+      testCase "queryJson's row shape decodes into SyncStatus" $
+        eitherDecode
+          "{\"epoch\":320,\"slot\":84233900,\"block_time\":\"2026-10-19T08:14:02+00:00\",\
+          \\"lag_seconds\":42,\"is_ready\":true,\"source\":\"cardano-db-sync\"}"
+          @?= Right (SyncStatus 320 84233900 (read "2026-10-19 08:14:02 UTC") 42 True "cardano-db-sync"),
+      -- Each of these is a way the service can be running perfectly and still unable to answer
+      -- honestly. Reproducing "db-sync is 301 seconds behind" against a live stack is not
+      -- something a test suite can arrange, which is why the verdict is a pure function.
+      testCase "readiness verdict: all four checks, 300 s red" $
+        map
+          (readyVerdict readyMaxLagDefault)
+          [ ReadyInputs True 42 320 320 "preprod" "preprod",
+            ReadyInputs True 301 320 320 "preprod" "preprod",
+            -- the ledger produces drep_distr one epoch behind, so 319 is normal and 318 is not
+            ReadyInputs True 42 320 318 "preprod" "preprod",
+            ReadyInputs True 42 320 319 "preprod" "preprod",
+            ReadyInputs True 42 320 320 "mainnet" "preprod",
+            ReadyInputs False 42 320 320 "preprod" "preprod"
+          ]
+          @?= [Nothing, Just IndexerBehind, Just IndexerBehind, Nothing, Just NotReady, Just DbUnavailable],
+      -- PALMARES_READY_MAX_LAG_SECONDS has to be able to change the verdict, or it is decorative.
+      testCase "the configured ceiling overrides the default in both directions" $
+        ( readyVerdict 30 (ReadyInputs True 42 320 320 "preprod" "preprod"),
+          readyVerdict 600 (ReadyInputs True 301 320 320 "preprod" "preprod")
+        )
+          @?= (Just IndexerBehind, Nothing),
+      testCase "amber is 120 s and is a UI band, never the probe" $
+        (readyMaxLagDefault, amberLagDefault) @?= (300, 120),
       testCase "mkServantErr sets a JSON content type and an ApiError body" $
         let e = mkServantErr 503 IndexerBehind
          in (errHTTPCode e, lookup hContentType (errHeaders e), errBody e)

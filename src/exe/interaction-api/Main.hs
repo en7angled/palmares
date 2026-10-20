@@ -18,9 +18,15 @@ import Palmares.Utils (decodeConfigEnvOrFile)
 import Palmares.WebAPI.Auth (getBasicAuthFromEnv)
 import Palmares.WebAPI.CORS (getCorsConfigFromEnv)
 import Palmares.WebAPI.Utils (getPortFromEnvOrDefault)
+import System.IO (BufferMode (LineBuffering), hSetBuffering, stdout)
 
 main :: IO ()
 main = do
+  -- Line-buffer stdout: GHC block-buffers it when it is not a TTY, which is the case under
+  -- Docker and Kubernetes, so boot lines would sit in a buffer while the service already serves.
+  -- Measured on query-api, fixed in all three servers at once.
+  hSetBuffering stdout LineBuffering
+
   putStrLn "Writing Swagger file ..."
   BL8.writeFile "docs/generated/swagger/interaction-swagger-api.json" (encodePretty apiSwagger)
 

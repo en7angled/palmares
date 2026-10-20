@@ -1,43 +1,46 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 
 -- | Application monad and context for the query API server.
--- Wraps a 'ReaderT' over Servant's 'Handler' with access to auth, provider,
--- database pool, and optional deployed-script references.
+--
+-- The context is deliberately small: a connection pool, the cached chain freshness, and the two
+-- numbers @\/ready@ decides on. There is __no Cardano provider__ and __no deployed-script
+-- context__, because this service never queries the chain — D-1 says every row comes from a
+-- @palmares@ view or the one matview, and the inherited live-query handlers that needed a
+-- provider are gone. The consequence is worth stating: query-api boots with nothing but a
+-- Postgres DSN, so it needs no Maestro token and no @config_atlas.json@, which is both one less
+-- secret on a public read service and what makes the smoke script runnable anywhere.
+--
+-- There is also __no auth context__. query-api is public (rate limiting is the BFF's job), and a
+-- configured-but-unenforced credential is worse than none: it reads as protection.
 module QueryAppMonad where
 
-import Palmares.Constants qualified as Constants
+import Control.Concurrent.STM (TVar)
+import Control.Exception (SomeException, try)
 import Control.Monad.Reader
-import Data.Aeson (encode, object, (.=))
-import Data.Text hiding (elem, reverse, take)
-import Data.Time
-import Database.Persist.Sql (ConnectionPool, SqlPersistT, Single (..), rawSql, runSqlPool)
-import Control.Exception (SomeException, displayException, try)
-import Data.Typeable (cast)
-import GeniusYield.TxBuilder.Class (slotConfig)
-import GeniusYield.TxBuilder.Errors (GYTxMonadException (GYApplicationException))
-import GeniusYield.Types.SlotConfig (GYSlotConfig)
+import Data.Text (Text)
+import Database.Persist.Sql (ConnectionPool, SqlPersistT)
+import Palmares.WebAPI.Envelope (ErrorCode (..), errorCodeToHttpStatus)
+import Palmares.WebAPI.Errors (mkServantErr)
+import Query.Gov (Freshness, runGovRead)
 import Servant
--- import System.Directory.Extra
-import Palmares.TxBuilding.Context
-import Palmares.TxBuilding.Exceptions (TxBuildingException, txBuildingExceptionCode, txBuildingExceptionToHttpStatus)
-import Palmares.WebAPI.Auth (AuthContext)
-import Palmares.WebAPI.Envelope (ErrorCode (..))
-import Palmares.WebAPI.Errors (mkServantErr, mkServantErrBody)
-import Palmares.WebAPI.ServiceProbe (ServiceProbeStatus (..))
-
-------------------------------------------------------------------------------------------------
-------------------------------------------------------------------------------------------------
-------------------------------------------------------------------------------------------------
+import System.IO (hPutStrLn, stderr)
 
 -- | Shared environment for all query-API request handlers.
 data QueryAppContext = QueryAppContext
-  { authContext :: AuthContext, -- ^ Basic-auth credentials for protected routes
-    providerContext :: ProviderCtx, -- ^ Cardano provider for live on-chain queries
-    pgPool :: ConnectionPool, -- ^ PostgreSQL connection pool for projected data
-    deployedScriptsCtx :: Maybe DeployedScriptsContext -- ^ Deployed validator script references (when available)
+  { -- | The db-sync database. Read-only in effect: every statement is a @SELECT@ over @palmares@.
+    pgPool :: ConnectionPool,
+    -- | The last successful poll of @palmares.sync_state@. One poller feeds @\/ready@, @\/status@
+    -- and the response headers, so the service has exactly one answer to \"how fresh are we\" and
+    -- the hot path adds no query.
+    freshness :: TVar (Maybe Freshness),
+    -- | @PALMARES_NETWORK_NAME@. Compared against @meta.network_name@ by @\/ready@: an instance
+    -- pointed at the wrong network would answer every question confidently and wrongly.
+    expectedNetwork :: Text,
+    -- | @PALMARES_READY_MAX_LAG_SECONDS@: the lag at which @\/ready@ turns red.
+    readyMaxLag :: Int,
+    -- | @PALMARES_AMBER_LAG_SECONDS@: the lag at which a UI should warn. A band, never the probe.
+    amberLag :: Int
   }
 
 newtype QueryAppMonad a = QueryAppMonad {unAppMonad :: ReaderT QueryAppContext Servant.Handler a}
@@ -58,76 +61,22 @@ instance MonadReader QueryAppContext QueryAppMonad where
   local :: (QueryAppContext -> QueryAppContext) -> QueryAppMonad a -> QueryAppMonad a
   local f (QueryAppMonad app) = QueryAppMonad (local f app)
 
--- | The chain's slot configuration, fetched once per request. Row-level time conversion is
--- pure ('Palmares.TxBuilding.Utils.slotToUTC'), so a handler that renders a page of rows must
--- fetch this once and map, never call the monadic 'slotToBeginTime' per row.
-requestSlotConfig :: QueryAppMonad GYSlotConfig
-requestSlotConfig = asks providerContext >>= \ctx -> liftIO (runQuery ctx slotConfig)
+-- | Serve an 'ErrorCode' with the status it maps to.
+throwApi :: ErrorCode -> QueryAppMonad a
+throwApi code = QueryAppMonad (throwError (mkServantErr (errorCodeToHttpStatus code) code))
 
--- | Build a 'ServerError' for a 'TxBuildingException' with the same @{"code", "message"}@ body
--- the interaction API serves, so a client parses one error shape across both services.
+-- | Run a governance read in one 'runGovRead' transaction, mapping a database failure to 503.
 --
--- Duplicated from interaction-api rather than shared: @webapi-lib@ cannot see
--- @TxBuildingException@ (it keeps no project-library dependency) and @offchain-lib@ must not
--- construct HTTP responses, so the two executables each own three lines instead of a library
--- owning a dependency it should not have.
-txBuildingServantErr :: Int -> TxBuildingException -> ServerError
-txBuildingServantErr status txEx =
-  mkServantErrBody status $
-    encode $
-      object ["code" .= txBuildingExceptionCode txEx, "message" .= displayException txEx]
-
--- | Run an IO action, mapping a bare 'TxBuildingException' to its HTTP status.
--- Query handlers throw @TxBuildingException@ directly (no @GYApplicationException@
--- wrapper), so this catches the concrete type — it must NOT copy the
--- interaction-api handler's @GYApplicationException@/@cast@ shape.
-runWithQueryErrorHandling :: IO a -> QueryAppMonad a
-runWithQueryErrorHandling action = QueryAppMonad $ do
-  res <- liftIO $ try action
-  case res of
-    Left (txEx :: TxBuildingException) -> do
-      let status = txBuildingExceptionToHttpStatus txEx
-      liftIO $ putStrLn $ "TxBuildingException (" <> show status <> "): " <> displayException txEx
-      throwError $ txBuildingServantErr status txEx
-    Right ok -> pure ok
-
--- | Run an IO action, mapping a 'TxBuildingException' that is wrapped in a
--- 'GYApplicationException' to its HTTP status. The live query backend runs inside
--- @GYTxQueryMonadIO@, whose @throwError = ioToQueryMonad . throwIO@ wraps thrown
--- @TxBuildingException@s in @GYApplicationException@ — so the bare-type
--- 'runWithQueryErrorHandling' cannot catch them. This mirrors interaction-api's
--- @runWithTxErrorHandling@ catch shape. Any other exception maps to a sanitized 500.
-runWithQueryErrorHandlingWrapped :: IO a -> QueryAppMonad a
-runWithQueryErrorHandlingWrapped action = QueryAppMonad $ do
-  res <- liftIO $ try @GYTxMonadException action
-  case res of
-    Left ex ->
-      case ex of
-        GYApplicationException appE
-          | Just txEx <- cast appE -> do
-              let status = txBuildingExceptionToHttpStatus txEx
-              liftIO $ putStrLn $ "TxBuildingException (" <> show status <> "): " <> displayException txEx
-              throwError $ txBuildingServantErr status txEx
-        _ -> do
-          liftIO $ putStrLn $ "Unexpected exception: " <> show ex
-          throwError $ mkServantErr 500 InternalError
-    Right ok -> pure ok
-
--- | Health-check probe: verify the projection database is reachable.
-verifyProjectionDbConnection :: QueryAppMonad (ServiceProbeStatus Text)
-verifyProjectionDbConnection = QueryAppMonad $ do
-  QueryAppContext {..} <- ask
-  now <- liftIO getCurrentTime
-  e <- liftIO (try (runSqlPool (rawSql "SELECT 1" [] :: SqlPersistT IO [Single Int]) pgPool) :: IO (Either SomeException [Single Int]))
-  case e of
-    Right _ ->
-      return
-        ServiceProbeStatus
-          { status = "ready" :: Text,
-            service = "query-api",
-            version = pack Constants.appVersion,
-            timestamp = pack $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" now
-          }
-    Left err -> do
-      liftIO $ putStrLn $ "Projection DB not ready: " <> show err
-      throwError $ mkServantErr 503 DbUnavailable
+-- 503 and not 500, because a failed read here is almost always the database being unreachable or
+-- a view missing after a db-sync migration — conditions a client should retry and a load balancer
+-- should route around, not a bug in the request. The exception text goes to stderr and never to
+-- the client: it names tables, columns and sometimes the DSN.
+runRead :: SqlPersistT IO a -> QueryAppMonad a
+runRead act = do
+  pool <- asks pgPool
+  r <- liftIO (try (runGovRead pool act))
+  case r of
+    Right a -> pure a
+    Left (e :: SomeException) -> do
+      liftIO (hPutStrLn stderr ("[query] read failed: " <> show e))
+      throwApi DbUnavailable

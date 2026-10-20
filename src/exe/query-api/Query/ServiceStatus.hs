@@ -1,77 +1,112 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 
--- | Shared health, readiness, and protocol status for probe routes and §12.5 home hub.
+-- | The three endpoints that answer \"can this service be trusted right now\".
+--
+-- They are three questions, not one, and conflating them is how a registry ends up serving stale
+-- data confidently:
+--
+--   * @\/health@ — is the process alive. Touches nothing, so a slow database cannot get the pod
+--     restarted.
+--   * @\/ready@ — should it receive traffic. Four checks, any of which makes an answer
+--     misleading rather than wrong.
+--   * @\/status@ — the numbers behind that verdict, plus the protocol parameters a client needs
+--     to audit any tally we publish.
 module Query.ServiceStatus
   ( getHealthProbe,
     getReadyProbe,
-    getProtocolStatusQuery,
+    getStatusQuery,
   )
 where
 
-import Control.Exception (throwIO)
-import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad.Reader (asks, runReaderT)
+import Control.Concurrent.STM (readTVarIO)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Reader (asks)
 import Data.Text (Text, pack)
-import Palmares.DomainTypes.Transfer.Types (FeeConfigDTO (..), ProtocolStatus (..), ScriptHashesDTO (..))
-import GeniusYield.TxBuilder (addressFromPlutus')
-import GeniusYield.Types (addressToText)
-import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
-import QueryAppMonad (QueryAppMonad (..), QueryAppContext (..), runWithQueryErrorHandling, runWithQueryErrorHandlingWrapped, verifyProjectionDbConnection)
-import Palmares.TxBuilding.Context (DeployedScriptsContext (..), runQuery)
-import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
-import Palmares.TxBuilding.Lookups (queryOracleParams)
-import Palmares.Utils (stringFromJSON)
 import Palmares.Constants (appVersion)
-import Palmares.WebAPI.ServiceProbe (ServiceProbeStatus, alwaysHealthy)
+import Palmares.DomainTypes.Transfer.QueryResponses (StatusResponse (..))
+import Palmares.WebAPI.Envelope (ErrorCode (..))
+import Palmares.WebAPI.ServiceProbe (ServiceProbeStatus, alwaysHealthy, mkProbeStatus)
+import Query.Gov
+  ( Freshness (..),
+    ReadyInputs (..),
+    epochParamsQuery,
+    readyVerdict,
+    syncStatusOf,
+  )
+import QueryAppMonad (QueryAppContext (..), QueryAppMonad, runRead, throwApi)
 
-getHealthProbe :: (MonadIO m) => m (ServiceProbeStatus Text)
+-- | Liveness. Deliberately stateless.
+getHealthProbe :: QueryAppMonad (ServiceProbeStatus Text)
 getHealthProbe = alwaysHealthy (pack appVersion) "query-api"
 
+-- | Readiness, from the cached freshness. 503 with the failing code, or @ready@.
+--
+-- An empty cache is 'DbUnavailable' rather than a 200: the poll is seeded synchronously at boot,
+-- so an empty cache means every poll since has failed.
 getReadyProbe :: QueryAppMonad (ServiceProbeStatus Text)
-getReadyProbe = verifyProjectionDbConnection
+getReadyProbe = do
+  (maxLag, inputs) <- readyInputs
+  case readyVerdict maxLag inputs of
+    Just code -> throwApi code
+    Nothing -> mkProbeStatus "ready" (pack appVersion) "query-api"
 
-getProtocolStatusQuery :: QueryAppMonad ProtocolStatus
-getProtocolStatusQuery = do
-  mCtx <- asks deployedScriptsCtx
-  case mCtx of
-    Nothing -> runWithQueryErrorHandling $ throwIO OracleNotFound
-    Just dCtx -> do
-      provCtx <- asks providerContext
-      runWithQueryErrorHandlingWrapped $ runQuery provCtx $ do
-        (oracleParams, _, _) <- runReaderT queryOracleParams dCtx
-        -- Convert fee address inside GYTxQueryMonad where addressFromPlutus' is available
-        mFeeAddr <- case OnchainTypes.opFeeConfig oracleParams of
-          Nothing -> return Nothing
-          Just fc -> Just . addressToText <$> addressFromPlutus' (OnchainTypes.fcFeeAddress fc)
-        return $ oracleParamsToProtocolStatus mFeeAddr (scriptHashesFromCtx dCtx) oracleParams
+-- | @GET \/status@: the freshness numbers and the protocol parameters they mean something against.
+--
+-- @is_ready@ is the same verdict @\/ready@ gives, computed from the same inputs, so a client sees
+-- one answer rather than two that can disagree.
+getStatusQuery :: QueryAppMonad StatusResponse
+getStatusQuery = do
+  mf <- currentFreshness
+  case mf of
+    Nothing -> throwApi DbUnavailable
+    Just f -> do
+      (maxLag, inputs) <- readyInputs
+      mParams <- runRead epochParamsQuery
+      case mParams of
+        -- No epoch_param row at all means db-sync has not reached Shelley, or is running without
+        -- the ledger state that writes it. Either way no tally we publish could be audited, which
+        -- is a readiness condition rather than an empty field.
+        Nothing -> throwApi IndexerBehind
+        Just params -> do
+          net <- asks expectedNetwork
+          pure
+            StatusResponse
+              { statusNetwork = net,
+                statusGovernance = syncStatusOf f (readyVerdict maxLag inputs == Nothing),
+                statusEpochParams = params
+              }
 
--- | Extract script hashes from the deployed scripts context as hex text.
-scriptHashesFromCtx :: DeployedScriptsContext -> ScriptHashesDTO
-scriptHashesFromCtx DeployedScriptsContext {..} =
-  ScriptHashesDTO
-    { scriptHashesMintingPolicy = hashToText $ fst mintingPolicyHashAndRef,
-      scriptHashesProfilesValidator = hashToText $ fst profilesValidatorHashAndRef,
-      scriptHashesAchievementsValidator = hashToText $ fst achievementsValidatorHashAndRef,
-      scriptHashesOracleValidator = hashToText $ fst oracleValidatorHashAndRef
-    }
-  where
-    hashToText = pack . stringFromJSON
+currentFreshness :: QueryAppMonad (Maybe Freshness)
+currentFreshness = asks freshness >>= liftIO . readTVarIO
 
--- | Pure conversion from oracle params to protocol status DTO.
--- Fee address is pre-converted to bech32 text by the caller.
-oracleParamsToProtocolStatus :: Maybe Text -> ScriptHashesDTO -> OnchainTypes.OracleParams -> ProtocolStatus
-oracleParamsToProtocolStatus feeAddrText hashes OnchainTypes.OracleParams {..} =
-  ProtocolStatus
-    { protocolStatusOpPaused = opPaused,
-      protocolStatusMinUtxoValue = opMinUTxOValue,
-      protocolStatusFeeConfig = feeConfigToDTO <$> opFeeConfig,
-      protocolStatusScriptHashes = Just hashes
-    }
-  where
-    feeConfigToDTO OnchainTypes.FeeConfig {..} =
-      FeeConfigDTO
-        { feeConfigProfileCreationFee = fcProfileCreationFee,
-          feeConfigAttestationFee = fcAttestationFee,
-          feeConfigFeeAddress = feeAddrText
+-- | Gather the configured lag ceiling and the four readiness inputs.
+--
+-- A missing @drep_distr_epoch@ or @network_name@ counts as failing rather than as unknown: both
+-- are subqueries in @palmares.sync_state@ that go NULL when the table behind them is empty, which
+-- is exactly the \"db-sync is not ready\" condition the probe exists to report. @-1@ and @\"\"@
+-- are chosen so each falls on the failing side of its own check rather than needing a fifth one.
+readyInputs :: QueryAppMonad (Int, ReadyInputs)
+readyInputs = do
+  mf <- currentFreshness
+  net <- asks expectedNetwork
+  maxLag <- asks readyMaxLag
+  pure . (maxLag,) $ case mf of
+    Nothing ->
+      ReadyInputs
+        { readyDbOk = False,
+          readyLagSeconds = 0,
+          readyEpochNo = 0,
+          readyDrepDistrEpoch = 0,
+          readyNetworkName = "",
+          readyExpectedNetwork = net
+        }
+    Just f ->
+      ReadyInputs
+        { readyDbOk = True,
+          readyLagSeconds = freshLagSeconds f,
+          readyEpochNo = freshEpoch f,
+          readyDrepDistrEpoch = maybe (-1) id (freshDrepDistrEpoch f),
+          readyNetworkName = maybe "" id (freshNetworkName f),
+          readyExpectedNetwork = net
         }

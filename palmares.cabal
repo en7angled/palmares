@@ -183,7 +183,7 @@ library offchain-lib
   exposed-modules:
     Palmares.Constants
     Palmares.DomainTypes.Core.Actions
-  --   Palmares.DomainTypes.Core.Ids
+    Palmares.DomainTypes.Core.Ids
     Palmares.DomainTypes.Core.Types
     Palmares.DomainTypes.Transfer.Filters
     Palmares.DomainTypes.Transfer.OrderBy
@@ -205,6 +205,8 @@ library offchain-lib
 
   build-depends:
     , aeson
+    , base16-bytestring
+    , bech32
     , bytestring
     , chainsync-lib
     , containers
@@ -419,6 +421,7 @@ test-suite test
     UnitTests.ChainSyncReplay
   --   UnitTests.Cleanup
     UnitTests.Conversions
+    UnitTests.GovIds
   --   UnitTests.Dispute
   --   UnitTests.Oracle
   --   UnitTests.Profile
@@ -433,6 +436,8 @@ test-suite test
 
   build-depends:
     , aeson
+    , base16-bytestring
+    , bech32
     , bytestring
     , containers
     , extra

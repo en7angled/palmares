@@ -61,6 +61,17 @@ module Query.Gov
     drepSortSpec,
     drepWhere,
     listDReps,
+
+    -- * The DRep profile
+    resolveDRepHex,
+    drepSummaryByIdQuery,
+    drepMetricsQuery,
+    listEpochPower,
+    delegatorStatsQuery,
+    listDelegators,
+    listDRepUpdates,
+    anchorContentQuery,
+    delegatorOrderColumn,
   )
 where
 
@@ -94,12 +105,20 @@ import Palmares.DomainTypes.Core.Types
     GovActionId (..),
   )
 import Palmares.DomainTypes.Transfer.Filters (DRepFilter (..))
-import Palmares.DomainTypes.Transfer.OrderBy (DRepsOrderBy (..), SortOrder)
+import Palmares.DomainTypes.Transfer.OrderBy (DRepsOrderBy (..), DelegatorsOrderBy (..), SortOrder (..))
+import Data.Int (Int64)
 import Palmares.DomainTypes.Transfer.QueryResponses
-  ( DRepSummary,
+  ( AnchorContent,
+    DRepMetrics,
+    DRepSummary,
+    DRepUpdateRow,
+    DelegatorRow,
+    DelegatorStats,
     EpochParamsSummary (..),
+    EpochPowerPoint,
     SyncStatus (..),
   )
+import Palmares.Metrics.Catalog (lookupMetricSql)
 import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.Envelope (ErrorCode (..), Page (..))
 import Query.Common (Limit, Offset, SortSpec (..), likePat, orderClause)
@@ -514,3 +533,284 @@ drepProjection =
   \ m.open_actions_unvoted, \
   \ (m.last_vote_at AT TIME ZONE 'UTC') AS last_vote_at, \
   \ m.as_of_epoch "
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * The DRep profile
+
+-- | Resolve a credential hash to the internal id of the row that IS the DRep.
+--
+-- @ORDER BY (registration_status <> 'never_registered') DESC@ is the whole reason this is not a
+-- plain equality: two preprod hashes exist twice in @drep_hash@, once as a key credential and
+-- once as a script credential, and in both cases one of the pair has no certificate at all. The
+-- registered row is the DRep; the phantom exists only because someone delegated using the
+-- CIP-105 string, which cannot say which kind it meant. See 'Core.drepIdHex'.
+resolveDRepHex :: Text -> SqlPersistT IO (Maybe Int64)
+resolveDRepHex hex = do
+  rows <-
+    rawSql
+      "SELECT d.drep_hash_id FROM palmares.drep d \
+      \ WHERE d.drep_raw = decode(?, 'hex') \
+      \ ORDER BY (d.registration_status <> 'never_registered') DESC, d.drep_hash_id \
+      \ LIMIT 1"
+      [toPersistValue hex]
+  pure $ case rows of
+    (Single i : _) -> Just i
+    [] -> Nothing
+
+-- | The same summary row @\/dreps@ serves, for one DRep.
+drepSummaryByIdQuery :: Int64 -> SqlPersistT IO (Maybe DRepSummary)
+drepSummaryByIdQuery dhid =
+  queryJson1
+    ( "SELECT row_to_json(x)::text FROM ( SELECT "
+        <> drepProjection
+        <> drepFrom
+        <> " WHERE d.drep_hash_id = ? ) x"
+    )
+    [toPersistValue dhid]
+
+-- | The full metric block, including the per-type breakdown and the formula ids.
+--
+-- One statement, because every number in it comes from the same matview row plus one pass over
+-- this DRep's eligible set: splitting it would let the headline figures and the per-type
+-- breakdown be measured at different epochs.
+--
+-- The seven action types always appear, including at zero, through a @LEFT JOIN@ from a literal
+-- type list. A missing row would read as \"no data\" where the truth is \"nothing to vote on\".
+drepMetricsQuery :: Int64 -> SqlPersistT IO (Maybe DRepMetrics)
+drepMetricsQuery dhid =
+  queryJson1
+    "SELECT row_to_json(x)::text FROM ( \
+    \  WITH m AS (SELECT * FROM palmares.drep_metrics WHERE drep_hash_id = ?), \
+    \  elig AS ( \
+    \    SELECT e.gov_action_id, e.action_type \
+    \    FROM m, palmares.eligible_actions(m.drep_hash_id, m.as_of_epoch) e \
+    \  ), \
+    \  final AS ( \
+    \    SELECT v.gov_action_id, e.action_type, v.vote \
+    \    FROM elig e \
+    \    JOIN palmares.vote v ON v.gov_action_id = e.gov_action_id \
+    \    WHERE v.drep_voter_id = (SELECT drep_hash_id FROM m) AND v.seq_last = 1 \
+    \  ), \
+    \  types AS ( \
+    \    SELECT t.action_type, \
+    \           count(e.gov_action_id) AS eligible_actions, \
+    \           count(DISTINCT f.gov_action_id) AS votes_cast, \
+    \           count(*) FILTER (WHERE f.vote = 'Yes') AS yes, \
+    \           count(*) FILTER (WHERE f.vote = 'No') AS no, \
+    \           count(*) FILTER (WHERE f.vote = 'Abstain') AS abstain \
+    \    FROM (VALUES ('ParameterChange'), ('HardForkInitiation'), ('TreasuryWithdrawals'), \
+    \                 ('NoConfidence'), ('NewCommittee'), ('NewConstitution'), ('InfoAction')) \
+    \         AS t(action_type) \
+    \    LEFT JOIN elig e ON e.action_type::text = t.action_type \
+    \    LEFT JOIN final f ON f.gov_action_id = e.gov_action_id \
+    \    GROUP BY t.action_type \
+    \  ) \
+    \  SELECT m.as_of_epoch, m.eligible_actions, m.votes_cast, m.open_actions_unvoted, \
+    \         m.participation_rate, \
+    \         m.rationale_verified, m.rationale_inline, m.rationale_unverified, \
+    \         m.rationale_pending, m.rationale_absent, m.rationale_cip100_valid, m.rationale_rate, \
+    \         m.vote_latency_median_hours, m.vote_latency_p90_hours, m.vote_latency_sample, \
+    \         floor(m.age_days)::int AS age_days, \
+    \         json_build_object( \
+    \           'yes', (SELECT count(*) FROM final WHERE vote = 'Yes'), \
+    \           'no', (SELECT count(*) FROM final WHERE vote = 'No'), \
+    \           'abstain', (SELECT count(*) FROM final WHERE vote = 'Abstain') \
+    \         ) AS final_votes, \
+    \         (SELECT json_agg(json_build_array( \
+    \            lower(regexp_replace(t.action_type, '([a-z0-9])([A-Z])', '\\1_\\2', 'g')), \
+    \            json_build_object( \
+    \              'eligible_actions', t.eligible_actions, \
+    \              'votes_cast', t.votes_cast, \
+    \              'yes', t.yes, 'no', t.no, 'abstain', t.abstain, \
+    \              'participation_rate', \
+    \                CASE WHEN t.eligible_actions = 0 THEN NULL \
+    \                     ELSE t.votes_cast::float8 / t.eligible_actions END \
+    \            )) ORDER BY t.action_type) FROM types t) AS votes_by_type, \
+    \         json_build_array('participation_rate_v1', 'rationale_rate_v1', 'age_days_v1', \
+    \                          'delegator_retention_rate_v1', 'vote_latency_median_hours_v1', \
+    \                          'votes_by_type_v1') AS formula_ids \
+    \  FROM m \
+    \) x"
+    [toPersistValue dhid]
+
+-- | A DRep's voting power, epoch by epoch, as the ledger recorded it.
+--
+-- Gaps are NOT filled. Measured on the fixture DRep: 141 points over epochs 174-320, with 203-208
+-- genuinely absent from @drep_distr@. Zero-filling them would turn an absence into a measurement,
+-- and a client can see the gap in the @epoch@ series.
+listEpochPower :: Int64 -> Maybe Int -> Maybe Int -> SortOrder -> Limit -> SqlPersistT IO [EpochPowerPoint]
+listEpochPower dhid fromEpoch toEpoch so lim =
+  queryJson
+    ( "SELECT row_to_json(x)::text FROM ( \
+      \  SELECT p.epoch_no AS epoch, p.amount AS lovelace, dd.delegator_count \
+      \  FROM palmares.drep_epoch_power p \
+      \  LEFT JOIN palmares.drep_epoch_delegators dd \
+      \    ON dd.drep_hash_id = p.drep_hash_id AND dd.epoch_no = p.epoch_no \
+      \  WHERE p.drep_hash_id = ? AND p.target_kind = 'drep' "
+        <> maybe "" (const " AND p.epoch_no >= ? ") fromEpoch
+        <> maybe "" (const " AND p.epoch_no <= ? ") toEpoch
+        <> " ORDER BY p.epoch_no "
+        <> (case so of Asc -> "ASC"; Desc -> "DESC")
+        <> " LIMIT ? ) x"
+    )
+    ( [toPersistValue dhid]
+        <> maybe [] (\e -> [toPersistValue e]) fromEpoch
+        <> maybe [] (\e -> [toPersistValue e]) toEpoch
+        <> [toPersistValue lim]
+    )
+
+-- | Delegator movement over the retention window, by RUNNING the published formula.
+--
+-- Not a second derivation of it. The first version here counted \"every address that ever
+-- delegated to this DRep before epoch N\", which is a different question: measured on the fixture
+-- DRep it gave 26 previous delegators and a retention rate of 0.42 where
+-- @delegator_retention_rate_v1@ — which reconstructs the set from delegation intervals — gives 11
+-- and 1.0. Two derivations of one published number is exactly what the catalog exists to prevent,
+-- so this runs the catalog's own bytes and only wraps them in the JSON-column convention.
+--
+-- @window_epochs@ is interpolated rather than bound, because it is 'retentionWindowEpochs', a
+-- compile-time constant, and prepending a placeholder would put it lexically before the
+-- statement's own three.
+delegatorStatsQuery :: Int64 -> Int -> Int -> SqlPersistT IO (Maybe DelegatorStats)
+delegatorStatsQuery dhid asOfEpoch window =
+  case lookupMetricSql "delegator_retention_rate_v1.sql" of
+    Nothing -> error "Query.Gov: delegator_retention_rate_v1.sql is not embedded"
+    Just sql ->
+      queryJson1
+        ( "SELECT row_to_json(x)::text FROM ( SELECT q.*, "
+            <> T.pack (show window)
+            <> "::int AS window_epochs FROM ( "
+            <> TE.decodeUtf8 sqlNoSemicolon
+            <> " ) q ) x"
+        )
+        [toPersistValue dhid, toPersistValue asOfEpoch, toPersistValue window]
+      where
+        -- The catalog statements end in a semicolon, which cannot appear inside a subquery.
+        sqlNoSemicolon = BS8.pack (reverse (dropWhile (`elem` (";\n \t" :: String)) (reverse (BS8.unpack sql))))
+
+-- | One page of a DRep's delegators.
+--
+-- @lovelace@ comes from the latest @epoch_stake@ snapshot, which is why it can be @null@ for a
+-- delegation made this epoch: the stake is real and not yet weighed.
+listDelegators ::
+  Int64 ->
+  Bool ->
+  Maybe Int64 ->
+  (Text, SortOrder) ->
+  (Limit, Offset) ->
+  SqlPersistT IO (Page DelegatorRow)
+listDelegators dhid isCurrent minLovelace (orderCol, so) (lim, off) = do
+  items <-
+    queryJson
+      ( "SELECT row_to_json(x)::text FROM ( SELECT "
+          <> delegatorProjection
+          <> delegatorFrom
+          <> whereSql
+          <> " ORDER BY "
+          <> orderCol
+          <> " "
+          <> (case so of Asc -> "ASC"; Desc -> "DESC")
+          <> " NULLS LAST, dv.addr_id ASC LIMIT ? OFFSET ? ) x"
+      )
+      (params <> [toPersistValue lim, toPersistValue off])
+  totals <- rawSql ("SELECT count(*)::int" <> delegatorFrom <> whereSql) params
+  pure (Page items (Just (case totals of (Single n : _) -> n; [] -> 0)) lim off Nothing)
+  where
+    whereSql =
+      " WHERE dv.drep_hash_id = ? "
+        <> (if isCurrent then " AND l.addr_id IS NOT NULL " else "")
+        <> maybe "" (const " AND es.amount >= ? ") minLovelace
+    params = [toPersistValue dhid] <> maybe [] (\v -> [toPersistValue v]) minLovelace
+
+-- | The join every delegator query shares, so the page and the total cannot drift.
+delegatorFrom :: Text
+delegatorFrom =
+  " FROM ( SELECT DISTINCT ON (addr_id) addr_id, stake_address, drep_hash_id, \
+  \               slot_no, epoch_no, delegated_at, tx_hash \
+  \        FROM palmares.vote_delegation \
+  \        ORDER BY addr_id, slot_no DESC, tx_index DESC, cert_index DESC ) dv \
+  \ LEFT JOIN palmares.live_delegation l \
+  \   ON l.addr_id = dv.addr_id AND l.drep_hash_id = dv.drep_hash_id \
+  \ LEFT JOIN ( SELECT addr_id, amount FROM public.epoch_stake \
+  \             WHERE epoch_no = (SELECT max(epoch_no) FROM public.epoch_stake) ) es \
+  \   ON es.addr_id = dv.addr_id "
+
+delegatorProjection :: Text
+delegatorProjection =
+  " dv.stake_address, es.amount AS lovelace, \
+  \ json_build_object('slot', dv.slot_no, 'epoch', dv.epoch_no, \
+  \                   'time', (dv.delegated_at AT TIME ZONE 'UTC'), \
+  \                   'tx_hash', encode(dv.tx_hash, 'hex')) AS delegated_at, \
+  \ (l.addr_id IS NOT NULL) AS is_current "
+
+-- | A DRep's certificate history.
+listDRepUpdates :: Int64 -> [Text] -> SortOrder -> (Limit, Offset) -> SqlPersistT IO (Page DRepUpdateRow)
+listDRepUpdates dhid kinds so (lim, off) = do
+  items <-
+    queryJson
+      ( "SELECT row_to_json(x)::text FROM ( \
+        \  SELECT CASE c.cert_kind WHEN 'register' THEN 'registered' \
+        \                          WHEN 'retire' THEN 'retired' ELSE 'updated' END AS kind, \
+        \         json_build_object('slot', c.slot_no, 'epoch', c.epoch_no, \
+        \                           'time', (c.cert_time AT TIME ZONE 'UTC'), \
+        \                           'tx_hash', encode(c.tx_hash, 'hex')) AS at, \
+        \         c.deposit, va.url AS anchor_url, a.verdict AS anchor_status \
+        \  FROM palmares.drep_cert c \
+        \  LEFT JOIN public.voting_anchor va ON va.id = c.voting_anchor_id \
+        \  LEFT JOIN palmares.anchor a ON a.voting_anchor_id = c.voting_anchor_id "
+          <> whereSql
+          <> " ORDER BY c.slot_no "
+          <> (case so of Asc -> "ASC"; Desc -> "DESC")
+          <> ", c.cert_index "
+          <> (case so of Asc -> "ASC"; Desc -> "DESC")
+          <> " LIMIT ? OFFSET ? ) x"
+      )
+      (params <> [toPersistValue lim, toPersistValue off])
+  totals <- rawSql ("SELECT count(*)::int FROM palmares.drep_cert c" <> whereSql) params
+  pure (Page items (Just (case totals of (Single n : _) -> n; [] -> 0)) lim off Nothing)
+  where
+    kindExpr =
+      "(CASE c.cert_kind WHEN 'register' THEN 'registered' \
+      \                  WHEN 'retire' THEN 'retired' ELSE 'updated' END)"
+    whereSql =
+      " WHERE c.drep_hash_id = ? "
+        <> ( if null kinds
+               then ""
+               else " AND " <> kindExpr <> " IN (" <> T.intercalate ", " (map (const "?") kinds) <> ") "
+           )
+    params = [toPersistValue dhid] <> map toPersistValue kinds
+
+-- | A DRep's CIP-119 metadata, but only when its anchor verdict is @valid@.
+--
+-- The gate is the point: a document whose hash did not match the on-chain commitment is not this
+-- DRep's statement about itself, whatever it says, and publishing it under their name would be
+-- the registry asserting something it cannot verify.
+anchorContentQuery :: Int64 -> SqlPersistT IO (Maybe AnchorContent)
+anchorContentQuery dhid =
+  queryJson1
+    "SELECT row_to_json(x)::text FROM ( \
+    \  SELECT dd.given_name, dd.objectives, dd.motivations, dd.qualifications, \
+    \         dd.image_url, dd.payment_address, \
+    \         COALESCE(( SELECT json_agg(json_build_object('label', r.label, 'uri', r.uri) \
+    \                                    ORDER BY r.id) \
+    \                    FROM public.off_chain_vote_reference r \
+    \                    WHERE r.off_chain_vote_data_id = dd.off_chain_vote_data_id ), '[]'::json) \
+    \           AS references \
+    \  FROM palmares.drep d \
+    \  JOIN palmares.anchor a ON a.voting_anchor_id = d.voting_anchor_id \
+    \  JOIN ( SELECT DISTINCT ON (off_chain_vote_data_id) * \
+    \         FROM public.off_chain_vote_drep_data ORDER BY off_chain_vote_data_id, id ) dd \
+    \    ON dd.off_chain_vote_data_id = a.off_chain_vote_data_id \
+    \  WHERE d.drep_hash_id = ? AND a.verdict = 'valid' \
+    \  LIMIT 1 \
+    \) x"
+    [toPersistValue dhid]
+
+-- | The column each delegator ordering means. A closed total function, for the reason
+-- 'drepSortSpec' gives.
+delegatorOrderColumn :: DelegatorsOrderBy -> Text
+delegatorOrderColumn = \case
+  DelegatorsOrderByLovelace -> "es.amount"
+  DelegatorsOrderByDelegatedAt -> "dv.slot_no"
+  DelegatorsOrderByStakeAddress -> "dv.stake_address"

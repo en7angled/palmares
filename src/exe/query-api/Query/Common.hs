@@ -194,3 +194,11 @@ legacyApplyFilterOrderLimit ::
   [a]
 legacyApplyFilterOrderLimit maybeLimitOffset maybeFilter maybeOrder applyFilter applyOrder =
   legacyApplyLimits maybeLimitOffset . applyOrder maybeOrder . applyFilter maybeFilter
+
+-- | The epoch-power series: at most 200 points, which is also the default.
+--
+-- Default equal to the ceiling, unlike every other endpoint, because the series IS the answer —
+-- a client asking for a DRep's power history wants the history, not its first fifty epochs. 200
+-- epochs is about two and a half years on Cardano.
+epochSeriesBounds :: PageBounds
+epochSeriesBounds = PageBounds 200 200

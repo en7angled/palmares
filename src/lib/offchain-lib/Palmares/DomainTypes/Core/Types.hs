@@ -196,6 +196,22 @@ drepIdFromHex hasScript hex = case B16.decode (TE.encodeUtf8 hex) of
   Right raw | BS.length raw == 28 -> Just (DRepId (drepIdCip129 hasScript raw))
   _ -> Nothing
 
+-- | The 28-byte credential hash behind a 'DRepId', as hex.
+--
+-- This is what a handler looks a DRep up by. The script bit is deliberately NOT part of the
+-- lookup, and that is measured rather than assumed: on preprod two hashes exist TWICE in
+-- @drep_hash@, once as a key credential and once as a script credential, because someone
+-- delegated using the CIP-105 string — which carries no script bit — and db-sync created the
+-- other-kind row. In both cases exactly one of the pair is registered and the other is a phantom
+-- with no certificate. Resolving by hash and preferring the registered row answers both
+-- correctly; resolving by the normalised CIP-129 string would hit the phantom for one of them.
+drepIdHex :: DRepId -> Maybe Text
+drepIdHex (DRepId t)
+  | t `Prelude.elem` reservedDRepViews = Nothing
+  | otherwise = case parseDrepIdAny t of
+      Right (_, raw) -> Just (TE.decodeUtf8 (B16.encode raw))
+      Left _ -> Nothing
+
 -- | The two reserved ledger voting options. They are not DReps — they hold no credential and
 -- cannot vote — but they do hold stake, and @palmares.drep_epoch_power@ publishes them, so a
 -- client may legitimately name one.
@@ -207,8 +223,11 @@ reservedDRepViews = ["drep_always_abstain", "drep_always_no_confidence"]
 -- NOTE for handlers: the script bit of a CIP-105 or raw-hex input cannot be known here, because
 -- @drep@ is the HRP for both kinds and only the database knows which this credential is. This
 -- instance therefore normalises an unflagged input to the KEY form, and a handler must look the
--- row up by the 28-byte hash — never by this string — and re-render the id from the row's own
--- @has_script@. Matching on the string would miss every script DRep pasted in CIP-105.
+-- row up by the 28-byte hash through 'drepIdHex' — never by this string — and re-render the id
+-- from the row's own @has_script@.
+--
+-- That is not a theoretical concern: see 'drepIdHex' for the two preprod credentials where
+-- matching on the normalised string lands on a phantom row instead of the registered DRep.
 instance FromHttpApiData DRepId where
   parseUrlPiece :: Text -> Either Text DRepId
   parseUrlPiece t
@@ -301,6 +320,9 @@ instance ToSchema DRepUpdateKind where
 
 instance ToParamSchema DRepUpdateKind where
   toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData DRepUpdateKind where
+  parseUrlPiece = parseJsonEnumParam "invalid_parameter"
 
 -- | The seven CIP-1694 governance action types, spelled as db-sync's @govactiontype@ enum does.
 --

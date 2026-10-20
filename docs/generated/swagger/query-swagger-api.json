@@ -1,5 +1,51 @@
 {
     "definitions": {
+        "AnchorContent": {
+            "properties": {
+                "given_name": {
+                    "type": "string"
+                },
+                "image_url": {
+                    "type": "string"
+                },
+                "motivations": {
+                    "type": "string"
+                },
+                "objectives": {
+                    "type": "string"
+                },
+                "payment_address": {
+                    "type": "string"
+                },
+                "qualifications": {
+                    "type": "string"
+                },
+                "references": {
+                    "items": {
+                        "$ref": "#/definitions/AnchorReference"
+                    },
+                    "type": "array"
+                }
+            },
+            "required": [
+                "references"
+            ],
+            "type": "object"
+        },
+        "AnchorReference": {
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "uri": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "uri"
+            ],
+            "type": "object"
+        },
         "AnchorStatus": {
             "enum": [
                 "valid",
@@ -11,6 +57,194 @@
                 "not_fetched"
             ],
             "type": "string"
+        },
+        "ChainPoint": {
+            "properties": {
+                "epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "slot": {
+                    "type": "integer"
+                },
+                "time": {
+                    "$ref": "#/definitions/UTCTime"
+                },
+                "tx_hash": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "epoch",
+                "time"
+            ],
+            "type": "object"
+        },
+        "DRepDetailResponse": {
+            "properties": {
+                "anchor_content": {
+                    "$ref": "#/definitions/AnchorContent"
+                },
+                "delegator_stats": {
+                    "$ref": "#/definitions/DelegatorStats"
+                },
+                "drep": {
+                    "$ref": "#/definitions/DRepSummary"
+                },
+                "metrics": {
+                    "$ref": "#/definitions/DRepMetrics"
+                },
+                "power_by_epoch": {
+                    "items": {
+                        "$ref": "#/definitions/EpochPowerPoint"
+                    },
+                    "type": "array"
+                },
+                "top_delegators": {
+                    "items": {
+                        "$ref": "#/definitions/DelegatorRow"
+                    },
+                    "type": "array"
+                },
+                "updates": {
+                    "items": {
+                        "$ref": "#/definitions/DRepUpdateRow"
+                    },
+                    "type": "array"
+                }
+            },
+            "required": [
+                "drep",
+                "metrics",
+                "power_by_epoch",
+                "delegator_stats",
+                "top_delegators",
+                "updates"
+            ],
+            "type": "object"
+        },
+        "DRepMetrics": {
+            "properties": {
+                "age_days": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "as_of_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "eligible_actions": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "final_votes": {
+                    "$ref": "#/definitions/VoteCounts"
+                },
+                "formula_ids": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "open_actions_unvoted": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "participation_rate": {
+                    "format": "double",
+                    "type": "number"
+                },
+                "rationale_absent": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "rationale_cip100_valid": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "rationale_inline": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "rationale_pending": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "rationale_rate": {
+                    "format": "double",
+                    "type": "number"
+                },
+                "rationale_unverified": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "rationale_verified": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "vote_latency_median_hours": {
+                    "format": "double",
+                    "type": "number"
+                },
+                "vote_latency_p90_hours": {
+                    "format": "double",
+                    "type": "number"
+                },
+                "vote_latency_sample": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "votes_by_type": {
+                    "items": {
+                        "items": [
+                            {
+                                "$ref": "#/definitions/GovActionType"
+                            },
+                            {
+                                "$ref": "#/definitions/TypeBreakdown"
+                            }
+                        ],
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                    },
+                    "type": "array"
+                },
+                "votes_cast": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "as_of_epoch",
+                "eligible_actions",
+                "votes_cast",
+                "open_actions_unvoted",
+                "rationale_verified",
+                "rationale_inline",
+                "rationale_unverified",
+                "rationale_pending",
+                "rationale_absent",
+                "rationale_cip100_valid",
+                "vote_latency_sample",
+                "final_votes",
+                "votes_by_type",
+                "formula_ids"
+            ],
+            "type": "object"
         },
         "DRepStatus": {
             "enum": [
@@ -123,6 +357,107 @@
             ],
             "type": "object"
         },
+        "DRepUpdateKind": {
+            "enum": [
+                "registered",
+                "updated",
+                "retired"
+            ],
+            "type": "string"
+        },
+        "DRepUpdateRow": {
+            "properties": {
+                "anchor_status": {
+                    "$ref": "#/definitions/AnchorStatus"
+                },
+                "anchor_url": {
+                    "type": "string"
+                },
+                "at": {
+                    "$ref": "#/definitions/ChainPoint"
+                },
+                "deposit": {
+                    "type": "integer"
+                },
+                "kind": {
+                    "$ref": "#/definitions/DRepUpdateKind"
+                }
+            },
+            "required": [
+                "kind",
+                "at"
+            ],
+            "type": "object"
+        },
+        "DelegatorRow": {
+            "properties": {
+                "delegated_at": {
+                    "$ref": "#/definitions/ChainPoint"
+                },
+                "is_current": {
+                    "type": "boolean"
+                },
+                "lovelace": {
+                    "type": "integer"
+                },
+                "stake_address": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "stake_address",
+                "delegated_at",
+                "is_current"
+            ],
+            "type": "object"
+        },
+        "DelegatorStats": {
+            "properties": {
+                "delegator_count": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "delegator_count_prev": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "delegator_retention_rate": {
+                    "format": "double",
+                    "type": "number"
+                },
+                "delegators_joined": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "delegators_left": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "delegators_retained": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "window_epochs": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "delegator_count",
+                "delegator_count_prev",
+                "delegators_retained",
+                "delegators_joined",
+                "delegators_left",
+                "window_epochs"
+            ],
+            "type": "object"
+        },
         "EpochParamsSummary": {
             "description": "The protocol parameters a client needs to audit a published tally. Threshold lists are (name, value) pairs under db-sync's own column names, so any of them can be looked up in palmares.thresholds. `gov_action_lifetime` is the parameter, not the voting window: the ledger sets expiration = proposed_epoch + lifetime + 1.",
             "properties": {
@@ -205,6 +540,40 @@
             ],
             "type": "object"
         },
+        "EpochPowerPoint": {
+            "properties": {
+                "delegator_count": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "lovelace": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "epoch",
+                "lovelace"
+            ],
+            "type": "object"
+        },
+        "GovActionType": {
+            "enum": [
+                "parameter_change",
+                "hard_fork_initiation",
+                "treasury_withdrawals",
+                "no_confidence",
+                "new_committee",
+                "new_constitution",
+                "info_action"
+            ],
+            "type": "string"
+        },
         "MetricFormula": {
             "description": "One published formula. `sql` is the statement the server actually executes, inlined from the same embed the query path reads, so the documented formula cannot drift from the served number. Exactly one of `sql_file` and `sql_object` is set, so every formula_id resolves to something a reader can go and look at. `params` names the positional placeholders in bind order.",
             "properties": {
@@ -279,7 +648,7 @@
             "properties": {
                 "items": {
                     "items": {
-                        "$ref": "#/definitions/DRepSummary"
+                        "$ref": "#/definitions/DRepUpdateRow"
                     },
                     "type": "array"
                 },
@@ -388,10 +757,76 @@
             ],
             "type": "object"
         },
+        "TypeBreakdown": {
+            "properties": {
+                "abstain": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "eligible_actions": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "no": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "participation_rate": {
+                    "format": "double",
+                    "type": "number"
+                },
+                "votes_cast": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "yes": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "eligible_actions",
+                "votes_cast",
+                "yes",
+                "no",
+                "abstain"
+            ],
+            "type": "object"
+        },
         "UTCTime": {
             "example": "2016-07-22T00:00:00Z",
             "format": "yyyy-mm-ddThh:MM:ssZ",
             "type": "string"
+        },
+        "VoteCounts": {
+            "properties": {
+                "abstain": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "no": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "yes": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "yes",
+                "no",
+                "abstain"
+            ],
+            "type": "object"
         }
     },
     "info": {
@@ -403,6 +838,275 @@
         "version": "0.1.0"
     },
     "paths": {
+        "/drep/{drep-id}": {
+            "get": {
+                "description": "One DRep's whole public record in a single request: identity and status, every published metric with the formula ids that produced them, voting power epoch by epoch, how the delegator base moved, the top delegators, the certificate history, and the CIP-119 metadata -- the last only when its anchor hash verified, because a document that did not match its on-chain commitment is not this DRep's statement about itself.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "drep-id",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/DRepDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "DRep profile"
+            }
+        },
+        "/drep/{drep-id}/delegators": {
+            "get": {
+                "description": "`lovelace` is the stake the ledger counted at the latest snapshot, so it is null for a delegation made this epoch -- real, and not yet weighed. `is_current` is false for a delegation since superseded or whose stake account closed; `is_current=false` includes those, which is what makes the list a history rather than a snapshot.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "drep-id",
+                        "required": true,
+                        "type": "string"
+                    },
+                    {
+                        "in": "header",
+                        "name": "Accept",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "name": "is_current",
+                        "required": false,
+                        "type": "boolean"
+                    },
+                    {
+                        "format": "int64",
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "min_lovelace",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "enum": [
+                            "lovelace",
+                            "delegated_at",
+                            "stake_address"
+                        ],
+                        "in": "query",
+                        "name": "order_by",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8",
+                    "text/csv;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "A DRep's delegators"
+            }
+        },
+        "/drep/{drep-id}/power": {
+            "get": {
+                "description": "Gaps are real and are not filled: an epoch missing from the series is an epoch the ledger's stake distribution did not include this DRep, and zero-filling it would turn an absence into a measurement. No CSV -- 200 epoch rows is one JSON page -- and no rank, which would be a window function over the whole distribution per epoch.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "drep-id",
+                        "required": true,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "from_epoch",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "to_epoch",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "A DRep's voting power, epoch by epoch"
+            }
+        },
+        "/drep/{drep-id}/updates": {
+            "get": {
+                "description": "`kind` comes from drep_registration.deposit and nowhere else, because that is the only place db-sync records it: a positive deposit is a registration, a negative one a retirement, and null a metadata update.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "drep-id",
+                        "required": true,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "registered",
+                                "updated",
+                                "retired"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "kind",
+                        "type": "array"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "A DRep's certificate history"
+            }
+        },
         "/dreps": {
             "get": {
                 "description": "Registered delegate representatives with their track record: participation, rationale coverage, vote latency, voting power, delegator count and age. Default ordering is voting_power descending, because this list is what a delegator chooses from. Statuses default to the two registered ones (active and inactive) -- preprod has 511 retired DReps against 294 registered, so including them by default would make the first page mostly useless; ask for them with status=retired. The two reserved ledger options (drep_always_abstain, drep_always_no_confidence) are never listed: they hold stake but no credential, and are published by /drep-power instead.",
@@ -666,6 +1370,40 @@
                     }
                 },
                 "summary": "Published metric formulas"
+            }
+        },
+        "/pages/drep/{drep-id}": {
+            "get": {
+                "description": "Identical to GET /drep/{drep-id}: same handler, same response.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "drep-id",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/DRepDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`"
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist"
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network"
+                    }
+                },
+                "summary": "DRep profile (canonical page path)"
             }
         },
         "/ready": {

@@ -167,5 +167,69 @@ check "/dreps CSV booleans match the JSON spelling" \
 check "/dreps CSV has no unguarded formula lead" \
   "$(printf '%s' "$csv" | tail -n +2 | grep -cE '^[=+@]' || true)" 0
 
+echo "== DRep profile (T-API-9)"
+D=drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg
+assert "/drep/$D" '.drep.id' "\"$D\""
+assert "/drep/$D" '.drep.hex' '"81378d3ea89b68f0fc09944b1f93f2feb851318f196f98ba4029d8a8"'
+assert "/drep/$D" '[.drep.has_script, (.drep.status == "active")]' '[false,true]'
+# Two paths, one handler, one response type. Byte-identical or the alias has diverged.
+if diff <(j "/drep/$D" '.') <(j "/pages/drep/$D" '.') >/dev/null; then
+  echo "  ok   /pages/drep/{id} is byte-identical to /drep/{id}"
+else
+  echo "  FAIL the page alias diverges from /drep/{id}"; fail=1
+fi
+assert "/drep/$D" '.metrics.formula_ids | sort' \
+  '["age_days_v1","delegator_retention_rate_v1","participation_rate_v1","rationale_rate_v1","vote_latency_median_hours_v1","votes_by_type_v1"]'
+# THE test of the per-type breakdown: the sigma row. Each column must sum to the headline figure,
+# or the breakdown and the headline were measured differently.
+assert "/drep/$D" '[([.metrics.votes_by_type[] | .[1].eligible_actions] | add) == .metrics.eligible_actions, ([.metrics.votes_by_type[] | .[1].votes_cast] | add) == .metrics.votes_cast, ([.metrics.votes_by_type[] | .[1] | (.yes+.no+.abstain)] | add) == .metrics.votes_cast]' \
+  '[true,true,true]'
+# the five rationale grades also sum to votes_cast, by construction
+assert "/drep/$D" '(.metrics | [.rationale_verified,.rationale_inline,.rationale_unverified,.rationale_pending,.rationale_absent] | add) == .metrics.votes_cast' 'true'
+# final votes sum to votes_cast: one verdict per action, the LAST one
+assert "/drep/$D" '(.metrics.final_votes | .yes + .no + .abstain) == .metrics.votes_cast' 'true'
+# all seven action types always appear, even at zero
+assert "/drep/$D" '[.metrics.votes_by_type[] | .[0]] | sort' \
+  '["hard_fork_initiation","info_action","new_committee","new_constitution","no_confidence","parameter_change","treasury_withdrawals"]'
+# preprod: 6 of this DRep's final votes on TreasuryWithdrawals, 1 yes and 5 no
+assert "/drep/$D" '[.metrics.votes_by_type[] | select(.[0]=="treasury_withdrawals") | .[1] | [.yes,.no,.abstain]][0]' '[1,5,0]'
+# The power series has REAL gaps: epochs 203-208 are absent from drep_distr for this DRep and are
+# not zero-filled, because inventing a row turns an absence into a measurement.
+assert "/drep/$D" '.power_by_epoch | length' '141'
+assert "/drep/$D" '.power_by_epoch | [.[0].epoch, .[-1].epoch]' '[174,320]'
+assert "/drep/$D" '.power_by_epoch | map(.epoch) | . == (. | sort)' 'true'
+assert "/drep/$D" '[.power_by_epoch[] | has("rank")] | unique' '[false]'
+# The retention block comes from RUNNING delegator_retention_rate_v1, not from a second
+# derivation: a cumulative "ever delegated" reading gave 26 and 0.42 where the formula gives 11
+# and 1.0, and the counters below are the formula's.
+assert "/drep/$D" '.delegator_stats | [.delegators_retained + .delegators_left == .delegator_count_prev, .delegators_retained + .delegators_joined == .delegator_count, .window_epochs]' '[true,true,10]'
+assert "/drep/$D" '.delegator_stats | (.delegator_retention_rate * 1000000 | round) == ((.delegators_retained / .delegator_count_prev) * 1000000 | round)' 'true'
+assert "/drep/$D" '.top_delegators | length <= 10' 'true'
+# CIP-119 metadata, served only because this anchor's hash verified
+assert "/drep/$D" '[.anchor_content.given_name, .drep.anchor_status]' '["Bitcows","valid"]'
+# certificate history: a registration in epoch 173 and a metadata update in 208
+assert "/drep/$D/updates" '[.items[] | [.kind, .deposit]] | sort' '[["registered",500000000],["updated",null]]'
+assert "/drep/$D/updates" '[.items[0].kind, .items[0].at.epoch]' '["updated",208]'
+assert "/drep/$D/updates?kind=registered" '[.total, .items[0].at.epoch]' '[1,173]'
+assert "/drep/$D/power?from_epoch=320&to_epoch=320" '.items | map([.epoch, .lovelace])' '[[320,3923709956713]]'
+assert "/drep/$D/delegators?limit=50" '[.total, ([.items[] | select(.is_current)] | length)]' '[12,12]'
+# is_current=false widens to the history, so it can only be a superset
+assert "/drep/$D/delegators?limit=50&is_current=false" '.total >= 12' 'true'
+# a DRep with nothing settled serves nulls, not zeros (f1-metric 3.8). The list form is the gate
+# because it does not depend on which DRep happens to be newest.
+assert '/dreps?limit=200' '[.items[] | select(.eligible_actions == 0) | .participation_rate] | unique | . == [] or . == [null]' 'true'
+# error shapes: EVERY failure carries {code, message}, including the ones servant's routing layer
+# produces before a handler runs
+assert_err '/drep/drep1yt0dahk7mm0dahk7mm0dahk7mm0dahk7mm0dahk7mm0dahs0s7gtm' '.code' '"drep_not_found"'
+assert_err "/drep/drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xq" '.code' '"invalid_drep_id"'
+assert_err '/drep/pool1abc' '.code' '"invalid_drep_id"'
+assert_err '/drep/drep_always_abstain' '.code' '"drep_not_found"'
+assert_err '/dreps?status=nonsense' '.code' '"invalid_parameter"'
+for p in '/drep/drep1yt0dahk7mm0dahk7mm0dahk7mm0dahk7mm0dahk7mm0dahs0s7gtm:404' '/drep/pool1abc:400' '/dreps?status=nonsense:400'; do
+  path="${p%:*}"; want="${p##*:}"
+  got=$(code "$path")
+  if [ "$got" = "$want" ]; then echo "  ok   $path is $want"; else echo "  FAIL $path is $got (want $want)"; fail=1; fi
+done
+
 if [ "$fail" = 0 ]; then echo "smoke OK"; else echo "smoke FAILED" >&2; fi
 exit $fail

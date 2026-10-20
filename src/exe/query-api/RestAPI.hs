@@ -32,16 +32,57 @@ import Network.Wai.Middleware.Servant.Options (provideOptions)
 import Data.Int (Int64)
 import Data.Maybe (fromMaybe)
 import Data.Time (UTCTime)
-import Palmares.DomainTypes.Core.Types (AnchorStatus, DRepStatus, GovActionId)
+import Palmares.DomainTypes.Core.Types
+  ( AnchorStatus,
+    DRepId,
+    DRepStatus,
+    DRepUpdateKind,
+    GovActionId,
+    drepIdHex,
+  )
 import Palmares.DomainTypes.Transfer.Filters (DRepFilter (..), emptyDRepFilter)
-import Palmares.DomainTypes.Transfer.OrderBy (DRepsOrderBy (..), SortOrder (..))
-import Palmares.DomainTypes.Transfer.QueryResponses (DRepSummary, StatusResponse (..))
-import Palmares.Metrics.Catalog (MetricFormula, resolvedMetricCatalog)
+import Palmares.DomainTypes.Transfer.OrderBy
+  ( DRepsOrderBy (..),
+    DelegatorsOrderBy (..),
+    SortOrder (..),
+  )
+import Palmares.DomainTypes.Transfer.QueryResponses
+  ( DRepDetailResponse (..),
+    DRepMetrics (..),
+    DRepSummary,
+    DRepUpdateRow,
+    DelegatorRow,
+    EpochPowerPoint,
+    StatusResponse (..),
+  )
+import Palmares.Metrics.Catalog (MetricFormula, resolvedMetricCatalog, retentionWindowEpochs)
+import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.CSV (CSV)
-import Palmares.WebAPI.Envelope (Page)
-import Query.Common (boundsFor, checkRanges, normalizeLimitOffset, normalizeQ)
+import Data.Text qualified as T
+import Palmares.WebAPI.Envelope (ErrorCode (..), Page (..), errorCodeFromText, errorCodeToHttpStatus)
+import Palmares.WebAPI.Errors (mkServantErr)
+import Query.Common
+  ( PageBounds (..),
+    boundsFor,
+    checkRanges,
+    epochSeriesBounds,
+    jsonBounds,
+    normalizeLimitOffset,
+    normalizeQ,
+  )
 import Query.Csv ()
-import Query.Gov (listDReps)
+import Query.Gov
+  ( anchorContentQuery,
+    delegatorOrderColumn,
+    delegatorStatsQuery,
+    drepMetricsQuery,
+    drepSummaryByIdQuery,
+    listDRepUpdates,
+    listDReps,
+    listDelegators,
+    listEpochPower,
+    resolveDRepHex,
+  )
 import Palmares.WebAPI.CORS (CorsConfig, mkCorsMiddleware)
 import Palmares.WebAPI.ServiceProbe (ServiceProbe, ServiceProbeStatus)
 import Query.Gov (Freshness, freshnessMiddleware)
@@ -210,6 +251,179 @@ drepsServer = handleGetDReps
 
 ------------------------------------------------------------------------------------------------
 
+--  The DRep profile
+
+------------------------------------------------------------------------------------------------
+
+-- | The composite, on two paths with ONE handler and ONE response type.
+--
+-- @/pages/drep/{id}@ is the canonical path a screen renders; @/drep/{id}@ is the alias for a
+-- consumer who does not want page framing. Deliberately not two DTOs: two response types for one
+-- screen is how a field gets fixed in one and forgotten in the other.
+--
+-- @votes@ and @timeline@ are absent until GET /votes and GET /activity define their row types,
+-- for exactly that reason -- inventing them here would be the duplication the paragraph above
+-- warns against. Each arrives later as a new optional field, a minor Swagger bump.
+type DRepDetailAPI =
+  Summary "DRep profile"
+    :> Description
+         "One DRep's whole public record in a single request: identity and status, every published \
+         \metric with the formula ids that produced them, voting power epoch by epoch, how the \
+         \delegator base moved, the top delegators, the certificate history, and the CIP-119 \
+         \metadata -- the last only when its anchor hash verified, because a document that did not \
+         \match its on-chain commitment is not this DRep's statement about itself."
+    :> "drep"
+    :> Capture "drep-id" DRepId
+    :> Get '[JSON] DRepDetailResponse
+
+type DRepPageAPI =
+  Summary "DRep profile (canonical page path)"
+    :> Description "Identical to GET /drep/{drep-id}: same handler, same response."
+    :> "pages"
+    :> "drep"
+    :> Capture "drep-id" DRepId
+    :> Get '[JSON] DRepDetailResponse
+
+type DRepPowerAPI =
+  Summary "A DRep's voting power, epoch by epoch"
+    :> Description
+         "Gaps are real and are not filled: an epoch missing from the series is an epoch the \
+         \ledger's stake distribution did not include this DRep, and zero-filling it would turn an \
+         \absence into a measurement. No CSV -- 200 epoch rows is one JSON page -- and no rank, \
+         \which would be a window function over the whole distribution per epoch."
+    :> "drep"
+    :> Capture "drep-id" DRepId
+    :> "power"
+    :> QueryParam "limit" Int
+    :> QueryParam "from_epoch" Int
+    :> QueryParam "to_epoch" Int
+    :> QueryParam "sort_order" SortOrder
+    :> Get '[JSON] (Page EpochPowerPoint)
+
+type DRepDelegatorsAPI =
+  Summary "A DRep's delegators"
+    :> Description
+         "`lovelace` is the stake the ledger counted at the latest snapshot, so it is null for a \
+         \delegation made this epoch -- real, and not yet weighed. `is_current` is false for a \
+         \delegation since superseded or whose stake account closed; `is_current=false` includes \
+         \those, which is what makes the list a history rather than a snapshot."
+    :> "drep"
+    :> Capture "drep-id" DRepId
+    :> "delegators"
+    :> Header "Accept" Text
+    :> QueryParam "limit" Int
+    :> QueryParam "offset" Int
+    :> QueryParam "is_current" Bool
+    :> QueryParam "min_lovelace" Int64
+    :> QueryParam "order_by" DelegatorsOrderBy
+    :> QueryParam "sort_order" SortOrder
+    :> Get '[JSON, CSV] (Page DelegatorRow)
+
+type DRepUpdatesAPI =
+  Summary "A DRep's certificate history"
+    :> Description
+         "`kind` comes from drep_registration.deposit and nowhere else, because that is the only \
+         \place db-sync records it: a positive deposit is a registration, a negative one a \
+         \retirement, and null a metadata update."
+    :> "drep"
+    :> Capture "drep-id" DRepId
+    :> "updates"
+    :> QueryParam "limit" Int
+    :> QueryParam "offset" Int
+    :> QueryParams "kind" DRepUpdateKind
+    :> QueryParam "sort_order" SortOrder
+    :> Get '[JSON] (Page DRepUpdateRow)
+
+-- | Resolve a captured id to the internal row id, or refuse.
+--
+-- A 'Nothing' from 'drepIdHex' here is a 404 and not a 400: the capture already rejected anything
+-- malformed as @invalid_drep_id@, so what reaches this point is a well-formed identifier that is
+-- not a DRep credential -- one of the two reserved ledger options, for instance.
+resolveDRep :: DRepId -> QueryAppMonad Int64
+resolveDRep did = do
+  hex <- maybe (throwApi DrepNotFound) pure (drepIdHex did)
+  mid <- runRead (resolveDRepHex hex)
+  maybe (throwApi DrepNotFound) pure mid
+
+handleGetDRepDetail :: DRepId -> QueryAppMonad DRepDetailResponse
+handleGetDRepDetail did = do
+  dhid <- resolveDRep did
+  -- ONE runRead, so the whole page is one RepeatableRead snapshot: a composite assembled from
+  -- several transactions can show metrics from one moment beside a delegator list from another.
+  r <- runRead $ do
+    ms <- drepSummaryByIdQuery dhid
+    mm <- drepMetricsQuery dhid
+    power <- listEpochPower dhid Nothing Nothing Asc 200
+    -- The stats are measured at the SAME epoch as the metrics block, from the metrics block's
+    -- own as_of_epoch, so the page cannot show a retention rate from one epoch beside a
+    -- participation rate from another.
+    mstats <- case mm of
+      Nothing -> pure Nothing
+      Just m -> delegatorStatsQuery dhid (drepMetricsAsOfEpoch m) retentionWindowEpochs
+    tops <- listDelegators dhid True Nothing (delegatorOrderColumn DelegatorsOrderByLovelace, Desc) (10, 0)
+    ups <- listDRepUpdates dhid [] Desc (50, 0)
+    anchor <- anchorContentQuery dhid
+    pure $
+      DRepDetailResponse
+        <$> ms
+        <*> mm
+        <*> Just power
+        <*> mstats
+        <*> Just (pageItems tops)
+        <*> Just (pageItems ups)
+        <*> Just anchor
+  maybe (throwApi DrepNotFound) pure r
+
+handleGetDRepPower ::
+  DRepId -> Maybe Int -> Maybe Int -> Maybe Int -> Maybe SortOrder -> QueryAppMonad (Page EpochPowerPoint)
+handleGetDRepPower did limit fromEpoch toEpoch sortOrder = do
+  dhid <- resolveDRep did
+  _ <- either throwApi pure (checkRanges Nothing Nothing fromEpoch toEpoch)
+  (lim, off) <- either throwApi pure (normalizeLimitOffset epochSeriesBounds limit Nothing)
+  items <- runRead (listEpochPower dhid fromEpoch toEpoch (fromMaybe Asc sortOrder) lim)
+  -- total = the number of points returned: the series is at most 200 rows and a second COUNT
+  -- query over it would cost as much as the page.
+  pure (Page items (Just (length items)) lim off Nothing)
+
+handleGetDRepDelegators ::
+  DRepId ->
+  Maybe Text ->
+  Maybe Int ->
+  Maybe Int ->
+  Maybe Bool ->
+  Maybe Int64 ->
+  Maybe DelegatorsOrderBy ->
+  Maybe SortOrder ->
+  QueryAppMonad (Page DelegatorRow)
+handleGetDRepDelegators did accept limit offset isCurrent minLovelace orderBy sortOrder = do
+  dhid <- resolveDRep did
+  bounds <- either throwApi pure (normalizeLimitOffset (boundsFor accept) limit offset)
+  runRead $
+    listDelegators
+      dhid
+      (fromMaybe True isCurrent)
+      minLovelace
+      (delegatorOrderColumn (fromMaybe DelegatorsOrderByLovelace orderBy), fromMaybe Desc sortOrder)
+      bounds
+
+handleGetDRepUpdates ::
+  DRepId -> Maybe Int -> Maybe Int -> [DRepUpdateKind] -> Maybe SortOrder -> QueryAppMonad (Page DRepUpdateRow)
+handleGetDRepUpdates did limit offset kinds sortOrder = do
+  dhid <- resolveDRep did
+  bounds <- either throwApi pure (normalizeLimitOffset jsonBounds limit offset)
+  runRead (listDRepUpdates dhid (map jsonTag kinds) (fromMaybe Desc sortOrder) bounds)
+
+drepProfileServer ::
+  ServerT (DRepDetailAPI :<|> DRepPageAPI :<|> DRepPowerAPI :<|> DRepDelegatorsAPI :<|> DRepUpdatesAPI) QueryAppMonad
+drepProfileServer =
+  handleGetDRepDetail
+    :<|> handleGetDRepDetail
+    :<|> handleGetDRepPower
+    :<|> handleGetDRepDelegators
+    :<|> handleGetDRepUpdates
+
+------------------------------------------------------------------------------------------------
+
 --  Core Function API
 
 ------------------------------------------------------------------------------------------------
@@ -219,12 +433,18 @@ type CoreFunctionAPI =
   StatusAPI
     :<|> MetricsFormulasAPI
     :<|> DRepsAPI
+    :<|> DRepDetailAPI
+    :<|> DRepPageAPI
+    :<|> DRepPowerAPI
+    :<|> DRepDelegatorsAPI
+    :<|> DRepUpdatesAPI
 
 coreFunctionServer :: ServerT CoreFunctionAPI QueryAppMonad
 coreFunctionServer =
   statusServer
     :<|> metricsFormulasServer
     :<|> drepsServer
+    :<|> drepProfileServer
 
 ------------------------------------------------------------------------------------------------
 
@@ -305,6 +525,34 @@ mkWebApp corsCfg readFresh ctx =
   mkCorsMiddleware corsCfg $
     freshnessMiddleware readFresh $
       provideOptions proxyPublicAPI $
-        serve proxyFullAPI hoistedServer
+        serveWithContext proxyFullAPI (palmaresErrorFormatters :. EmptyContext) hoistedServer
   where
-    hoistedServer = hoistServer proxyFullAPI (runAppMonad ctx) fullServer
+    hoistedServer =
+      hoistServerWithContext
+        proxyFullAPI
+        (Proxy :: Proxy '[ErrorFormatters])
+        (runAppMonad ctx)
+        fullServer
+
+-- | Make servant's OWN 400s carry the documented @{code, message}@ body.
+--
+-- Without this, a capture or query-parameter that fails to parse never reaches a handler: servant
+-- builds its own response out of the @String@ the parser returned and serves it as plain text.
+-- Measured: a DRep id with a broken bech32 checksum came back as @400 Error parsing ...@, which
+-- no client could match on, next to our own 400s which carry a @code@.
+--
+-- Every @parseUrlPiece@ in this codebase returns the error CODE as that string, which is what
+-- makes the round trip work: @invalid_drep_id@ goes out of the parser and comes back in here as
+-- 'InvalidDrepId'. Anything unrecognised becomes @invalid_parameter@, which is true of it.
+palmaresErrorFormatters :: ErrorFormatters
+palmaresErrorFormatters =
+  defaultErrorFormatters
+    { -- urlParseErrorFormatter covers a failing Capture AND a failing QueryParam: servant has one
+      -- hook for both, which is why there is no queryParseErrorFormatter to set.
+      urlParseErrorFormatter = fromParserMessage,
+      headerParseErrorFormatter = fromParserMessage
+    }
+  where
+    fromParserMessage _ _ msg =
+      let code = errorCodeFromText (T.pack msg)
+       in mkServantErr (errorCodeToHttpStatus code) code

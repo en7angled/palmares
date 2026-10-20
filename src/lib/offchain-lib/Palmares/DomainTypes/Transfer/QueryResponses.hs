@@ -45,6 +45,16 @@ module Palmares.DomainTypes.Transfer.QueryResponses
     EpochParamsSummary (..),
     StatusResponse (..),
     DRepSummary (..),
+    VoteCounts (..),
+    TypeBreakdown (..),
+    DRepMetrics (..),
+    EpochPowerPoint (..),
+    DelegatorStats (..),
+    DelegatorRow (..),
+    DRepUpdateRow (..),
+    AnchorReference (..),
+    AnchorContent (..),
+    DRepDetailResponse (..),
   )
 where
 
@@ -560,3 +570,220 @@ instance FromJSON DRepSummary where
       <*> o .: "open_actions_unvoted"
       <*> o .:? "last_vote_at"
       <*> o .: "as_of_epoch"
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * The DRep profile
+
+-- | Final votes, by verdict. The sample is the FINAL vote on each eligible action, so a DRep that
+-- changed its mind is counted once.
+data VoteCounts = VoteCounts
+  { voteCountsYes :: Int,
+    voteCountsNo :: Int,
+    voteCountsAbstain :: Int
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "voteCounts", CamelToSnake]] VoteCounts
+
+instance ToSchema VoteCounts where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "voteCounts")
+
+-- | One governance action type's slice of a DRep's record.
+--
+-- All seven types always appear, even at zero: a missing row reads as \"no data\" while a zero row
+-- reads as \"nothing to vote on\", and the difference matters when a DRep is being judged.
+data TypeBreakdown = TypeBreakdown
+  { typeBreakdownEligibleActions :: Int,
+    typeBreakdownVotesCast :: Int,
+    typeBreakdownYes :: Int,
+    typeBreakdownNo :: Int,
+    typeBreakdownAbstain :: Int,
+    typeBreakdownParticipationRate :: Maybe Double
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "typeBreakdown", CamelToSnake]] TypeBreakdown
+
+instance ToSchema TypeBreakdown where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "typeBreakdown")
+
+-- | Every published number about a DRep's track record, with the ids of the formulas that
+-- produced them.
+--
+-- @formula_ids@ is the point of the whole design: a reader who distrusts a number can resolve the
+-- id at @\/metrics\/formulas@ and read the exact SQL that computed it. A metric without a
+-- resolvable formula is an opinion with a decimal point.
+--
+-- The five rationale counters sum to @votes_cast@ by construction, and all three rates are @null@
+-- rather than @0@ when their denominator is empty — \"n\/a\" and \"0%\" are different statements
+-- about a person.
+data DRepMetrics = DRepMetrics
+  { drepMetricsAsOfEpoch :: Int,
+    drepMetricsEligibleActions :: Int,
+    drepMetricsVotesCast :: Int,
+    drepMetricsOpenActionsUnvoted :: Int,
+    drepMetricsParticipationRate :: Maybe Double,
+    drepMetricsRationaleVerified :: Int,
+    drepMetricsRationaleInline :: Int,
+    drepMetricsRationaleUnverified :: Int,
+    drepMetricsRationalePending :: Int,
+    drepMetricsRationaleAbsent :: Int,
+    drepMetricsRationaleCip100Valid :: Int,
+    drepMetricsRationaleRate :: Maybe Double,
+    drepMetricsVoteLatencyMedianHours :: Maybe Double,
+    drepMetricsVoteLatencyP90Hours :: Maybe Double,
+    drepMetricsVoteLatencySample :: Int,
+    drepMetricsAgeDays :: Maybe Int,
+    drepMetricsFinalVotes :: VoteCounts,
+    -- | @(action_type, breakdown)@ pairs rather than an object, so the seven types keep a stable
+    -- order and a new governance action type is an added element rather than a schema change.
+    drepMetricsVotesByType :: [(Core.GovActionType, TypeBreakdown)],
+    drepMetricsFormulaIds :: [Text]
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "drepMetrics", CamelToSnake]] DRepMetrics
+
+instance ToSchema DRepMetrics where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "drepMetrics")
+
+-- | One epoch of a DRep's voting power.
+--
+-- A MISSING epoch is not zero-filled: the ledger's distribution for that epoch simply did not
+-- include this DRep, and inventing a row would turn an absence into a measurement. Measured on
+-- the fixture DRep: 141 points over epochs 174-320, with 203-208 genuinely absent.
+--
+-- @delegator_count@ is @null@ for an epoch the delegator view cannot reconstruct, which is not the
+-- same as a DRep having had no delegators.
+data EpochPowerPoint = EpochPowerPoint
+  { epochPowerEpoch :: Int,
+    epochPowerLovelace :: Integer,
+    epochPowerDelegatorCount :: Maybe Int
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "epochPower", CamelToSnake]] EpochPowerPoint
+
+instance ToSchema EpochPowerPoint where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "epochPower")
+
+-- | How a DRep's delegator base moved over the retention window.
+--
+-- All five counters are published, not just the rate, because the rate alone cannot distinguish
+-- \"kept all ten\" from \"lost ninety and kept ten\". @window_epochs@ is echoed so the number is
+-- interpretable without reading the catalog.
+--
+-- The numbers come from running @delegator_retention_rate_v1.sql@ itself. "Delegators it HAD
+-- then" is a set reconstructed from delegation intervals, not the set of addresses that ever
+-- delegated: measured on the fixture DRep, the cumulative reading gave 26 previous delegators and
+-- a retention rate of 0.42 where the real answer is 11 and 1.0.
+-- The field names are the CATALOG's column names, not shorter ones: this block is decoded
+-- straight out of @delegator_retention_rate_v1.sql@, the statement @\/metrics\/formulas@
+-- publishes, so renaming them here would mean an aliasing layer whose only job is to let two
+-- names for one number drift apart.
+data DelegatorStats = DelegatorStats
+  { delegatorStatsDelegatorCount :: Int,
+    delegatorStatsDelegatorCountPrev :: Int,
+    delegatorStatsDelegatorsRetained :: Int,
+    delegatorStatsDelegatorsJoined :: Int,
+    delegatorStatsDelegatorsLeft :: Int,
+    delegatorStatsDelegatorRetentionRate :: Maybe Double,
+    delegatorStatsWindowEpochs :: Int
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "delegatorStats", CamelToSnake]] DelegatorStats
+
+instance ToSchema DelegatorStats where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "delegatorStats")
+
+-- | One delegation.
+--
+-- @lovelace@ is the stake the ledger counted at the latest snapshot and is @null@ when the address
+-- had no stake in it — a delegation made this epoch is real but not yet weighed.
+data DelegatorRow = DelegatorRow
+  { delegatorRowStakeAddress :: Text,
+    delegatorRowLovelace :: Maybe Integer,
+    delegatorRowDelegatedAt :: Core.ChainPoint,
+    -- | False for a delegation that has since been superseded or whose stake account closed.
+    delegatorRowIsCurrent :: Bool
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "delegatorRow", CamelToSnake]] DelegatorRow
+
+instance ToSchema DelegatorRow where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "delegatorRow")
+
+-- | One DRep certificate.
+--
+-- @kind@ comes from @drep_registration.deposit@ and nowhere else, because that is the only place
+-- db-sync records it: positive is a registration, negative a retirement, null a metadata update.
+data DRepUpdateRow = DRepUpdateRow
+  { drepUpdateKind :: Core.DRepUpdateKind,
+    drepUpdateAt :: Core.ChainPoint,
+    drepUpdateDeposit :: Maybe Integer,
+    drepUpdateAnchorUrl :: Maybe Text,
+    drepUpdateAnchorStatus :: Maybe Core.AnchorStatus
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "drepUpdate", CamelToSnake]] DRepUpdateRow
+
+instance ToSchema DRepUpdateRow where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "drepUpdate")
+
+-- | One reference from a CIP-119 metadata document.
+data AnchorReference = AnchorReference
+  { anchorReferenceLabel :: Maybe Text,
+    anchorReferenceUri :: Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "anchorReference", CamelToSnake]] AnchorReference
+
+instance ToSchema AnchorReference where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "anchorReference")
+
+-- | A DRep's own CIP-119 metadata, as db-sync fetched and parsed it.
+--
+-- Served ONLY when the anchor's verdict is @valid@ — a document whose hash did not match the
+-- on-chain commitment is not this DRep's statement about itself, whatever it says, and publishing
+-- it under their name would be the registry asserting something it cannot verify.
+data AnchorContent = AnchorContent
+  { anchorContentGivenName :: Maybe Text,
+    anchorContentObjectives :: Maybe Text,
+    anchorContentMotivations :: Maybe Text,
+    anchorContentQualifications :: Maybe Text,
+    anchorContentImageUrl :: Maybe Text,
+    anchorContentPaymentAddress :: Maybe Text,
+    anchorContentReferences :: [AnchorReference]
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "anchorContent", CamelToSnake]] AnchorContent
+
+instance ToSchema AnchorContent where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "anchorContent")
+
+-- | @GET \/drep\/{id}@ and @GET \/pages\/drep\/{id}@: one DRep's whole public record.
+--
+-- One response and one handler on two paths. @\/pages\/…@ is the canonical path a screen renders;
+-- the bare path is the alias for an API consumer who does not want the page framing. There is
+-- deliberately no second DTO, because two DTOs for one screen is how a field gets fixed in one and
+-- not the other.
+--
+-- @votes@ and @timeline@ are NOT here yet: their row types belong to @GET \/votes@ and
+-- @GET \/activity@, and inventing them twice is the mistake the paragraph above warns about. Each
+-- arrives as a new optional field, which is a minor Swagger bump by the same rule that covers the
+-- attestation fields.
+data DRepDetailResponse = DRepDetailResponse
+  { drepDetailDrep :: DRepSummary,
+    drepDetailMetrics :: DRepMetrics,
+    drepDetailPowerByEpoch :: [EpochPowerPoint],
+    drepDetailDelegatorStats :: DelegatorStats,
+    drepDetailTopDelegators :: [DelegatorRow],
+    drepDetailUpdates :: [DRepUpdateRow],
+    drepDetailAnchorContent :: Maybe AnchorContent
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "drepDetail", CamelToSnake]] DRepDetailResponse
+
+instance ToSchema DRepDetailResponse where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "drepDetail")

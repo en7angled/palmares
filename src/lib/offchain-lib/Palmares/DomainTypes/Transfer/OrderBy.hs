@@ -229,3 +229,19 @@ instance ToParamSchema DRepsOrderBy where
 
 instance FromHttpApiData DRepsOrderBy where
   parseQueryParam = parseJsonEnumParam "invalid_parameter"
+
+-- | @order_by@ on @GET \/drep\/{id}\/delegators@. Default is @lovelace@, descending: the question
+-- the list answers is who backs this DRep, and that is a question about weight.
+data DelegatorsOrderBy
+  = DelegatorsOrderByLovelace
+  | DelegatorsOrderByDelegatedAt
+  | DelegatorsOrderByStakeAddress
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[ConstructorTagModifier '[StripPrefix "DelegatorsOrderBy", CamelToSnake]] DelegatorsOrderBy
+
+instance ToParamSchema DelegatorsOrderBy where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData DelegatorsOrderBy where
+  parseQueryParam = parseJsonEnumParam "invalid_parameter"

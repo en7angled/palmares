@@ -25,11 +25,13 @@ module Palmares.WebAPI.Envelope
     ApiError (..),
     ErrorCode (..),
     errorCodeToHttpStatus,
+    errorCodeFromText,
   )
 where
 
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (FromJSON, ToJSON, Value (String), toJSON)
 import Data.Aeson.Types qualified as AesonTypes
+import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Swagger (SchemaOptions, ToSchema (..), genericDeclareNamedSchema)
 import Data.Swagger.SchemaOptions (fromAesonOptions)
@@ -159,6 +161,22 @@ instance ToSchema ErrorCode where
 -- Total by construction: a new code without a status is a compile error here, which is why this
 -- is a @case@ and not a lookup table with a fallthrough. A code served with the wrong status is
 -- the kind of bug that only shows up in someone else's retry logic.
+-- | Read an 'ErrorCode' back from its wire tag, defaulting to 'InvalidParameter'.
+--
+-- This exists for servant's routing layer. A failing @parseUrlPiece@ hands servant a @String@,
+-- and servant builds its OWN 400 out of it — plain text, no @code@, bypassing
+-- 'Palmares.WebAPI.Errors.mkServantErr' entirely. Measured: a DRep id with a broken bech32
+-- checksum came back as @400@ with the body @Error parsing ...@, which no client could match on.
+-- Since every @parseUrlPiece@ in this codebase returns the code's own tag as that string, an
+-- error formatter can read it back here and serve the documented body.
+errorCodeFromText :: Text -> ErrorCode
+errorCodeFromText t =
+  fromMaybe InvalidParameter (lookup t [(tag c, c) | c <- [minBound .. maxBound]])
+  where
+    tag c = case toJSON c of
+      String s -> s
+      _ -> ""
+
 errorCodeToHttpStatus :: ErrorCode -> Int
 errorCodeToHttpStatus = \case
   InvalidParameter -> 400

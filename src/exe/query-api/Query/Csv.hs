@@ -20,8 +20,8 @@ import Data.Text qualified as T
 import Data.Time (UTCTime)
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Numeric (showFFloat)
-import Palmares.DomainTypes.Core.Types (DRepId (..))
-import Palmares.DomainTypes.Transfer.QueryResponses (DRepSummary (..))
+import Palmares.DomainTypes.Core.Types (ChainPoint (..), DRepId (..))
+import Palmares.DomainTypes.Transfer.QueryResponses (DRepSummary (..), DelegatorRow (..))
 import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.CSV (safeCell)
 
@@ -116,4 +116,19 @@ instance ToNamedRecord DRepSummary where
         "open_actions_unvoted" .= num (drepSummaryOpenActionsUnvoted s),
         "last_vote_at" .= mtime (drepSummaryLastVoteAt s),
         "as_of_epoch" .= num (drepSummaryAsOfEpoch s)
+      ]
+
+instance DefaultOrdered DelegatorRow where
+  headerOrder _ = header ["stake_address", "lovelace", "delegated_at", "epoch", "is_current"]
+
+-- | A delegation row. @delegated_at@ is flattened to its timestamp and epoch: a CSV cell cannot
+-- hold a nested chain point, and a column of JSON objects is useless in a spreadsheet.
+instance ToNamedRecord DelegatorRow where
+  toNamedRecord r =
+    namedRecord
+      [ "stake_address" .= safeCell (delegatorRowStakeAddress r),
+        "lovelace" .= mnum (delegatorRowLovelace r),
+        "delegated_at" .= T.pack (iso8601Show (chainPointTime (delegatorRowDelegatedAt r))),
+        "epoch" .= num (chainPointEpoch (delegatorRowDelegatedAt r)),
+        "is_current" .= bool (delegatorRowIsCurrent r)
       ]

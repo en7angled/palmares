@@ -52,7 +52,8 @@ reconcileTests =
       countTests,
       mappingTests,
       primitiveTests,
-      rowTests
+      rowTests,
+      sampleTests
     ]
 
 -- ---------------------------------------------------------------------------------------------
@@ -654,3 +655,51 @@ setKoiosTipEpoch e k = k {ksTip = (ksTip k) {koiosTipEpochNo = e}}
 setKoiosActive :: Text -> Bool -> KoiosSnapshot -> KoiosSnapshot
 setKoiosActive i a k =
   k {ksDRepInfo = [if koiosDRepInfoId x == i then x {koiosDRepInfoActive = a} else x | x <- ksDRepInfo k]}
+
+-- ---------------------------------------------------------------------------------------------
+
+-- | The shipped sample, gated against the spec's own floor.
+--
+-- CI runs this, so the floor cannot silently regress: a sample that shrank below 20 DReps or 10
+-- actions would still reconcile cleanly and would still be a weaker check than the spec asked for,
+-- and nothing else in the suite would notice.
+sampleTests :: TestTree
+sampleTests =
+  testGroup
+    "Reconcile sample"
+    [ testCase "the shipped sample meets the spec floor and is pinned, not drawn" $ do
+        s <- loadSample "config/reconcile-sample.preprod.json" >>= either assertFailure pure
+        (sampleNetwork s, sampleRecordedAtEpoch s) @?= ("preprod", 320)
+        assertBool ">= 20 DReps (spec floor)" (length (sampleVoteHistoryDreps s) >= 20)
+        assertBool ">= 10 gov actions (spec floor)" (length (sampleTallyActions s) >= 10),
+      -- Both lists are keys that both sides join on, so a malformed id is not a weaker check, it
+      -- is a row that compares nothing and reports ok.
+      testCase "every id is the CIP-129 form both sides key on" $ do
+        s <- loadSample "config/reconcile-sample.preprod.json" >>= either assertFailure pure
+        ( filter (not . T.isPrefixOf "drep1") (sampleVoteHistoryDreps s),
+          filter (not . T.isPrefixOf "gov_action1") (sampleTallyActions s)
+          )
+          @?= ([], []),
+      -- A duplicate would inflate `compared` without comparing anything more, which is the one way
+      -- a sample can look larger than it is.
+      testCase "no id appears twice, and the file is sorted so a redraw diffs cleanly" $ do
+        s <- loadSample "config/reconcile-sample.preprod.json" >>= either assertFailure pure
+        ( nub (sampleVoteHistoryDreps s) == sampleVoteHistoryDreps s,
+          nub (sampleTallyActions s) == sampleTallyActions s,
+          sort (sampleVoteHistoryDreps s) == sampleVoteHistoryDreps s,
+          sort (sampleTallyActions s) == sampleTallyActions s
+          )
+          @?= (True, True, True, True),
+      -- The worked example's 16 votes are not guaranteed to reach the top 30 by vote count, so it
+      -- is in the sample explicitly. This is what says so.
+      testCase "the worked-example DRep is in the sample" $ do
+        s <- loadSample "config/reconcile-sample.preprod.json" >>= either assertFailure pure
+        assertBool
+          "the T-METRIC worked example is present"
+          ("drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg" `elem` sampleVoteHistoryDreps s),
+      testCase "a missing sample file is a Left, not an empty sample" $ do
+        r <- loadSample "config/does-not-exist.json"
+        case r of
+          Left _ -> pure ()
+          Right _ -> assertFailure "a missing sample must not read as zero ids"
+    ]

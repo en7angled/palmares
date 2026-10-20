@@ -59,6 +59,10 @@ module Palmares.Reconcile
     reconcileAll,
     readyMaxLagSeconds,
 
+    -- * The pinned sample
+    ReconcileSample (..),
+    loadSample,
+
     -- * The report
     ReportStatus (..),
     Report (..),
@@ -67,7 +71,8 @@ module Palmares.Reconcile
   )
 where
 
-import Data.Aeson (FromJSON (parseJSON), withObject, withText, (.:), (.:?))
+import Control.Exception (IOException, try)
+import Data.Aeson (FromJSON (parseJSON), eitherDecodeFileStrict, withObject, withText, (.:), (.:?))
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
@@ -722,6 +727,56 @@ renderVoteKey (a, verdict, txh) = a <> ":" <> jsonTag verdict <> ":" <> txh
 -- | @\<stake_address\>:\<amount\>@, R9's key.
 renderWithdrawalKey :: (Text, Integer) -> Text
 renderWithdrawalKey (addr, amt) = addr <> ":" <> tshow amt
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * The pinned sample
+
+-- | Which DReps and which actions a run reconciles, read from a COMMITTED file.
+--
+-- __Pinned, not drawn at run time.__ Two rows cannot be compared population-wide — R7 would have to
+-- page every DRep's whole vote history, R6 and R9 one request per action — so they run over a
+-- sample. A sample drawn at run time makes the check unfalsifiable: a divergence that appears one
+-- night and not the next could be a fix, a regression, or a different sample, and nothing in the
+-- report says which. A committed file turns a population change into a @git diff@.
+--
+-- There is no randomness in it either. A shell script cannot draw a reproducible random sample, so
+-- the file is the union of deterministic selectors over two different populations — the heaviest
+-- voters and the newest cohort — which is what a fixed seed was being asked to approximate.
+--
+-- @recorded_at_epoch@ is carried so a report can say the sample is older than the chain it was
+-- drawn from, which is the condition under which an id in it may simply no longer exist.
+data ReconcileSample = ReconcileSample
+  { sampleNetwork :: Text,
+    sampleRecordedAtEpoch :: Int,
+    -- | R7's population: CIP-129 @drep1…@ ids.
+    sampleVoteHistoryDreps :: [Text],
+    -- | R6's and R9's population: CIP-129 @gov_action1…@ ids.
+    sampleTallyActions :: [Text]
+  }
+  deriving stock (Show, Eq, Generic)
+
+instance FromJSON ReconcileSample where
+  parseJSON = withObject "ReconcileSample" $ \o ->
+    ReconcileSample
+      <$> o .: "network"
+      <*> o .: "recorded_at_epoch"
+      <*> o .: "vote_history_dreps"
+      <*> o .: "tally_actions"
+
+-- | Read the pinned sample, or say why it could not be read.
+--
+-- A missing or unreadable file is a 'Left', not an exception. @eitherDecodeFileStrict@ throws on an
+-- IO error and only returns 'Left' for a parse error, which would make "the sample is not there" a
+-- crash and "the sample is malformed" a message — two spellings of the same operator mistake.
+-- 'loadExceptions' has the same contract, via @Data.Yaml@, which does the catching itself.
+loadSample :: FilePath -> IO (Either String ReconcileSample)
+loadSample path = do
+  r <- try (eitherDecodeFileStrict path)
+  pure $ case r of
+    Left (e :: IOException) -> Left (path <> ": " <> show e)
+    Right (Left e) -> Left (path <> ": " <> e)
+    Right (Right s) -> Right s
 
 -- | The lag a run will tolerate before aborting, in seconds.
 --

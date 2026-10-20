@@ -31,6 +31,8 @@ extra-source-files:
   sql/*.sql
   test/fixtures/*.sql
   test/fixtures/koios/*.json
+  config/reconcile-exceptions.yaml
+  config/reconcile-sample.preprod.json
 
 -- resources/metrics/*.sql
 -- resources/metric-formulas.json

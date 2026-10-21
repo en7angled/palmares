@@ -146,7 +146,7 @@ services:
 
   query-api:
     profiles: [app]
-    image: ghcr.io/${GH_OWNER:-en7angled}/palmares-query-api:${TAG:-latest}
+    image: ghcr.io/${GH_OWNER:-mariusgeorgescu}/palmares-query-api:${TAG:-latest}
     environment:
       PG_CONN_STR: "host=postgres user=postgres password=${POSTGRES_PASSWORD:-devonly} dbname=cexplorer port=5432"
       PORT: "8083"

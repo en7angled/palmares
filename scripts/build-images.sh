@@ -9,7 +9,7 @@ set -euo pipefail
 #   scripts/build-images.sh v1.2.3     # or specify an explicit tag
 #
 # Env:
-#   IMAGE_PREFIX   Registry/namespace prefix (default: ghcr.io/en7angled)
+#   IMAGE_PREFIX   Registry/namespace prefix (default: ghcr.io/mariusgeorgescu — images.yml's GHCR_OWNER)
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -18,7 +18,7 @@ if [[ -z "${TAG}" ]]; then
   TAG="$(git -C "${ROOT_DIR}" rev-parse --short HEAD)"
 fi
 
-IMAGE_PREFIX="${IMAGE_PREFIX:-ghcr.io/en7angled}"
+IMAGE_PREFIX="${IMAGE_PREFIX:-ghcr.io/mariusgeorgescu}"
 SERVICES=(admin query-api interaction-api attest-sync)
 
 echo "Building images with tag: ${TAG}"

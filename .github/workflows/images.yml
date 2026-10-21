@@ -19,6 +19,17 @@ concurrency:
   group: images-${{ github.ref }}
   cancel-in-progress: true
 
+# The GHCR namespace images are published under — OWNER DECISION 2026-10-21: `mariusgeorgescu`.
+#
+# Written out rather than taken from `${{ github.repository }}`, which resolves to `en7angled/palmares`
+# and was therefore the owner by accident of where the repository happens to live. One line decides it
+# here; `compose.yaml`'s `${GH_OWNER:-…}` and `scripts/build-images.sh`'s `IMAGE_PREFIX` carry the same
+# default so a local pull and a CI push name the same image.
+#
+# The image NAME is unchanged: `palmares-<svc>` was already `<repo>-<svc>`, so only the namespace moves.
+env:
+  GHCR_OWNER: mariusgeorgescu
+
 jobs:
   # The two shared base images, PUSHED to GHCR rather than loaded into the local daemon.
   #
@@ -31,7 +42,7 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: read
-      packages: write          # GHCR via GITHUB_TOKEN — no DOCKERHUB_* secrets at all
+      packages: write          # GHCR only — no DOCKERHUB_* secrets at all. See the login step.
     strategy:
       fail-fast: true
       matrix:
@@ -44,8 +55,17 @@ jobs:
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ env.GHCR_OWNER }}
+          # `GITHUB_TOKEN` is scoped to the OWNER of the repository it runs in. While this repository
+          # lives under the `en7angled` org and images publish under `mariusgeorgescu`, it cannot write
+          # that namespace — the push fails with `denied`, and no amount of `packages: write` changes
+          # it, because the permission is over the org's own packages. So a classic PAT owned by
+          # `mariusgeorgescu` with `write:packages` must be stored as the `GHCR_TOKEN` secret.
+          #
+          # The `||` is not a silent fallback: it is what makes "transfer the repository to
+          # `mariusgeorgescu`" a zero-edit alternative, because then `GITHUB_TOKEN` is already the
+          # right credential and the secret can simply be deleted.
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
       - uses: docker/build-push-action@v6
         with:
@@ -56,8 +76,8 @@ jobs:
           # The :sha tag is what the service builds consume: it cannot be swapped under them by a
           # concurrent run the way a floating :version tag can. The :version tag is for humans.
           tags: |
-            ghcr.io/${{ github.repository }}-${{ matrix.name }}:${{ github.sha }}
-            ghcr.io/${{ github.repository }}-${{ matrix.name }}:${{ matrix.version }}
+            ghcr.io/${{ env.GHCR_OWNER }}/palmares-${{ matrix.name }}:${{ github.sha }}
+            ghcr.io/${{ env.GHCR_OWNER }}/palmares-${{ matrix.name }}:${{ matrix.version }}
           cache-from: type=gha,scope=base-${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=base-${{ matrix.name }}
 
@@ -78,8 +98,17 @@ jobs:
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ env.GHCR_OWNER }}
+          # `GITHUB_TOKEN` is scoped to the OWNER of the repository it runs in. While this repository
+          # lives under the `en7angled` org and images publish under `mariusgeorgescu`, it cannot write
+          # that namespace — the push fails with `denied`, and no amount of `packages: write` changes
+          # it, because the permission is over the org's own packages. So a classic PAT owned by
+          # `mariusgeorgescu` with `write:packages` must be stored as the `GHCR_TOKEN` secret.
+          #
+          # The `||` is not a silent fallback: it is what makes "transfer the repository to
+          # `mariusgeorgescu`" a zero-edit alternative, because then `GITHUB_TOKEN` is already the
+          # right credential and the secret can simply be deleted.
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
       - uses: docker/build-push-action@v6
         with:
@@ -89,10 +118,10 @@ jobs:
           push: true
           # Overrides the Dockerfile defaults, which are the local tags a contributor builds.
           build-args: |
-            BUILDER_IMAGE=ghcr.io/${{ github.repository }}-builder:${{ github.sha }}
-            RUNTIME_IMAGE=ghcr.io/${{ github.repository }}-runtime-base:${{ github.sha }}
+            BUILDER_IMAGE=ghcr.io/${{ env.GHCR_OWNER }}/palmares-builder:${{ github.sha }}
+            RUNTIME_IMAGE=ghcr.io/${{ env.GHCR_OWNER }}/palmares-runtime-base:${{ github.sha }}
           tags: |
-            ghcr.io/${{ github.repository }}-${{ matrix.svc }}:${{ github.sha }}
-            ghcr.io/${{ github.repository }}-${{ matrix.svc }}:latest
+            ghcr.io/${{ env.GHCR_OWNER }}/palmares-${{ matrix.svc }}:${{ github.sha }}
+            ghcr.io/${{ env.GHCR_OWNER }}/palmares-${{ matrix.svc }}:latest
           cache-from: type=gha,scope=${{ matrix.svc }}
           cache-to: type=gha,mode=max,scope=${{ matrix.svc }}

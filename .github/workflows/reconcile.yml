@@ -33,10 +33,16 @@ jobs:
           # From the secret store, never the repository. Koios answers unauthenticated too, at a
           # lower rate limit; the token only buys headroom for the 79 requests this makes.
           KOIOS_API_TOKEN: ${{ secrets.KOIOS_API_TOKEN }}
+          # The GHCR namespace is `images.yml`'s `GHCR_OWNER` — spelled out here because this is the
+          # one reference outside it, and plumbing a workflow-level env through a step env for a single
+          # string buys nothing. There is NO `docker login` in this job on purpose: it pulls, and a
+          # public package needs no credential. A package's FIRST push lands private, so after the
+          # first `images.yml` run the four packages have to be switched to public once, or this job
+          # fails on `pull access denied` rather than on a real divergence.
           PALMARES_ADMIN_CMD: >-
             docker run --rm -e PALMARES_API -e KOIOS_API -e KOIOS_API_TOKEN
             -v ${{ github.workspace }}:/w -w /w
-            ghcr.io/${{ github.repository }}-admin:latest
+            ghcr.io/mariusgeorgescu/palmares-admin:latest
         run: ./scripts/reconcile_koios.sh
 
       # `if: always()`, because the run worth keeping is the one that diverged.

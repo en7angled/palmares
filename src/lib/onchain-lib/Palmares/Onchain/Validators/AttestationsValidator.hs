@@ -79,9 +79,21 @@ attestationsLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) script
                     ownAddress = txOutAddress ownInput
                     updatedAttestationDatum = attestationDatum {extra = attestation {attestationIsAccepted = True}}
                     subjectUserAC = deriveUserFromRefAC (attestationSubject attestation)
-                 in traceIfFalse
-                      "A1"
-                      $ and
+                 in -- The attestation must not ALREADY be accepted. Its absence was the open half of
+                    -- inherited fix #4: the off-chain path refuses a second accept
+                    -- (AttestationAlreadyAccepted) but anyone building their own transaction bypasses
+                    -- that, and a second accept rewrites an identical datum and passes — leaving a
+                    -- permanent record whose acceptance is whatever the last accepter chose. Its own
+                    -- trace code rather than folding into A1, because "already accepted" and "wrong
+                    -- output" are different mistakes and an operator should be able to tell them apart.
+                    --
+                    -- One boolean read of a datum already parsed, so this is NOT the
+                    -- non-exploitable-defence case the repo rejects: the off-chain guard is bypassable
+                    -- and the consequence is permanent.
+                    traceIfFalse "A3" (not (attestationIsAccepted attestation)) -- Already accepted (A3)
+                      && traceIfFalse
+                        "A1"
+                        ( and
                         [ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress
                             outputIdx
                             updatedAttestationDatum
@@ -94,6 +106,7 @@ attestationsLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) script
                             == 1, -- Must spend the subject's user NFT
                           V1.assetClassValueOf ownValue (attestationId attestation) == 1 -- Own attestation NFT
                         ]
+                        )
         _ -> traceError "A2" -- Invalid script info (A2)
 
 -------------------------------------------------------------------------------

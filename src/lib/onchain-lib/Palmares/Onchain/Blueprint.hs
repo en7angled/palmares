@@ -64,7 +64,7 @@ myPreamble =
           \lists, which lets an organisation or a committee acting through a script be a \
           \first-class issuer. Three validators plus a configuration oracle: Minting Policy \
           \(token creation), Profiles Validator (profile lifecycle), Attestations Validator \
-          \(acceptance and cleanup), Oracle Validator (pause, fees, minimum UTxO)."
+          \(acceptance and cleanup), Oracle Validator (pause, fees, minimum UTxO, admin key)."
     , preambleVersion = "0.1.0",
       preamblePlutusVersion = PlutusV3,
       preambleLicense = Just "Apache-2.0"
@@ -210,10 +210,9 @@ oracleValidatorBlueprint =
           "Unparameterised spending validator guarding the oracle UTxO that holds OracleParams. The \
           \admin named by the current datum must sign each update, and the UTxO must return to the \
           \same address with at least the same value; only the datum may change. This is how the \
-          \protocol is paused and repriced without redeploying a validator. The admin key itself \
-          \CANNOT yet be rotated: OracleAdminAction has no SetAdmin case, and the output check \
-          \requires the new datum to equal applyOracleAdminAction of the old, which preserves the \
-          \admin by construction.",
+          \protocol is paused, repriced or re-keyed without redeploying a validator. Re-keying is \
+          \OracleSetAdmin, and it is signed by the CURRENT admin: a compromised key is recoverable \
+          \while it is still held, and unrecoverable once it is not.",
       validatorParameters = [],
       validatorRedeemer =
         MkArgumentBlueprint

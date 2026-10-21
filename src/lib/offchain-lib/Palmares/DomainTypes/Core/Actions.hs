@@ -14,7 +14,7 @@ import Data.Text hiding (init, tail)
 import Deriving.Aeson
 import Palmares.DomainTypes.Core.Types
 import GHC.Generics ()
-import GeniusYield.Types (GYAssetClass)
+import GeniusYield.Types (GYAssetClass, GYPubKeyHash)
 import GeniusYield.Types.Time
 import Palmares.Onchain.Protocol.Types (FeeConfig)
 
@@ -98,6 +98,12 @@ data AdminActionType
     SetFeesAction (Maybe FeeConfig)
   | -- | Minimum lovelace for protocol state outputs (oracle opMinUTxOValue)
     SetMinUTxOValueAction Integer
+  | -- | Hand the oracle to a new admin — inherited fix #2.
+    --
+    -- Deliberately NOT deserializable from an HTTP body (see the 'FromJSON' instance below): an
+    -- action that changes who controls the protocol must come from the admin CLI, where the key that
+    -- has to sign it already lives.
+    RotateAdminAction GYPubKeyHash
   deriving (Show, Generic)
 
 instance ToJSON AdminActionType where
@@ -105,6 +111,9 @@ instance ToJSON AdminActionType where
   toJSON UnpauseProtocolAction = object ["tag" .= ("UnpauseProtocolAction" :: Text)]
   toJSON (SetFeesAction _) = object ["tag" .= ("SetFeesAction" :: Text)]
   toJSON (SetMinUTxOValueAction n) = object ["tag" .= ("SetMinUTxOValueAction" :: Text), "lovelace" .= n]
+  -- The new admin's hash is deliberately NOT serialized: this instance exists for logging and for
+  -- echoing an action back, and a rotation's log line has no business carrying the key.
+  toJSON (RotateAdminAction _) = object ["tag" .= ("RotateAdminAction" :: Text)]
 
 instance FromJSON AdminActionType where
   parseJSON = withObject "AdminActionType" $ \o -> do

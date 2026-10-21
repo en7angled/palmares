@@ -10,7 +10,7 @@ import GHC.Stack (HasCallStack)
 import GeniusYield.TxBuilder
 import GeniusYield.Types
 import Palmares.Onchain.CIP68 (CIP68Datum (..), ImageURI, MetadataFields (..), extra, getMetadataFields, mkCIP68Datum, updateCIP68DatumMetadata)
-import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
+import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetAdmin, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
 import Palmares.Onchain.Protocol.Lookup qualified as Lookup
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer (..))
@@ -24,7 +24,7 @@ import Palmares.TxBuilding.Conversions (cip68StandardMetadataKeys)
 import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
 import Palmares.TxBuilding.Lookups (getAttestationDatumAndValue, getDustUTxOs, getProfileStateDatumAndValue, getUTxOWithTokenAtAddresses, queryOracleParams)
 import Palmares.TxBuilding.Skeletons
-import Palmares.TxBuilding.Utils (txOutRefToV3Plutus)
+import Palmares.TxBuilding.Utils (pPOSIXTimeFromGYSlot, txOutRefToV3Plutus)
 import Palmares.TxBuilding.Validators
 
 -- | Build a skeleton component that adds the oracle UTxO as a reference input.
@@ -215,6 +215,20 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId metadata otherMetadata a
   (oracleRefSkeleton, oracleParams, feeSkeleton, isInvalidBeforeNow) <- getOracleFeeAndValiditySkeleton OnchainTypes.MintActionAttestation
   let minLv = OnchainTypes.opMinUTxOValue oracleParams
 
+  -- The off-chain half of inherited fix #4. The minting policy's Ml now requires the date to be
+  -- CONTAINED in the validity interval, and the interval this transaction carries is
+  -- [tip, tip + safeEraTime]. A caller-supplied date outside that would fail as a script error, which
+  -- reads like a protocol bug rather than a bad request — so it is refused here, before anything is
+  -- built, with a message that says what the field means.
+  --
+  -- T-ATTEST-6 removes the field from the request entirely and derives the date from the tip; until
+  -- then this is what keeps the two layers agreeing.
+  now <- slotOfCurrentBlock
+  windowStart <- pPOSIXTimeFromGYSlot now
+  windowEnd <- pPOSIXTimeFromGYSlot (unsafeSlotFromInteger (slotToInteger now + safeEraTime))
+  when (attestationDate < windowStart || attestationDate > windowEnd) $
+    throwError (GYApplicationException AttestationDateOutOfRange)
+
   -- Get a seed TxOutRef for uniqueness
   seedTxOutRef <- someUTxOWithoutRefScript
   let isSpendingSeedUTxO = mustHaveInput (GYTxIn seedTxOutRef GYTxInWitnessKey)
@@ -379,6 +393,7 @@ adminActionToOracleAdminAction PauseProtocolAction = OraclePause
 adminActionToOracleAdminAction UnpauseProtocolAction = OracleUnpause
 adminActionToOracleAdminAction (SetFeesAction mFeeConfig) = OracleSetFees mFeeConfig
 adminActionToOracleAdminAction (SetMinUTxOValueAction lovelace) = OracleSetMinUTxOValue lovelace
+adminActionToOracleAdminAction (RotateAdminAction newAdmin) = OracleSetAdmin (pubKeyHashToPlutus newAdmin)
 
 -- | Apply an admin action delta to current oracle params to produce new params.
 -- Must stay in sync with on-chain 'Onchain.Protocol.Types.applyOracleAdminAction'.
@@ -387,6 +402,7 @@ applyAdminAction PauseProtocolAction params = params {OnchainTypes.opPaused = Tr
 applyAdminAction UnpauseProtocolAction params = params {OnchainTypes.opPaused = False}
 applyAdminAction (SetFeesAction mFeeConfig) params = params {OnchainTypes.opFeeConfig = mFeeConfig}
 applyAdminAction (SetMinUTxOValueAction lovelace) params = params {OnchainTypes.opMinUTxOValue = lovelace}
+applyAdminAction (RotateAdminAction newAdmin) params = params {OnchainTypes.opAdminPkh = pubKeyHashToPlutus newAdmin}
 
 ------------------------------------------------------------------------------------------------
 

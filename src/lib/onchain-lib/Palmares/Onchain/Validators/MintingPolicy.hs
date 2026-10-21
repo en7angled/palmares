@@ -53,6 +53,7 @@ import Palmares.Onchain.Protocol.Types
 import Palmares.Onchain.Utils (hasCurrencySymbol)
 import Palmares.Onchain.Utils qualified as Utils
   ( checkCredentialControl,
+    checkDateInRange,
     checkTxOutAtIndexWithDatumMinValueAndAddress,
     inputsSpendTxOutRef,
     mkUntypedLambda,
@@ -175,7 +176,7 @@ handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOu
           }
 
       attestationDatum = mkCIP68Datum attestationInfo metadata otherMetadataEncoded
-   in traceIfFalse "Ml" (attestationDate `before` txInfoValidRange) -- Attestation date before validity (Ml)
+   in traceIfFalse "Ml" (Utils.checkDateInRange attestationDate txInfoValidRange) -- Attestation date not inside validity interval (Ml)
         && traceIfFalse "Mm" (validateMetadataFields metadata) -- Metadata fields validation failed (Mm)
         && traceIfFalse "Mf" (V1.assetClassValueOf (valueSpent txInfo) (deriveUserFromRefAC issuer) == 1) -- Must spend issued by user NFT (Mf)
         && traceIfFalse "Mg" (isSubjectValid && isIssuerValid) -- Profiles must have correct currency symbol (Mg)

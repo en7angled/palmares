@@ -56,10 +56,17 @@ makeIsDataSchemaIndexed ''FeeConfig [('FeeConfig, 0)]
 -- | Mutable operational parameters stored in the oracle UTxO datum.
 -- Read as a reference input by the MintingPolicy at execution time.
 data OracleParams = OracleParams
-  { -- | Admin public key hash. __Cannot yet be rotated__ — this said "can rotate itself" and that was
-    -- false in the strong sense: 'OracleAdminAction' has no @SetAdmin@ case, and the validator
-    -- requires the output datum to equal @applyOracleAdminAction action@ of the current one, which
-    -- preserves this field by construction. Inherited fix #2 adds the case.
+  { -- | Admin public key hash. Rotated by 'OracleSetAdmin', __signed by the current admin__.
+    --
+    -- This field said "can rotate itself" for a long time while that was false in the strong sense:
+    -- 'OracleAdminAction' had no @SetAdmin@ case, and the validator requires the output datum to
+    -- equal @applyOracleAdminAction action@ of the current one, which preserved this field by
+    -- construction. Rotation was not unimplemented, it was forbidden. Inherited fix #2 added the
+    -- case, and the validator needed no change — which is what tells you it was written correctly.
+    --
+    -- What rotation does and does not buy: a key still held can be handed on, so compromise is
+    -- recoverable while you notice in time; a key already lost is not, because the rotation itself
+    -- needs its signature.
     opAdminPkh :: PubKeyHash,
     -- | Protocol pause switch
     opPaused :: Bool,
@@ -80,10 +87,28 @@ data OracleAdminAction
   | OracleUnpause
   | OracleSetFees (Maybe FeeConfig)
   | OracleSetMinUTxOValue Integer
+  | -- | Hand the oracle to a new admin — __inherited fix #2__.
+    --
+    -- Its absence did not merely leave rotation unimplemented, it __forbade__ it: the validator
+    -- requires the output datum to equal @applyOracleAdminAction action@ of the current one, and
+    -- without this case that function preserves 'opAdminPkh' by construction. So the validator needs
+    -- no change at all; making this function able to express the change is the whole fix, and it is
+    -- that cheap because the validator was written correctly.
+    --
+    -- Appended at index 4, never inserted: the four indices above are a deployed-data contract from
+    -- the first deployment onward.
+    OracleSetAdmin PubKeyHash
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
 
-makeIsDataSchemaIndexed ''OracleAdminAction [('OraclePause, 0), ('OracleUnpause, 1), ('OracleSetFees, 2), ('OracleSetMinUTxOValue, 3)]
+makeIsDataSchemaIndexed
+  ''OracleAdminAction
+  [ ('OraclePause, 0),
+    ('OracleUnpause, 1),
+    ('OracleSetFees, 2),
+    ('OracleSetMinUTxOValue, 3),
+    ('OracleSetAdmin, 4)
+  ]
 
 -- | Apply an admin action to current oracle params to obtain the new params.
 -- Same logic as off-chain 'TxBuilding.Operations.applyAdminAction'.
@@ -93,6 +118,7 @@ applyOracleAdminAction OraclePause params = params {opPaused = True}
 applyOracleAdminAction OracleUnpause params = params {opPaused = False}
 applyOracleAdminAction (OracleSetFees mFeeConfig) params = params {opFeeConfig = mFeeConfig}
 applyOracleAdminAction (OracleSetMinUTxOValue lovelace) params = params {opMinUTxOValue = lovelace}
+applyOracleAdminAction (OracleSetAdmin newAdmin) params = params {opAdminPkh = newAdmin}
 
 -------------------------------------------------------------------------------
 

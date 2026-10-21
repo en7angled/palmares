@@ -473,6 +473,7 @@ test-suite test
     UnitTests.AttestSchema
     UnitTests.Claim
     UnitTests.Fees
+    UnitTests.OracleRules
     UnitTests.ApiHardening
   --   UnitTests.Attestation
     UnitTests.ChainSyncReplay

@@ -30,6 +30,9 @@ module Palmares.Onchain.Utils
 
     -- * Credential Control
     checkCredentialControl,
+
+    -- * Time
+    checkDateInRange,
   )
 where
 
@@ -98,6 +101,39 @@ hasTxInAtAddressWithNFT ac address = any (\(TxInInfo _inOutRef (TxOut {txOutAddr
 {-# INLINEABLE inputsSpendTxOutRef #-}
 inputsSpendTxOutRef :: TxOutRef -> [TxInInfo] -> Bool
 inputsSpendTxOutRef spendingTxOutRef = any ((== spendingTxOutRef) . txInInfoOutRef)
+
+-------------------------------------------------------------------------------
+
+-- * Time
+
+-------------------------------------------------------------------------------
+
+-- | Is this date inside the transaction's validity interval, with that interval actually bounded?
+--
+-- __Inherited fix #4.__ `onchain-lib/CLAUDE.md` requires that any date carried in a datum is
+-- validated against the transaction's validity interval, and the inherited check was
+-- @date \`before\` txInfoValidRange@. That blocks __future__-dating and leaves __back__-dating
+-- completely unbounded: an attestation could claim 2015 and pass. The remedy is containment, not
+-- precedence.
+--
+-- __Both bounds must be finite__, and that is the half the old check got wrong twice over.
+-- @PlutusLedgerApi.V1.Interval.before@ is @False@ for a @NegInf@ lower bound, which happened to force
+-- a lower bound for that one comparison — but containment alone would be satisfied by an interval with
+-- no upper bound, and a transaction submitted with @always@ could then date a permanent record
+-- anywhere. So the finiteness is required explicitly rather than inferred from whichever comparison
+-- the caller happens to use.
+--
+-- The caller's window is what gives this meaning: off-chain builds a ~7h window from the chain tip
+-- (@safeEraTime@), so "inside the interval" means "within hours of chain time", which is the honest
+-- reading of an attestation\'s date — when it was __issued__. A claim about an earlier event is
+-- self-reported and belongs in metadata, labelled as such.
+{-# INLINEABLE checkDateInRange #-}
+checkDateInRange :: POSIXTime -> V1.POSIXTimeRange -> Bool
+checkDateInRange date range =
+  isBounded range && V1.member date range
+  where
+    isBounded (V1.Interval (V1.LowerBound (V1.Finite _) _) (V1.UpperBound (V1.Finite _) _)) = True
+    isBounded _ = False
 
 -------------------------------------------------------------------------------
 

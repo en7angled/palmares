@@ -21,6 +21,13 @@ data TxBuildingException
   | AttestationAlreadyAccepted
   | -- | @other_metadata@ keys must not duplicate CIP-68 standard keys @name@, @description@, or @image@.
     AttestationOtherMetadataReservedKeys
+  | -- | The attestation date is not inside the transaction's validity interval.
+    --
+    -- The off-chain half of inherited fix #4. The minting policy requires the date to be CONTAINED in
+    -- the validity interval, which this path builds from the chain tip; a caller-supplied date outside
+    -- that window would otherwise fail as a script error, which reads to a client like a bug in the
+    -- protocol rather than a bad request. So it is refused here, as a 400, before anything is built.
+    AttestationDateOutOfRange
   | -- \* Oracle Errors
     OracleNotFound
   | OracleDatumInvalid
@@ -42,6 +49,10 @@ instance Exception TxBuildingException where
   displayException WrongProfileType = "Wrong profile type"
   displayException AttestationNotFound = "Attestation not found"
   displayException AttestationAlreadyAccepted = "Attestation is already accepted"
+  displayException AttestationDateOutOfRange =
+    "The attestation date must be within the transaction validity window (roughly the next 7 hours of \
+    \chain time). An attestation's date is when it is issued; an earlier event date is self-reported \
+    \and belongs in other_metadata."
   displayException AttestationOtherMetadataReservedKeys =
     "other_metadata must not use reserved keys: name, description, image (CIP-68 standard fields)"
   displayException OracleNotFound = "Oracle UTxO not found"
@@ -68,6 +79,7 @@ txBuildingExceptionToHttpStatus :: TxBuildingException -> Int
 txBuildingExceptionToHttpStatus ProfileNotFound = 404
 txBuildingExceptionToHttpStatus AttestationNotFound = 404
 txBuildingExceptionToHttpStatus AttestationAlreadyAccepted = 400
+txBuildingExceptionToHttpStatus AttestationDateOutOfRange = 400
 txBuildingExceptionToHttpStatus AttestationOtherMetadataReservedKeys = 400
 txBuildingExceptionToHttpStatus OracleNotFound = 404
 txBuildingExceptionToHttpStatus DeployedScriptsNotReady = 503

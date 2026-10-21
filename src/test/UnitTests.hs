@@ -19,6 +19,7 @@ import UnitTests.ApplySql qualified as ApplySqlTests
 import UnitTests.AttestSchema qualified as AttestSchema
 import UnitTests.Claim qualified as Claim
 import UnitTests.Fees qualified as Fees
+import UnitTests.OracleRules qualified as OracleRules
 import UnitTests.QueryHardening (queryHardeningTests)
 import UnitTests.Reconcile (reconcileTests)
 import UnitTests.Refresh qualified as Refresh
@@ -46,6 +47,7 @@ unitTests =
       AttestSchema.tests,
       Claim.tests,
       Fees.tests,
+      OracleRules.tests,
       reconcileTests,
       Refresh.tests,
       storageRoundtripTests,

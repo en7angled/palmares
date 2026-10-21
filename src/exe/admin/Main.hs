@@ -64,6 +64,7 @@ data Command
   | UnpauseProtocol
   | SetFees SetFeesArgs
   | SetMinUTxOValue Integer
+  | RotateAdmin GYPubKeyHash
   | QueryOracle
   | UpdateProfile UpdateProfileArgs
   | IssueAttestation IssueAttestationArgs
@@ -176,6 +177,12 @@ optionalPosixTimeParser =
 -- Asset class parser helper function
 parseAssetClass :: String -> Maybe GYAssetClass
 parseAssetClass s = Aeson.decode (B.fromStrict (LSB8.pack s))
+
+-- | Parse a 28-byte hex key hash, through the same JSON form the API documents for @GYPubKeyHash@
+-- ("Blake2b-224 public key hash, 28 bytes, hex-encoded"). Going through Aeson rather than decoding the
+-- hex here means the CLI and the API cannot disagree about what a key hash looks like.
+parsePubKeyHash :: String -> Maybe GYPubKeyHash
+parsePubKeyHash s = Aeson.decode (B.fromStrict (LSB8.pack ("\"" <> s <> "\"")))
 
 -- Asset class parser
 assetClassParser :: Parser GYAssetClass
@@ -345,6 +352,24 @@ commandParser =
               (SetMinUTxOValue <$> option auto (long "lovelace" <> short 'n' <> metavar "LOVELACE" <> help "Minimum lovelace for protocol state outputs (oracle opMinUTxOValue)"))
               (progDesc "Set minimum UTxO value (lovelace) for protocol state outputs in the oracle")
           )
+        -- Inherited fix #2. No HTTP equivalent, on purpose: AdminActionType's FromJSON rejects it, so
+        -- an action that changes who controls the protocol can only come from here, where the key
+        -- that has to sign it already lives.
+        <> command
+          "rotate-admin"
+          ( info
+              ( RotateAdmin
+                  <$> option
+                    (maybeReader parsePubKeyHash)
+                    ( long "new-admin"
+                        <> metavar "PUBKEYHASH_HEX"
+                        <> help "The 28-byte hex key hash of the role taking over the oracle"
+                    )
+              )
+              ( progDesc
+                  "Hand the oracle to a new admin (signed by the CURRENT admin; afterwards operation.prv no longer controls it)"
+              )
+          )
         <> command
           "query-oracle"
           ( info
@@ -467,6 +492,13 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
     printYellow $ "Setting min UTxO value to " <> show n <> " lovelace..."
     (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (SetMinUTxOValueAction n)) Nothing
     printGreen $ "Min UTxO value updated successfully! TxId: " <> show txId
+  -- Inherited fix #2. Signed by the CURRENT admin, which is what the oracle validator's O1 requires,
+  -- so this command is also the only proof that the key in `operation.prv` is still the live one.
+  RotateAdmin newAdmin -> do
+    printYellow $ "Rotating the oracle admin to " <> show newAdmin <> " ..."
+    printYellow "This is signed by the CURRENT admin. After it confirms, operation.prv no longer controls the oracle."
+    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (RotateAdminAction newAdmin)) Nothing
+    printGreen $ "Oracle admin rotated successfully! TxId: " <> show txId
   -- Query oracle — read-only, does not go through the Interaction pipeline
   QueryOracle -> do
     printYellow "Querying oracle parameters..."

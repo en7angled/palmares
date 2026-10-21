@@ -6,6 +6,7 @@ import GHC.Stack
 import Test.Tasty
 import UnitTests.Activity qualified as Activity
 import UnitTests.Anchor qualified as Anchor
+import UnitTests.Attestation (attestationTests)
 import UnitTests.ApiHardening (apiHardeningTests)
 import UnitTests.ChainSyncReplay (chainSyncReplayTests)
 import UnitTests.Conversions (conversionsTests)
@@ -26,6 +27,7 @@ import UnitTests.Dispute qualified as Dispute
 import UnitTests.Fees qualified as Fees
 import UnitTests.OracleRules qualified as OracleRules
 import UnitTests.Projections qualified as Projections
+import UnitTests.Profile (profileTests)
 import UnitTests.QueryHardening (queryHardeningTests)
 import UnitTests.Reconcile (reconcileTests)
 import UnitTests.Refresh qualified as Refresh
@@ -68,5 +70,8 @@ unitTests =
       -- The emulator groups last: every case in them deploys a protocol into a fresh CLB ledger, so
       -- they are the slow part of the suite and a failure is easier to read at the bottom.
       cleanupTests,
-      oracleTests
+      oracleTests,
+      attestationTests,
+      profileTests,
+      Dispute.disputeEmulatorTests
     ]

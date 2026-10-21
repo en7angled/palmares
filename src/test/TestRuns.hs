@@ -23,17 +23,25 @@ module TestRuns
 
     -- * Interaction runners
     profileInteraction,
+    disputeInteraction,
     protocolInteraction,
     adminInteraction,
 
     -- * Griefing / dust
     sendDustToValidator,
     lockParsingDatumAt,
+    sendAdaToAddress,
 
     -- * Malicious builders
     maliciousMintOracleNFTWithExtraToken,
     maliciousMintOracleNFTWrongName,
     maliciousOracleUpdate,
+    maliciousClaimWithoutControl,
+    maliciousMintProfileWithExtraToken,
+    maliciousMintProfileWithBurn,
+    maliciousIssueAttestation,
+    maliciousDoubleAccept,
+    maliciousResolveDispute,
   )
 where
 
@@ -48,14 +56,31 @@ import GeniusYield.TxBuilder hiding (userAddresses)
 import GeniusYield.TxBuilder.User qualified as User
 import GeniusYield.Types
 import Palmares.DomainTypes.Core.Actions
+import Palmares.DomainTypes.Core.Types (AttestationType, DisputeVerdict, ProfileType)
+import Palmares.Onchain.CIP68 (CIP68Datum (..), MetadataFields, mkCIP68Datum)
 import Palmares.Onchain.Protocol.Types (OracleAdminAction, OracleParams (..))
+import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
+import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer (AcceptAttestation))
+import Palmares.Onchain.Validators.DisputesValidator qualified as DisputesValidator (DisputesRedeemer (ResolveDispute))
+import Palmares.Onchain.Validators.MintingPolicy (MintingRedeemer (MintProfile, NewAttestation))
 import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer (OracleUpdate))
 import Palmares.TxBuilding.Context
+import Palmares.TxBuilding.Conversions
+  ( attestationTypeToOnchainAttestationKind,
+    disputeVerdictToOnchainVerdict,
+    profileTypeToOnchainProfileKind,
+  )
 import Palmares.TxBuilding.Interactions
-import Palmares.TxBuilding.Lookups (queryOracleParams)
-import Palmares.TxBuilding.Operations (adminActionToOracleAdminAction, applyAdminAction)
+import Palmares.TxBuilding.Lookups (getAttestationDatumAndValue, getDisputeDatumAndValue, queryOracleParams)
+import Palmares.TxBuilding.Operations
+  ( adminActionToOracleAdminAction,
+    applyAdminAction,
+    getOracleAndValiditySkeleton,
+    getOracleFeeAndValiditySkeleton,
+    spendUserNFTForProfile,
+  )
 import Palmares.TxBuilding.Skeletons
-import Palmares.TxBuilding.Utils (txOutRefToV3Plutus)
+import Palmares.TxBuilding.Utils (pPOSIXTimeFromGYSlot, tnFromGYAssetClass, txOutRefToV3Plutus)
 import Palmares.TxBuilding.Validators
 import Palmares.Utils
 import PlutusLedgerApi.V3 (PubKeyHash)
@@ -297,6 +322,34 @@ profileInteraction txBuildingContext user actionType mrecipient = asUser user $ 
       "USER_BALANCE_CHANGE: " <> show (valueAda balanceDelta) <> " lovelace"
   return (gyTxId, gyAC)
 
+-- | Open or resolve a dispute through the Interaction pipeline.
+--
+-- Its own runner and not a flag on 'profileInteraction', because that one hardcodes
+-- @action = ProfileAction actionType@: a 'DisputeActionType' cannot reach 'interactionToTxSkeleton'
+-- through it at all. Returns the dispute's asset class — the newly minted one when opening, the one
+-- resolved when resolving — which is what the next call in a test needs.
+disputeInteraction :: (GYTxGameMonad m, HasCallStack) => DeployedScriptsContext -> User -> DisputeActionType -> m (GYTxId, GYAssetClass)
+disputeInteraction txBuildingContext user actionType = asUser user $ do
+  ((gyTxId, gyAC), balanceDelta) <- withBalance "disputeInteraction" user $ do
+    let interaction =
+          Interaction
+            { action = DisputeAction actionType,
+              userAddresses = UserAddresses (toList $ User.userAddresses user) (User.userChangeAddress user) Nothing,
+              recipient = Nothing
+            }
+    (skeleton, mGyAC) <- runReaderT (interactionToTxSkeleton interaction) txBuildingContext
+    let gyAC = fromMaybe (error "disputeInteraction: DisputeAction returned Nothing for asset class") mGyAC
+    (gyTxBody, gyTxId) <- sendSkeleton' skeleton
+
+    gyLogInfo' ("TESTLOG" :: GYLogNamespace) $ yellowColorString $ "DISPUTE INTERACTION: \n" <> show interaction
+    logTxBudget gyTxBody
+
+    return (gyTxId, gyAC)
+  gyLogInfo' ("EXUNITS" :: GYLogNamespace) $
+    cyanColorString $
+      "USER_BALANCE_CHANGE: " <> show (valueAda balanceDelta) <> " lovelace"
+  return (gyTxId, gyAC)
+
 -- | Execute a protocol maintenance action (e.g., dust cleanup) through the Interaction pipeline.
 protocolInteraction :: (GYTxGameMonad m, HasCallStack) => DeployedScriptsContext -> User -> ProtocolActionType -> m GYTxId
 protocolInteraction txBuildingContext user protocolAction = asUser user $ do
@@ -391,3 +444,426 @@ lockParsingDatumAt user validator datum = asUser user $ do
   gyLogInfo' ("TESTLOG" :: GYLogNamespace) $
     yellowColorString $
       "Locked a PARSING datum (no protocol token) at validator: " <> show (scriptHash validator)
+
+-- | Send a plain, datum-less ADA UTxO to any address.
+--
+-- The general sibling of 'sendDustToValidator', and the claim tests cannot be written without it: a
+-- script credential proves control __by spending something__, so something has to be there first.
+-- 'Palmares.TxBuilding.Operations.claimProofSkeleton' refuses with @ScriptCredentialHasNoUtxo@ when
+-- it is not.
+sendAdaToAddress :: (GYTxGameMonad m, HasCallStack) => User -> GYAddress -> Integer -> m ()
+sendAdaToAddress user addr lovelace = asUser user $ do
+  skeleton <- txMustPayValueToAddress addr (valueFromLovelace lovelace)
+  void $ sendSkeleton' skeleton
+  gyLogInfo' ("TESTLOG" :: GYLogNamespace) $
+    yellowColorString $
+      "Sent " <> show lovelace <> " lovelace to " <> show addr
+
+------------------------------------------------------------------------------------------------
+
+-- * Malicious builders for the claim, the attestation and the dispute
+--
+-- Every builder below exists for one reason: the production path cannot produce the transaction
+-- that reaches the on-chain check we want to assert. 'Palmares.TxBuilding.Operations' refuses these
+-- off chain — with a 400, a missing required signer, or an unbuildable output — and a @mustFail@ on
+-- that refusal says nothing about whether the validator checks anything at all. That is the mistake
+-- 'UnitTests.Oracle' documents for @O1@; these are the same remedy for @Mp3@, @Mp2@, @Ml@, @Mf@,
+-- @A3@, @D1@ and @D3@.
+
+------------------------------------------------------------------------------------------------
+
+-- | MALICIOUS: mint a profile that CLAIMS a credential while proving nothing.
+--
+-- 'claimProofSkeleton' is what makes the claim real: a key credential gets @mustBeSignedBy@, a
+-- script credential gets a spend of one of its own UTxOs. Neither can be omitted through the API, so
+-- @Mp3@ is unreachable from it — and @Mp3@ is the whole identity rule.
+--
+-- @mProofRef@ is the input the attacker OFFERS as proof, spent with a plain key witness:
+--
+--   * 'Nothing' — no proof at all. The redeemer names a credential and the transaction carries
+--     neither its signature nor any input it governs.
+--   * @'Just' ref@ — a spend the attacker believes proves control. This is how the fixed
+--     staking-credential hole is asserted: a UTxO whose __staking__ part is the claimed script and
+--     whose payment part is the attacker's own key. The ledger authenticates the payment part and
+--     nothing else, so this must be refused.
+maliciousClaimWithoutControl ::
+  (GYTxGameMonad m, HasCallStack) =>
+  DeployedScriptsContext ->
+  -- | The attacker, who pays and signs.
+  User ->
+  ProfileType ->
+  -- | The credential the redeemer claims.
+  V3.Credential ->
+  MetadataFields ->
+  -- | The input offered as proof of control, if any.
+  Maybe GYTxOutRef ->
+  m (GYTxId, GYAssetClass)
+maliciousClaimWithoutControl ctx attacker kind credential metadata mProofRef = asUser attacker $ do
+  (skeleton, gyProfileRefAC) <- runReaderT (maliciousClaimTX kind credential metadata mProofRef) ctx
+  gyLogInfo' ("MALICIOUS" :: GYLogNamespace) $
+    "Attempting a profile claim with no proof of control over " <> show credential <> " (Mp3)..."
+  (gyTxBody, gyTxId) <- sendSkeleton' skeleton
+  logTxBudget gyTxBody
+  return (gyTxId, gyProfileRefAC)
+
+-- | Byte-identical to 'Palmares.TxBuilding.Operations.claimProfileTX' except that the proof is the
+-- caller's choice instead of 'claimProofSkeleton''s, so what rejects it is @Mp3@ and nothing else.
+maliciousClaimTX ::
+  (HasCallStack, GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
+  ProfileType ->
+  V3.Credential ->
+  MetadataFields ->
+  Maybe GYTxOutRef ->
+  m (GYTxSkeleton 'PlutusV3, GYAssetClass)
+maliciousClaimTX kind credential metadata mProofRef = do
+  ctx <- ask
+  let mpGY = getMintingPolicyFromCtx ctx
+      mpRef = getMintingPolicyRef ctx
+      onchainKind = profileTypeToOnchainProfileKind kind
+  (oracleRefSkeleton, oracleParams, feeSkeleton, isValidForSafeEra) <-
+    getOracleFeeAndValiditySkeleton OnchainTypes.MintActionProfile
+  let minLv = OnchainTypes.opMinUTxOValue oracleParams
+
+  seedTxOutRef <- someUTxOWithoutRefScript
+  let isSpendingSeedUTxO = mustHaveInput (GYTxIn seedTxOutRef GYTxInWitnessKey)
+      seedTxOutRefPlutus = txOutRefToV3Plutus seedTxOutRef
+      profileOutputIdx = 0 :: Integer
+      -- MALICIOUS: a plain key-witnessed spend, or nothing at all. No required signer and no script
+      -- witness, which is precisely what `claimProofSkeleton` would have added.
+      claimProof = maybe mempty (\r -> mustHaveInput (GYTxIn r GYTxInWitnessKey)) mProofRef
+
+  let gyRedeemer =
+        redeemerFromPlutusData (MintProfile seedTxOutRefPlutus onchainKind (Just credential) metadata profileOutputIdx)
+  (gyProfileRefAC, _gyProfileUserAC) <- gyGenerateRefAndUserAC mpGY seedTxOutRef
+  isMintingProfileNFTs <- txMustMintCIP68UserAndRef mpRef mpGY gyRedeemer gyProfileRefAC
+
+  let profileInfo =
+        OnchainTypes.OnchainProfile
+          { OnchainTypes.profileId = assetClassToPlutus gyProfileRefAC,
+            OnchainTypes.profileKind = onchainKind,
+            OnchainTypes.profileCredential = Just credential,
+            OnchainTypes.protocolParams = getProtocolParamsFromCtx ctx
+          }
+  let profileDatum = mkCIP68Datum profileInfo metadata []
+  isLockingProfileState <-
+    txMustLockStateWithInlineDatumAndValue
+      profilesValidatorGY
+      profileDatum
+      (valueSingleton gyProfileRefAC 1 <> valueFromLovelace minLv)
+
+  return
+    ( mconcat
+        [ isSpendingSeedUTxO,
+          claimProof,
+          isValidForSafeEra,
+          oracleRefSkeleton,
+          isMintingProfileNFTs,
+          isLockingProfileState,
+          feeSkeleton
+        ],
+      gyProfileRefAC
+    )
+
+-- | MALICIOUS: a legitimate profile mint with ONE extra token minted under the protocol policy.
+--
+-- Built by taking the production skeleton and appending a mint, which works because the skeleton's
+-- 'Semigroup' merges the token maps per minting script and keeps the __left__ redeemer — so the
+-- policy still runs with the redeemer 'claimProfileTX' built, and sees a mint that does not match
+-- it. @Mp2@ is what must notice.
+maliciousMintProfileWithExtraToken ::
+  (GYTxGameMonad m, HasCallStack) =>
+  DeployedScriptsContext ->
+  User ->
+  ProfileActionType ->
+  -- | The extra token name minted alongside the CIP-68 pair.
+  GYTokenName ->
+  m GYTxId
+maliciousMintProfileWithExtraToken ctx attacker actionType extraTN = asUser attacker $ do
+  skeleton <- profileSkeletonFor ctx attacker actionType
+  let attack = mustMint (protocolMintScript ctx) discardedRedeemer extraTN 1
+  gyLogInfo' ("MALICIOUS" :: GYLogNamespace) "Attempting a profile mint with an extra token (Mp2)..."
+  (gyTxBody, gyTxId) <- sendSkeleton' (skeleton <> attack)
+  logTxBudget gyTxBody
+  return gyTxId
+
+-- | MALICIOUS: a legitimate profile mint that also BURNS an existing profile's user token.
+--
+-- @Mp2@ forbids burns as well as extra mints, and the burn half is the one that matters on a chain
+-- where nothing is supposed to burn: a mint transaction that could also destroy a user token could
+-- destroy somebody's authority instrument while minting its own.
+--
+-- The token spent is passed in and spent EXPLICITLY rather than left to the balancer, so the
+-- transaction is guaranteed to balance and the only thing that can refuse it is the policy.
+maliciousMintProfileWithBurn ::
+  (GYTxGameMonad m, HasCallStack) =>
+  DeployedScriptsContext ->
+  User ->
+  ProfileActionType ->
+  -- | The profile whose USER token is burned. Must be held by the attacker.
+  GYAssetClass ->
+  m GYTxId
+maliciousMintProfileWithBurn ctx attacker actionType burnProfileRefAC = asUser attacker $ do
+  skeleton <- profileSkeletonFor ctx attacker actionType
+  burnUserAC <- gyDeriveUserFromRefAC burnProfileRefAC
+  burnTN <- tnFromGYAssetClass burnUserAC
+  spendsBurned <- txMustSpendFromAddress burnUserAC (toList $ User.userAddresses attacker) GYTxInWitnessKey
+  let attack = spendsBurned <> mustMint (protocolMintScript ctx) discardedRedeemer burnTN (negate 1)
+  gyLogInfo' ("MALICIOUS" :: GYLogNamespace) "Attempting a profile mint that also burns a user token (Mp2)..."
+  (gyTxBody, gyTxId) <- sendSkeleton' (skeleton <> attack)
+  logTxBudget gyTxBody
+  return gyTxId
+
+-- | The production profile skeleton, for the two builders above to attach an attack to.
+profileSkeletonFor ::
+  (HasCallStack, GYTxUserQueryMonad m) =>
+  DeployedScriptsContext ->
+  User ->
+  ProfileActionType ->
+  m (GYTxSkeleton 'PlutusV3)
+profileSkeletonFor ctx user actionType = do
+  let interaction =
+        Interaction
+          { action = ProfileAction actionType,
+            userAddresses = UserAddresses (toList $ User.userAddresses user) (User.userChangeAddress user) Nothing,
+            recipient = Nothing
+          }
+  fst <$> runReaderT (interactionToTxSkeleton interaction) ctx
+
+-- | The protocol minting policy as the production path references it. The key must be identical for
+-- an appended mint to merge into the same entry rather than add a second script.
+protocolMintScript :: DeployedScriptsContext -> GYBuildScript 'PlutusV3
+protocolMintScript ctx = GYMintReference @'PlutusV3 (getMintingPolicyRef ctx) (getMintingPolicyFromCtx ctx)
+
+-- | A redeemer that is DISCARDED by the skeleton merge (the left one wins per minting script).
+-- Named so that no reader has to work out why a unit redeemer is acceptable here.
+discardedRedeemer :: GYRedeemer
+discardedRedeemer = redeemerFromPlutusData ()
+
+-- | MALICIOUS: issue an attestation with the recorded date moved off the chain tip, or paid for with
+-- a user token that is not the named issuer's.
+--
+-- Both knobs are unreachable through the API by construction. The date is derived from
+-- 'slotOfCurrentBlock' (inherited fix #4), so a client cannot back-date at all; and the issuer's
+-- user NFT is looked up from the caller's own addresses, so naming someone else's issuer profile is
+-- a @ProfileNotFound@ long before @Mf@. @Ml@ and @Mf@ are therefore only assertable from here.
+maliciousIssueAttestation ::
+  (GYTxGameMonad m, HasCallStack) =>
+  DeployedScriptsContext ->
+  User ->
+  -- | Subject profile id
+  GYAssetClass ->
+  -- | Issuer profile id, as NAMED in the redeemer and the datum
+  GYAssetClass ->
+  AttestationType ->
+  MetadataFields ->
+  -- | Milliseconds to subtract from the chain tip for the recorded date. 0 is honest.
+  Integer ->
+  -- | The profile whose user token actually pays. Honest when it equals the named issuer.
+  GYAssetClass ->
+  m (GYTxId, GYAssetClass)
+maliciousIssueAttestation ctx attacker subjectId issuerId kind metadata backdateMs spendProfileId = asUser attacker $ do
+  let ownAddrs = toList $ User.userAddresses attacker
+  (skeleton, gyAttestationRefAC) <-
+    runReaderT (maliciousIssueAttestationTX subjectId issuerId kind metadata backdateMs spendProfileId ownAddrs) ctx
+  gyLogInfo' ("MALICIOUS" :: GYLogNamespace) $
+    "Attempting an attestation back-dated by " <> show backdateMs <> "ms, paid by " <> show spendProfileId <> "..."
+  (gyTxBody, gyTxId) <- sendSkeleton' skeleton
+  logTxBudget gyTxBody
+  return (gyTxId, gyAttestationRefAC)
+
+-- | Byte-identical to 'Palmares.TxBuilding.Operations.issueAttestationTX' except for the recorded
+-- date and which user token pays, so what rejects it is @Ml@ or @Mf@ and nothing else.
+--
+-- The date goes into the redeemer AND the datum, because @Mk@ compares the whole datum: changing one
+-- and not the other would fail at @Mk@ and say nothing about the date check.
+maliciousIssueAttestationTX ::
+  (HasCallStack, GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
+  GYAssetClass ->
+  GYAssetClass ->
+  AttestationType ->
+  MetadataFields ->
+  Integer ->
+  GYAssetClass ->
+  [GYAddress] ->
+  m (GYTxSkeleton 'PlutusV3, GYAssetClass)
+maliciousIssueAttestationTX subjectId issuerId kind metadata backdateMs spendProfileId ownAddrs = do
+  mpGY <- asks getMintingPolicyFromCtx
+  mpRef <- asks getMintingPolicyRef
+  (oracleRefSkeleton, oracleParams, feeSkeleton, isValidForSafeEra) <-
+    getOracleFeeAndValiditySkeleton OnchainTypes.MintActionAttestation
+  let minLv = OnchainTypes.opMinUTxOValue oracleParams
+      onchainKind = attestationTypeToOnchainAttestationKind kind
+
+  now <- slotOfCurrentBlock
+  tipDate <- pPOSIXTimeFromGYSlot now
+  -- MALICIOUS: not the tip.
+  let V3.POSIXTime tipMs = tipDate
+      attestationDate = V3.POSIXTime (tipMs - backdateMs)
+
+  seedTxOutRef <- someUTxOWithoutRefScript
+  let isSpendingSeedUTxO = mustHaveInput (GYTxIn seedTxOutRef GYTxInWitnessKey)
+      seedTxOutRefPlutus = txOutRefToV3Plutus seedTxOutRef
+      attestationOutputIdx = 0 :: Integer
+
+  -- MALICIOUS: whichever profile's user token the attacker actually holds.
+  spendsUserNFT <- spendUserNFTForProfile spendProfileId ownAddrs
+
+  let gyRedeemer =
+        redeemerFromPlutusData
+          ( NewAttestation
+              seedTxOutRefPlutus
+              metadata
+              []
+              (assetClassToPlutus subjectId)
+              (assetClassToPlutus issuerId)
+              onchainKind
+              attestationDate
+              Nothing
+              attestationOutputIdx
+          )
+  (gyAttestationRefAC, _) <- gyGenerateRefAndUserAC mpGY seedTxOutRef
+  isMintingAttestationNFT <- txMustMintWithMintRef True mpRef mpGY gyRedeemer gyAttestationRefAC
+
+  let attestationInfo =
+        OnchainTypes.OnchainAttestation
+          { OnchainTypes.attestationId = assetClassToPlutus gyAttestationRefAC,
+            OnchainTypes.attestationSubject = assetClassToPlutus subjectId,
+            OnchainTypes.attestationIssuer = assetClassToPlutus issuerId,
+            OnchainTypes.attestationKind = onchainKind,
+            OnchainTypes.attestationDate = attestationDate,
+            OnchainTypes.attestationPeriod = Nothing,
+            OnchainTypes.attestationIsAccepted = False
+          }
+  let attestationDatum = mkCIP68Datum attestationInfo metadata []
+  isLockingAttestation <-
+    txMustLockStateWithInlineDatumAndValue
+      attestationsValidatorGY
+      attestationDatum
+      (valueSingleton gyAttestationRefAC 1 <> valueFromLovelace minLv)
+
+  return
+    ( mconcat
+        [ isSpendingSeedUTxO,
+          spendsUserNFT,
+          isValidForSafeEra,
+          oracleRefSkeleton,
+          isMintingAttestationNFT,
+          isLockingAttestation,
+          feeSkeleton
+        ],
+      gyAttestationRefAC
+    )
+
+-- | MALICIOUS: accept an attestation that is already accepted.
+--
+-- 'Palmares.TxBuilding.Operations.acceptAttestationTX' throws @AttestationAlreadyAccepted@ before it
+-- builds anything, so @A3@ cannot be reached through the API. Dropping that one guard is the whole
+-- difference here — and the transaction it produces is otherwise a valid acceptance, writing a datum
+-- identical to the one already on chain, which is exactly why only @A3@ can refuse it.
+maliciousDoubleAccept ::
+  (GYTxGameMonad m, HasCallStack) => DeployedScriptsContext -> User -> GYAssetClass -> m GYTxId
+maliciousDoubleAccept ctx subject attestationAC = asUser subject $ do
+  let ownAddrs = toList $ User.userAddresses subject
+  skeleton <- runReaderT (maliciousAcceptTX attestationAC ownAddrs) ctx
+  gyLogInfo' ("MALICIOUS" :: GYLogNamespace) "Attempting to accept an already-accepted attestation (A3)..."
+  (gyTxBody, gyTxId) <- sendSkeleton' skeleton
+  logTxBudget gyTxBody
+  return gyTxId
+
+maliciousAcceptTX ::
+  (HasCallStack, GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
+  GYAssetClass ->
+  [GYAddress] ->
+  m (GYTxSkeleton 'PlutusV3)
+maliciousAcceptTX gyAttestationAC ownAddrs = do
+  avRef <- asks getAttestationsValidatorRef
+  (oracleRefSkeleton, isValidForSafeEra) <- getOracleAndValiditySkeleton
+  (attestationDatum, attestationValue) <- getAttestationDatumAndValue gyAttestationAC
+
+  gySubjectProfileRefAC <- assetClassFromPlutus' (OnchainTypes.attestationSubject (extra attestationDatum))
+  gySubjectUserAC <- gyDeriveUserFromRefAC gySubjectProfileRefAC
+  spendsSubjectUserNFT <- txMustSpendFromAddress gySubjectUserAC ownAddrs GYTxInWitnessKey
+
+  -- MALICIOUS: no `AttestationAlreadyAccepted` guard.
+  let updatedAttestationDatum =
+        attestationDatum {extra = (extra attestationDatum) {OnchainTypes.attestationIsAccepted = True}}
+  let avRedeemer = redeemerFromPlutusData (AcceptAttestation 0)
+  spendsAttestation <- txMustSpendStateFromRefScriptWithRedeemer avRef gyAttestationAC avRedeemer attestationsValidatorGY
+
+  gyAttestationValue <- valueFromPlutus' attestationValue
+  isLockingUpdatedAttestation <-
+    txMustLockStateWithInlineDatumAndValue attestationsValidatorGY updatedAttestationDatum gyAttestationValue
+
+  return $
+    mconcat
+      [ spendsSubjectUserNFT,
+        spendsAttestation,
+        isValidForSafeEra,
+        oracleRefSkeleton,
+        isLockingUpdatedAttestation
+      ]
+
+-- | MALICIOUS: resolve a dispute as the ACTOR rather than as the oracle admin, and without the
+-- off-chain already-resolved guard.
+--
+-- One builder for @D1@ and @D3@ because both are unreachable through
+-- 'Palmares.TxBuilding.Operations.resolveDisputeTX' for different reasons: it demands the datum's
+-- admin as a signer (so a non-admin builds a transaction nobody can sign, failing at the
+-- required-signer layer with no script run) and it throws @DisputeAlreadyResolved@ before building
+-- (so @D3@ never runs). Pass a non-admin actor for @D1@; pass the admin and an already-resolved
+-- dispute for @D3@.
+--
+-- __The locked value is re-locked UNCHANGED and the deposit is paid out of the attacker's own
+-- funds.__ The production builder subtracts the deposit from the dispute UTxO, which for a
+-- second resolution would mean an output of 1 ADA minus a 5 ADA deposit — a negative output that
+-- fails to build, so the test would never reach @D3@. Paying it instead keeps the transaction
+-- buildable, and @D3@ is the first conjunct in the validator, so it is what rejects it.
+maliciousResolveDispute ::
+  (GYTxGameMonad m, HasCallStack) =>
+  DeployedScriptsContext ->
+  -- | The actor, who signs; for @D1@ the attack is that this is not the admin.
+  User ->
+  GYAssetClass ->
+  DisputeVerdict ->
+  m GYTxId
+maliciousResolveDispute ctx actor disputeAC verdict = asUser actor $ do
+  skeleton <- runReaderT (maliciousResolveDisputeTX (User.userPkh actor) disputeAC verdict) ctx
+  gyLogInfo' ("MALICIOUS" :: GYLogNamespace) "Attempting a dispute resolution signed by the actor (D1/D3)..."
+  (gyTxBody, gyTxId) <- sendSkeleton' skeleton
+  logTxBudget gyTxBody
+  return gyTxId
+
+maliciousResolveDisputeTX ::
+  (HasCallStack, GYTxQueryMonad m, MonadReader DeployedScriptsContext m) =>
+  GYPubKeyHash ->
+  GYAssetClass ->
+  DisputeVerdict ->
+  m (GYTxSkeleton 'PlutusV3)
+maliciousResolveDisputeTX actorPkh gyDisputeAC verdict = do
+  dvRef <- asks getDisputesValidatorRef
+  (disputeDatum, plutusDisputeValue) <- getDisputeDatumAndValue gyDisputeAC
+  let dispute = extra disputeDatum
+      onchainVerdict = disputeVerdictToOnchainVerdict verdict
+  (_oracleParams, oracleRef, _oracleValue) <- queryOracleParams
+
+  let gyRedeemer = redeemerFromPlutusData (DisputesValidator.ResolveDispute onchainVerdict 0)
+  spendsDispute <- txMustSpendStateFromRefScriptWithRedeemer dvRef gyDisputeAC gyRedeemer disputesValidatorGY
+
+  gyDisputeValue <- valueFromPlutus' plutusDisputeValue
+  gyDepositTo <- addressFromPlutus' (OnchainTypes.disputeDepositTo dispute)
+  let depositValue = valueFromLovelace (OnchainTypes.disputeDeposit dispute)
+      resolvedDatum = disputeDatum {extra = OnchainTypes.resolveDispute onchainVerdict dispute}
+
+  isLockingResolvedDispute <-
+    txMustLockStateWithInlineDatumAndValue disputesValidatorGY resolvedDatum gyDisputeValue
+  isReturningDeposit <- txMustPayValueToAddress gyDepositTo depositValue
+
+  -- MALICIOUS: the actor signs, the oracle admin need not.
+  return $
+    mconcat
+      [ spendsDispute,
+        mustHaveRefInput oracleRef,
+        isLockingResolvedDispute,
+        isReturningDeposit,
+        mustBeSignedBy actorPkh
+      ]

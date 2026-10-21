@@ -493,6 +493,7 @@ test-suite test
     UnitTests.Fees
     UnitTests.OracleRules
     UnitTests.ApiHardening
+    UnitTests.Attestation
     UnitTests.ChainSyncReplay
     UnitTests.Cleanup
     UnitTests.Conversions
@@ -511,6 +512,7 @@ test-suite test
     UnitTests.Dispute
     UnitTests.ScriptSize
     UnitTests.Oracle
+    UnitTests.Profile
     UnitTests.StorageRoundtrip
     UnitTests.ThresholdMap
 

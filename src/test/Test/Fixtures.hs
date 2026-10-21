@@ -1,21 +1,38 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+-- | Profile and attestation content the emulator tests mint.
+--
+-- __Renamed, not rewritten.__ These were BJJ fixtures (@studentProfileData@, @masterProfileData@) and
+-- the names were the only thing coupling them to that domain: 'ProfileData' is three text fields and
+-- the protocol does not read them. What matters is that distinct fixtures stay distinguishable, so a
+-- transposition between two of them fails an assertion instead of passing by coincidence.
+--
+-- The last four are a different kind of fixture and are pinned, not decorative: they sit exactly on
+-- 'Palmares.Onchain.CIP68''s byte limits (name 128, description 1024, image URI 256) and one byte
+-- over, so they are what makes @Mp4@/@Mm@/@P4@ testable at the boundary. Do not round them off.
 module Test.Fixtures
-  ( adminTestProfileData,
-    studentProfileData,
-    masterProfileData,
-    masterBProfileData,
+  ( -- * Profiles
+    drepProfileData,
+    drepBProfileData,
     orgProfileData,
-    practitionerProfileData,
-    practitionerBProfileData,
-    practitionerCProfileData,
-    attestationProfileData,
-    seminarProfileData,
+    committeeProfileData,
+    communityProfileData,
+    auditorProfileData,
     cleanupTestProfileData,
+
+    -- * Attestations and disputes
+    milestoneAttestationData,
+    auditAttestationData,
+    lineageAttestationData,
+    disputeStatementData,
+
+    -- * Metadata byte boundaries (pinned against Onchain.CIP68)
     profileDataMaxLengthMetadata,
     attestationProfileDataMaxLength,
     maxLengthImageURI,
     profileDataOverLongName,
+
+    -- * Cleanup
     parsingDisputeDatum,
   )
 where
@@ -28,92 +45,97 @@ import PlutusLedgerApi.V1.Value (AssetClass (..), CurrencySymbol (..), TokenName
 import PlutusLedgerApi.V3 (Address (..), Credential (PubKeyCredential), POSIXTime (..), PubKeyHash (..))
 import PlutusTx.AssocMap qualified as AssocMap
 
-adminTestProfileData :: ProfileData
-adminTestProfileData =
+-- | A person acting as a DRep — the protocol's central profile kind.
+drepProfileData :: ProfileData
+drepProfileData =
   ProfileData
-    { profileDataName = "Admin Test User",
-      profileDataDescription = "A test profile for admin action tests",
-      profileDataImageURI = "ipfs://QmAdminTest"
+    { profileDataName = "Ana Pop",
+      profileDataDescription = "A delegate representative voting on governance actions",
+      profileDataImageURI = "ipfs://QmDrepAna"
     }
 
-studentProfileData :: ProfileData
-studentProfileData =
+-- | A second DRep, deliberately distinguishable from the first.
+drepBProfileData :: ProfileData
+drepBProfileData =
   ProfileData
-    { profileDataName = "John Doe",
-      profileDataDescription = "John Doe is a student",
-      profileDataImageURI = "ipfs://QmReBRNMe7tBr6WbA89uwnHHW7f7Zoe8wY2mzVpA8STdAk"
-    }
-
-masterProfileData :: ProfileData
-masterProfileData =
-  ProfileData
-    { profileDataName = "Master",
-      profileDataDescription = "Master is a master",
-      profileDataImageURI = "ipfs://Qmb3JXJHQxuReSUaH6rXAoP5oX9NRs6JmnRFGTj2RVhGwe"
-    }
-
-masterBProfileData :: ProfileData
-masterBProfileData =
-  ProfileData
-    { profileDataName = "Master B",
-      profileDataDescription = "Master B is also a master",
-      profileDataImageURI = "ipfs://QmMasterB"
+    { profileDataName = "Bogdan Ilie",
+      profileDataDescription = "A second delegate representative",
+      profileDataImageURI = "ipfs://QmDrepBogdan"
     }
 
 orgProfileData :: ProfileData
 orgProfileData =
   ProfileData
-    { profileDataName = "BJJ Academy",
-      profileDataDescription = "A BJJ Academy Organization",
-      profileDataImageURI = "ipfs://QmOrgAcademy"
+    { profileDataName = "Sundae Labs",
+      profileDataDescription = "An organisation that delivers funded work",
+      profileDataImageURI = "ipfs://QmOrgSundae"
     }
 
-practitionerProfileData :: ProfileData
-practitionerProfileData =
+committeeProfileData :: ProfileData
+committeeProfileData =
   ProfileData
-    { profileDataName = "Practitioner A",
-      profileDataDescription = "A practitioner member",
-      profileDataImageURI = "ipfs://QmPractitionerA"
+    { profileDataName = "Constitutional Committee Seat",
+      profileDataDescription = "A committee member acting through its cold credential",
+      profileDataImageURI = "ipfs://QmCommitteeSeat"
     }
 
-practitionerBProfileData :: ProfileData
-practitionerBProfileData =
+-- | A Community, which claims no credential at all: the profile kind that proves a claim is optional.
+communityProfileData :: ProfileData
+communityProfileData =
   ProfileData
-    { profileDataName = "Practitioner B",
-      profileDataDescription = "Second practitioner member",
-      profileDataImageURI = "ipfs://QmPractitionerB"
+    { profileDataName = "Intersect Community",
+      profileDataDescription = "A community that corresponds to no on-chain credential",
+      profileDataImageURI = "ipfs://QmCommunity"
     }
 
-practitionerCProfileData :: ProfileData
-practitionerCProfileData =
+auditorProfileData :: ProfileData
+auditorProfileData =
   ProfileData
-    { profileDataName = "Practitioner C",
-      profileDataDescription = "Third practitioner member",
-      profileDataImageURI = "ipfs://QmPractitionerC"
-    }
-
-attestationProfileData :: ProfileData
-attestationProfileData =
-  ProfileData
-    { profileDataName = "Gold Medal",
-      profileDataDescription = "Won gold medal at tournament",
-      profileDataImageURI = "ipfs://QmGoldMedal"
-    }
-
-seminarProfileData :: ProfileData
-seminarProfileData =
-  ProfileData
-    { profileDataName = "Advanced Seminar",
-      profileDataDescription = "Attended advanced seminar",
-      profileDataImageURI = "ipfs://QmSeminar"
+    { profileDataName = "Tweag Audit",
+      profileDataDescription = "An auditor that attests to delivered milestones",
+      profileDataImageURI = "ipfs://QmAuditor"
     }
 
 cleanupTestProfileData :: ProfileData
 cleanupTestProfileData =
   ProfileData
-    { profileDataName = "Cleanup Test User",
-      profileDataDescription = "A test profile to verify dust cleanup safety",
+    { profileDataName = "Cleanup Test Profile",
+      profileDataDescription = "A profile that must survive a dust sweep untouched",
       profileDataImageURI = "ipfs://QmCleanupTest"
+    }
+
+milestoneAttestationData :: ProfileData
+milestoneAttestationData =
+  ProfileData
+    { profileDataName = "Milestone 3 delivered",
+      profileDataDescription = "The third milestone of Catalyst Fund 12 project 1200123 was delivered",
+      profileDataImageURI = "ipfs://QmMilestone3"
+    }
+
+auditAttestationData :: ProfileData
+auditAttestationData =
+  ProfileData
+    { profileDataName = "Audit passed",
+      profileDataDescription = "The validator set passed an external security audit",
+      profileDataImageURI = "ipfs://QmAuditPassed"
+    }
+
+-- | An attestation ABOUT an attestation. Its subject is another attestation's id, which the protocol
+-- permits on purpose — see 'Palmares.TxBuilding.Lookups.ensureSubjectProfileExists'.
+lineageAttestationData :: ProfileData
+lineageAttestationData =
+  ProfileData
+    { profileDataName = "Endorsement of an endorsement",
+      profileDataDescription = "A second issuer endorses an earlier attestation rather than its subject",
+      profileDataImageURI = "ipfs://QmLineage"
+    }
+
+disputeStatementData :: ProfileData
+disputeStatementData =
+  ProfileData
+    { profileDataName = "Milestone was not delivered",
+      profileDataDescription = "The disputer's statement: the deliverable named in the attestation does not exist",
+      profileDataImageURI = "ipfs://QmDisputeStatement"
     }
 
 -- Max-length metadata (bytes): name 128, description 1024, image URI 256 (Onchain.CIP68).

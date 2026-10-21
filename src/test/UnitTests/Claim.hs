@@ -50,11 +50,30 @@ tests =
       -- The script arm, both halves of an address.
       testCase "a script credential is controlled when an input's PAYMENT credential is that script" $
         checkCredentialControl (ScriptCredential shA) [] [inputPayingTo (ScriptCredential shA)] @?= True,
-      -- Staking as well as payment, because a stake credential that is a script normally appears in
-      -- THAT half of an address. One more field read per input, and it removes an entire class of
-      -- "I cannot claim my own stake script".
-      testCase "a script credential is controlled when an input's STAKING credential is that script" $
-        checkCredentialControl (ScriptCredential shA) [] [inputStakedTo (ScriptCredential shA)] @?= True,
+      -- THE CASE THIS TEST USED TO ASSERT THE OTHER WAY, and the audit's one critical finding.
+      --
+      -- It read `@?= True`, on the reasoning that a stake credential which is a script appears in
+      -- the staking half of an address. The reasoning mistook an address for evidence. Spending a
+      -- UTxO authenticates its PAYMENT credential and nothing else; the staking half is data the
+      -- address's creator chose freely. A CIP-19 type-2 address — payment key hash plus stake script
+      -- hash — needs no witness for the script, so anyone could send themselves min-ADA to an
+      -- address holding their own key in the payment half and a victim's script hash in the staking
+      -- half, spend it with their own signature, and claim the victim's credential. Every script
+      -- DRep id and every committee cold script credential was claimable by anyone, permanently,
+      -- because `profileCredential` has no update redeemer and nothing burns a profile.
+      --
+      -- So this is now the assertion that fails on the old code, which is what `src/test/CLAUDE.md`
+      -- asks of every fix.
+      testCase "a script credential is NOT controlled by an input that merely STAKES to it" $
+        checkCredentialControl (ScriptCredential shA) [] [inputStakedTo (ScriptCredential shA)] @?= False,
+      -- And the payment half still works when a staking part is present, so the fix removed the hole
+      -- and not the feature: a script UTxO that happens to carry a stake credential is still proof.
+      testCase "a script credential IS controlled when it is the payment half of a staked address" $
+        checkCredentialControl
+          (ScriptCredential shA)
+          []
+          [inputPayingToStaked (ScriptCredential shA) (PubKeyCredential pkhB)]
+          @?= True,
       testCase "a script credential is controlled when any ONE of several inputs matches" $
         checkCredentialControl
           (ScriptCredential shA)
@@ -98,7 +117,11 @@ tests =
     shFromPkhA = let PubKeyHash bs = pkhA in ScriptHash bs
 
     inputPayingTo c = mkInput (Address c Nothing) mempty
+    -- The attacker's address: THEIR key in the payment half, the victim's credential in the staking
+    -- half. Needs no witness for the staking credential, which is the whole point.
     inputStakedTo c = mkInput (Address (PubKeyCredential pkhB) (Just (StakingHash c))) mempty
+    -- A legitimate script UTxO that also carries a stake credential.
+    inputPayingToStaked c stake = mkInput (Address c (Just (StakingHash stake))) mempty
     inputPayingToWithValue c =
       mkInput (Address c Nothing) (V1.assetClassValue (AssetClass (V1.CurrencySymbol "ff", V1.TokenName "tok")) 1)
 

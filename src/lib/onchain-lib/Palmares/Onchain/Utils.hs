@@ -158,11 +158,30 @@ checkDateInRange date range =
 --     redeemer for us to inspect anyway, and committees and multisig organisations are the majority
 --     case the spec calls out.
 --
--- __Why the staking half as well as the payment half.__ A stake credential that is a script normally
--- appears in the staking half of an address, not the payment half, so checking only payment would make
--- "I cannot claim my own stake script" a permanent support question. It costs one more field read per
--- input, and it is `onchain-lib/CLAUDE.md`'s security rule 13 — reason about full addresses — applied
--- in the useful direction.
+-- __The payment half ONLY, and the staking half is a security hole.__ This check used to read
+-- @payment == credential || staking == Just (StakingHash credential)@, on the reasoning that a stake
+-- credential which is a script appears in the staking half of an address, so checking only payment
+-- would make "I cannot claim my own stake script" a support question. That reasoning is wrong, and
+-- the mistake was treating an address as evidence.
+--
+-- Spending a UTxO proves control of its __payment__ credential and nothing else: that is the only
+-- part the ledger's witness rule authenticates. The staking half is attacker-chosen data. A CIP-19
+-- type-2 address — payment key hash plus stake SCRIPT hash — is perfectly ordinary and needs no
+-- witness for the script, so anyone could send themselves 5 ADA to an address carrying their own key
+-- in the payment half and a victim's script hash in the staking half, spend it with their own
+-- signature, and the disjunct would accept it as proof of controlling the victim's credential. Every
+-- script DRep id and every constitutional-committee cold script credential was claimable by anyone.
+--
+-- Nothing legitimate used it either: the off-chain prover
+-- 'Palmares.TxBuilding.Operations.claimProofSkeleton' searches @utxosAtPaymentCredential@, so no
+-- honest claim ever took that branch.
+--
+-- __What this costs, stated rather than hidden.__ A credential that is a stake script genuinely
+-- cannot be claimed this way, because spending cannot witness it. The sound proof for one is a
+-- withdrawal in @txInfoWdrl@, which the ledger DOES authenticate — not an address field. That is a
+-- separate feature with its own ExUnits cost, and it is not needed for the credentials this registry
+-- is about: a DRep id and a committee cold credential are the voter's own credential, not an
+-- address's staking part.
 --
 -- __The documented limitation.__ A Plutus script that holds no UTxO at its own address — one that only
 -- ever votes or withdraws — cannot claim in a single transaction. Its workaround is one transaction:
@@ -182,8 +201,9 @@ checkCredentialControl credential signatories inputs = case credential of
   PubKeyCredential pkh -> PlutusTx.List.elem pkh signatories
   ScriptCredential _ -> any inputGovernedByCredential inputs
   where
-    inputGovernedByCredential (TxInInfo _ TxOut {txOutAddress = Address payment staking}) =
-      payment == credential || staking == Just (StakingHash credential)
+    -- The PAYMENT half only. The staking half is not evidence; see the note above.
+    inputGovernedByCredential (TxInInfo _ TxOut {txOutAddress = Address payment _}) =
+      payment == credential
 
 {-# INLINEABLE isGivenInlineDatum #-}
 isGivenInlineDatum :: (ToData a) => a -> OutputDatum -> Bool

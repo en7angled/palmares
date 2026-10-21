@@ -26,13 +26,13 @@ import Palmares.Onchain.CIP68 (MetadataFields, deriveUserFromRefAC, generateRefA
 import Palmares.Onchain.Protocol.Lookup (checkFee, readOracleParams)
 import Palmares.Onchain.Protocol.Types
   ( FeeConfig (fcAttestationFee),
-    OnchainAchievement
-      ( OnchainAchievement,
-        achievementAwardedBy,
-        achievementAwardedTo,
-        achievementDate,
-        achievementId,
-        achievementIsAccepted
+    OnchainAttestation
+      ( OnchainAttestation,
+        attestationIssuer,
+        attestationSubject,
+        attestationDate,
+        attestationId,
+        attestationIsAccepted
       ),
     OracleParams (opMinUTxOValue, opPaused),
     ProfileId,
@@ -68,14 +68,14 @@ import Prelude qualified
 -- | Custom redeemer :
 -- Output indices are passed in the redeemer for efficient O(1) lookup instead of O(n) search.
 data MintingRedeemer
-  = -- | NewAchievement seedTxOutRef metadata222 otherMetadata awardedTo awardedBy achievementDate achievementOutputIdx
-    NewAchievement TxOutRef MetadataFields [(BuiltinByteString, BuiltinByteString)] ProfileId ProfileId POSIXTime Integer
+  = -- | NewAttestation seedTxOutRef metadata222 otherMetadata subject issuer attestationDate attestationOutputIdx
+    NewAttestation TxOutRef MetadataFields [(BuiltinByteString, BuiltinByteString)] ProfileId ProfileId POSIXTime Integer
   deriving stock (Generic, Prelude.Show)
   deriving anyclass (HasBlueprintDefinition)
 
 -- The stable-index discipline binds from the first deployment. Nothing is deployed yet, so the
 -- surviving redeemer takes index 0 rather than keeping its Belt System index and reserving holes.
-makeIsDataSchemaIndexed ''MintingRedeemer [('NewAchievement, 0)]
+makeIsDataSchemaIndexed ''MintingRedeemer [('NewAttestation, 0)]
 
 -------------------------------------------------------------------------------
 
@@ -111,9 +111,9 @@ mintingPolicyLambda protocolParams (ScriptContext txInfo@TxInfo {..} (Redeemer b
            in -- Global gate: protocol must not be paused (M0).
               traceIfFalse "M0" (not (opPaused oracle)) -- Protocol is paused (M0)
                 && case redeemer of
-                  NewAchievement seedTxOutRef metadata otherMetadata awardedTo awardedBy achievementDate achievementOutputIdx ->
+                  NewAttestation seedTxOutRef metadata otherMetadata subject issuer attestationDate attestationOutputIdx ->
                     checkFee oracle fcAttestationFee txInfoOutputs
-                      && handleNewAchievement txInfo mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadata awardedTo awardedBy achievementDate achievementOutputIdx
+                      && handleNewAttestation txInfo mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadata subject issuer attestationDate attestationOutputIdx
         _ -> traceError "M1" -- Invalid purpose (M1)
 
 -------------------------------------------------------------------------------
@@ -122,8 +122,8 @@ mintingPolicyLambda protocolParams (ScriptContext txInfo@TxInfo {..} (Redeemer b
 
 -------------------------------------------------------------------------------
 
-{-# INLINEABLE handleNewAchievement #-}
-handleNewAchievement ::
+{-# INLINEABLE handleNewAttestation #-}
+handleNewAttestation ::
   TxInfo ->
   CurrencySymbol ->
   MintingContext ->
@@ -135,35 +135,35 @@ handleNewAchievement ::
   POSIXTime ->
   Integer ->
   Bool
-handleNewAchievement txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadataEncoded awardedTo awardedBy achievementDate achievementOutputIdx =
-  let isAwardedToValid = hasCurrencySymbol awardedTo mintingPolicyCurrencySymbol
-      isAwardedByValid = hasCurrencySymbol awardedBy mintingPolicyCurrencySymbol
+handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadataEncoded subject issuer attestationDate attestationOutputIdx =
+  let isSubjectValid = hasCurrencySymbol subject mintingPolicyCurrencySymbol
+      isIssuerValid = hasCurrencySymbol issuer mintingPolicyCurrencySymbol
       minLv = ctxMinLv ctx
       attestationsValidatorAddress = ctxAttestationsAddress ctx
 
-      (achievementRefTN, _) = generateRefAndUserTN (Utils.nameFromTxOutRef seedTxOutRef)
-      achievementRefAssetClass = V1.AssetClass (mintingPolicyCurrencySymbol, achievementRefTN)
-      achievementNFT = V1.assetClassValue achievementRefAssetClass 1
-      achievementValue = (achievementNFT + minLv)
-      achievementInfo =
-        OnchainAchievement
-          { achievementId = achievementRefAssetClass,
-            achievementAwardedTo = awardedTo,
-            achievementAwardedBy = awardedBy,
-            achievementDate = achievementDate,
-            achievementIsAccepted = False
+      (attestationRefTN, _) = generateRefAndUserTN (Utils.nameFromTxOutRef seedTxOutRef)
+      attestationRefAssetClass = V1.AssetClass (mintingPolicyCurrencySymbol, attestationRefTN)
+      attestationNFT = V1.assetClassValue attestationRefAssetClass 1
+      attestationValue = (attestationNFT + minLv)
+      attestationInfo =
+        OnchainAttestation
+          { attestationId = attestationRefAssetClass,
+            attestationSubject = subject,
+            attestationIssuer = issuer,
+            attestationDate = attestationDate,
+            attestationIsAccepted = False
           }
 
-      achievementDatum = mkCIP68Datum achievementInfo metadata otherMetadataEncoded
-   in traceIfFalse "Ml" (achievementDate `before` txInfoValidRange) -- Achievement date before validity (Ml)
+      attestationDatum = mkCIP68Datum attestationInfo metadata otherMetadataEncoded
+   in traceIfFalse "Ml" (attestationDate `before` txInfoValidRange) -- Attestation date before validity (Ml)
         && traceIfFalse "Mm" (validateMetadataFields metadata) -- Metadata fields validation failed (Mm)
-        && traceIfFalse "Mf" (V1.assetClassValueOf (valueSpent txInfo) (deriveUserFromRefAC awardedBy) == 1) -- Must spend awarded by user NFT (Mf)
-        && traceIfFalse "Mg" (isAwardedToValid && isAwardedByValid) -- Profiles must have correct currency symbol (Mg)
+        && traceIfFalse "Mf" (V1.assetClassValueOf (valueSpent txInfo) (deriveUserFromRefAC issuer) == 1) -- Must spend issued by user NFT (Mf)
+        && traceIfFalse "Mg" (isSubjectValid && isIssuerValid) -- Profiles must have correct currency symbol (Mg)
         && traceIfFalse "Mh" (Utils.inputsSpendTxOutRef seedTxOutRef txInfoInputs) -- Must spend seed for uniqueness (Mh)
         && traceIfFalse
-          "Mj" -- Tx must mint JUST achievement NFT (Mj)
-          (mintValueMinted txInfoMint == achievementNFT && mintValueBurned txInfoMint == mempty)
-        && traceIfFalse "Mk" (Utils.checkTxOutAtIndexWithDatumMinValueAndAddress achievementOutputIdx achievementDatum achievementValue attestationsValidatorAddress txInfoOutputs) -- Lock achievement at AttestationsValidator address (Mk)
+          "Mj" -- Tx must mint JUST attestation NFT (Mj)
+          (mintValueMinted txInfoMint == attestationNFT && mintValueBurned txInfoMint == mempty)
+        && traceIfFalse "Mk" (Utils.checkTxOutAtIndexWithDatumMinValueAndAddress attestationOutputIdx attestationDatum attestationValue attestationsValidatorAddress txInfoOutputs) -- Lock attestation at AttestationsValidator address (Mk)
 
 -------------------------------------------------------------------------------
 

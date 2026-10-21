@@ -22,7 +22,7 @@ import PlutusLedgerApi.V1.Value qualified as PlutusValue
 import Palmares.TxBuilding.Context (DeployedScriptsContext (..))
 import Palmares.TxBuilding.Conversions (profileDatumToProfileData)
 import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
-import Palmares.TxBuilding.Utils (achievementAndValueFromUTxO, getInlineDatumAndValue, oracleParamsFromDatum, profileAndValueFromUTxO)
+import Palmares.TxBuilding.Utils (attestationAndValueFromUTxO, getInlineDatumAndValue, oracleParamsFromDatum, profileAndValueFromUTxO)
 import Palmares.TxBuilding.Validators (oracleValidatorGY)
 
 ------------------------------------------------------------------------------------------------
@@ -101,7 +101,7 @@ getOrganizationInformation :: (GYTxQueryMonad m) => ProfileRefAC -> m Organizati
 getOrganizationInformation profileRefAC = do
   (profileDatum, _profileValue) <- getProfileStateDatumAndValue profileRefAC
   let ProfileData {profileDataName, profileDataDescription, profileDataImageURI} = profileDatumToProfileData profileDatum
-  case Onchain.profileType (extra profileDatum) of
+  case Onchain.profileKind (extra profileDatum) of
     Onchain.Organization -> do
       return $
         OrganizationProfileInformation
@@ -156,14 +156,14 @@ getDustUTxOs addr protocolCS = do
 
 ------------------------------------------------------------------------------------------------
 
--- * Achievement Lookup Functions
+-- * Attestation Lookup Functions
 
 ------------------------------------------------------------------------------------------------
 
--- | Get an achievement CIP68 datum and value by its NFT asset class.
-getAchievementDatumAndValue :: (GYTxQueryMonad m) => GYAssetClass -> m (CIP68Datum OnchainTypes.OnchainAchievement, Value)
-getAchievementDatumAndValue achievementAC =
-  getStateOrThrow achievementAC achievementAndValueFromUTxO AchievementNotFound DatumParseError
+-- | Get an attestation CIP68 datum and value by its NFT asset class.
+getAttestationDatumAndValue :: (GYTxQueryMonad m) => GYAssetClass -> m (CIP68Datum OnchainTypes.OnchainAttestation, Value)
+getAttestationDatumAndValue attestationAC =
+  getStateOrThrow attestationAC attestationAndValueFromUTxO AttestationNotFound DatumParseError
 
 
 -- | Find profile reference NFT AssetClasses for User NFTs held at the given addresses.

@@ -12,7 +12,7 @@
 {-# HLINT ignore "Use &&" #-}
 
 -- | Profiles validator governing profile lifecycle, image updates,
--- and promotion acceptance.
+-- and nothing else.
 module Palmares.Onchain.Validators.ProfilesValidator
   ( -- * Profiles Redeemer
     ProfilesRedeemer (..),

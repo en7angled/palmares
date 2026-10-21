@@ -18,7 +18,8 @@ import Data.ByteString.Lazy qualified as B
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Palmares.DomainTypes.Core.Actions (AdminActionType (..), ProfileActionType (..), ProfileData (..), ProtocolActionType (..))
-import Palmares.DomainTypes.Core.Types (ProfileType (..))
+import Data.List (intercalate)
+import Palmares.DomainTypes.Core.Types (ProfileType (..), parseProfileType, profileTypeText)
 import GeniusYield.GYConfig
 import GeniusYield.Imports
 import GeniusYield.Types
@@ -27,7 +28,7 @@ import Palmares.Metrics.Doc (renderMetricsDoc)
 import Palmares.Onchain.Blueprint (contractBlueprint)
 import Palmares.Onchain.Protocol.Types (FeeConfig (..), OracleParams (..))
 import Options.Applicative
-import PlutusLedgerApi.V3
+import PlutusLedgerApi.V3 hiding (Committee) -- ours is a profile kind; Plutus's is the CIP-1694 committee datum
 import System.Exit (die)
 import Text.Read qualified as Text
 import Palmares.TxBuilding.Context
@@ -65,8 +66,8 @@ data Command
   | SetMinUTxOValue Integer
   | QueryOracle
   | UpdateProfile UpdateProfileArgs
-  | AwardAchievement AwardAchievementArgs
-  | AcceptAchievement AcceptAchievementArgs
+  | IssueAttestation IssueAttestationArgs
+  | AcceptAttestation AcceptAttestationArgs
   | CleanupDust
   deriving (Show)
 
@@ -75,7 +76,7 @@ data SetFeesArgs
   | UpdateFees
       { sfaFeeAddress :: String,
         sfaProfileCreationFee :: Integer,
-        sfaAchievementFee :: Integer
+        sfaAttestationFee :: Integer
       }
   deriving (Show)
 
@@ -87,17 +88,17 @@ data UpdateProfileArgs = UpdateProfileArgs
   }
   deriving (Show)
 
-data AwardAchievementArgs = AwardAchievementArgs
-  { awaAwardedToProfileId :: GYAssetClass,
-    awaAwardedByProfileId :: GYAssetClass,
-    awaProfileData :: ProfileData,
-    awaAchievementDate :: GYTime,
-    awaOutputId :: Bool
+data IssueAttestationArgs = IssueAttestationArgs
+  { iaaSubjectProfileId :: GYAssetClass,
+    iaaIssuerProfileId :: GYAssetClass,
+    iaaProfileData :: ProfileData,
+    iaaAttestationDate :: GYTime,
+    iaaOutputId :: Bool
   }
   deriving (Show)
 
-newtype AcceptAchievementArgs = AcceptAchievementArgs
-  { acaAchievementId :: GYAssetClass
+newtype AcceptAttestationArgs = AcceptAttestationArgs
+  { acaAttestationId :: GYAssetClass
   }
   deriving (Show)
 
@@ -130,21 +131,23 @@ profileDataParser =
           )
       )
 
--- Profile type parser
+-- | Profile kind parser.
+--
+-- One @--kind@ option rather than a flag per constructor: there are six kinds now and a flag each
+-- would need six short letters, two of which (@-p@, @-o@) the old two-kind version had already taken.
+-- The spellings and the help text both come from 'ProfileType' itself, so adding a seventh kind needs
+-- no edit here — which is the same "one naming site" rule the fee selector follows.
 profileTypeParser :: Parser ProfileType
 profileTypeParser =
-  flag'
-    Practitioner
-    ( long "practitioner"
-        <> short 'p'
-        <> help "Profile type (Practitioner or Organization)"
+  option
+    (maybeReader (parseProfileType . T.pack))
+    ( long "kind"
+        <> short 'k'
+        <> metavar "KIND"
+        <> help ("Profile kind: " <> intercalate " | " (map (T.unpack . profileTypeText) allKinds))
     )
-    <|> flag'
-      Organization
-      ( long "organization"
-          <> short 'o'
-          <> help "Profile type (Practitioner or Organization)"
-      )
+  where
+    allKinds = [minBound .. maxBound] :: [ProfileType]
 
 -- POSIX time parser
 posixTimeParser :: Parser GYTime
@@ -362,24 +365,24 @@ commandParser =
               (progDesc "Update profile metadata (description, image)")
           )
         <> command
-          "award-achievement"
+          "issue-attestation"
           ( info
-              ( AwardAchievement
-                  <$> ( AwardAchievementArgs
-                          <$> option (maybeReader parseAssetClass) (long "awarded-to-profile-id" <> metavar "AWARDED_TO_PROFILE_ID" <> help "Profile ID of the practitioner receiving the achievement")
-                          <*> option (maybeReader parseAssetClass) (long "awarded-by-profile-id" <> metavar "AWARDED_BY_PROFILE_ID" <> help "Profile ID of the awarder (org or practitioner)")
+              ( IssueAttestation
+                  <$> ( IssueAttestationArgs
+                          <$> option (maybeReader parseAssetClass) (long "issued-to-profile-id" <> metavar "SUBJECT_PROFILE_ID" <> help "Profile ID of the subject the attestation is about")
+                          <*> option (maybeReader parseAssetClass) (long "issued-by-profile-id" <> metavar "ISSUER_PROFILE_ID" <> help "Profile ID of the issuing profile")
                           <*> profileDataParser
                           <*> posixTimeParser
                           <*> outputIdParser
                       )
               )
-              (progDesc "Award an achievement to a practitioner")
+              (progDesc "Issue an attestation about a subject profile (pending until countersigned)")
           )
         <> command
-          "accept-achievement"
+          "accept-attestation"
           ( info
-              (AcceptAchievement . AcceptAchievementArgs <$> option (maybeReader parseAssetClass) (long "achievement-id" <> short 'i' <> metavar "ACHIEVEMENT_ID" <> help "Achievement asset class"))
-              (progDesc "Accept an achievement (practitioner acknowledges)")
+              (AcceptAttestation . AcceptAttestationArgs <$> option (maybeReader parseAssetClass) (long "attestation-id" <> short 'i' <> metavar "ATTESTATION_ID" <> help "Attestation asset class"))
+              (progDesc "Countersign a pending attestation as its subject")
           )
         <> command
           "cleanup-dust"
@@ -394,13 +397,13 @@ updateProfileToActionType :: UpdateProfileArgs -> ActionType
 updateProfileToActionType UpdateProfileArgs {upaProfileId, upaDescription, upaImageURI} =
   ProfileAction $ UpdateProfileAction upaProfileId upaDescription upaImageURI
 
-awardAchievementToActionType :: AwardAchievementArgs -> ActionType
-awardAchievementToActionType AwardAchievementArgs {awaAwardedToProfileId, awaAwardedByProfileId, awaProfileData, awaAchievementDate} =
-  ProfileAction $ AwardAchievementAction awaAwardedToProfileId awaAwardedByProfileId awaProfileData [] awaAchievementDate
+issueAttestationToActionType :: IssueAttestationArgs -> ActionType
+issueAttestationToActionType IssueAttestationArgs {iaaSubjectProfileId, iaaIssuerProfileId, iaaProfileData, iaaAttestationDate} =
+  ProfileAction $ IssueAttestationAction iaaSubjectProfileId iaaIssuerProfileId iaaProfileData [] iaaAttestationDate
 
-acceptAchievementToActionType :: AcceptAchievementArgs -> ActionType
-acceptAchievementToActionType AcceptAchievementArgs {acaAchievementId} =
-  ProfileAction $ AcceptAchievementAction acaAchievementId
+acceptAttestationToActionType :: AcceptAttestationArgs -> ActionType
+acceptAttestationToActionType AcceptAttestationArgs {acaAttestationId} =
+  ProfileAction $ AcceptAttestationAction acaAttestationId
 
 -- | Convert SetFeesArgs to the AdminActionType for the Interaction pipeline
 setFeesToAdminAction :: SetFeesArgs -> AdminActionType
@@ -413,7 +416,7 @@ setFeesToAdminAction UpdateFees {..} =
           FeeConfig
             { fcFeeAddress = plutusAddr,
               fcProfileCreationFee = sfaProfileCreationFee,
-              fcAttestationFee = sfaAchievementFee
+              fcAttestationFee = sfaAttestationFee
             }
 
 -- Execute command function
@@ -491,21 +494,21 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
     if upaOutputId args
       then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
       else printGreen $ "Profile ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
-  -- Achievement commands — routed through the Interaction pipeline
-  AwardAchievement args -> do
-    printYellow "Awarding achievement..."
-    let actionType = awardAchievementToActionType args
+  -- Attestation commands — routed through the Interaction pipeline
+  IssueAttestation args -> do
+    printYellow "Issuing attestation..."
+    let actionType = issueAttestationToActionType args
     (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
-    printGreen "Achievement awarded successfully!"
-    if awaOutputId args
+    printGreen "Attestation issued successfully!"
+    if iaaOutputId args
       then putStrLn $ LSB8.unpack $ LSB8.toStrict $ Aeson.encode mAssetClass
-      else printGreen $ "Achievement ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
-  AcceptAchievement args -> do
-    printYellow "Accepting achievement..."
-    let actionType = acceptAchievementToActionType args
+      else printGreen $ "Attestation ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
+  AcceptAttestation args -> do
+    printYellow "Accepting attestation..."
+    let actionType = acceptAttestationToActionType args
     (_txId, mAssetClass) <- runActionWithPK txBuildingCtx signKey actionType Nothing
-    printGreen "Achievement accepted successfully!"
-    printGreen $ "Achievement ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
+    printGreen "Attestation accepted successfully!"
+    printGreen $ "Attestation ID: " <> LSB8.unpack (LSB8.toStrict (Aeson.encode mAssetClass))
   CleanupDust -> do
     printYellow "Sweeping dust UTxOs from validator addresses..."
     let actionType = ProtocolAction CleanupDustAction

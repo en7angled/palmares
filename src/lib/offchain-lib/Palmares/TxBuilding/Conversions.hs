@@ -13,7 +13,7 @@ import GeniusYield.Types
 import Palmares.Onchain.CIP68 (CIP68Datum (..), MetadataFields (..), extra, getMetadataFields)
 import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
-import PlutusLedgerApi.V3
+import PlutusLedgerApi.V3 hiding (Committee) -- ours is a profile kind; Plutus's is the CIP-1694 committee datum
 import PlutusTx.AssocMap qualified as AssocMap
 import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteStringUtf8)
 
@@ -45,14 +45,26 @@ fromBuiltinByteStringUtf8 :: BuiltinByteString -> T.Text
 fromBuiltinByteStringUtf8 = TE.decodeUtf8With TEE.lenientDecode . fromBuiltin
 
 -- | Map domain 'ProfileType' to its on-chain representation.
-profileTypeToOnchainProfileType :: ProfileType -> Onchain.OnchainProfileType
-profileTypeToOnchainProfileType Practitioner = Onchain.Practitioner
-profileTypeToOnchainProfileType Organization = Onchain.Organization
+--
+-- Written out arm by arm rather than through 'fromEnum', deliberately: the two enums agree in order
+-- today and a coincidence of order is not a thing to rely on across a layer boundary. Both directions
+-- are total, so @-Wincomplete-patterns@ is what catches a seventh kind added on one side only.
+profileTypeToOnchainProfileKind :: ProfileType -> Onchain.OnchainProfileKind
+profileTypeToOnchainProfileKind PersonDRep = Onchain.PersonDRep
+profileTypeToOnchainProfileKind Organization = Onchain.Organization
+profileTypeToOnchainProfileKind Committee = Onchain.Committee
+profileTypeToOnchainProfileKind Community = Onchain.Community
+profileTypeToOnchainProfileKind Vendor = Onchain.Vendor
+profileTypeToOnchainProfileKind Auditor = Onchain.Auditor
 
--- | Map on-chain profile type to domain 'ProfileType'.
-onchainProfileTypeToProfileType :: Onchain.OnchainProfileType -> ProfileType
-onchainProfileTypeToProfileType Onchain.Practitioner = Practitioner
-onchainProfileTypeToProfileType Onchain.Organization = Organization
+-- | Map an on-chain profile kind to the domain 'ProfileType'.
+onchainProfileKindToProfileType :: Onchain.OnchainProfileKind -> ProfileType
+onchainProfileKindToProfileType Onchain.PersonDRep = PersonDRep
+onchainProfileKindToProfileType Onchain.Organization = Organization
+onchainProfileKindToProfileType Onchain.Committee = Committee
+onchainProfileKindToProfileType Onchain.Community = Community
+onchainProfileKindToProfileType Onchain.Vendor = Vendor
+onchainProfileKindToProfileType Onchain.Auditor = Auditor
 
 -- | Extract 'ProfileData' from a CIP-68 profile datum's metadata fields.
 profileDatumToProfileData :: CIP68Datum Onchain.OnchainProfile -> ProfileData
@@ -63,7 +75,7 @@ profileDatumToProfile :: (MonadError GYTxMonadException m) => CIP68Datum Onchain
 profileDatumToProfile datum = do
   let ProfileData {..} = profileDatumToProfileData datum
       onchainProfile = extra datum
-  let profileType = onchainProfileTypeToProfileType $ Onchain.profileType onchainProfile
+  let profileType = onchainProfileKindToProfileType $ Onchain.profileKind onchainProfile
   gyProfileId <- assetClassFromPlutus' (Onchain.profileId onchainProfile)
   return $
     Profile
@@ -76,7 +88,7 @@ profileDatumToProfile datum = do
 
 ------------------------------------------------------------------------------------------------
 
--- * Achievement Conversions
+-- * Attestation Conversions
 
 ------------------------------------------------------------------------------------------------
 
@@ -102,28 +114,28 @@ cip68DatumOtherMetadataPairs datum =
           (AssocMap.toList (metadata datum))
       )
 
--- | Convert a CIP-68 achievement datum to a domain 'Achievement'.
-onchainAchievementToAchievement :: (MonadError GYTxMonadException m) => CIP68Datum OnchainTypes.OnchainAchievement -> m Achievement
-onchainAchievementToAchievement datum = do
-  let OnchainTypes.OnchainAchievement {..} = extra datum
+-- | Convert a CIP-68 attestation datum to a domain 'Attestation'.
+onchainAttestationToAttestation :: (MonadError GYTxMonadException m) => CIP68Datum OnchainTypes.OnchainAttestation -> m Attestation
+onchainAttestationToAttestation datum = do
+  let OnchainTypes.OnchainAttestation {..} = extra datum
       ProfileData {..} = metadataFieldsToProfileData (getMetadataFields datum)
       otherMeta = cip68DatumOtherMetadataPairs datum
-  gyAchievementId <- assetClassFromPlutus' achievementId
-  gyAwardedTo <- assetClassFromPlutus' achievementAwardedTo
-  gyAwardedBy <- assetClassFromPlutus' achievementAwardedBy
+  gyAttestationId <- assetClassFromPlutus' attestationId
+  gySubject <- assetClassFromPlutus' attestationSubject
+  gyIssuer <- assetClassFromPlutus' attestationIssuer
   return
-    Achievement
-      { achievementId = gyAchievementId,
-        achievementAwardedToProfileId = gyAwardedTo,
-        achievementAwardedByProfileId = gyAwardedBy,
-        achievementAchievementDate = timeFromPlutus achievementDate,
-        achievementAccepted = achievementIsAccepted,
-        achievementName = profileDataName,
-        achievementDescription = profileDataDescription,
-        achievementImageURI = profileDataImageURI,
-        achievementOtherMetadata = otherMeta,
+    Attestation
+      { attestationId = gyAttestationId,
+        attestationSubjectProfileId = gySubject,
+        attestationIssuerProfileId = gyIssuer,
+        attestationAttestationDate = timeFromPlutus attestationDate,
+        attestationAccepted = attestationIsAccepted,
+        attestationName = profileDataName,
+        attestationDescription = profileDataDescription,
+        attestationImageURI = profileDataImageURI,
+        attestationOtherMetadata = otherMeta,
         -- ponytail: live backend doesn't thread the UTxO ref; tx pointer is projected-only.
-        achievementTxHash = Nothing,
-        achievementSlot = Nothing,
-        achievementOutputIndex = Nothing
+        attestationTxHash = Nothing,
+        attestationSlot = Nothing,
+        attestationOutputIndex = Nothing
       }

@@ -59,27 +59,27 @@ instance ToSchema UpdateProfileRequest where
       & describeField "image_uri" "URI of the profile image (the client hosts it; the protocol stores the URI)"
 
 -- | Issue an attestation about a subject profile.
-data AwardAchievementRequest = AwardAchievementRequest
-  { aarAwardedToProfileId :: ProfileRefAC
-  , aarAwardedByProfileId :: ProfileRefAC
-  , aarName :: Text
-  , aarDescription :: Text
-  , aarImageURI :: Text
-  , aarOtherMetadata :: [(Text, Text)]
-  , aarAchievementDate :: GYTime
-  , aarUserAddresses :: UserAddresses
-  , aarRecipient :: Maybe GYAddress
+data IssueAttestationRequest = IssueAttestationRequest
+  { iarSubjectProfileId :: ProfileRefAC
+  , iarIssuerProfileId :: ProfileRefAC
+  , iarName :: Text
+  , iarDescription :: Text
+  , iarImageURI :: Text
+  , iarOtherMetadata :: [(Text, Text)]
+  , iarAttestationDate :: GYTime
+  , iarUserAddresses :: UserAddresses
+  , iarRecipient :: Maybe GYAddress
   }
   deriving (Show, Generic)
-  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "aar", CamelToSnake]] AwardAchievementRequest
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "iar", CamelToSnake]] IssueAttestationRequest
 
-instance ToSchema AwardAchievementRequest where
+instance ToSchema IssueAttestationRequest where
   declareNamedSchema proxy = do
-    s <- genericDeclareNamedSchema (mkStripPrefixSchemaOptions "aar") proxy
+    s <- genericDeclareNamedSchema (mkStripPrefixSchemaOptions "iar") proxy
     return $ s
-      & Swagger.schema . description ?~ "Award an achievement to a profile."
-      & describeField "name" "Achievement name"
-      & describeField "description" "Achievement description"
+      & Swagger.schema . description ?~ "Issue an attestation to a profile."
+      & describeField "name" "Attestation name"
+      & describeField "description" "Attestation description"
       & describeField "image_uri" "URI of the attestation image (the client hosts it; the protocol stores the URI)"
       & describeField "other_metadata" "Additional key-value metadata pairs (e.g. [[\"category\", \"competition\"]])"
       & describeField "recipient" "Address to receive unlocked funds (defaults to change address if omitted)"
@@ -90,18 +90,18 @@ instance ToSchema AwardAchievementRequest where
 
 -------------------------------------------------------------------------------
 
--- | Accept a pending achievement.
-data AcceptAchievementRequest = AcceptAchievementRequest
-  { acrAchievementId :: GYAssetClass
+-- | Accept a pending attestation.
+data AcceptAttestationRequest = AcceptAttestationRequest
+  { acrAttestationId :: GYAssetClass
   , acrUserAddresses :: UserAddresses
   , acrRecipient :: Maybe GYAddress
   }
   deriving (Show, Generic)
-  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "acr", CamelToSnake]] AcceptAchievementRequest
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "acr", CamelToSnake]] AcceptAttestationRequest
 
-instance ToSchema AcceptAchievementRequest where
+instance ToSchema AcceptAttestationRequest where
   declareNamedSchema proxy = do
     s <- genericDeclareNamedSchema (mkStripPrefixSchemaOptions "acr") proxy
     return $ s
-      & Swagger.schema . description ?~ "Accept a pending achievement. Must be called by the recipient practitioner's wallet."
+      & Swagger.schema . description ?~ "Countersign a pending attestation. Must be called by a wallet holding the subject profile's user token."
       & describeField "recipient" "Address to receive unlocked funds (defaults to change address if omitted)"

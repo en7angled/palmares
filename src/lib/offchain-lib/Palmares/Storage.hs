@@ -125,21 +125,21 @@ ProfileProjection
     UniqueProfileProjection profileId
     deriving Show
 
-AchievementProjection
+AttestationProjection
     createdAtSlot             Integer
     createdAtHash             Text
     createdTxId               Text
     createdOutputIndex        Int
-    achievementId             GYAssetClass
-    awardedToProfileId        GYAssetClass
-    awardedByProfileId        GYAssetClass
-    achievementDate           GYTime
+    attestationId             GYAssetClass
+    subjectProfileId        GYAssetClass
+    issuerProfileId        GYAssetClass
+    attestationDate           GYTime
     isAccepted                Bool
-    achievementName           Text
-    achievementDescription    Text
-    achievementImageURI       Text
-    otherMetadata             (Maybe AchievementOtherMetadataJson)
-    UniqueAchievementProjection achievementId
+    attestationName           Text
+    attestationDescription    Text
+    attestationImageURI       Text
+    otherMetadata             (Maybe AttestationOtherMetadataJson)
+    UniqueAttestationProjection attestationId
     deriving Show
 |]
 
@@ -183,7 +183,7 @@ runMigrations = runMigration migrateAll
 
 -- | Bump when the chain-sync DB schema changes incompatibly; startup wipes + re-syncs on a mismatch.
 -- v1: first schema of this registry (profile + attestation projections). Nothing is deployed yet, so
--- the Belt System's v4 history does not carry over.
+-- the inherited v4 history does not carry over.
 currentSchemaVersion :: Int
 currentSchemaVersion = 1
 
@@ -216,7 +216,7 @@ putStoredPolicyHexText policyHexText =
 -- When adding a new entity to this block, add its table name here so wipeChainSyncTablesRaw drops it.
 chainSyncTableNames :: [Text]
 chainSyncTableNames =
-  [ "achievement_projection",
+  [ "attestation_projection",
     "chain_cursor",
     "chain_sync_config",
     "onchain_match_event",
@@ -283,7 +283,7 @@ projectAndStore networkId km =
         Left e -> liftIO $ putStrLn ("PROJECTION ERROR (dropped, raw match retained): " <> show e)
         Right proj -> case proj of
           ProfileEvent p -> putProfileProjection slotNoInt header p
-          AchievementEvent a -> putAchievementProjection slotNoInt header txId outIdx a
+          AttestationEvent a -> putAttestationProjection slotNoInt header txId outIdx a
           NoEvent _ -> pure ()
 
 -- | Store a raw Kupo match event, upserting by (slot, header, txId, outputIndex) — the on-chain
@@ -317,25 +317,25 @@ putProfileProjection createdSlot createdHash p = do
           (profileType p)
   upsertByUnique (UniqueProfileProjection . profileProjectionProfileId) ev
 
--- | Store an achievement projection, upserting by achievement ID.
-putAchievementProjection :: (MonadIO m) => Integer -> Text -> Text -> Int -> Achievement -> SqlPersistT m ()
-putAchievementProjection createdSlot createdHash createdTxId createdOutIdx a = do
+-- | Store an attestation projection, upserting by attestation ID.
+putAttestationProjection :: (MonadIO m) => Integer -> Text -> Text -> Int -> Attestation -> SqlPersistT m ()
+putAttestationProjection createdSlot createdHash createdTxId createdOutIdx a = do
   let ev =
-        AchievementProjection
+        AttestationProjection
           createdSlot
           createdHash
           createdTxId
           createdOutIdx
-          (achievementId a)
-          (achievementAwardedToProfileId a)
-          (achievementAwardedByProfileId a)
-          (achievementAchievementDate a)
-          (achievementAccepted a)
-          (achievementName a)
-          (achievementDescription a)
-          (achievementImageURI a)
-          (Just $ AchievementOtherMetadataJson $ achievementOtherMetadata a)
-  upsertByUnique (UniqueAchievementProjection . achievementProjectionAchievementId) ev
+          (attestationId a)
+          (attestationSubjectProfileId a)
+          (attestationIssuerProfileId a)
+          (attestationAttestationDate a)
+          (attestationAccepted a)
+          (attestationName a)
+          (attestationDescription a)
+          (attestationImageURI a)
+          (Just $ AttestationOtherMetadataJson $ attestationOtherMetadata a)
+  upsertByUnique (UniqueAttestationProjection . attestationProjectionAttestationId) ev
 
 -- | The single source of chain-replay order: sort raw matches by true chain order
 -- @(slot, transaction_index, output_index)@. Used by 'rollbackTo' and by tests.
@@ -358,7 +358,7 @@ rollbackTo networkId slot = do
   deleteWhere [OnchainMatchEventCreatedSlot >. slot]
   -- 2. Wipe all derived projection tables.
   deleteWhere ([] :: [Filter ProfileProjection])
-  deleteWhere ([] :: [Filter AchievementProjection])
+  deleteWhere ([] :: [Filter AttestationProjection])
   -- 3. Replay surviving raw matches in true chain order.
   surviving <- selectList [] []
   mapM_ (projectAndStore networkId . onchainMatchEventKupoMatch) (replayOrder (map entityVal surviving))

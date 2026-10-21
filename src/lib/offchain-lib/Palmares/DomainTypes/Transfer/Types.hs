@@ -79,7 +79,7 @@ instance ToSchema FeeConfigDTO where
 data ScriptHashesDTO = ScriptHashesDTO
   { scriptHashesMintingPolicy :: Text,
     scriptHashesProfilesValidator :: Text,
-    scriptHashesAchievementsValidator :: Text,
+    scriptHashesAttestationsValidator :: Text,
     scriptHashesOracleValidator :: Text
   }
   deriving (Generic, Show)

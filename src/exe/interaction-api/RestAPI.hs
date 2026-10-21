@@ -130,24 +130,24 @@ type ServiceAPI =
       :> ReqBody '[JSON] UpdateProfileRequest
       :> Post '[JSON] String
   )
-    :<|> ( Summary "Award Achievement"
+    :<|> ( Summary "Issue Attestation"
              :> Description "Issues a pending attestation about a subject profile."
-             :> "award-achievement"
-             :> ReqBody '[JSON] AwardAchievementRequest
+             :> "issue-attestation"
+             :> ReqBody '[JSON] IssueAttestationRequest
              :> Post '[JSON] String
          )
-    :<|> ( Summary "Accept Achievement"
+    :<|> ( Summary "Accept Attestation"
              :> Description "Accepts a pending attestation; only the subject's wallet can do this."
-             :> "accept-achievement"
-             :> ReqBody '[JSON] AcceptAchievementRequest
+             :> "accept-attestation"
+             :> ReqBody '[JSON] AcceptAttestationRequest
              :> Post '[JSON] String
          )
 
 serviceServer :: ServerT ServiceAPI InteractionAppMonad
 serviceServer =
   handleUpdateProfile
-    :<|> handleAwardAchievement
-    :<|> handleAcceptAchievement
+    :<|> handleIssueAttestation
+    :<|> handleAcceptAttestation
 
 ------------------------------------------------------------------------------------------------
 
@@ -175,8 +175,8 @@ proxyPublicAPI = Proxy
 apiSwagger :: Swagger
 apiSwagger =
   toSwagger proxyPublicAPI
-    & info . title .~ "Decentralized Belt System Interaction API"
-    & info . Data.Swagger.version .~ "2.1.0"
+    & info . title .~ "Palmares Interaction API"
+    & info . Data.Swagger.version .~ "3.0.0"
     & info . Data.Swagger.description ?~ "This is the Palmares Interaction API — transaction building, submission, and the dedicated per-action service endpoints."
     & info . license ?~ "GPL-3.0 license"
     & host .~ Nothing

@@ -1,4 +1,4 @@
--- | Transaction skeleton building: profiles, ranks, memberships, achievements, oracle admin, dust cleanup.
+-- | Transaction skeleton building: profiles, ranks, memberships, attestations, oracle admin, dust cleanup.
 module Palmares.TxBuilding.Operations where
 
 import Control.Monad (unless, when)
@@ -12,16 +12,16 @@ import GeniusYield.Types
 import Palmares.Onchain.CIP68 (CIP68Datum (..), ImageURI, MetadataFields (..), extra, getMetadataFields, mkCIP68Datum, updateCIP68DatumMetadata)
 import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
-import Palmares.Onchain.Validators.AttestationsValidator (AchievementsRedeemer (..))
+import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer (..))
 import Palmares.Onchain.Validators.MintingPolicy
 import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer (OracleUpdate))
 import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (UpdateProfile))
 import Palmares.Onchain.Validators.ProfilesValidator qualified as ProfilesValidator (ProfilesRedeemer (Cleanup))
 import PlutusLedgerApi.V3
-import Palmares.TxBuilding.Context (DeployedScriptsContext (..), getAchievementsValidatorRef, getMintingPolicyFromCtx, getMintingPolicyRef, getOracleValidatorRef, getProfilesValidatorRef)
+import Palmares.TxBuilding.Context (DeployedScriptsContext (..), getAttestationsValidatorRef, getMintingPolicyFromCtx, getMintingPolicyRef, getOracleValidatorRef, getProfilesValidatorRef)
 import Palmares.TxBuilding.Conversions (cip68StandardMetadataKeys)
 import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
-import Palmares.TxBuilding.Lookups (getAchievementDatumAndValue, getDustUTxOs, getProfileStateDatumAndValue, getUTxOWithTokenAtAddresses, queryOracleParams)
+import Palmares.TxBuilding.Lookups (getAttestationDatumAndValue, getDustUTxOs, getProfileStateDatumAndValue, getUTxOWithTokenAtAddresses, queryOracleParams)
 import Palmares.TxBuilding.Skeletons
 import Palmares.TxBuilding.Utils (txOutRefToV3Plutus)
 import Palmares.TxBuilding.Validators
@@ -86,7 +86,7 @@ refGetters :: DeployedScriptsContext -> [GYTxOutRef]
 refGetters ctx =
   [ getMintingPolicyRef ctx,
     getProfilesValidatorRef ctx,
-    getAchievementsValidatorRef ctx,
+    getAttestationsValidatorRef ctx,
     getOracleValidatorRef ctx
   ]
 
@@ -171,46 +171,37 @@ hasUserNFTAt nftAC addrs =
         _ -> throwError e
     )
 
--- | Update the end date of a membership interval (org or practitioner).
--- Corresponds to 'UpdateEndDate' spending (no minting, no fee).
--- Caller must have either the organization User NFT or the practitioner User NFT.
---
--- Output index layout:
---   Output 0: Updated interval with new end date
---
--- When 'validityOverride' is 'Just' a skeleton, it is used as the tx validity
--- instead of 'validitySkeletonForNewEndDate'. Used only by tests (e.g. to trigger TD failure).
--- * Achievement Operations
+-- * Attestation Operations
 
 ------------------------------------------------------------------------------------------------
 
--- | Award an achievement to a practitioner.
--- The awarder (awardedBy) spends their User NFT to authorize.
--- Corresponds to 'NewAchievement' minting.
+-- | Issue an attestation about a subject.
+-- The issuer spends their User NFT to authorize.
+-- Corresponds to 'NewAttestation' minting.
 --
 -- Output index layout:
---   Output 0: Achievement NFT locked at achievementsValidator
+--   Output 0: Attestation NFT locked at attestationsValidator
 --   Output 1 (optional): Fee payment
-awardAchievementTX ::
+issueAttestationTX ::
   (GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
-  -- | Profile ID of the practitioner receiving the achievement
+  -- | Profile ID of the subject the attestation is about
   GYAssetClass ->
-  -- | Profile ID of the awarder (org or practitioner)
+  -- | Profile ID of the issuer
   GYAssetClass ->
   -- | CIP-68 metadata fields (name, description, image)
   MetadataFields ->
   -- | Additional metadata key-value pairs
   [(BuiltinByteString, BuiltinByteString)] ->
-  -- | Achievement date
+  -- | Attestation date
   POSIXTime ->
-  -- | Awarder's wallet addresses (to spend User NFT)
+  -- | Issuer's wallet addresses (to spend User NFT)
   [GYAddress] ->
   m (GYTxSkeleton 'PlutusV3, GYAssetClass)
-awardAchievementTX gyAwardedToProfileId gyAwardedByProfileId metadata otherMetadata achievementDate ownAddrs = do
+issueAttestationTX gySubjectProfileId gyIssuerProfileId metadata otherMetadata attestationDate ownAddrs = do
   mapM_
     ( \(k, _) ->
         when (k `elem` cip68StandardMetadataKeys) $
-          throwError (GYApplicationException AchievementOtherMetadataReservedKeys)
+          throwError (GYApplicationException AttestationOtherMetadataReservedKeys)
     )
     otherMetadata
   mpGY <- asks getMintingPolicyFromCtx
@@ -223,121 +214,121 @@ awardAchievementTX gyAwardedToProfileId gyAwardedByProfileId metadata otherMetad
   let isSpendingSeedUTxO = mustHaveInput (GYTxIn seedTxOutRef GYTxInWitnessKey)
   let seedTxOutRefPlutus = txOutRefToV3Plutus seedTxOutRef
 
-  spendsAwarderUserNFT <- spendUserNFTForProfile gyAwardedByProfileId ownAddrs
+  spendsIssuerUserNFT <- spendUserNFTForProfile gyIssuerProfileId ownAddrs
 
   -- ============================================================
   -- Output index tracking (order must match skeleton mconcat order)
   -- ============================================================
-  -- Output 0: Achievement NFT locked at achievementsValidator
+  -- Output 0: Attestation NFT locked at attestationsValidator
   -- Output 1 (optional): Fee payment
-  let achievementOutputIdx = 0 :: Integer
+  let attestationOutputIdx = 0 :: Integer
 
   let redeemer =
-        NewAchievement
+        NewAttestation
           seedTxOutRefPlutus
           metadata
           otherMetadata
-          (assetClassToPlutus gyAwardedToProfileId)
-          (assetClassToPlutus gyAwardedByProfileId)
-          achievementDate
-          achievementOutputIdx
+          (assetClassToPlutus gySubjectProfileId)
+          (assetClassToPlutus gyIssuerProfileId)
+          attestationDate
+          attestationOutputIdx
   let gyRedeemer = redeemerFromPlutusData redeemer
 
-  -- Generate achievement NFT AC
-  (gyAchievementRefAC, _gyAchievementUserAC) <- gyGenerateRefAndUserAC mpGY seedTxOutRef
-  isMintingAchievementNFT <- txMustMintWithMintRef True mpRef mpGY gyRedeemer gyAchievementRefAC
+  -- Generate attestation NFT AC
+  (gyAttestationRefAC, _gyAttestationUserAC) <- gyGenerateRefAndUserAC mpGY seedTxOutRef
+  isMintingAttestationNFT <- txMustMintWithMintRef True mpRef mpGY gyRedeemer gyAttestationRefAC
 
-  -- Build achievement datum
-  let achievementInfo =
-        OnchainTypes.OnchainAchievement
-          { OnchainTypes.achievementId = assetClassToPlutus gyAchievementRefAC,
-            OnchainTypes.achievementAwardedTo = assetClassToPlutus gyAwardedToProfileId,
-            OnchainTypes.achievementAwardedBy = assetClassToPlutus gyAwardedByProfileId,
-            OnchainTypes.achievementDate = achievementDate,
-            OnchainTypes.achievementIsAccepted = False
+  -- Build attestation datum
+  let attestationInfo =
+        OnchainTypes.OnchainAttestation
+          { OnchainTypes.attestationId = assetClassToPlutus gyAttestationRefAC,
+            OnchainTypes.attestationSubject = assetClassToPlutus gySubjectProfileId,
+            OnchainTypes.attestationIssuer = assetClassToPlutus gyIssuerProfileId,
+            OnchainTypes.attestationDate = attestationDate,
+            OnchainTypes.attestationIsAccepted = False
           }
-  let achievementDatum = mkCIP68Datum achievementInfo metadata otherMetadata
+  let attestationDatum = mkCIP68Datum attestationInfo metadata otherMetadata
 
-  -- Output 0: Achievement NFT
-  isLockingAchievement <-
+  -- Output 0: Attestation NFT
+  isLockingAttestation <-
     txMustLockStateWithInlineDatumAndValue
-      achievementsValidatorGY
-      achievementDatum
-      (valueSingleton gyAchievementRefAC 1 <> valueFromLovelace minLv)
+      attestationsValidatorGY
+      attestationDatum
+      (valueSingleton gyAttestationRefAC 1 <> valueFromLovelace minLv)
 
   return
     ( mconcat
         [ isSpendingSeedUTxO, -- Input (no output index)
-          spendsAwarderUserNFT, -- Input (no output index)
+          spendsIssuerUserNFT, -- Input (no output index)
           isInvalidBeforeNow, -- Validity (no output index)
           oracleRefSkeleton, -- Reference input: oracle UTxO
-          isMintingAchievementNFT, -- Mint (no output index)
-          isLockingAchievement, -- Output 0: Achievement NFT
+          isMintingAttestationNFT, -- Mint (no output index)
+          isLockingAttestation, -- Output 0: Attestation NFT
           feeSkeleton -- Output 1 (optional): Fee payment
         ],
-      gyAchievementRefAC
+      gyAttestationRefAC
     )
 
--- | Accept an achievement (practitioner consent).
--- Corresponds to 'AcceptAchievement' spending (no minting).
+-- | Accept an attestation (the subject's countersignature).
+-- Corresponds to 'AcceptAttestation' spending (no minting).
 --
 -- Output index layout:
---   Output 0: Updated achievement with isAccepted = True
-acceptAchievementTX ::
+--   Output 0: Updated attestation with isAccepted = True
+acceptAttestationTX ::
   (HasCallStack, GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
-  -- | Achievement NFT AC
+  -- | Attestation NFT AC
   GYAssetClass ->
-  -- | Practitioner's wallet addresses (to spend User NFT)
+  -- | Subject's wallet addresses (to spend User NFT)
   [GYAddress] ->
   m (GYTxSkeleton 'PlutusV3)
-acceptAchievementTX gyAchievementAC ownAddrs = do
-  avRef <- asks getAchievementsValidatorRef
+acceptAttestationTX gyAttestationAC ownAddrs = do
+  avRef <- asks getAttestationsValidatorRef
 
-  -- Look up the achievement
-  (achievementDatum, achievementValue) <- getAchievementDatumAndValue gyAchievementAC
+  -- Look up the attestation
+  (attestationDatum, attestationValue) <- getAttestationDatumAndValue gyAttestationAC
 
-  -- Spend practitioner User NFT
-  let practitionerProfileRefAC = OnchainTypes.achievementAwardedTo (extra achievementDatum)
-  gyPractitionerProfileRefAC <- assetClassFromPlutus' practitionerProfileRefAC
-  gyPractitionerUserAC <- gyDeriveUserFromRefAC gyPractitionerProfileRefAC
-  spendsPractitionerUserNFT <- txMustSpendFromAddress gyPractitionerUserAC ownAddrs
+  -- Spend the subject's User NFT
+  let subjectProfileRefAC = OnchainTypes.attestationSubject (extra attestationDatum)
+  gySubjectProfileRefAC <- assetClassFromPlutus' subjectProfileRefAC
+  gySubjectUserAC <- gyDeriveUserFromRefAC gySubjectProfileRefAC
+  spendsSubjectUserNFT <- txMustSpendFromAddress gySubjectUserAC ownAddrs
 
-  -- Compute updated achievement.
-  -- The already-accepted guard is inlined from the Belt System's
-  -- TxBuilding.SafeOnchainLogic.safeAcceptAchievement (a module the extraction skips). Keeping it
+  -- Compute updated attestation.
+  -- The already-accepted guard is inlined from the inherited
+  -- TxBuilding.SafeOnchainLogic.safeAcceptAttestation (a module the extraction skips). Keeping it
   -- here preserves the 400 that a second accept returns; without it the build would succeed and
   -- submit a no-op transaction, because the validator's expected output datum is the same either
   -- way. The on-chain half of this (fix #4) is Plan B's.
-  when (OnchainTypes.achievementIsAccepted (extra achievementDatum)) $
-    throwError (GYApplicationException AchievementAlreadyAccepted)
-  let updatedAchievementDatum =
-        achievementDatum {extra = (extra achievementDatum) {OnchainTypes.achievementIsAccepted = True}}
+  when (OnchainTypes.attestationIsAccepted (extra attestationDatum)) $
+    throwError (GYApplicationException AttestationAlreadyAccepted)
+  let updatedAttestationDatum =
+        attestationDatum {extra = (extra attestationDatum) {OnchainTypes.attestationIsAccepted = True}}
 
   -- ============================================================
   -- Output index tracking (order must match skeleton mconcat order)
   -- ============================================================
-  -- Output 0: Updated achievement
-  let achievementOutputIdx = 0 :: Integer
+  -- Output 0: Updated attestation
+  let attestationOutputIdx = 0 :: Integer
 
   -- Build AttestationsValidator redeemer
-  let avRedeemer = redeemerFromPlutusData $ AcceptAchievement achievementOutputIdx
+  let avRedeemer = redeemerFromPlutusData $ AcceptAttestation attestationOutputIdx
 
-  -- Spend the achievement from achievements validator
-  spendsAchievement <- txMustSpendStateFromRefScriptWithRedeemer avRef gyAchievementAC avRedeemer achievementsValidatorGY
+  -- Spend the attestation from attestations validator
+  spendsAttestation <- txMustSpendStateFromRefScriptWithRedeemer avRef gyAttestationAC avRedeemer attestationsValidatorGY
 
-  gyAchievementValue <- valueFromPlutus' achievementValue
-  -- Output 0: Updated achievement
-  isLockingUpdatedAchievement <-
+  gyAttestationValue <- valueFromPlutus' attestationValue
+  -- Output 0: Updated attestation
+  isLockingUpdatedAttestation <-
     txMustLockStateWithInlineDatumAndValue
-      achievementsValidatorGY
-      updatedAchievementDatum
-      gyAchievementValue
+      attestationsValidatorGY
+      updatedAttestationDatum
+      gyAttestationValue
 
   return $
     mconcat
-      [ spendsPractitionerUserNFT, -- Input (no output index)
-        spendsAchievement, -- Input (no output index)
-        isLockingUpdatedAchievement -- Output 0: Updated achievement
+      [ spendsSubjectUserNFT, -- Input (no output index)
+        spendsAttestation, -- Input (no output index)
+        isLockingUpdatedAttestation -- Output 0: Updated attestation
       ]
 
 ------------------------------------------------------------------------------------------------
@@ -423,7 +414,7 @@ cleanupDustTX = do
   configs <-
     sequence
       [ dustSpendsForValidatorSkeleton getProfilesValidatorRef profilesValidatorGY (redeemerFromPlutusData ProfilesValidator.Cleanup),
-        dustSpendsForValidatorSkeleton getAchievementsValidatorRef achievementsValidatorGY (redeemerFromPlutusData Cleanup)
+        dustSpendsForValidatorSkeleton getAttestationsValidatorRef attestationsValidatorGY (redeemerFromPlutusData Cleanup)
       ]
   let allSpends = concat configs
       dustCount = sum (map length configs)

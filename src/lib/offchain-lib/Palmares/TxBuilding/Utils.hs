@@ -19,7 +19,7 @@ import GeniusYield.Types.Time (timeFromPOSIX, timeFromPlutus, timeToPOSIX, timeT
 import GeniusYield.Types.Wallet
 import Palmares.Onchain.CIP68 (CIP68Datum)
 import Palmares.Onchain.Protocol qualified as Onchain
-import Palmares.Onchain.Protocol.Types (OnchainAchievement, OracleParams)
+import Palmares.Onchain.Protocol.Types (OnchainAttestation, OracleParams)
 import PlutusLedgerApi.V1.Tx qualified as V1
 import PlutusLedgerApi.V1.Value (flattenValue)
 import PlutusLedgerApi.V3
@@ -158,17 +158,17 @@ oracleParamsFromDatum :: GYDatum -> Maybe OracleParams
 oracleParamsFromDatum gyDatum =
   fromBuiltinData (datumToPlutus' gyDatum)
 
-achievementDatumFromDatum :: GYDatum -> Maybe (CIP68Datum OnchainAchievement)
-achievementDatumFromDatum gyDatum =
+attestationDatumFromDatum :: GYDatum -> Maybe (CIP68Datum OnchainAttestation)
+attestationDatumFromDatum gyDatum =
   fromBuiltinData (datumToPlutus' gyDatum)
 
-achievementFromGYOutDatum :: GYOutDatum -> Maybe (CIP68Datum OnchainAchievement)
-achievementFromGYOutDatum (GYOutDatumInline gyDatum) = achievementDatumFromDatum gyDatum
-achievementFromGYOutDatum _ = Nothing
+attestationFromGYOutDatum :: GYOutDatum -> Maybe (CIP68Datum OnchainAttestation)
+attestationFromGYOutDatum (GYOutDatumInline gyDatum) = attestationDatumFromDatum gyDatum
+attestationFromGYOutDatum _ = Nothing
 
-achievementAndValueFromUTxO :: GYUTxO -> Maybe (CIP68Datum OnchainAchievement, Value)
-achievementAndValueFromUTxO utxo = do
+attestationAndValueFromUTxO :: GYUTxO -> Maybe (CIP68Datum OnchainAttestation, Value)
+attestationAndValueFromUTxO utxo = do
   (gyDatum, gyValue) <- getInlineDatumAndValue utxo
-  datum <- achievementDatumFromDatum gyDatum
+  datum <- attestationDatumFromDatum gyDatum
   let pVal = valueToPlutus gyValue
   return (datum, pVal)

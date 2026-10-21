@@ -73,24 +73,24 @@ whereDateInterval (mf, mt) dateCol = case (mf, mt) of
 
 
 
-applyAchievementFilter :: Maybe F.AchievementFilter -> SqlExpr (Entity AchievementProjection) -> SqlQuery ()
-applyAchievementFilter Nothing _ = pure ()
-applyAchievementFilter (Just F.AchievementFilter {..}) ap = do
-  for_ achievementFilterId (\ids -> where_ (ap ^. AchievementProjectionAchievementId `in_` valList ids))
-  for_ achievementFilterAwardedToProfileId (\ids -> where_ (ap ^. AchievementProjectionAwardedToProfileId `in_` valList ids))
-  for_ achievementFilterAwardedByProfileId (\ids -> where_ (ap ^. AchievementProjectionAwardedByProfileId `in_` valList ids))
-  for_ achievementFilterIsAccepted (\ac -> where_ (ap ^. AchievementProjectionIsAccepted ==. val ac))
-  whereDateInterval achievementFilterDateInterval (ap ^. AchievementProjectionAchievementDate)
+applyAttestationFilter :: Maybe F.AttestationFilter -> SqlExpr (Entity AttestationProjection) -> SqlQuery ()
+applyAttestationFilter Nothing _ = pure ()
+applyAttestationFilter (Just F.AttestationFilter {..}) ap = do
+  for_ attestationFilterId (\ids -> where_ (ap ^. AttestationProjectionAttestationId `in_` valList ids))
+  for_ attestationFilterSubjectProfileId (\ids -> where_ (ap ^. AttestationProjectionSubjectProfileId `in_` valList ids))
+  for_ attestationFilterIssuerProfileId (\ids -> where_ (ap ^. AttestationProjectionIssuerProfileId `in_` valList ids))
+  for_ attestationFilterIsAccepted (\ac -> where_ (ap ^. AttestationProjectionIsAccepted ==. val ac))
+  whereDateInterval attestationFilterDateInterval (ap ^. AttestationProjectionAttestationDate)
   for_
-    achievementFilterTextSearch
+    attestationFilterTextSearch
     ( \q ->
         let pat = likePat q
          in where_ $
-              (lower_ (unsafeSqlCastAs "text" (ap ^. AchievementProjectionAchievementId)) `like` pat)
-                ||. (lower_ (unsafeSqlCastAs "text" (ap ^. AchievementProjectionAwardedToProfileId)) `like` pat)
-                ||. (lower_ (unsafeSqlCastAs "text" (ap ^. AchievementProjectionAwardedByProfileId)) `like` pat)
-                ||. (lower_ (ap ^. AchievementProjectionAchievementName) `like` pat)
-                ||. (lower_ (ap ^. AchievementProjectionAchievementDescription) `like` pat)
+              (lower_ (unsafeSqlCastAs "text" (ap ^. AttestationProjectionAttestationId)) `like` pat)
+                ||. (lower_ (unsafeSqlCastAs "text" (ap ^. AttestationProjectionSubjectProfileId)) `like` pat)
+                ||. (lower_ (unsafeSqlCastAs "text" (ap ^. AttestationProjectionIssuerProfileId)) `like` pat)
+                ||. (lower_ (ap ^. AttestationProjectionAttestationName) `like` pat)
+                ||. (lower_ (ap ^. AttestationProjectionAttestationDescription) `like` pat)
     )
 
 
@@ -249,58 +249,58 @@ getProfiles maybeLimitOffset maybeProfileFilter maybeOrder = do
 
 
 
-getAchievements :: (MonadIO m, MonadReader QueryAppContext m) => Maybe (C.Limit, C.Offset) -> Maybe F.AchievementFilter -> Maybe (AchievementsOrderBy, SortOrder) -> m [Achievement]
-getAchievements maybeLimitOffset maybeAchievementFilter maybeOrder = do
+getAttestations :: (MonadIO m, MonadReader QueryAppContext m) => Maybe (C.Limit, C.Offset) -> Maybe F.AttestationFilter -> Maybe (AttestationsOrderBy, SortOrder) -> m [Attestation]
+getAttestations maybeLimitOffset maybeAttestationFilter maybeOrder = do
   pool <- asks pgPool
   liftIO $
     runSqlPool
       ( do
           rows <- select $ do
-            ap <- from $ table @AchievementProjection
-            applyAchievementFilter maybeAchievementFilter ap
+            ap <- from $ table @AttestationProjection
+            applyAttestationFilter maybeAttestationFilter ap
             case maybeOrder of
               Nothing -> pure ()
               Just (ob, so) ->
                 case ob of
-                  AchievementsOrderById -> orderBy [orderByDir so (ap ^. AchievementProjectionAchievementId)]
-                  AchievementsOrderByDate -> orderBy [orderByDir so (ap ^. AchievementProjectionAchievementDate)]
-                  AchievementsOrderByAwardedTo -> orderBy [orderByDir so (ap ^. AchievementProjectionAwardedToProfileId)]
-                  AchievementsOrderByAwardedBy -> orderBy [orderByDir so (ap ^. AchievementProjectionAwardedByProfileId)]
-                  AchievementsOrderByName -> orderBy [orderByDir so (ap ^. AchievementProjectionAchievementName)]
+                  AttestationsOrderById -> orderBy [orderByDir so (ap ^. AttestationProjectionAttestationId)]
+                  AttestationsOrderByDate -> orderBy [orderByDir so (ap ^. AttestationProjectionAttestationDate)]
+                  AttestationsOrderBySubject -> orderBy [orderByDir so (ap ^. AttestationProjectionSubjectProfileId)]
+                  AttestationsOrderByIssuer -> orderBy [orderByDir so (ap ^. AttestationProjectionIssuerProfileId)]
+                  AttestationsOrderByName -> orderBy [orderByDir so (ap ^. AttestationProjectionAttestationName)]
             applyLimitOffset maybeLimitOffset
             pure ap
-          let toAchievement ap =
-                Achievement
-                  { achievementId = achievementProjectionAchievementId ap,
-                    achievementAwardedToProfileId = achievementProjectionAwardedToProfileId ap,
-                    achievementAwardedByProfileId = achievementProjectionAwardedByProfileId ap,
-                    achievementAchievementDate = achievementProjectionAchievementDate ap,
-                    achievementAccepted = achievementProjectionIsAccepted ap,
-                    achievementName = achievementProjectionAchievementName ap,
-                    achievementDescription = achievementProjectionAchievementDescription ap,
-                    achievementImageURI = achievementProjectionAchievementImageURI ap,
-                    achievementOtherMetadata =
+          let toAttestation ap =
+                Attestation
+                  { attestationId = attestationProjectionAttestationId ap,
+                    attestationSubjectProfileId = attestationProjectionSubjectProfileId ap,
+                    attestationIssuerProfileId = attestationProjectionIssuerProfileId ap,
+                    attestationAttestationDate = attestationProjectionAttestationDate ap,
+                    attestationAccepted = attestationProjectionIsAccepted ap,
+                    attestationName = attestationProjectionAttestationName ap,
+                    attestationDescription = attestationProjectionAttestationDescription ap,
+                    attestationImageURI = attestationProjectionAttestationImageURI ap,
+                    attestationOtherMetadata =
                       maybe
                         []
-                        fromAchievementOtherMetadataJson
-                        (achievementProjectionOtherMetadata ap),
-                    achievementTxHash = Just (achievementProjectionCreatedTxId ap),
-                    achievementSlot = Just (achievementProjectionCreatedAtSlot ap),
-                    achievementOutputIndex = Just (achievementProjectionCreatedOutputIndex ap)
+                        fromAttestationOtherMetadataJson
+                        (attestationProjectionOtherMetadata ap),
+                    attestationTxHash = Just (attestationProjectionCreatedTxId ap),
+                    attestationSlot = Just (attestationProjectionCreatedAtSlot ap),
+                    attestationOutputIndex = Just (attestationProjectionCreatedOutputIndex ap)
                   }
-          pure (Prelude.map (toAchievement . entityVal) rows)
+          pure (Prelude.map (toAttestation . entityVal) rows)
       )
       pool
 
-getAchievementsCount :: (MonadIO m, MonadReader QueryAppContext m) => Maybe F.AchievementFilter -> m Int
-getAchievementsCount maybeAchievementFilter = do
+getAttestationsCount :: (MonadIO m, MonadReader QueryAppContext m) => Maybe F.AttestationFilter -> m Int
+getAttestationsCount maybeAttestationFilter = do
   pool <- asks pgPool
   liftIO $
     runSqlPool
       ( do
           cnt <- selectOne $ do
-            ap <- from $ table @AchievementProjection
-            applyAchievementFilter maybeAchievementFilter ap
+            ap <- from $ table @AttestationProjection
+            applyAttestationFilter maybeAttestationFilter ap
             pure countRows
           pure (maybe 0 unValue cnt)
       )
@@ -339,31 +339,31 @@ profileSearchFilter pt q =
       C.profileFilterRegisteredAfterSlot = Nothing
     }
 
-achievementSearchFilter :: Text -> F.AchievementFilter
-achievementSearchFilter q =
-  F.AchievementFilter
-    { C.achievementFilterId = Nothing,
-      C.achievementFilterAwardedToProfileId = Nothing,
-      C.achievementFilterAwardedByProfileId = Nothing,
-      C.achievementFilterIsAccepted = Nothing,
-      C.achievementFilterDateInterval = (Nothing, Nothing),
-      C.achievementFilterTextSearch = Just q
+attestationSearchFilter :: Text -> F.AttestationFilter
+attestationSearchFilter q =
+  F.AttestationFilter
+    { C.attestationFilterId = Nothing,
+      C.attestationFilterSubjectProfileId = Nothing,
+      C.attestationFilterIssuerProfileId = Nothing,
+      C.attestationFilterIsAccepted = Nothing,
+      C.attestationFilterDateInterval = (Nothing, Nothing),
+      C.attestationFilterTextSearch = Just q
     }
 
 
 
 
--- | Achievement text search matching id, profile ids, name, and description.
-achievementMatchesSearch :: Text -> Achievement -> Bool
-achievementMatchesSearch q a =
+-- | Attestation text search matching id, profile ids, name, and description.
+attestationMatchesSearch :: Text -> Attestation -> Bool
+attestationMatchesSearch q a =
   let q' = T.toLower q
       t :: (ToJSON a) => a -> Text
       t = T.pack . stringFromJSON
-   in T.isInfixOf q' (t (achievementId a))
-        || T.isInfixOf q' (t (achievementAwardedToProfileId a))
-        || T.isInfixOf q' (t (achievementAwardedByProfileId a))
-        || T.isInfixOf q' (T.toLower (achievementName a))
-        || T.isInfixOf q' (T.toLower (achievementDescription a))
+   in T.isInfixOf q' (t (attestationId a))
+        || T.isInfixOf q' (t (attestationSubjectProfileId a))
+        || T.isInfixOf q' (t (attestationIssuerProfileId a))
+        || T.isInfixOf q' (T.toLower (attestationName a))
+        || T.isInfixOf q' (T.toLower (attestationDescription a))
 
 profileToHitPractitioner :: Profile -> SearchHit
 profileToHitPractitioner p =
@@ -408,18 +408,18 @@ searchQueryLimit = 500
 
 
 
-achievementToHit :: Achievement -> SearchHit
-achievementToHit a =
+attestationToHit :: Attestation -> SearchHit
+attestationToHit a =
   SearchHit
-    { searchHitId = T.pack $ stringFromJSON (achievementId a),
-      searchHitTitle = achievementName a,
-      searchHitSubtitle = achievementDescription a,
-      searchHitBadges = ["Achievement"],
+    { searchHitId = T.pack $ stringFromJSON (attestationId a),
+      searchHitTitle = attestationName a,
+      searchHitSubtitle = attestationDescription a,
+      searchHitBadges = ["Attestation"],
       searchHitStatus = Nothing,
       searchHitTarget =
         SearchTarget
-          { searchTargetKind = "achievement",
-            searchTargetId = T.pack $ stringFromJSON (achievementId a)
+          { searchTargetKind = "attestation",
+            searchTargetId = T.pack $ stringFromJSON (attestationId a)
           }
     }
 
@@ -451,15 +451,15 @@ searchProjected q
             searchResultsTotal = 0,
             searchResultsPractitioners = SearchGroup 0 [],
             searchResultsOrganizations = SearchGroup 0 [],
-            searchResultsAchievements = SearchGroup 0 []
+            searchResultsAttestations = SearchGroup 0 []
           }
   | otherwise = do
       practitionerProfiles <- getProfiles (Just (searchQueryLimit, 0)) (Just (profileSearchFilter Practitioner q)) Nothing
       organizationProfiles <- getProfiles (Just (searchQueryLimit, 0)) (Just (profileSearchFilter Organization q)) Nothing
-      achievements <- getAchievements (Just (searchQueryLimit, 0)) (Just (achievementSearchFilter q)) Nothing
+      attestations <- getAttestations (Just (searchQueryLimit, 0)) (Just (attestationSearchFilter q)) Nothing
       let prItems = map profileToHitPractitioner practitionerProfiles
           orgItems = map profileToHitOrganization organizationProfiles
-          achItems = map achievementToHit achievements
+          achItems = map attestationToHit attestations
           mkGroup items =
             SearchGroup
               { searchGroupTotal = length items,
@@ -475,7 +475,7 @@ searchProjected q
             searchResultsTotal = total,
             searchResultsPractitioners = mkGroup prItems,
             searchResultsOrganizations = mkGroup orgItems,
-            searchResultsAchievements = mkGroup achItems
+            searchResultsAttestations = mkGroup achItems
           }
 
 

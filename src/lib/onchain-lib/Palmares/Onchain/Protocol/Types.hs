@@ -56,7 +56,10 @@ makeIsDataSchemaIndexed ''FeeConfig [('FeeConfig, 0)]
 -- | Mutable operational parameters stored in the oracle UTxO datum.
 -- Read as a reference input by the MintingPolicy at execution time.
 data OracleParams = OracleParams
-  { -- | Admin public key hash (can rotate itself)
+  { -- | Admin public key hash. __Cannot yet be rotated__ — this said "can rotate itself" and that was
+    -- false in the strong sense: 'OracleAdminAction' has no @SetAdmin@ case, and the validator
+    -- requires the output datum to equal @applyOracleAdminAction action@ of the current one, which
+    -- preserves this field by construction. Inherited fix #2 adds the case.
     opAdminPkh :: PubKeyHash,
     -- | Protocol pause switch
     opPaused :: Bool,
@@ -99,7 +102,7 @@ applyOracleAdminAction (OracleSetMinUTxOValue lovelace) params = params {opMinUT
 
 type ProfileId = AssetClass
 
-type AchievementId = AssetClass
+type AttestationId = AssetClass
 
 -------------------------------------------------------------------------------
 
@@ -107,18 +110,42 @@ type AchievementId = AssetClass
 
 -------------------------------------------------------------------------------
 
-data OnchainProfileType
-  = Practitioner
+-- | What kind of actor a profile stands for.
+--
+-- The six the spec names: the Intersect ecosystem, its committees, its communities, and the vendors
+-- and auditors who deliver and review against treasury funding. The registry is not a DRep registry.
+--
+-- __A constructor and not a metadata field__, although no validator branches on the kind. The read
+-- layer filters and groups by it; CIP-68 metadata is a @Map BuiltinByteString BuiltinByteString@ that
+-- the projection would have to parse and that a future update redeemer could silently change. One
+-- byte in the datum that cannot drift.
+--
+-- __The enum is closed.__ A seventh kind is a redeploy, which is the right price for changing what
+-- this registry recognises. @Organization@ keeps index 1, the one index that survives the rename.
+data OnchainProfileKind
+  = PersonDRep
   | Organization
+  | Committee
+  | Community
+  | Vendor
+  | Auditor
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
 
-makeIsDataSchemaIndexed ''OnchainProfileType [('Practitioner, 0), ('Organization, 1)]
+makeIsDataSchemaIndexed
+  ''OnchainProfileKind
+  [ ('PersonDRep, 0),
+    ('Organization, 1),
+    ('Committee, 2),
+    ('Community, 3),
+    ('Vendor, 4),
+    ('Auditor, 5)
+  ]
 
 data OnchainProfile
   = OnchainProfile
   { profileId :: ProfileId,
-    profileType :: OnchainProfileType,
+    profileKind :: OnchainProfileKind,
     protocolParams :: ProtocolParams
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
@@ -128,18 +155,18 @@ makeIsDataSchemaIndexed ''OnchainProfile [('OnchainProfile, 0)]
 
 -------------------------------------------------------------------------------
 
--- * Achievement
+-- * Attestation
 
 -------------------------------------------------------------------------------
 
-data OnchainAchievement = OnchainAchievement
-  { achievementId :: AchievementId,
-    achievementAwardedBy :: ProfileId,
-    achievementAwardedTo :: ProfileId,
-    achievementDate :: POSIXTime,
-    achievementIsAccepted :: Bool
+data OnchainAttestation = OnchainAttestation
+  { attestationId :: AttestationId,
+    attestationIssuer :: ProfileId,
+    attestationSubject :: ProfileId,
+    attestationDate :: POSIXTime,
+    attestationIsAccepted :: Bool
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
 
-makeIsDataSchemaIndexed ''OnchainAchievement [('OnchainAchievement, 0)]
+makeIsDataSchemaIndexed ''OnchainAttestation [('OnchainAttestation, 0)]

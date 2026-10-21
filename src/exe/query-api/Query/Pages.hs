@@ -4,7 +4,7 @@
 
 -- | §12.5 explorer page aggregates ([backend-api-requirements.md](backend-api-requirements.md)).
 module Query.Pages
-  ( getAchievementsPage,
+  ( getAttestationsPage,
     getProfilesPage,
     getOrganizationExplorerPage,
   )
@@ -15,10 +15,10 @@ import Data.Text (Text)
 import Palmares.DomainTypes.Core.Types
 import GeniusYield.Types (GYTime)
 import Palmares.DomainTypes.Transfer.QueryResponses
-  ( AchievementsPageResponse (..),
+  ( AttestationsPageResponse (..),
     OrganizationExplorerPageResponse (..),
     ProfilesPageResponse (..),
-    achievementToResponse,
+    attestationToResponse,
     organizationProfileToResponse,
     profileToResponse,
   )
@@ -26,7 +26,7 @@ import Query.Common qualified as C
 import Query.Projected qualified as P
 import QueryAppMonad (QueryAppMonad (..))
 import Palmares.DomainTypes.Transfer.Filters
-  ( achievementFilterFromParams,
+  ( attestationFilterFromParams,
     profileFilterFromParams,
   )
 import Palmares.DomainTypes.Transfer.OrderBy
@@ -34,32 +34,32 @@ import Palmares.DomainTypes.Transfer.OrderBy
 
 
 
--- | Achievements explorer page.
-getAchievementsPage ::
+-- | Attestations explorer page.
+getAttestationsPage ::
   Maybe Int ->
   Maybe Int ->
-  [AchievementAC] ->
+  [AttestationAC] ->
   [ProfileRefAC] ->
   [ProfileRefAC] ->
   Maybe Bool ->
   Maybe GYTime ->
   Maybe GYTime ->
   Maybe Text ->
-  Maybe AchievementsOrderBy ->
+  Maybe AttestationsOrderBy ->
   Maybe SortOrder ->
-  QueryAppMonad AchievementsPageResponse
-getAchievementsPage limit offset achievementIds awardedToRefs awardedByRefs accepted fromTime toTime q orderBy sortOrder = do
+  QueryAppMonad AttestationsPageResponse
+getAttestationsPage limit offset attestationIds subjectRefs issuerRefs accepted fromTime toTime q orderBy sortOrder = do
   let limitOffset = C.legacyNormalizeLimitOffset limit offset
-      achFilter = Just $ achievementFilterFromParams achievementIds awardedToRefs awardedByRefs accepted fromTime toTime q
+      achFilter = Just $ attestationFilterFromParams attestationIds subjectRefs issuerRefs accepted fromTime toTime q
       order = C.normalizeOrder orderBy sortOrder
-  items <- P.getAchievements limitOffset achFilter order
-  total <- P.getAchievementsCount achFilter
+  items <- P.getAttestations limitOffset achFilter order
+  total <- P.getAttestationsCount achFilter
   return
-    AchievementsPageResponse
-      { achievementsPageItems = map achievementToResponse items,
-        achievementsPageTotal = total,
+    AttestationsPageResponse
+      { attestationsPageItems = map attestationToResponse items,
+        attestationsPageTotal = total,
         -- The monthly histogram comes back with the metrics block (its source module is a rewrite).
-        achievementsPageMonthly = []
+        attestationsPageMonthly = []
       }
 
 -- | Profiles explorer page (list + total + type frequency).

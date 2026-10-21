@@ -6,7 +6,7 @@ import Palmares.Constants qualified as Constants
 import Data.ByteString.Short qualified as SBS
 import GeniusYield.Types
 import Palmares.Onchain.Protocol
-import Palmares.Onchain.Validators.AttestationsValidator qualified as AttestationsValidator (achievementsCompile)
+import Palmares.Onchain.Validators.AttestationsValidator qualified as AttestationsValidator (attestationsCompile)
 import Palmares.Onchain.Validators.MintingPolicy qualified as MintingPolicy (mintingPolicyCompile)
 import Palmares.Onchain.Validators.OracleNFTPolicy qualified as OracleNFTPolicy (oracleNFTPolicyCompile)
 import Palmares.Onchain.Validators.OracleValidator qualified as OracleValidator (oracleCompile)
@@ -37,21 +37,21 @@ profilesValidatorHashPlutus = validatorHashToPlutus profilesValidatorHashGY
 
 ------------------------------------------------------------------------------------------------
 
--- * Define Achievements Validator
+-- * Define Attestations Validator
 
 ------------------------------------------------------------------------------------------------
 
-achievementsValidatorPlutus :: CompiledCode (BuiltinData -> BuiltinUnit)
-achievementsValidatorPlutus = AttestationsValidator.achievementsCompile
+attestationsValidatorPlutus :: CompiledCode (BuiltinData -> BuiltinUnit)
+attestationsValidatorPlutus = AttestationsValidator.attestationsCompile
 
-achievementsValidatorGY :: GYScript 'PlutusV3
-achievementsValidatorGY = validatorFromPlutus achievementsValidatorPlutus
+attestationsValidatorGY :: GYScript 'PlutusV3
+attestationsValidatorGY = validatorFromPlutus attestationsValidatorPlutus
 
-achievementsValidatorHashGY :: GYScriptHash
-achievementsValidatorHashGY = validatorHash achievementsValidatorGY
+attestationsValidatorHashGY :: GYScriptHash
+attestationsValidatorHashGY = validatorHash attestationsValidatorGY
 
-achievementsValidatorHashPlutus :: ScriptHash
-achievementsValidatorHashPlutus = validatorHashToPlutus achievementsValidatorHashGY
+attestationsValidatorHashPlutus :: ScriptHash
+attestationsValidatorHashPlutus = validatorHashToPlutus attestationsValidatorHashGY
 
 ------------------------------------------------------------------------------------------------
 
@@ -92,7 +92,7 @@ mkProtocolParams :: V1.AssetClass -> ProtocolParams
 mkProtocolParams =
   ProtocolParams
     profilesValidatorHashPlutus
-    achievementsValidatorHashPlutus
+    attestationsValidatorHashPlutus
 
 -- | Protocol params with a placeholder oracle token, for blueprint generation only.
 -- The actual oracle token is determined at deployment time.
@@ -125,8 +125,8 @@ compiledCodeSize cc = SBS.length (serialiseCompiledCode cc)
 profilesValidatorSize :: Int
 profilesValidatorSize = compiledCodeSize profilesValidatorPlutus
 
-achievementsValidatorSize :: Int
-achievementsValidatorSize = compiledCodeSize achievementsValidatorPlutus
+attestationsValidatorSize :: Int
+attestationsValidatorSize = compiledCodeSize attestationsValidatorPlutus
 
 oracleValidatorSize :: Int
 oracleValidatorSize = compiledCodeSize oracleValidatorPlutus
@@ -144,8 +144,8 @@ mintingPolicySize oracleAC = compiledCodeSize (MintingPolicy.mintingPolicyCompil
 exportProfilesValidator :: IO ()
 exportProfilesValidator = writeScript @'PlutusV3 Constants.defaultProfilesValidatorFile $ validatorToScript profilesValidatorGY
 
-exportAchievementsValidator :: IO ()
-exportAchievementsValidator = writeScript @'PlutusV3 Constants.defaultAchievementsValidatorFile $ validatorToScript achievementsValidatorGY
+exportAttestationsValidator :: IO ()
+exportAttestationsValidator = writeScript @'PlutusV3 Constants.defaultAttestationsValidatorFile $ validatorToScript attestationsValidatorGY
 
 exportOracleValidator :: IO ()
 exportOracleValidator = writeScript @'PlutusV3 Constants.defaultOracleValidatorFile $ validatorToScript oracleValidatorGY
@@ -153,5 +153,5 @@ exportOracleValidator = writeScript @'PlutusV3 Constants.defaultOracleValidatorF
 exportValidators :: IO ()
 exportValidators = do
   exportProfilesValidator
-  exportAchievementsValidator
+  exportAttestationsValidator
   exportOracleValidator

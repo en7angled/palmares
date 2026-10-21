@@ -21,7 +21,7 @@ conversionsTests =
     "Conversions (F-09 UTF-8)"
     [ testCase "ASCII round-trips" $ roundTrip "Hello World" @?= "Hello World",
       testCase "accented text round-trips" $ roundTrip "José Gração" @?= "José Gração",
-      testCase "emoji round-trips" $ roundTrip "belt \128081 test" @?= "belt \128081 test",
+      testCase "emoji round-trips" $ roundTrip "vendor \128081 test" @?= "vendor \128081 test",
       testCase "empty round-trips" $ roundTrip "" @?= "",
       testCase "invalid UTF-8 bytes do not throw (lenient)" $ do
         -- 0xFF 0xFE are not valid UTF-8; decoding must yield a Text without raising.

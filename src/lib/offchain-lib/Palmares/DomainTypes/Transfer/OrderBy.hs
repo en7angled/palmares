@@ -92,26 +92,26 @@ instance FromHttpApiData ProfilesOrderBy where
       "registered_at" -> Right ProfilesOrderByRegisteredAt
       _ -> Left "Invalid order by. Use 'name', 'id', 'description', 'type', or 'registered_at'"
 
-data AchievementsOrderBy
-  = AchievementsOrderById
-  | AchievementsOrderByDate
-  | AchievementsOrderByAwardedTo
-  | AchievementsOrderByAwardedBy
-  | AchievementsOrderByName
+data AttestationsOrderBy
+  = AttestationsOrderById
+  | AttestationsOrderByDate
+  | AttestationsOrderBySubject
+  | AttestationsOrderByIssuer
+  | AttestationsOrderByName
   deriving (Show, Generic, Eq)
-  deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "AchievementsOrderBy", CamelToSnake]] AchievementsOrderBy
+  deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "AttestationsOrderBy", CamelToSnake]] AttestationsOrderBy
 
-instance ToSchema AchievementsOrderBy where
-  declareNamedSchema = genericDeclareNamedSchema achievementsOrderBySchemaOptions
+instance ToSchema AttestationsOrderBy where
+  declareNamedSchema = genericDeclareNamedSchema attestationsOrderBySchemaOptions
     where
-      achievementsOrderBySchemaOptions :: SchemaOptions
-      achievementsOrderBySchemaOptions =
+      attestationsOrderBySchemaOptions :: SchemaOptions
+      attestationsOrderBySchemaOptions =
         fromAesonOptions $
           AesonTypes.defaultOptions
-            { AesonTypes.constructorTagModifier = camelTo2 '_' . dropPrefix "AchievementsOrderBy"
+            { AesonTypes.constructorTagModifier = camelTo2 '_' . dropPrefix "AttestationsOrderBy"
             }
 
-instance ToParamSchema AchievementsOrderBy where
+instance ToParamSchema AttestationsOrderBy where
   toParamSchema _ =
     mempty
       & type_
@@ -119,20 +119,20 @@ instance ToParamSchema AchievementsOrderBy where
       & enum_
         ?~ [ Aeson.String (T.pack "id"),
              Aeson.String (T.pack "date"),
-             Aeson.String (T.pack "awarded_to"),
-             Aeson.String (T.pack "awarded_by"),
+             Aeson.String (T.pack "issued_to"),
+             Aeson.String (T.pack "issued_by"),
              Aeson.String (T.pack "name")
            ]
 
-instance FromHttpApiData AchievementsOrderBy where
+instance FromHttpApiData AttestationsOrderBy where
   parseQueryParam t =
     case T.toLower t of
-      "id" -> Right AchievementsOrderById
-      "date" -> Right AchievementsOrderByDate
-      "awarded_to" -> Right AchievementsOrderByAwardedTo
-      "awarded_by" -> Right AchievementsOrderByAwardedBy
-      "name" -> Right AchievementsOrderByName
-      _ -> Left "Invalid order by. Use 'id', 'date', 'awarded_to', 'awarded_by', or 'name'"
+      "id" -> Right AttestationsOrderById
+      "date" -> Right AttestationsOrderByDate
+      "issued_to" -> Right AttestationsOrderBySubject
+      "issued_by" -> Right AttestationsOrderByIssuer
+      "name" -> Right AttestationsOrderByName
+      _ -> Left "Invalid order by. Use 'id', 'date', 'issued_to', 'issued_by', or 'name'"
 
 -- | Newtype for wallet address URL capture (bech32 encoded).
 newtype WalletAddress = WalletAddress {unWalletAddress :: GYAddress}

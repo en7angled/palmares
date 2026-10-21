@@ -35,16 +35,16 @@ handleUpdateProfile req = do
   buildInteractionApp $ mkInteraction action (uprUserAddresses req) (uprRecipient req)
 
 -- | Issue an attestation about a subject profile.
-handleAwardAchievement :: AwardAchievementRequest -> InteractionAppMonad String
-handleAwardAchievement req = do
-  let pd = ProfileData (aarName req) (aarDescription req) (aarImageURI req)
-  let action = AwardAchievementAction
-        (aarAwardedToProfileId req)
-        (aarAwardedByProfileId req)
+handleIssueAttestation :: IssueAttestationRequest -> InteractionAppMonad String
+handleIssueAttestation req = do
+  let pd = ProfileData (iarName req) (iarDescription req) (iarImageURI req)
+  let action = IssueAttestationAction
+        (iarSubjectProfileId req)
+        (iarIssuerProfileId req)
         pd
-        (aarOtherMetadata req)
-        (aarAchievementDate req)
-  buildInteractionApp $ mkInteraction action (aarUserAddresses req) (aarRecipient req)
+        (iarOtherMetadata req)
+        (iarAttestationDate req)
+  buildInteractionApp $ mkInteraction action (iarUserAddresses req) (iarRecipient req)
 
 -------------------------------------------------------------------------------
 
@@ -52,8 +52,8 @@ handleAwardAchievement req = do
 
 -------------------------------------------------------------------------------
 
-handleAcceptAchievement :: AcceptAchievementRequest -> InteractionAppMonad String
-handleAcceptAchievement req = buildInteractionApp $ mkInteraction
-  (AcceptAchievementAction (acrAchievementId req))
+handleAcceptAttestation :: AcceptAttestationRequest -> InteractionAppMonad String
+handleAcceptAttestation req = buildInteractionApp $ mkInteraction
+  (AcceptAttestationAction (acrAttestationId req))
   (acrUserAddresses req)
   (acrRecipient req)

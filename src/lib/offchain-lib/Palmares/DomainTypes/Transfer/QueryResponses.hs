@@ -19,10 +19,10 @@
 -- which is the right price for keeping the layering real.
 module Palmares.DomainTypes.Transfer.QueryResponses
   ( ProfileResponse (..),
-    AchievementResponse (..),
+    AttestationResponse (..),
     OrganizationProfileResponse (..),
     profileToResponse,
-    achievementToResponse,
+    attestationToResponse,
     organizationProfileToResponse,
     SearchResults (..),
     SearchGroup (..),
@@ -31,10 +31,10 @@ module Palmares.DomainTypes.Transfer.QueryResponses
     LineageGraphData (..),
     LineageNode (..),
     LineageEdge (..),
-    AchievementInformationResponse (..),
-    achievementInformationToResponse,
-    AchievementsMonthlyStatsResponse (..),
-    AchievementsPageResponse (..),
+    AttestationInformationResponse (..),
+    attestationInformationToResponse,
+    AttestationsMonthlyStatsResponse (..),
+    AttestationsPageResponse (..),
     ProfilesPageResponse (..),
     OrganizationExplorerPageResponse (..),
     TopOrganizationResponse (..),
@@ -121,91 +121,91 @@ profileToResponse p =
       profileType = Core.profileType p
     }
 
--- * Achievement
+-- * Attestation
 
-data AchievementResponse = AchievementResponse
-  { achievementId :: Core.AchievementAC,
-    achievementAwardedToProfileId :: Core.ProfileRefAC,
-    achievementAwardedByProfileId :: Core.ProfileRefAC,
-    achievementAchievementDate :: GYTime,
-    achievementAccepted :: Bool,
-    achievementName :: Text,
-    achievementDescription :: Text,
-    achievementImageURI :: Text,
-    achievementThumbnailURI :: Text,
-    achievementOtherMetadata :: [(Text, Text)],
-    achievementTxHash :: Maybe Text,
-    achievementSlot :: Maybe Integer,
-    achievementOutputIndex :: Maybe Int
+data AttestationResponse = AttestationResponse
+  { attestationId :: Core.AttestationAC,
+    attestationSubjectProfileId :: Core.ProfileRefAC,
+    attestationIssuerProfileId :: Core.ProfileRefAC,
+    attestationAttestationDate :: GYTime,
+    attestationAccepted :: Bool,
+    attestationName :: Text,
+    attestationDescription :: Text,
+    attestationImageURI :: Text,
+    attestationThumbnailURI :: Text,
+    attestationOtherMetadata :: [(Text, Text)],
+    attestationTxHash :: Maybe Text,
+    attestationSlot :: Maybe Integer,
+    attestationOutputIndex :: Maybe Int
   }
   deriving stock (Generic)
-  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "achievement", CamelToSnake]] AchievementResponse
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "attestation", CamelToSnake]] AttestationResponse
 
-instance ToSchema AchievementResponse where
-  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "achievement")
+instance ToSchema AttestationResponse where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "attestation")
 
-achievementToResponse :: Core.Achievement -> AchievementResponse
-achievementToResponse a =
-  AchievementResponse
-    { achievementId = Core.achievementId a,
-      achievementAwardedToProfileId = Core.achievementAwardedToProfileId a,
-      achievementAwardedByProfileId = Core.achievementAwardedByProfileId a,
-      achievementAchievementDate = Core.achievementAchievementDate a,
-      achievementAccepted = Core.achievementAccepted a,
-      achievementName = Core.achievementName a,
-      achievementDescription = Core.achievementDescription a,
-      achievementImageURI = Core.achievementImageURI a,
-      achievementThumbnailURI = deriveThumbnailUri (Core.achievementImageURI a),
-      achievementOtherMetadata = Core.achievementOtherMetadata a,
-      achievementTxHash = Core.achievementTxHash a,
-      achievementSlot = Core.achievementSlot a,
-      achievementOutputIndex = Core.achievementOutputIndex a
+attestationToResponse :: Core.Attestation -> AttestationResponse
+attestationToResponse a =
+  AttestationResponse
+    { attestationId = Core.attestationId a,
+      attestationSubjectProfileId = Core.attestationSubjectProfileId a,
+      attestationIssuerProfileId = Core.attestationIssuerProfileId a,
+      attestationAttestationDate = Core.attestationAttestationDate a,
+      attestationAccepted = Core.attestationAccepted a,
+      attestationName = Core.attestationName a,
+      attestationDescription = Core.attestationDescription a,
+      attestationImageURI = Core.attestationImageURI a,
+      attestationThumbnailURI = deriveThumbnailUri (Core.attestationImageURI a),
+      attestationOtherMetadata = Core.attestationOtherMetadata a,
+      attestationTxHash = Core.attestationTxHash a,
+      attestationSlot = Core.attestationSlot a,
+      attestationOutputIndex = Core.attestationOutputIndex a
     }
 
--- | Enriched achievement with resolved profile information for awarded-to and awarded-by.
+-- | Enriched attestation with resolved profile information for issued-to and issued-by.
 -- Both profiles use 'ProfileResponse' (which carries 'profileType') because either
--- practitioners or organizations can award/receive achievements.
-data AchievementInformationResponse = AchievementInformationResponse
-  { achievementInfoId :: Core.AchievementAC,
-    achievementInfoAchievementDate :: GYTime,
-    achievementInfoAccepted :: Bool,
-    achievementInfoName :: Text,
-    achievementInfoDescription :: Text,
-    achievementInfoImageURI :: Text,
-    achievementInfoThumbnailURI :: Text,
-    achievementInfoOtherMetadata :: [(Text, Text)],
-    achievementInfoTxHash :: Maybe Text,
-    achievementInfoSlot :: Maybe Integer,
-    achievementInfoOutputIndex :: Maybe Int,
-    achievementInfoAwardedTo :: ProfileResponse,
-    achievementInfoAwardedBy :: ProfileResponse
+-- any profile kind can issue or be the subject of an attestation.
+data AttestationInformationResponse = AttestationInformationResponse
+  { attestationInfoId :: Core.AttestationAC,
+    attestationInfoAttestationDate :: GYTime,
+    attestationInfoAccepted :: Bool,
+    attestationInfoName :: Text,
+    attestationInfoDescription :: Text,
+    attestationInfoImageURI :: Text,
+    attestationInfoThumbnailURI :: Text,
+    attestationInfoOtherMetadata :: [(Text, Text)],
+    attestationInfoTxHash :: Maybe Text,
+    attestationInfoSlot :: Maybe Integer,
+    attestationInfoOutputIndex :: Maybe Int,
+    attestationInfoSubject :: ProfileResponse,
+    attestationInfoIssuer :: ProfileResponse
   }
   deriving stock (Generic)
-  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "achievementInfo", CamelToSnake]] AchievementInformationResponse
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "attestationInfo", CamelToSnake]] AttestationInformationResponse
 
-instance ToSchema AchievementInformationResponse where
-  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "achievementInfo")
+instance ToSchema AttestationInformationResponse where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "attestationInfo")
 
-achievementInformationToResponse ::
+attestationInformationToResponse ::
   Core.Profile ->
   Core.Profile ->
-  Core.Achievement ->
-  AchievementInformationResponse
-achievementInformationToResponse awardedTo awardedBy a =
-  AchievementInformationResponse
-    { achievementInfoId = Core.achievementId a,
-      achievementInfoAchievementDate = Core.achievementAchievementDate a,
-      achievementInfoAccepted = Core.achievementAccepted a,
-      achievementInfoName = Core.achievementName a,
-      achievementInfoDescription = Core.achievementDescription a,
-      achievementInfoImageURI = Core.achievementImageURI a,
-      achievementInfoThumbnailURI = deriveThumbnailUri (Core.achievementImageURI a),
-      achievementInfoOtherMetadata = Core.achievementOtherMetadata a,
-      achievementInfoTxHash = Core.achievementTxHash a,
-      achievementInfoSlot = Core.achievementSlot a,
-      achievementInfoOutputIndex = Core.achievementOutputIndex a,
-      achievementInfoAwardedTo = profileToResponse awardedTo,
-      achievementInfoAwardedBy = profileToResponse awardedBy
+  Core.Attestation ->
+  AttestationInformationResponse
+attestationInformationToResponse subject issuer a =
+  AttestationInformationResponse
+    { attestationInfoId = Core.attestationId a,
+      attestationInfoAttestationDate = Core.attestationAttestationDate a,
+      attestationInfoAccepted = Core.attestationAccepted a,
+      attestationInfoName = Core.attestationName a,
+      attestationInfoDescription = Core.attestationDescription a,
+      attestationInfoImageURI = Core.attestationImageURI a,
+      attestationInfoThumbnailURI = deriveThumbnailUri (Core.attestationImageURI a),
+      attestationInfoOtherMetadata = Core.attestationOtherMetadata a,
+      attestationInfoTxHash = Core.attestationTxHash a,
+      attestationInfoSlot = Core.attestationSlot a,
+      attestationInfoOutputIndex = Core.attestationOutputIndex a,
+      attestationInfoSubject = profileToResponse subject,
+      attestationInfoIssuer = profileToResponse issuer
     }
 
 data OrganizationProfileResponse = OrganizationProfileResponse
@@ -383,28 +383,28 @@ instance ToSchema LineageEdge where
 
 -- * Explorer page aggregates (backend-api-requirements §12.5)
 
--- | Accepted vs pending achievement counts per calendar month.
-data AchievementsMonthlyStatsResponse = AchievementsMonthlyStatsResponse
-  { achievementsMonthlyStatsMonth :: Text,
-    achievementsMonthlyStatsAccepted :: Int,
-    achievementsMonthlyStatsPending :: Int
+-- | Accepted vs pending attestation counts per calendar month.
+data AttestationsMonthlyStatsResponse = AttestationsMonthlyStatsResponse
+  { attestationsMonthlyStatsMonth :: Text,
+    attestationsMonthlyStatsAccepted :: Int,
+    attestationsMonthlyStatsPending :: Int
   }
   deriving stock (Generic)
-  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "achievementsMonthlyStats", CamelToSnake]] AchievementsMonthlyStatsResponse
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "attestationsMonthlyStats", CamelToSnake]] AttestationsMonthlyStatsResponse
 
-instance ToSchema AchievementsMonthlyStatsResponse where
-  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "achievementsMonthlyStats")
+instance ToSchema AttestationsMonthlyStatsResponse where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "attestationsMonthlyStats")
 
-data AchievementsPageResponse = AchievementsPageResponse
-  { achievementsPageItems :: [AchievementResponse],
-    achievementsPageTotal :: Int,
-    achievementsPageMonthly :: [AchievementsMonthlyStatsResponse]
+data AttestationsPageResponse = AttestationsPageResponse
+  { attestationsPageItems :: [AttestationResponse],
+    attestationsPageTotal :: Int,
+    attestationsPageMonthly :: [AttestationsMonthlyStatsResponse]
   }
   deriving stock (Generic)
-  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "achievementsPage", CamelToSnake]] AchievementsPageResponse
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "attestationsPage", CamelToSnake]] AttestationsPageResponse
 
-instance ToSchema AchievementsPageResponse where
-  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "achievementsPage")
+instance ToSchema AttestationsPageResponse where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "attestationsPage")
 
 data ProfilesPageResponse = ProfilesPageResponse
   { profilesPageItems :: [ProfileResponse],
@@ -419,7 +419,7 @@ instance ToSchema ProfilesPageResponse where
 
 -- | Organization explorer page: one page of organization profiles + total.
 -- Collapses the frontend's per-row @GET \/organization\/{id}@ (N+1) into a
--- single response, mirroring 'PractitionerExplorerPageResponse'.
+-- single response, mirroring the profile explorer page.
 data OrganizationExplorerPageResponse = OrganizationExplorerPageResponse
   { organizationExplorerPageItems :: [OrganizationProfileResponse],
     organizationExplorerPageTotal :: Int

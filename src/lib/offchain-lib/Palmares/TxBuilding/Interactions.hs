@@ -87,12 +87,12 @@ interactionToTxSkeleton Interaction {..} = do
               (textToBuiltinByteString <$> mbDesc)
               (textToBuiltinByteString imgURI)
               usedAddrs
-        AwardAchievementAction awardedToId awardedById profileData otherMeta achievementDate -> do
+        IssueAttestationAction subjectId issuerId profileData otherMeta attestationDate -> do
           let otherMetadataPlutus = map (Data.Bifunctor.bimap textToBuiltinByteString textToBuiltinByteString) otherMeta
-          awardAchievementTX awardedToId awardedById (profileDataToMetadataFields profileData) otherMetadataPlutus (timeToPlutus achievementDate) usedAddrs
-        AcceptAchievementAction achievementId -> do
-          skeleton <- acceptAchievementTX achievementId usedAddrs
-          return (skeleton, achievementId)
+          issueAttestationTX subjectId issuerId (profileDataToMetadataFields profileData) otherMetadataPlutus (timeToPlutus attestationDate) usedAddrs
+        AcceptAttestationAction attestationId -> do
+          skeleton <- acceptAttestationTX attestationId usedAddrs
+          return (skeleton, attestationId)
     ProtocolAction protocolActionType -> case protocolActionType of
       CleanupDustAction -> do
         (skeleton, _dustCount) <- cleanupDustTX

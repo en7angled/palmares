@@ -35,7 +35,7 @@ import Palmares.Onchain.Protocol (OnchainProfile (..), OnchainRank (..), getCurr
 import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Protocol.Types (OracleParams (..))
 import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (..))
-import PlutusLedgerApi.V3
+import PlutusLedgerApi.V3 hiding (Committee) -- ours is a profile kind; Plutus's is the CIP-1694 committee datum
 import Palmares.TxBuilding.Context
 import Palmares.TxBuilding.Interactions
 import Palmares.TxBuilding.Lookups
@@ -67,7 +67,7 @@ deployValidators w = do
   (pVhash, refProfilesValidator) <- deployReferenceScriptRun profilesValidatorGY w w
   (rVhash, refRanksValidator) <- deployReferenceScriptRun ranksValidatorGY w w
   (mVhash, refMembershipsValidator) <- deployReferenceScriptRun membershipsValidatorGY w w
-  (aVhash, refAchievementsValidator) <- deployReferenceScriptRun achievementsValidatorGY w w
+  (aVhash, refAttestationsValidator) <- deployReferenceScriptRun attestationsValidatorGY w w
   (ovHash, refOracleValidator) <- deployReferenceScriptRun oracleValidatorGY w w
 
   -- Step 2: Mint oracle NFT and lock initial OracleParams at oracle validator
@@ -91,7 +91,7 @@ deployValidators w = do
         <> show membershipsValidatorSize
         <> " bytes\n"
         <> "  AttestationsValidator: "
-        <> show achievementsValidatorSize
+        <> show attestationsValidatorSize
         <> " bytes\n"
         <> "  OracleValidator: "
         <> show oracleValidatorSize
@@ -105,7 +105,7 @@ deployValidators w = do
       { profilesValidatorHashAndRef = (pVhash, refProfilesValidator),
         ranksValidatorHashAndRef = (rVhash, refRanksValidator),
         membershipsValidatorHashAndRef = (mVhash, refMembershipsValidator),
-        achievementsValidatorHashAndRef = (aVhash, refAchievementsValidator),
+        attestationsValidatorHashAndRef = (aVhash, refAttestationsValidator),
         mintingPolicyHashAndRef = (mphash, refMintingPolicy),
         oracleValidatorHashAndRef = (ovHash, refOracleValidator),
         oracleNFTAssetClass = oracleNFTAC
@@ -404,7 +404,7 @@ maliciousAcceptPromotionTX gyPromotionId = do
 
   (plutusPromotionRankDatum, plutusPromotionRankValue) <- getRankStateDatumAndValue gyPromotionId
 
-  let studentProfileRefAC = promotionAwardedTo plutusPromotionRankDatum
+  let studentProfileRefAC = promotionSubject plutusPromotionRankDatum
   gyStudentProfileRefAC <- assetClassFromPlutus' studentProfileRefAC
 
   -- MALICIOUS: We intentionally DO NOT spend the student's User NFT

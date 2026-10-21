@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module UnitTests.Achievement
-  ( achievementTests,
+module UnitTests.Attestation
+  ( attestationTests,
   )
 where
 
@@ -14,29 +14,29 @@ import GeniusYield.Test.Clb
 import GeniusYield.Test.Utils
 import GeniusYield.TxBuilder
 import GeniusYield.Types
-import Test.Fixtures (achievementProfileData, achievementProfileDataMaxLength, masterProfileData, orgProfileData, seminarProfileData, studentProfileData)
+import Test.Fixtures (attestationProfileData, attestationProfileDataMaxLength, masterProfileData, orgProfileData, seminarProfileData, studentProfileData)
 import Test.Tasty
 import TestRuns (profileInteraction, deployValidators, protocolInteraction, sendDustToValidator)
-import Palmares.TxBuilding.Validators (achievementsValidatorGY)
+import Palmares.TxBuilding.Validators (attestationsValidatorGY)
 
-achievementTests :: (HasCallStack) => TestTree
-achievementTests =
+attestationTests :: (HasCallStack) => TestTree
+attestationTests =
   testGroup
-    "Achievement Tests"
-    [ mkTestFor "Test Case 5.1: Organization awards achievement to practitioner" orgAwardsAchievementTest,
-      mkTestFor "Test Case 5.2: Practitioner accepts achievement" practitionerAcceptsAchievementTest,
-      mkTestFor "Test Case 5.3: Full achievement lifecycle (award + accept)" fullAchievementLifecycleTest,
-      mkTestFor "Test Case 5.4: Double-accept achievement fails (TA)" doubleAcceptAchievementFailTest,
-      mkTestFor "Test Case 5.5: Wrong user cannot accept achievement" wrongUserAcceptAchievementFailTest,
-      mkTestFor "Test Case 5.6: Cleanup dust at AttestationsValidator" cleanupDustAtAchievementsTest,
-      mkTestFor "Award achievement with max-length metadata succeeds" awardAchievementMaxLengthMetadataTest,
-      mkTestFor "Award achievement with other_metadata succeeds" awardAchievementWithOtherMetadataTest,
-      mkTestFor "Award achievement with reserved other_metadata key fails" awardAchievementReservedMetadataKeyFailTest
+    "Attestation Tests"
+    [ mkTestFor "Test Case 5.1: Organization issues attestation to practitioner" orgIssuesAttestationTest,
+      mkTestFor "Test Case 5.2: Practitioner accepts attestation" practitionerAcceptsAttestationTest,
+      mkTestFor "Test Case 5.3: Full attestation lifecycle (issue + accept)" fullAttestationLifecycleTest,
+      mkTestFor "Test Case 5.4: Double-accept attestation fails (TA)" doubleAcceptAttestationFailTest,
+      mkTestFor "Test Case 5.5: Wrong user cannot accept attestation" wrongUserAcceptAttestationFailTest,
+      mkTestFor "Test Case 5.6: Cleanup dust at AttestationsValidator" cleanupDustAtAttestationsTest,
+      mkTestFor "Issue attestation with max-length metadata succeeds" issueAttestationMaxLengthMetadataTest,
+      mkTestFor "Issue attestation with other_metadata succeeds" issueAttestationWithOtherMetadataTest,
+      mkTestFor "Issue attestation with reserved other_metadata key fails" issueAttestationReservedMetadataKeyFailTest
     ]
   where
-    -- Test Case 5.1: Organization awards an achievement to a practitioner
-    orgAwardsAchievementTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    orgAwardsAchievementTest TestInfo {..} = do
+    -- Test Case 5.1: Organization issues an attestation to a practitioner
+    orgIssuesAttestationTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    orgIssuesAttestationTest TestInfo {..} = do
       waitNSlots_ 1000
       s <- slotOfCurrentBlock
       t <- slotToBeginTime s
@@ -65,33 +65,33 @@ achievementTests =
           Nothing
       waitNSlots_ 1
 
-      -- Organization awards achievement to practitioner
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Organization awarding achievement..."
+      -- Organization issues attestation to practitioner
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Organization issuing attestation..."
       s' <- slotOfCurrentBlock
-      achievementDate <- slotToBeginTime s'
-      let achievementDatePast = timeFromPOSIX $ timeToPOSIX achievementDate - 1000
+      attestationDate <- slotToBeginTime s'
+      let attestationDatePast = timeFromPOSIX $ timeToPOSIX attestationDate - 1000
 
-      (_txId, achievementAC) <-
+      (_txId, attestationAC) <-
         profileInteraction
           ctx
           (w1 testWallets)
-          ( AwardAchievementAction
-              { aa_awarded_to_profile_id = practitionerAC,
-                aa_awarded_by_profile_id = orgAC,
-                aa_profile_data = achievementProfileData,
+          ( IssueAttestationAction
+              { aa_subject_profile_id = practitionerAC,
+                aa_issuer_profile_id = orgAC,
+                aa_profile_data = attestationProfileData,
                 aa_other_metadata = [],
-                aa_achievement_date = achievementDatePast
+                aa_attestation_date = attestationDatePast
               }
           )
           Nothing
       waitNSlots_ 1
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) $ "Achievement awarded: " <> show achievementAC
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Organization awards achievement test passed!"
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) $ "Attestation issued: " <> show attestationAC
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Organization issues attestation test passed!"
       return ()
 
-    awardAchievementWithOtherMetadataTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    awardAchievementWithOtherMetadataTest TestInfo {..} = do
+    issueAttestationWithOtherMetadataTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    issueAttestationWithOtherMetadataTest TestInfo {..} = do
       waitNSlots_ 1000
       s <- slotOfCurrentBlock
       t <- slotToBeginTime s
@@ -117,27 +117,27 @@ achievementTests =
       waitNSlots_ 1
 
       s' <- slotOfCurrentBlock
-      achievementDate <- slotToBeginTime s'
-      let achievementDatePast = timeFromPOSIX $ timeToPOSIX achievementDate - 1000
+      attestationDate <- slotToBeginTime s'
+      let attestationDatePast = timeFromPOSIX $ timeToPOSIX attestationDate - 1000
 
       void $
         profileInteraction
           ctx
           (w1 testWallets)
-          ( AwardAchievementAction
-              { aa_awarded_to_profile_id = practitionerAC,
-                aa_awarded_by_profile_id = orgAC,
-                aa_profile_data = achievementProfileData,
+          ( IssueAttestationAction
+              { aa_subject_profile_id = practitionerAC,
+                aa_issuer_profile_id = orgAC,
+                aa_profile_data = attestationProfileData,
                 aa_other_metadata = [("Tournament", "Pan Ams 2024"), ("Division", "Adult Purple")],
-                aa_achievement_date = achievementDatePast
+                aa_attestation_date = attestationDatePast
               }
           )
           Nothing
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Award with other_metadata succeeded!"
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Issue with other_metadata succeeded!"
       return ()
 
-    awardAchievementReservedMetadataKeyFailTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    awardAchievementReservedMetadataKeyFailTest TestInfo {..} = do
+    issueAttestationReservedMetadataKeyFailTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    issueAttestationReservedMetadataKeyFailTest TestInfo {..} = do
       waitNSlots_ 1000
       s <- slotOfCurrentBlock
       t <- slotToBeginTime s
@@ -163,28 +163,28 @@ achievementTests =
       waitNSlots_ 1
 
       s' <- slotOfCurrentBlock
-      achievementDate <- slotToBeginTime s'
-      let achievementDatePast = timeFromPOSIX $ timeToPOSIX achievementDate - 1000
+      attestationDate <- slotToBeginTime s'
+      let attestationDatePast = timeFromPOSIX $ timeToPOSIX attestationDate - 1000
 
       mustFail $
         void $
           profileInteraction
             ctx
             (w1 testWallets)
-            ( AwardAchievementAction
-                { aa_awarded_to_profile_id = practitionerAC,
-                  aa_awarded_by_profile_id = orgAC,
-                  aa_profile_data = achievementProfileData,
+            ( IssueAttestationAction
+                { aa_subject_profile_id = practitionerAC,
+                  aa_issuer_profile_id = orgAC,
+                  aa_profile_data = attestationProfileData,
                   aa_other_metadata = [("name", "shadow")],
-                  aa_achievement_date = achievementDatePast
+                  aa_attestation_date = attestationDatePast
                 }
             )
             Nothing
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Reserved other_metadata key rejected as expected!"
       return ()
 
-    awardAchievementMaxLengthMetadataTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    awardAchievementMaxLengthMetadataTest TestInfo {..} = do
+    issueAttestationMaxLengthMetadataTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    issueAttestationMaxLengthMetadataTest TestInfo {..} = do
       waitNSlots_ 1000
       s <- slotOfCurrentBlock
       t <- slotToBeginTime s
@@ -210,30 +210,30 @@ achievementTests =
       waitNSlots_ 1
 
       s' <- slotOfCurrentBlock
-      achievementDate <- slotToBeginTime s'
-      let achievementDatePast = timeFromPOSIX $ timeToPOSIX achievementDate - 1000
+      attestationDate <- slotToBeginTime s'
+      let attestationDatePast = timeFromPOSIX $ timeToPOSIX attestationDate - 1000
 
       void $
         profileInteraction
           ctx
           (w1 testWallets)
-          ( AwardAchievementAction
-              { aa_awarded_to_profile_id = practitionerAC,
-                aa_awarded_by_profile_id = orgAC,
-                aa_profile_data = achievementProfileDataMaxLength,
+          ( IssueAttestationAction
+              { aa_subject_profile_id = practitionerAC,
+                aa_issuer_profile_id = orgAC,
+                aa_profile_data = attestationProfileDataMaxLength,
                 aa_other_metadata = [],
-                aa_achievement_date = achievementDatePast
+                aa_attestation_date = attestationDatePast
               }
           )
           Nothing
       waitNSlots_ 1
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Award achievement with max-length metadata test passed!"
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Issue attestation with max-length metadata test passed!"
       return ()
 
-    -- Test Case 5.2: Practitioner accepts an achievement
-    practitionerAcceptsAchievementTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    practitionerAcceptsAchievementTest TestInfo {..} = do
+    -- Test Case 5.2: Practitioner accepts an attestation
+    practitionerAcceptsAttestationTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    practitionerAcceptsAttestationTest TestInfo {..} = do
       waitNSlots_ 1000
       s <- slotOfCurrentBlock
       t <- slotToBeginTime s
@@ -259,43 +259,43 @@ achievementTests =
           Nothing
       waitNSlots_ 1
 
-      -- Organization awards achievement
+      -- Organization issues attestation
       s' <- slotOfCurrentBlock
-      achievementDate <- slotToBeginTime s'
-      let achievementDatePast = timeFromPOSIX $ timeToPOSIX achievementDate - 1000
+      attestationDate <- slotToBeginTime s'
+      let attestationDatePast = timeFromPOSIX $ timeToPOSIX attestationDate - 1000
 
-      (_txId, achievementAC) <-
+      (_txId, attestationAC) <-
         profileInteraction
           ctx
           (w1 testWallets)
-          ( AwardAchievementAction
-              { aa_awarded_to_profile_id = practitionerAC,
-                aa_awarded_by_profile_id = orgAC,
-                aa_profile_data = achievementProfileData,
+          ( IssueAttestationAction
+              { aa_subject_profile_id = practitionerAC,
+                aa_issuer_profile_id = orgAC,
+                aa_profile_data = attestationProfileData,
                 aa_other_metadata = [],
-                aa_achievement_date = achievementDatePast
+                aa_attestation_date = attestationDatePast
               }
           )
           Nothing
       waitNSlots_ 1
 
-      -- Practitioner accepts the achievement
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Practitioner accepting achievement..."
+      -- Practitioner accepts the attestation
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Practitioner accepting attestation..."
       void $
         profileInteraction
           ctx
           (w2 testWallets)
-          (AcceptAchievementAction achievementAC)
+          (AcceptAttestationAction attestationAC)
           Nothing
       waitNSlots_ 1
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Achievement accepted!"
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Practitioner accepts achievement test passed!"
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Attestation accepted!"
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Practitioner accepts attestation test passed!"
       return ()
 
     -- Test Case 5.3: Full lifecycle
-    fullAchievementLifecycleTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    fullAchievementLifecycleTest TestInfo {..} = do
+    fullAttestationLifecycleTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    fullAttestationLifecycleTest TestInfo {..} = do
       waitNSlots_ 1000
       s <- slotOfCurrentBlock
       t <- slotToBeginTime s
@@ -321,72 +321,72 @@ achievementTests =
           Nothing
       waitNSlots_ 1
 
-      -- Master awards two achievements to student
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "=== Awarding first achievement ==="
+      -- Master issues two attestations to student
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "=== Issuing first attestation ==="
       s' <- slotOfCurrentBlock
       t' <- slotToBeginTime s'
-      let achievementDate1 = timeFromPOSIX $ timeToPOSIX t' - 1000
+      let attestationDate1 = timeFromPOSIX $ timeToPOSIX t' - 1000
 
-      (_txId, achievement1AC) <-
+      (_txId, attestation1AC) <-
         profileInteraction
           ctx
           (w1 testWallets)
-          ( AwardAchievementAction
-              { aa_awarded_to_profile_id = studentAC,
-                aa_awarded_by_profile_id = masterAC,
-                aa_profile_data = achievementProfileData,
+          ( IssueAttestationAction
+              { aa_subject_profile_id = studentAC,
+                aa_issuer_profile_id = masterAC,
+                aa_profile_data = attestationProfileData,
                 aa_other_metadata = [],
-                aa_achievement_date = achievementDate1
+                aa_attestation_date = attestationDate1
               }
           )
           Nothing
       waitNSlots_ 1
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "=== Awarding second achievement ==="
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "=== Issuing second attestation ==="
       s'' <- slotOfCurrentBlock
       t'' <- slotToBeginTime s''
-      let achievementDate2 = timeFromPOSIX $ timeToPOSIX t'' - 1000
+      let attestationDate2 = timeFromPOSIX $ timeToPOSIX t'' - 1000
 
-      (_txId, achievement2AC) <-
+      (_txId, attestation2AC) <-
         profileInteraction
           ctx
           (w1 testWallets)
-          ( AwardAchievementAction
-              { aa_awarded_to_profile_id = studentAC,
-                aa_awarded_by_profile_id = masterAC,
+          ( IssueAttestationAction
+              { aa_subject_profile_id = studentAC,
+                aa_issuer_profile_id = masterAC,
                 aa_profile_data = seminarProfileData,
                 aa_other_metadata = [],
-                aa_achievement_date = achievementDate2
+                aa_attestation_date = attestationDate2
               }
           )
           Nothing
       waitNSlots_ 1
 
-      -- Student accepts both achievements
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "=== Accepting first achievement ==="
+      -- Student accepts both attestations
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "=== Accepting first attestation ==="
       void $
         profileInteraction
           ctx
           (w2 testWallets)
-          (AcceptAchievementAction achievement1AC)
+          (AcceptAttestationAction attestation1AC)
           Nothing
       waitNSlots_ 1
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "=== Accepting second achievement ==="
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "=== Accepting second attestation ==="
       void $
         profileInteraction
           ctx
           (w2 testWallets)
-          (AcceptAchievementAction achievement2AC)
+          (AcceptAttestationAction attestation2AC)
           Nothing
       waitNSlots_ 1
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Full achievement lifecycle test passed!"
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Full attestation lifecycle test passed!"
       return ()
 
-    -- Test Case 5.4: Double-accept achievement fails (on-chain trace TA)
-    doubleAcceptAchievementFailTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    doubleAcceptAchievementFailTest TestInfo {..} = do
+    -- Test Case 5.4: Double-accept attestation fails (on-chain trace TA)
+    doubleAcceptAttestationFailTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    doubleAcceptAttestationFailTest TestInfo {..} = do
       waitNSlots_ 1000
       s <- slotOfCurrentBlock
       t <- slotToBeginTime s
@@ -412,21 +412,21 @@ achievementTests =
           Nothing
       waitNSlots_ 1
 
-      -- Award achievement
+      -- Issue attestation
       s' <- slotOfCurrentBlock
       t' <- slotToBeginTime s'
-      let achievementDatePast = timeFromPOSIX $ timeToPOSIX t' - 1000
+      let attestationDatePast = timeFromPOSIX $ timeToPOSIX t' - 1000
 
-      (_txId, achievementAC) <-
+      (_txId, attestationAC) <-
         profileInteraction
           ctx
           (w1 testWallets)
-          ( AwardAchievementAction
-              { aa_awarded_to_profile_id = practitionerAC,
-                aa_awarded_by_profile_id = orgAC,
-                aa_profile_data = achievementProfileData,
+          ( IssueAttestationAction
+              { aa_subject_profile_id = practitionerAC,
+                aa_issuer_profile_id = orgAC,
+                aa_profile_data = attestationProfileData,
                 aa_other_metadata = [],
-                aa_achievement_date = achievementDatePast
+                aa_attestation_date = attestationDatePast
               }
           )
           Nothing
@@ -437,7 +437,7 @@ achievementTests =
         profileInteraction
           ctx
           (w2 testWallets)
-          (AcceptAchievementAction achievementAC)
+          (AcceptAttestationAction attestationAC)
           Nothing
       waitNSlots_ 1
 
@@ -449,15 +449,15 @@ achievementTests =
           profileInteraction
             ctx
             (w2 testWallets)
-            (AcceptAchievementAction achievementAC)
+            (AcceptAttestationAction attestationAC)
             Nothing
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Double-accept achievement fail test passed!"
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Double-accept attestation fail test passed!"
       return ()
 
-    -- Test Case 5.5: Wrong user cannot accept achievement
-    wrongUserAcceptAchievementFailTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    wrongUserAcceptAchievementFailTest TestInfo {..} = do
+    -- Test Case 5.5: Wrong user cannot accept attestation
+    wrongUserAcceptAttestationFailTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    wrongUserAcceptAttestationFailTest TestInfo {..} = do
       waitNSlots_ 1000
       s <- slotOfCurrentBlock
       t <- slotToBeginTime s
@@ -483,50 +483,50 @@ achievementTests =
           Nothing
       waitNSlots_ 1
 
-      -- Award achievement to practitioner A (w2)
+      -- Issue attestation to practitioner A (w2)
       s' <- slotOfCurrentBlock
       t' <- slotToBeginTime s'
-      let achievementDatePast = timeFromPOSIX $ timeToPOSIX t' - 1000
+      let attestationDatePast = timeFromPOSIX $ timeToPOSIX t' - 1000
 
-      (_txId, achievementAC) <-
+      (_txId, attestationAC) <-
         profileInteraction
           ctx
           (w1 testWallets)
-          ( AwardAchievementAction
-              { aa_awarded_to_profile_id = practitionerAC,
-                aa_awarded_by_profile_id = orgAC,
-                aa_profile_data = achievementProfileData,
+          ( IssueAttestationAction
+              { aa_subject_profile_id = practitionerAC,
+                aa_issuer_profile_id = orgAC,
+                aa_profile_data = attestationProfileData,
                 aa_other_metadata = [],
-                aa_achievement_date = achievementDatePast
+                aa_attestation_date = attestationDatePast
               }
           )
           Nothing
       waitNSlots_ 1
 
-      -- w3 (who is NOT the awardedTo practitioner) tries to accept -> should fail
+      -- w3 (who is NOT the subject practitioner) tries to accept -> should fail
       -- w3 does not own practitioner's User NFT, so AttestationsValidator will reject
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Wrong user (w3) attempting to accept achievement (should fail)..."
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Wrong user (w3) attempting to accept attestation (should fail)..."
       mustFail $
         void $
           profileInteraction
             ctx
             (w3 testWallets)
-            (AcceptAchievementAction achievementAC)
+            (AcceptAttestationAction attestationAC)
             Nothing
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Wrong user accept achievement fail test passed!"
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Wrong user accept attestation fail test passed!"
       return ()
 
     -- Test Case 5.6: Cleanup dust at AttestationsValidator
-    cleanupDustAtAchievementsTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    cleanupDustAtAchievementsTest TestInfo {..} = do
+    cleanupDustAtAttestationsTest :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    cleanupDustAtAttestationsTest TestInfo {..} = do
       waitNSlots_ 1000
       ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
-      -- Simulate griefing: send ADA-only UTxO to achievements validator
+      -- Simulate griefing: send ADA-only UTxO to attestations validator
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Sending dust UTxO to AttestationsValidator..."
-      sendDustToValidator (w2 testWallets) achievementsValidatorGY
+      sendDustToValidator (w2 testWallets) attestationsValidatorGY
       waitNSlots_ 1
 
       -- Any user (w3) can clean it up — permissionless

@@ -130,7 +130,7 @@ deployReferenceScripts providerCtx skey = do
   -- Step 3: Deploy spending validator reference scripts
   putStrLn $ yellowColorString "=== Step 3: Deploy Spending Validators ==="
   pv <- deployReferenceScript providerCtx profilesValidatorGY skey
-  av <- deployReferenceScript providerCtx achievementsValidatorGY skey
+  av <- deployReferenceScript providerCtx attestationsValidatorGY skey
 
   -- Step 4: Compile and deploy the minting policy (parameterized by oracle NFT)
   putStrLn $ yellowColorString "=== Step 4: Compile and Deploy Minting Policy ==="
@@ -141,7 +141,7 @@ deployReferenceScripts providerCtx skey = do
     DeployedScriptsContext
       { mintingPolicyHashAndRef = mp,
         profilesValidatorHashAndRef = pv,
-        achievementsValidatorHashAndRef = av,
+        attestationsValidatorHashAndRef = av,
         oracleValidatorHashAndRef = ov,
         oracleNFTAssetClass = oracleNFTAC
       }

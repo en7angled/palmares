@@ -105,7 +105,7 @@ runWithTxErrorHandling action = InteractionAppMonad $ do
             object
                 [ "code" .= ("InsufficientFunds" :: Text),
                   "message"
-                    .= ("Not enough preview ADA in your wallet to cover the profile fee, deposit and transaction cost." :: Text)
+                    .= ("Not enough ADA in your wallet to cover the deposit and transaction cost." :: Text)
                 ]
 
 -- | Build a transaction from an 'Interaction' and return its hex-encoded CBOR.

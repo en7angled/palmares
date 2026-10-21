@@ -122,7 +122,7 @@ oracleAdminTests =
                 fcPromotionFee = 3000000,
                 fcMembershipHistoryFee = 1500000,
                 fcMembershipIntervalFee = 1500000,
-                fcAchievementFee = 1500000
+                fcAttestationFee = 1500000
               }
       _ <- adminInteraction ctx (w1 testWallets) (SetFeesAction (Just testFeeConfig))
       waitNSlots_ 1
@@ -208,7 +208,7 @@ oracleAdminTests =
                 fcPromotionFee = 3000000,
                 fcMembershipHistoryFee = 1500000,
                 fcMembershipIntervalFee = 1500000,
-                fcAchievementFee = 1500000
+                fcAttestationFee = 1500000
               }
       _ <- adminInteraction ctx (w1 testWallets) (SetFeesAction (Just testFeeConfig))
       waitNSlots_ 1
@@ -266,7 +266,7 @@ oracleAdminTests =
                 fcPromotionFee = 3000000,
                 fcMembershipHistoryFee = 1500000,
                 fcMembershipIntervalFee = 1500000,
-                fcAchievementFee = 1500000
+                fcAttestationFee = 1500000
               }
       _ <- adminInteraction ctx (w1 testWallets) (SetFeesAction (Just feeConfig))
       waitNSlots_ 1

@@ -2,7 +2,7 @@
 -- projected @get*@ calls and enrich with nested profile maps.
 module Query.Aggregates
   ( lookupProfileTypeProjected,
-    achievementToInformation,
+    attestationToInformation,
   )
 where
 
@@ -13,8 +13,8 @@ import Database.Persist qualified as P
 import Palmares.DomainTypes.Core.Types
 import Palmares.DomainTypes.Transfer.Filters qualified as F
 import Palmares.DomainTypes.Transfer.QueryResponses
-  ( AchievementInformationResponse,
-    achievementInformationToResponse,
+  ( AttestationInformationResponse,
+    attestationInformationToResponse,
   )
 import Query.Projected qualified as P
 import QueryAppMonad (QueryAppMonad, runWithQueryErrorHandling)
@@ -34,18 +34,18 @@ lookupProfileTypeProjected pid = do
 
 
 
--- | Resolve an achievement's awarded-to and awarded-by profiles (which can be
+-- | Resolve an attestation's issued-to and issued-by profiles (which can be
 -- either practitioners or organizations) and build an enriched response.
-achievementToInformation :: Achievement -> QueryAppMonad AchievementInformationResponse
-achievementToInformation a = do
+attestationToInformation :: Attestation -> QueryAppMonad AttestationInformationResponse
+attestationToInformation a = do
   let mkFilter ref =
         Just $ F.ProfileFilter (Just [ref]) Nothing Nothing Nothing Nothing Nothing
-      toFilter = mkFilter (achievementAwardedToProfileId a)
-      byFilter = mkFilter (achievementAwardedByProfileId a)
-  awardedToProfiles <- P.getProfiles Nothing toFilter Nothing
-  awardedByProfiles <- P.getProfiles Nothing byFilter Nothing
-  case (awardedToProfiles, awardedByProfiles) of
-    (toProf : _, byProf : _) -> return $ achievementInformationToResponse toProf byProf a
+      toFilter = mkFilter (attestationSubjectProfileId a)
+      byFilter = mkFilter (attestationIssuerProfileId a)
+  subjectProfiles <- P.getProfiles Nothing toFilter Nothing
+  issuerProfiles <- P.getProfiles Nothing byFilter Nothing
+  case (subjectProfiles, issuerProfiles) of
+    (toProf : _, byProf : _) -> return $ attestationInformationToResponse toProf byProf a
     _ -> runWithQueryErrorHandling $ throwIO ProfileNotFound
 
 

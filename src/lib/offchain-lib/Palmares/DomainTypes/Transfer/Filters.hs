@@ -3,9 +3,9 @@
 -- | Query listing filter record types and query-param constructors (shared by query-api handlers).
 module Palmares.DomainTypes.Transfer.Filters
   ( ProfileFilter (..),
-    AchievementFilter (..),
+    AttestationFilter (..),
     profileFilterFromParams,
-    achievementFilterFromParams,
+    attestationFilterFromParams,
     DRepFilter (..),
     emptyDRepFilter,
     drepFilterFromParams,
@@ -37,7 +37,7 @@ optionalNonEmpty xs = if null xs then Nothing else Just xs
 -- | Optional filters for the profiles listing endpoint.
 data ProfileFilter = ProfileFilter
   { profileFilterId :: Maybe [ProfileRefAC], -- ^ Restrict to these profile IDs
-    profileFilterType :: Maybe ProfileType, -- ^ Practitioner or Organization
+    profileFilterType :: Maybe ProfileType, -- ^ One of the six profile kinds
     profileFilterName :: Maybe Text, -- ^ Exact or prefix name match
     profileFilterDescription :: Maybe Text, -- ^ Substring match on description
     profileFilterTextSearch :: Maybe Text, -- ^ Free-text search across name and description
@@ -48,14 +48,14 @@ data ProfileFilter = ProfileFilter
     profileFilterRegisteredAfterSlot :: Maybe Integer
   }
 
--- | Optional filters for the achievements listing endpoint.
-data AchievementFilter = AchievementFilter
-  { achievementFilterId :: Maybe [AchievementAC], -- ^ Restrict to these achievement asset classes
-    achievementFilterAwardedToProfileId :: Maybe [ProfileRefAC], -- ^ Recipient profile IDs
-    achievementFilterAwardedByProfileId :: Maybe [ProfileRefAC], -- ^ Issuer profile IDs
-    achievementFilterIsAccepted :: Maybe Bool, -- ^ Acceptance status
-    achievementFilterDateInterval :: (Maybe GYTime, Maybe GYTime), -- ^ Date range (from, to) inclusive
-    achievementFilterTextSearch :: Maybe Text -- ^ Free-text search
+-- | Optional filters for the attestations listing endpoint.
+data AttestationFilter = AttestationFilter
+  { attestationFilterId :: Maybe [AttestationAC], -- ^ Restrict to these attestation asset classes
+    attestationFilterSubjectProfileId :: Maybe [ProfileRefAC], -- ^ Recipient profile IDs
+    attestationFilterIssuerProfileId :: Maybe [ProfileRefAC], -- ^ Issuer profile IDs
+    attestationFilterIsAccepted :: Maybe Bool, -- ^ Acceptance status
+    attestationFilterDateInterval :: (Maybe GYTime, Maybe GYTime), -- ^ Date range (from, to) inclusive
+    attestationFilterTextSearch :: Maybe Text -- ^ Free-text search
   }
 
 -- | Build profile filter from query params (single source of truth for list handlers).
@@ -70,24 +70,24 @@ profileFilterFromParams profileRefs profileType q =
       profileFilterRegisteredAfterSlot = Nothing
     }
 
--- | Build achievement filter from query params.
-achievementFilterFromParams ::
-  [AchievementAC] ->
+-- | Build attestation filter from query params.
+attestationFilterFromParams ::
+  [AttestationAC] ->
   [ProfileRefAC] ->
   [ProfileRefAC] ->
   Maybe Bool ->
   Maybe GYTime ->
   Maybe GYTime ->
   Maybe Text ->
-  AchievementFilter
-achievementFilterFromParams achievementIds awardedToRefs awardedByRefs isAccepted fromTime toTime q =
-  AchievementFilter
-    { achievementFilterId = optionalNonEmpty achievementIds,
-      achievementFilterAwardedToProfileId = optionalNonEmpty awardedToRefs,
-      achievementFilterAwardedByProfileId = optionalNonEmpty awardedByRefs,
-      achievementFilterIsAccepted = isAccepted,
-      achievementFilterDateInterval = (fromTime, toTime),
-      achievementFilterTextSearch = q
+  AttestationFilter
+attestationFilterFromParams attestationIds subjectRefs issuerRefs isAccepted fromTime toTime q =
+  AttestationFilter
+    { attestationFilterId = optionalNonEmpty attestationIds,
+      attestationFilterSubjectProfileId = optionalNonEmpty subjectRefs,
+      attestationFilterIssuerProfileId = optionalNonEmpty issuerRefs,
+      attestationFilterIsAccepted = isAccepted,
+      attestationFilterDateInterval = (fromTime, toTime),
+      attestationFilterTextSearch = q
     }
 
 -- ---------------------------------------------------------------------------------------------

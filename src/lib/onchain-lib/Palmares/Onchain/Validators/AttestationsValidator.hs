@@ -9,16 +9,16 @@
 
 {-# HLINT ignore "Use &&" #-}
 
--- | Achievements validator enforcing achievement acceptance and permissionless cleanup.
+-- | Attestations validator enforcing attestation acceptance and permissionless cleanup.
 module Palmares.Onchain.Validators.AttestationsValidator
-  ( -- * Achievements Redeemer
-    AchievementsRedeemer (..),
+  ( -- * Attestations Redeemer
+    AttestationsRedeemer (..),
 
-    -- * Achievements Validator
-    achievementsLambda,
+    -- * Attestations Validator
+    attestationsLambda,
 
     -- * Compilation
-    achievementsCompile,
+    attestationsCompile,
   )
 where
 
@@ -36,63 +36,63 @@ import Prelude qualified
 
 -------------------------------------------------------------------------------
 
--- * Achievements Redeemer
+-- * Attestations Redeemer
 
 -------------------------------------------------------------------------------
 
--- This validator is simplified because promotion validation now happens
+-- This validator is simplified because the issuance rules live in the minting policy
 -- at mint time in the MintingPolicy.
 
-data AchievementsRedeemer
-  = -- | AcceptAchievement achievementOutputIdx
-    AcceptAchievement Integer
+data AttestationsRedeemer
+  = -- | AcceptAttestation attestationOutputIdx
+    AcceptAttestation Integer
   | Cleanup
   deriving stock (Generic, Prelude.Show)
   deriving anyclass (HasBlueprintDefinition)
 
-makeIsDataSchemaIndexed ''AchievementsRedeemer [('AcceptAchievement, 0), ('Cleanup, 1)]
+makeIsDataSchemaIndexed ''AttestationsRedeemer [('AcceptAttestation, 0), ('Cleanup, 1)]
 
-type AchievementsDatum = CIP68Datum OnchainAchievement
+type AttestationsDatum = CIP68Datum OnchainAttestation
 
 -------------------------------------------------------------------------------
 
-{-# INLINEABLE achievementsLambda #-}
-achievementsLambda :: ScriptContext -> Bool
-achievementsLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) scriptInfo) =
-  let !redeemer = unsafeFromBuiltinData @AchievementsRedeemer bredeemer
+{-# INLINEABLE attestationsLambda #-}
+attestationsLambda :: ScriptContext -> Bool
+attestationsLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) scriptInfo) =
+  let !redeemer = unsafeFromBuiltinData @AttestationsRedeemer bredeemer
    in case scriptInfo of
         (SpendingScript spendingTxOutRef mdatum) -> case redeemer of
           -- Permissionless cleanup: allow spending if datum is absent or unparseable.
           Cleanup -> case mdatum of
             Nothing -> True
-            Just (Datum bd) -> case fromBuiltinData @AchievementsDatum bd of
+            Just (Datum bd) -> case fromBuiltinData @AttestationsDatum bd of
               Nothing -> True
               Just _ -> traceError "A0" -- Cannot cleanup valid datum (A0)
-          AcceptAchievement outputIdx -> case mdatum of
+          AcceptAttestation outputIdx -> case mdatum of
             Nothing -> traceError "A0" -- No datum (A0)
             Just (Datum bdatum) -> case fromBuiltinData bdatum of
               Nothing -> traceError "A0" -- Invalid datum (A0)
-              Just (achievementDatum :: AchievementsDatum) ->
-                let achievement = extra achievementDatum
+              Just (attestationDatum :: AttestationsDatum) ->
+                let attestation = extra attestationDatum
                     ownInput = Utils.unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs
                     ownValue = txOutValue ownInput
                     ownAddress = txOutAddress ownInput
-                    updatedAchievementDatum = achievementDatum {extra = achievement {achievementIsAccepted = True}}
-                    practitionerUserAC = deriveUserFromRefAC (achievementAwardedTo achievement)
+                    updatedAttestationDatum = attestationDatum {extra = attestation {attestationIsAccepted = True}}
+                    subjectUserAC = deriveUserFromRefAC (attestationSubject attestation)
                  in traceIfFalse
                       "A1"
                       $ and
                         [ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress
                             outputIdx
-                            updatedAchievementDatum
+                            updatedAttestationDatum
                             ownValue
                             ownAddress
-                            txInfoOutputs, -- Lock achievement; >= ownValue (balancer may add min-ADA)
+                            txInfoOutputs, -- Lock attestation; >= ownValue (balancer may add min-ADA)
                           V1.assetClassValueOf
                             (valueSpent txInfo)
-                            practitionerUserAC
-                            == 1, -- Must spend practitioner user NFT
-                          V1.assetClassValueOf ownValue (achievementId achievement) == 1 -- Own achievement NFT
+                            subjectUserAC
+                            == 1, -- Must spend the subject's user NFT
+                          V1.assetClassValueOf ownValue (attestationId attestation) == 1 -- Own attestation NFT
                         ]
         _ -> traceError "A2" -- Invalid script info (A2)
 
@@ -103,10 +103,10 @@ achievementsLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) script
 -------------------------------------------------------------------------------
 
 -- | Lose the types
-{-# INLINEABLE achievementsUntyped #-}
-achievementsUntyped :: BuiltinData -> BuiltinUnit
-achievementsUntyped = Utils.mkUntypedLambda achievementsLambda
+{-# INLINEABLE attestationsUntyped #-}
+attestationsUntyped :: BuiltinData -> BuiltinUnit
+attestationsUntyped = Utils.mkUntypedLambda attestationsLambda
 
 -- | Compile the untyped lambda to a UPLC script and splice back to Haskell.
-achievementsCompile :: CompiledCode (BuiltinData -> BuiltinUnit)
-achievementsCompile = $$(compile [||achievementsUntyped||])
+attestationsCompile :: CompiledCode (BuiltinData -> BuiltinUnit)
+attestationsCompile = $$(compile [||attestationsUntyped||])

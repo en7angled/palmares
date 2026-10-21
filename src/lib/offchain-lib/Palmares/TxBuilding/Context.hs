@@ -23,7 +23,7 @@ import Palmares.TxBuilding.Validators (compileMintingPolicy, mkProtocolParams)
 data DeployedScriptsContext = DeployedScriptsContext
   { mintingPolicyHashAndRef :: (GYScriptHash, GYTxOutRef),
     profilesValidatorHashAndRef :: (GYScriptHash, GYTxOutRef),
-    achievementsValidatorHashAndRef :: (GYScriptHash, GYTxOutRef),
+    attestationsValidatorHashAndRef :: (GYScriptHash, GYTxOutRef),
     oracleValidatorHashAndRef :: (GYScriptHash, GYTxOutRef),
     oracleNFTAssetClass :: GYAssetClass
   }
@@ -42,9 +42,9 @@ getMintingPolicyRef ctx = snd $ mintingPolicyHashAndRef ctx
 getProfilesValidatorRef :: DeployedScriptsContext -> GYTxOutRef
 getProfilesValidatorRef ctx = snd $ profilesValidatorHashAndRef ctx
 
--- | Get the achievements validator reference script UTxO.
-getAchievementsValidatorRef :: DeployedScriptsContext -> GYTxOutRef
-getAchievementsValidatorRef ctx = snd $ achievementsValidatorHashAndRef ctx
+-- | Get the attestations validator reference script UTxO.
+getAttestationsValidatorRef :: DeployedScriptsContext -> GYTxOutRef
+getAttestationsValidatorRef ctx = snd $ attestationsValidatorHashAndRef ctx
 
 -- | Get the oracle validator reference script UTxO.
 getOracleValidatorRef :: DeployedScriptsContext -> GYTxOutRef

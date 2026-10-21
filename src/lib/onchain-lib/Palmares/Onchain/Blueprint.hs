@@ -12,9 +12,9 @@ where
 import Data.ByteString.Short (fromShort)
 import Data.Set qualified as Set
 import Palmares.Onchain.CIP68 (CIP68Datum)
-import Palmares.Onchain.Protocol (OnchainProfile, ProtocolParams)
+import Palmares.Onchain.Protocol (OnchainAttestation, OnchainProfile, OnchainProfileKind, ProtocolParams)
 import Palmares.Onchain.Protocol.Types (FeeConfig, OracleAdminAction, OracleParams)
-import Palmares.Onchain.Validators.AttestationsValidator (AchievementsRedeemer, achievementsCompile)
+import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer, attestationsCompile)
 import Palmares.Onchain.Validators.MintingPolicy (MintingRedeemer, mintingPolicyCompile)
 import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer, oracleCompile)
 import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer, profilesCompile)
@@ -44,7 +44,10 @@ contractBlueprint mp =
              OracleRedeemer,
              MintingRedeemer,
              ProfilesRedeemer,
-             AchievementsRedeemer
+             AttestationsRedeemer,
+             CIP68Datum OnchainAttestation,
+             OnchainAttestation,
+             OnchainProfileKind
            ]
     }
 
@@ -61,7 +64,7 @@ myPreamble =
           \lists, which lets an organisation or a committee acting through a script be a \
           \first-class issuer. Three validators plus a configuration oracle: Minting Policy \
           \(token creation), Profiles Validator (profile lifecycle), Attestations Validator \
-          \(acceptance and cleanup), Oracle Validator (pause, fees, minimum UTxO, admin key)."
+          \(acceptance and cleanup), Oracle Validator (pause, fees, minimum UTxO)."
     , preambleVersion = "0.1.0",
       preamblePlutusVersion = PlutusV3,
       preambleLicense = Just "Apache-2.0"
@@ -97,7 +100,7 @@ mintingPolicyValidatorBlueprint mp =
           { argumentTitle = Just "Minting Redeemer",
             argumentDescription =
               Just
-                "NewAchievement seedTxOutRef metadata otherMetadata awardedTo awardedBy date \
+                "NewAttestation seedTxOutRef metadata otherMetadata subject issuer date \
                 \outputIdx — mints a pending attestation CIP-68 token pair locked at the \
                 \Attestations Validator. Requires the issuer's user token to be spent, validates the \
                 \date against the transaction validity range, and pays the attestation fee when the \
@@ -171,11 +174,11 @@ attestationsValidatorBlueprint _mp =
           { argumentTitle = Just "Attestations Redeemer",
             argumentDescription =
               Just
-                "AcceptAchievement outputIdx — the subject accepts, flipping the acceptance flag and \
+                "AcceptAttestation outputIdx — the subject accepts, flipping the acceptance flag and \
                 \returning the token to this validator. Cleanup — permissionless dust removal for \
                 \UTxOs whose datum does not parse as protocol state.",
             argumentPurpose = Set.fromList [Spend],
-            argumentSchema = definitionRef @AchievementsRedeemer
+            argumentSchema = definitionRef @AttestationsRedeemer
           },
       validatorDatum =
         Just
@@ -186,11 +189,15 @@ attestationsValidatorBlueprint _mp =
                   "CIP-68 datum carrying the attestation: its id, the subject it is about, the issuer \
                   \that authored it, the date, and whether the subject has accepted.",
               argumentPurpose = Set.singleton Spend,
-              argumentSchema = definitionRef @()
+              -- NOT `definitionRef @()`. It was, so the published blueprint described the attestation
+              -- datum as Unit — the one datum a reader most needs in order to decode a record off the
+              -- chain. The type was also missing from `contractDefinitions` below, which is what let
+              -- the wrong reference compile without complaint.
+              argumentSchema = definitionRef @(CIP68Datum OnchainAttestation)
             },
       validatorCompiled =
         Just $
-          compiledValidator PlutusV3 (fromShort $ serialiseCompiledCode achievementsCompile)
+          compiledValidator PlutusV3 (fromShort $ serialiseCompiledCode attestationsCompile)
     }
 
 -- | Oracle Validator Blueprint
@@ -203,7 +210,10 @@ oracleValidatorBlueprint =
           "Unparameterised spending validator guarding the oracle UTxO that holds OracleParams. The \
           \admin named by the current datum must sign each update, and the UTxO must return to the \
           \same address with at least the same value; only the datum may change. This is how the \
-          \protocol is paused, repriced or re-keyed without redeploying a validator.",
+          \protocol is paused and repriced without redeploying a validator. The admin key itself \
+          \CANNOT yet be rotated: OracleAdminAction has no SetAdmin case, and the output check \
+          \requires the new datum to equal applyOracleAdminAction of the old, which preserves the \
+          \admin by construction.",
       validatorParameters = [],
       validatorRedeemer =
         MkArgumentBlueprint

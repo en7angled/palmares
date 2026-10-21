@@ -9,11 +9,11 @@ module Test.Fixtures
     practitionerProfileData,
     practitionerBProfileData,
     practitionerCProfileData,
-    achievementProfileData,
+    attestationProfileData,
     seminarProfileData,
     cleanupTestProfileData,
     profileDataMaxLengthMetadata,
-    achievementProfileDataMaxLength,
+    attestationProfileDataMaxLength,
     maxLengthImageURI,
     profileDataOverLongName,
   )
@@ -86,8 +86,8 @@ practitionerCProfileData =
       profileDataImageURI = "ipfs://QmPractitionerC"
     }
 
-achievementProfileData :: ProfileData
-achievementProfileData =
+attestationProfileData :: ProfileData
+attestationProfileData =
   ProfileData
     { profileDataName = "Gold Medal",
       profileDataDescription = "Won gold medal at tournament",
@@ -123,8 +123,8 @@ profileDataMaxLengthMetadata =
       profileDataImageURI = maxLengthImageURI
     }
 
-achievementProfileDataMaxLength :: ProfileData
-achievementProfileDataMaxLength = profileDataMaxLengthMetadata
+attestationProfileDataMaxLength :: ProfileData
+attestationProfileDataMaxLength = profileDataMaxLengthMetadata
 
 -- 129-byte name (over maxNameLength 128) for negative tests; description and image within limits.
 profileDataOverLongName :: ProfileData

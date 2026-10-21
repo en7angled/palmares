@@ -11,12 +11,12 @@ import GeniusYield.Types
 import Palmares.ChainSync.KupoAtlas
 import Palmares.TxBuilding.Conversions
 import Palmares.TxBuilding.Utils
-import Palmares.TxBuilding.Validators (achievementsValidatorHashGY, profilesValidatorHashGY)
+import Palmares.TxBuilding.Validators (attestationsValidatorHashGY, profilesValidatorHashGY)
 
 -- | Classified domain event produced by projecting an on-chain UTxO datum.
 data ChainEventProjection
   = ProfileEvent Profile
-  | AchievementEvent Achievement
+  | AttestationEvent Attestation
   | NoEvent AtlasMatch
   deriving (Show)
 
@@ -33,12 +33,12 @@ projectChainEvent nid am@AtlasMatch {..} =
           Just onchainProfile -> do
             profile <- profileDatumToProfile onchainProfile
             return $ ProfileEvent profile
-      add | add == addressFromScriptHash nid achievementsValidatorHashGY -> do
-        case achievementFromGYOutDatum amDatum of
+      add | add == addressFromScriptHash nid attestationsValidatorHashGY -> do
+        case attestationFromGYOutDatum amDatum of
           Nothing -> return $ NoEvent am
-          Just onchainAchievement -> do
-            achievement <- onchainAchievementToAchievement onchainAchievement
-            return $ AchievementEvent achievement
+          Just onchainAttestation -> do
+            attestation <- onchainAttestationToAttestation onchainAttestation
+            return $ AttestationEvent attestation
       _ -> return $ NoEvent am
 
 --- No need to delete profile projections since the profile cannot be deleted onchain;

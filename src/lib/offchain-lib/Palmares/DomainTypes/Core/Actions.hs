@@ -52,15 +52,15 @@ data ProfileActionType
         new_desc :: Maybe Text,
         image_uri :: Text
       }
-  | AwardAchievementAction
-      { aa_awarded_to_profile_id :: ProfileRefAC,
-        aa_awarded_by_profile_id :: ProfileRefAC,
+  | IssueAttestationAction
+      { aa_subject_profile_id :: ProfileRefAC,
+        aa_issuer_profile_id :: ProfileRefAC,
         aa_profile_data :: ProfileData,
         aa_other_metadata :: [(Text, Text)],
-        aa_achievement_date :: GYTime
+        aa_attestation_date :: GYTime
       }
-  | AcceptAchievementAction
-      { aca_achievement_id :: GYAssetClass
+  | AcceptAttestationAction
+      { aca_attestation_id :: GYAssetClass
       }
   deriving (Show, Generic, FromJSON, ToJSON, ToSchema)
 

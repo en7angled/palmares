@@ -39,22 +39,44 @@ import Palmares.Utils
 
 type ProfileRefAC = GYAssetClass
 
-type AchievementAC = GYAssetClass
+type AttestationAC = GYAssetClass
 
--- | Profile type
-data ProfileType = Practitioner | Organization
-  deriving (Show, Generic, FromJSON, ToJSON, ToSchema, ToParamSchema, Eq, Ord)
+-- | What kind of actor a profile stands for — the off-chain mirror of
+-- 'Palmares.Onchain.Protocol.Types.OnchainProfileKind', same six constructors in the same order.
+--
+-- The wire form is snake_case, like every other enum in this API (@person_drep@, @organization@, …),
+-- which the @ConstructorTagModifier@ below derives rather than a hand-written table.
+data ProfileType
+  = PersonDRep
+  | Organization
+  | Committee
+  | Community
+  | Vendor
+  | Auditor
+  deriving (Show, Generic, ToSchema, ToParamSchema, Eq, Ord, Enum, Bounded)
+  deriving
+    (FromJSON, ToJSON)
+    via CustomJSON '[ConstructorTagModifier '[CamelToSnake]] ProfileType
 
 derivePersistFieldJSON "ProfileType"
 
+-- | Parse a 'ProfileType' from its wire spelling.
+--
+-- Driven by the derived 'ToJSON' form rather than a second table, so a new constructor cannot be
+-- parseable in one direction only. Exported because the admin CLI needs it too, and a second copy of
+-- the lookup is how the two spellings would drift.
+parseProfileType :: Text -> Maybe ProfileType
+parseProfileType s = lookup s [(profileTypeText k, k) | k <- [minBound .. maxBound]]
+
 instance FromHttpApiData ProfileType where
   parseQueryParam :: Text -> Either Text ProfileType
-  parseQueryParam = maybe (Left "Invalid profile type") Right . parseProfileType . T.unpack
-    where
-      parseProfileType s
-        | s == "Practitioner" = Just Practitioner
-        | s == "Organization" = Just Organization
-        | otherwise = Nothing
+  parseQueryParam t = maybe (Left ("Invalid profile type: " <> t)) Right (parseProfileType t)
+
+-- | The wire spelling of a 'ProfileType', from its own 'ToJSON'.
+profileTypeText :: ProfileType -> Text
+profileTypeText k = case toJSON k of
+  String s -> s
+  _ -> T.pack (show k)
 
 -- | Profile
 data Profile = Profile
@@ -91,39 +113,39 @@ instance ToSchema Profile where
             { AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "profile"
             }
 
--- | JSON-serialized @[(Text, Text)]@ for achievement projections (array of @[key, value]@ string pairs).
-newtype AchievementOtherMetadataJson = AchievementOtherMetadataJson
-  { fromAchievementOtherMetadataJson :: [(Text, Text)]
+-- | JSON-serialized @[(Text, Text)]@ for attestation projections (array of @[key, value]@ string pairs).
+newtype AttestationOtherMetadataJson = AttestationOtherMetadataJson
+  { fromAttestationOtherMetadataJson :: [(Text, Text)]
   }
   deriving stock (Show, Eq, Generic)
   deriving newtype (FromJSON, ToJSON)
 
--- | An achievement awarded to a practitioner.
-data Achievement = Achievement
-  { achievementId :: AchievementAC,
-    achievementAwardedToProfileId :: ProfileRefAC,
-    achievementAwardedByProfileId :: ProfileRefAC,
-    achievementAchievementDate :: GYTime,
-    achievementAccepted :: Bool,
-    achievementName :: Text,
-    achievementDescription :: Text,
-    achievementImageURI :: Text,
-    achievementOtherMetadata :: [(Text, Text)],
+-- | An attestation one profile issued about another.
+data Attestation = Attestation
+  { attestationId :: AttestationAC,
+    attestationSubjectProfileId :: ProfileRefAC,
+    attestationIssuerProfileId :: ProfileRefAC,
+    attestationAttestationDate :: GYTime,
+    attestationAccepted :: Bool,
+    attestationName :: Text,
+    attestationDescription :: Text,
+    attestationImageURI :: Text,
+    attestationOtherMetadata :: [(Text, Text)],
     -- | On-chain pointer to the mint transaction (projected backend only; 'Nothing' on the live backend).
-    achievementTxHash :: Maybe Text,
-    achievementSlot :: Maybe Integer,
-    achievementOutputIndex :: Maybe Int
+    attestationTxHash :: Maybe Text,
+    attestationSlot :: Maybe Integer,
+    attestationOutputIndex :: Maybe Int
   }
   deriving (Generic)
-  deriving (ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "achievement", CamelToSnake]] Achievement
+  deriving (ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "attestation", CamelToSnake]] Attestation
 
-instance FromJSON Achievement where
-  parseJSON = withObject "Achievement" $ \o ->
-    Achievement
+instance FromJSON Attestation where
+  parseJSON = withObject "Attestation" $ \o ->
+    Attestation
       <$> o .: "id"
-      <*> o .: "awarded_to_profile_id"
-      <*> o .: "awarded_by_profile_id"
-      <*> o .: "achievement_date"
+      <*> o .: "subject_profile_id"
+      <*> o .: "issuer_profile_id"
+      <*> o .: "attestation_date"
       <*> o .: "accepted"
       <*> o .: "name"
       <*> o .: "description"
@@ -133,33 +155,33 @@ instance FromJSON Achievement where
       <*> o .:? "slot"
       <*> o .:? "output_index"
 
-derivePersistFieldJSON "Achievement"
-derivePersistFieldJSON "AchievementOtherMetadataJson"
+derivePersistFieldJSON "Attestation"
+derivePersistFieldJSON "AttestationOtherMetadataJson"
 
-instance Show Achievement where
-  show :: Achievement -> String
-  show (Achievement {..}) =
+instance Show Attestation where
+  show :: Attestation -> String
+  show (Attestation {..}) =
     Data.List.Extra.intercalate
       "\n"
       [ "┌─────────────────────────────────────────────────────────────",
-        "│ Achievement ID: " <> stringFromJSON achievementId,
-        "│ Name: " <> stringFromJSON achievementName,
-        "│ Awarded To: " <> stringFromJSON achievementAwardedToProfileId,
-        "│ Awarded By: " <> stringFromJSON achievementAwardedByProfileId,
-        "│ Date: " <> stringFromJSON achievementAchievementDate,
-        "│ Accepted: " <> show achievementAccepted,
-        "│ Other metadata pairs: " <> show (Prelude.length achievementOtherMetadata),
+        "│ Attestation ID: " <> stringFromJSON attestationId,
+        "│ Name: " <> stringFromJSON attestationName,
+        "│ Issued To: " <> stringFromJSON attestationSubjectProfileId,
+        "│ Issued By: " <> stringFromJSON attestationIssuerProfileId,
+        "│ Date: " <> stringFromJSON attestationAttestationDate,
+        "│ Accepted: " <> show attestationAccepted,
+        "│ Other metadata pairs: " <> show (Prelude.length attestationOtherMetadata),
         "└─────────────────────────────────────────────────────────────"
       ]
 
-instance ToSchema Achievement where
-  declareNamedSchema = genericDeclareNamedSchema achievementSchemaOptions
+instance ToSchema Attestation where
+  declareNamedSchema = genericDeclareNamedSchema attestationSchemaOptions
     where
-      achievementSchemaOptions :: SchemaOptions
-      achievementSchemaOptions =
+      attestationSchemaOptions :: SchemaOptions
+      attestationSchemaOptions =
         fromAesonOptions $
           AesonTypes.defaultOptions
-            { AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "achievement"
+            { AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "attestation"
             }
 
 -- ---------------------------------------------------------------------------------------------

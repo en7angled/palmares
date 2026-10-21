@@ -139,6 +139,13 @@ jobs:
       - name: Swagger contract holds
         run: bash scripts/check_swagger.sh
 
+      # The attestation rename's failure mode is PARTIAL: the compiler is happy with half of it, and
+      # the halves that reach a user — a Swagger title, an error message, a JSON key — are the ones it
+      # never looks at. Runs here rather than in `haskell` because it reads the regenerated Swagger
+      # the two steps above produce.
+      - name: Vocabulary is the attestation domain, everywhere
+        run: bash scripts/check_vocabulary.sh
+
   # F1 check 3, over the seeded db-sync skeleton rather than the real synced database, so it
   # blocks merges without needing preprod. The against-preprod run is the one that SIGNS check 3
   # — the skeleton has empty tables, so it proves the statements parse and are self-consistent,

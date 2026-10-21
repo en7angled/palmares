@@ -38,8 +38,9 @@ where
 
 import GHC.Generics (Generic)
 import Palmares.Onchain.CIP68
+-- The barrel already re-exports Protocol.Lookup, so `readOracleParams` arrives with it; importing
+-- that module by name as well is the redundant import CI flagged.
 import Palmares.Onchain.Protocol
-import Palmares.Onchain.Protocol.Lookup (readOracleParams)
 import Palmares.Onchain.Utils qualified as Utils
 import PlutusLedgerApi.V1 qualified as V1
 -- `geq` is not re-exported by PlutusLedgerApi.V1, so it is imported by name here the way

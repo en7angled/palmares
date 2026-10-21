@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | Pure tests for the conversions that cross a layer boundary.
 --
@@ -7,19 +8,36 @@
 -- boundaries it crosses — on-chain enum ↔ domain enum ↔ wire JSON — because the domain
 -- 'Attestation' has a HAND-WRITTEN 'FromJSON' with one positional application per field against a
 -- DERIVED 'ToJSON', and nothing but a round-trip notices when the two stop agreeing.
-module UnitTests.Conversions (conversionsTests) where
+module UnitTests.Conversions (conversionsTests, sampleAttestation) where
 
 import Control.Exception (evaluate, try, SomeException)
 import Control.Lens ((^.))
-import Data.Aeson (Value (Object), eitherDecode, encode, toJSON)
+import Data.Aeson (ToJSON, Value (Object), eitherDecode, encode, toJSON)
 import Data.Aeson.KeyMap qualified as KeyMap
 import qualified Data.ByteString
 import Data.Proxy (Proxy (..))
-import Data.Swagger (enum_, toSchema)
+import Data.Swagger (ToSchema, enum_, toSchema)
 import qualified Data.Text as T
 import GeniusYield.Types (GYAssetClass, timeFromPlutus)
 import Palmares.ChainSync.KupoAtlas (toGYAssetClass)
-import Palmares.DomainTypes.Core.Types (Attestation (..), AttestationType (..), ProfileType)
+import Palmares.DomainTypes.Core.Types
+  ( ActivityEventType,
+    ActivitySource,
+    AnchorStatus,
+    Attestation (..),
+    AttestationType (..),
+    CommitteeMemberStatus,
+    DRepStatus,
+    DRepUpdateKind,
+    GovActionState,
+    GovActionType,
+    ProfileType,
+    SearchKind,
+    TallyBasis,
+    Vote,
+    VoterRole,
+  )
+import Palmares.TxBuilding.Operations (claimedPeriodIsInverted)
 import PlutusLedgerApi.V3 (POSIXTime (POSIXTime))
 import PlutusTx.Builtins (toBuiltin)
 import Test.Tasty
@@ -131,14 +149,62 @@ conversionsTests =
       -- of `ToJSON` with `jsonEnumSchema`; the derived instance is the trap, and `ProfileType` was
       -- sitting in it too — latently, since no documented route mentions a profile type yet.
       --
-      -- This is the guard for the whole class: the schema's enum must BE the ToJSON tags. It fails
-      -- on a derived instance and passes on a jsonEnumSchema one.
-      testCase "AttestationType's published schema lists the values the API accepts" $
-        (toSchema (Proxy :: Proxy AttestationType) ^. enum_)
-          @?= Just (map toJSON allKinds),
-      testCase "ProfileType's published schema lists the values the API accepts" $
-        (toSchema (Proxy :: Proxy ProfileType) ^. enum_)
-          @?= Just (map toJSON ([minBound .. maxBound] :: [ProfileType]))
+      -- The guard for the whole class, and it covers EVERY enum that publishes a schema rather than
+      -- the two this change touched: the schema's enum must BE the ToJSON tags. It fails on a derived
+      -- instance and passes on a `jsonEnumSchema` one, so it catches the defect in either direction —
+      -- a new enum written with a derived instance, or an existing one switched to it.
+      testCase "every published enum's schema lists exactly the values its ToJSON produces" $
+        mapM_ (\(name, published, accepted) -> assertEqual name accepted published) enumSchemaChecks,
+      testCase "the guard covers every enum in DomainTypes.Core.Types that declares a schema" $
+        length enumSchemaChecks @?= 14,
+      -- ---- the claimed period's only rule ------------------------------------------------------
+      --
+      -- Extracted from `issueAttestationTX` so that it can be reached at all: a review found this
+      -- path had zero coverage, because the guard was an inline case inside a monadic action that
+      -- needs a provider. It is the entire validation of a field the minting policy deliberately
+      -- does not check.
+      testCase "a transposed claimed period is refused" $
+        claimedPeriodIsInverted (Just (t 200, t 100)) @?= True,
+      testCase "an ordered claimed period is accepted, including one that predates issuance" $
+        claimedPeriodIsInverted (Just (t 100, t 200)) @?= False,
+      -- Equal bounds are a claim someone may legitimately make — began and ended the same day.
+      testCase "equal bounds are not inverted" $
+        claimedPeriodIsInverted (Just (t 100, t 100)) @?= False,
+      testCase "no claimed period is not an inverted one" $
+        claimedPeriodIsInverted Nothing @?= False
     ]
   where
     allKinds = [minBound .. maxBound] :: [AttestationType]
+
+    -- Plutus time, not GYTime: `claimedPeriodIsInverted` is the rule as the redeemer carries it,
+    -- which is the form the minting policy would see if it checked this field — and it does not.
+    t = POSIXTime
+
+    -- One entry per type, because a list cannot hold values of different types. The helper is what
+    -- keeps each entry to one line, so the next enum added to DomainTypes.Core.Types costs one line
+    -- here — and the count assertion above is what makes forgetting that line fail.
+    enumSchemaChecks :: [(String, Maybe [Value], Maybe [Value])]
+    enumSchemaChecks =
+      [ enumCheck "ProfileType" (Proxy :: Proxy ProfileType),
+        enumCheck "AttestationType" (Proxy :: Proxy AttestationType),
+        enumCheck "DRepStatus" (Proxy :: Proxy DRepStatus),
+        enumCheck "DRepUpdateKind" (Proxy :: Proxy DRepUpdateKind),
+        enumCheck "GovActionType" (Proxy :: Proxy GovActionType),
+        enumCheck "GovActionState" (Proxy :: Proxy GovActionState),
+        enumCheck "VoterRole" (Proxy :: Proxy VoterRole),
+        enumCheck "Vote" (Proxy :: Proxy Vote),
+        enumCheck "TallyBasis" (Proxy :: Proxy TallyBasis),
+        enumCheck "AnchorStatus" (Proxy :: Proxy AnchorStatus),
+        enumCheck "ActivitySource" (Proxy :: Proxy ActivitySource),
+        enumCheck "ActivityEventType" (Proxy :: Proxy ActivityEventType),
+        enumCheck "SearchKind" (Proxy :: Proxy SearchKind),
+        enumCheck "CommitteeMemberStatus" (Proxy :: Proxy CommitteeMemberStatus)
+      ]
+
+    enumCheck ::
+      forall a.
+      (ToJSON a, Enum a, Bounded a, ToSchema a) =>
+      String ->
+      Proxy a ->
+      (String, Maybe [Value], Maybe [Value])
+    enumCheck name p = (name, toSchema p ^. enum_, Just (map toJSON ([minBound .. maxBound] :: [a])))

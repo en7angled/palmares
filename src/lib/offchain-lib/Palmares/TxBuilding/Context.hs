@@ -24,6 +24,7 @@ data DeployedScriptsContext = DeployedScriptsContext
   { mintingPolicyHashAndRef :: (GYScriptHash, GYTxOutRef),
     profilesValidatorHashAndRef :: (GYScriptHash, GYTxOutRef),
     attestationsValidatorHashAndRef :: (GYScriptHash, GYTxOutRef),
+    disputesValidatorHashAndRef :: (GYScriptHash, GYTxOutRef),
     oracleValidatorHashAndRef :: (GYScriptHash, GYTxOutRef),
     oracleNFTAssetClass :: GYAssetClass
   }
@@ -45,6 +46,10 @@ getProfilesValidatorRef ctx = snd $ profilesValidatorHashAndRef ctx
 -- | Get the attestations validator reference script UTxO.
 getAttestationsValidatorRef :: DeployedScriptsContext -> GYTxOutRef
 getAttestationsValidatorRef ctx = snd $ attestationsValidatorHashAndRef ctx
+
+-- | Get the disputes validator reference script UTxO.
+getDisputesValidatorRef :: DeployedScriptsContext -> GYTxOutRef
+getDisputesValidatorRef ctx = snd $ disputesValidatorHashAndRef ctx
 
 -- | Get the oracle validator reference script UTxO.
 getOracleValidatorRef :: DeployedScriptsContext -> GYTxOutRef

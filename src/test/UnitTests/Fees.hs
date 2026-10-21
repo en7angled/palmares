@@ -33,16 +33,24 @@ tests =
       -- result was indistinguishable from correct until someone compared invoices.
       testCase "each action maps to its own FeeConfig field" $
         map (`feeFor` distinctFees) [MintActionProfile, MintActionAttestation] @?= [11, 22],
+      -- Over the actions that NAME a field. MintActionDispute is deliberately not one of them — it
+      -- maps to a constant zero, because a refundable deposit already bounds disputes and a
+      -- non-refundable fee on top would tax contesting a false claim. Including it here would make
+      -- this a test about constants rather than about fields.
       testCase "no two actions share a field" $
-        let fees = map (`feeFor` distinctFees) allActions
-         in length (dedupe fees) @?= length allActions,
+        let fees = map (`feeFor` distinctFees) pricedActions
+         in length (dedupe fees) @?= length pricedActions,
       -- Zero is the configured value on preprod — spec §4.3 rules out protocol fees as a business
       -- model — so the zero case has to be the ordinary one, not an edge case.
       testCase "every action is free when every fee is zero, which is the preprod configuration" $
-        map (`feeFor` zeroFees) allActions @?= [0, 0]
+        map (`feeFor` zeroFees) allActions @?= replicate (length allActions) 0
     ]
   where
-    allActions = [MintActionProfile, MintActionAttestation]
+    -- Driven off the constructor list, not a hand-written one. The hand-written one named two
+    -- actions and called itself every action, so MintActionDispute arrived untested here.
+    allActions = [minBound .. maxBound] :: [MintAction]
+
+    pricedActions = [MintActionProfile, MintActionAttestation]
 
     distinctFees =
       FeeConfig

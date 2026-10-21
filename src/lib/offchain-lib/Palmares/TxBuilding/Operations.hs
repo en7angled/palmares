@@ -10,16 +10,17 @@ import GHC.Stack (HasCallStack)
 import GeniusYield.TxBuilder
 import GeniusYield.Types
 import Palmares.Onchain.CIP68 (CIP68Datum (..), ImageURI, MetadataFields (..), extra, getMetadataFields, mkCIP68Datum, updateCIP68DatumMetadata)
-import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetAdmin, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
+import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetAdmin, OracleSetDisputeDeposit, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
 import Palmares.Onchain.Protocol.Lookup qualified as Lookup
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer (..))
+import Palmares.Onchain.Validators.DisputesValidator qualified as DisputesValidator (DisputesRedeemer (Cleanup))
 import Palmares.Onchain.Validators.MintingPolicy
 import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer (OracleUpdate))
 import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (UpdateProfile))
 import Palmares.Onchain.Validators.ProfilesValidator qualified as ProfilesValidator (ProfilesRedeemer (Cleanup))
 import PlutusLedgerApi.V3
-import Palmares.TxBuilding.Context (DeployedScriptsContext (..), getAttestationsValidatorRef, getMintingPolicyFromCtx, getMintingPolicyRef, getOracleValidatorRef, getProfilesValidatorRef)
+import Palmares.TxBuilding.Context (DeployedScriptsContext (..), getAttestationsValidatorRef, getDisputesValidatorRef, getMintingPolicyFromCtx, getMintingPolicyRef, getOracleValidatorRef, getProfilesValidatorRef)
 import Palmares.TxBuilding.Conversions (cip68StandardMetadataKeys)
 import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
 import Palmares.TxBuilding.Lookups (getAttestationDatumAndValue, getDustUTxOs, getProfileStateDatumAndValue, getUTxOWithTokenAtAddresses, queryOracleParams)
@@ -93,6 +94,7 @@ refGetters ctx =
   [ getMintingPolicyRef ctx,
     getProfilesValidatorRef ctx,
     getAttestationsValidatorRef ctx,
+    getDisputesValidatorRef ctx,
     getOracleValidatorRef ctx
   ]
 
@@ -188,6 +190,19 @@ hasUserNFTAt nftAC addrs =
 -- Output index layout:
 --   Output 0: Attestation NFT locked at attestationsValidator
 --   Output 1 (optional): Fee payment
+-- | Is this claimed period transposed? __The only check the claimed period gets.__
+--
+-- A named top-level function and not an inline guard, because it is the entire validation rule for a
+-- field the minting policy deliberately does not check — and an inline guard inside a
+-- 'GYTxUserQueryMonad' action is a rule no test can reach without a provider. A review found that
+-- this path had zero coverage; this is what makes it testable.
+--
+-- 'Nothing' is not inverted: omitting the period is the normal case. Equal bounds are not inverted
+-- either — a membership that began and ended on one day is a claim someone may legitimately make.
+claimedPeriodIsInverted :: Maybe (POSIXTime, POSIXTime) -> Bool
+claimedPeriodIsInverted (Just (periodFrom, periodTo)) = periodFrom > periodTo
+claimedPeriodIsInverted Nothing = False
+
 issueAttestationTX ::
   (GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
   -- | Profile ID of the subject the attestation is about
@@ -238,10 +253,8 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId kind metadata otherMetad
   -- whole reason the field exists separately from the date above. Transposed bounds are the one thing
   -- that cannot be a legitimate claim, and the only one a client can be told about, because the
   -- minting policy carries the period through unvalidated on purpose.
-  case claimedPeriod of
-    Just (periodFrom, periodTo)
-      | periodFrom > periodTo -> throwError (GYApplicationException AttestationPeriodInverted)
-    _ -> pure ()
+  when (claimedPeriodIsInverted claimedPeriod) $
+    throwError (GYApplicationException AttestationPeriodInverted)
 
   -- Get a seed TxOutRef for uniqueness
   seedTxOutRef <- someUTxOWithoutRefScript
@@ -412,6 +425,7 @@ adminActionToOracleAdminAction UnpauseProtocolAction = OracleUnpause
 adminActionToOracleAdminAction (SetFeesAction mFeeConfig) = OracleSetFees mFeeConfig
 adminActionToOracleAdminAction (SetMinUTxOValueAction lovelace) = OracleSetMinUTxOValue lovelace
 adminActionToOracleAdminAction (RotateAdminAction newAdmin) = OracleSetAdmin (pubKeyHashToPlutus newAdmin)
+adminActionToOracleAdminAction (SetDisputeDepositAction lovelace) = OracleSetDisputeDeposit lovelace
 
 -- | Apply an admin action delta to current oracle params to produce new params.
 -- Must stay in sync with on-chain 'Onchain.Protocol.Types.applyOracleAdminAction'.
@@ -421,6 +435,7 @@ applyAdminAction UnpauseProtocolAction params = params {OnchainTypes.opPaused = 
 applyAdminAction (SetFeesAction mFeeConfig) params = params {OnchainTypes.opFeeConfig = mFeeConfig}
 applyAdminAction (SetMinUTxOValueAction lovelace) params = params {OnchainTypes.opMinUTxOValue = lovelace}
 applyAdminAction (RotateAdminAction newAdmin) params = params {OnchainTypes.opAdminPkh = pubKeyHashToPlutus newAdmin}
+applyAdminAction (SetDisputeDepositAction lovelace) params = params {OnchainTypes.opDisputeDeposit = lovelace}
 
 ------------------------------------------------------------------------------------------------
 
@@ -454,7 +469,8 @@ cleanupDustTX = do
   configs <-
     sequence
       [ dustSpendsForValidatorSkeleton getProfilesValidatorRef profilesValidatorGY (redeemerFromPlutusData ProfilesValidator.Cleanup),
-        dustSpendsForValidatorSkeleton getAttestationsValidatorRef attestationsValidatorGY (redeemerFromPlutusData Cleanup)
+        dustSpendsForValidatorSkeleton getAttestationsValidatorRef attestationsValidatorGY (redeemerFromPlutusData Cleanup),
+        dustSpendsForValidatorSkeleton getDisputesValidatorRef disputesValidatorGY (redeemerFromPlutusData DisputesValidator.Cleanup)
       ]
   let allSpends = concat configs
       dustCount = sum (map length configs)

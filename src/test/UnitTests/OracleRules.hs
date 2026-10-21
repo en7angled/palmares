@@ -46,7 +46,13 @@ tests =
       testCase "OracleSetAdmin is at constructor index 4" $
         constructorIndexOf (OracleSetAdmin pkhA) @?= 4,
       testCase "the four inherited actions keep indices 0 to 3" $
-        map constructorIndexOf otherActions @?= [0, 1, 2, 3],
+        map constructorIndexOf inheritedActions @?= [0, 1, 2, 3],
+      -- Appended at 5 for the dispute deposit, same discipline.
+      testCase "OracleSetDisputeDeposit is at constructor index 5" $
+        constructorIndexOf (OracleSetDisputeDeposit 5_000_000) @?= 5,
+      testCase "repricing the dispute deposit changes nothing else" $
+        applyOracleAdminAction (OracleSetDisputeDeposit 7_000_000) (paramsAdmin pkhA)
+          @?= (paramsAdmin pkhA) {opDisputeDeposit = 7_000_000},
       -- ---------------------------------------------------------------------------------------
       -- Inherited fix #4. The old check was `date `before` txInfoValidRange`, which blocks
       -- future-dating but leaves BACK-dating unbounded — an attestation could claim 2015. The rule
@@ -76,14 +82,20 @@ tests =
     pkhA = PubKeyHash "\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1"
     pkhB = PubKeyHash "\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2\2"
 
-    otherActions = [OraclePause, OracleUnpause, OracleSetFees Nothing, OracleSetMinUTxOValue 1_000_000]
+    -- The four that existed before the rotation fix. Kept as its own list because the index
+    -- assertion below is about THEM — folding the newer actions in would turn "0 to 3" into a list
+    -- of whatever happens to be appended, which is the opposite of what that test is for.
+    inheritedActions = [OraclePause, OracleUnpause, OracleSetFees Nothing, OracleSetMinUTxOValue 1_000_000]
+
+    otherActions = inheritedActions <> [OracleSetDisputeDeposit 3_000_000]
 
     paramsAdmin pkh =
       OracleParams
         { opAdminPkh = pkh,
           opPaused = False,
           opFeeConfig = Nothing,
-          opMinUTxOValue = 2_000_000
+          opMinUTxOValue = 2_000_000,
+          opDisputeDeposit = 5_000_000
         }
 
     t = POSIXTime

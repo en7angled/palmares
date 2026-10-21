@@ -113,7 +113,7 @@ deployReferenceScript providerCtx script skey = do
 -- Steps:
 --   1. Deploy oracle validator reference script
 --   2. Mint oracle NFT and lock initial OracleParams at oracle validator
---   3. Deploy the profiles and attestations validator reference scripts
+--   3. Deploy the profiles, attestations and disputes validator reference scripts
 --   4. Compile minting policy with oracle NFT asset class and deploy its reference script
 deployReferenceScripts :: ProviderCtx -> GYExtendedPaymentSigningKey -> IO DeployedScriptsContext
 deployReferenceScripts providerCtx skey = do
@@ -131,6 +131,7 @@ deployReferenceScripts providerCtx skey = do
   putStrLn $ yellowColorString "=== Step 3: Deploy Spending Validators ==="
   pv <- deployReferenceScript providerCtx profilesValidatorGY skey
   av <- deployReferenceScript providerCtx attestationsValidatorGY skey
+  dv <- deployReferenceScript providerCtx disputesValidatorGY skey
 
   -- Step 4: Compile and deploy the minting policy (parameterized by oracle NFT)
   putStrLn $ yellowColorString "=== Step 4: Compile and Deploy Minting Policy ==="
@@ -142,6 +143,7 @@ deployReferenceScripts providerCtx skey = do
       { mintingPolicyHashAndRef = mp,
         profilesValidatorHashAndRef = pv,
         attestationsValidatorHashAndRef = av,
+        disputesValidatorHashAndRef = dv,
         oracleValidatorHashAndRef = ov,
         oracleNFTAssetClass = oracleNFTAC
       }
@@ -171,7 +173,9 @@ mintOracleNFTAndLockDatum providerCtx skey adminPKH = do
             { opAdminPkh = paymentKeyHashToPlutus adminPKH,
               opPaused = False,
               opFeeConfig = Nothing,
-              opMinUTxOValue = 1000000
+              opMinUTxOValue = 1000000,
+              -- A starting price, not a constant: the oracle admin reprices it with SetDisputeDepositAction.
+              opDisputeDeposit = 5000000
             }
 
     -- Spend seed UTxO

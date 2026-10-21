@@ -7,6 +7,7 @@ import Data.ByteString.Short qualified as SBS
 import GeniusYield.Types
 import Palmares.Onchain.Protocol
 import Palmares.Onchain.Validators.AttestationsValidator qualified as AttestationsValidator (attestationsCompile)
+import Palmares.Onchain.Validators.DisputesValidator qualified as DisputesValidator (disputesCompile)
 import Palmares.Onchain.Validators.MintingPolicy qualified as MintingPolicy (mintingPolicyCompile)
 import Palmares.Onchain.Validators.OracleNFTPolicy qualified as OracleNFTPolicy (oracleNFTPolicyCompile)
 import Palmares.Onchain.Validators.OracleValidator qualified as OracleValidator (oracleCompile)
@@ -55,6 +56,24 @@ attestationsValidatorHashPlutus = validatorHashToPlutus attestationsValidatorHas
 
 ------------------------------------------------------------------------------------------------
 
+-- * Define Disputes Validator
+
+------------------------------------------------------------------------------------------------
+
+disputesValidatorPlutus :: CompiledCode (BuiltinData -> BuiltinUnit)
+disputesValidatorPlutus = DisputesValidator.disputesCompile
+
+disputesValidatorGY :: GYScript 'PlutusV3
+disputesValidatorGY = validatorFromPlutus disputesValidatorPlutus
+
+disputesValidatorHashGY :: GYScriptHash
+disputesValidatorHashGY = validatorHash disputesValidatorGY
+
+disputesValidatorHashPlutus :: ScriptHash
+disputesValidatorHashPlutus = validatorHashToPlutus disputesValidatorHashGY
+
+------------------------------------------------------------------------------------------------
+
 -- * Define Oracle Validator (unparameterized)
 
 ------------------------------------------------------------------------------------------------
@@ -88,11 +107,19 @@ compileOracleNFTPolicy seedRef =
 -- | Build 'ProtocolParams' given the oracle NFT 'AssetClass'.
 -- The oracle token is dynamic (depends on the oracle NFT minting tx)
 -- so this cannot be a top-level constant.
+-- Named fields and an explicit argument, not the eta-reduced positional form this used to have.
+-- Appending 'disputesValidatorScriptHash' before 'oracleToken' broke the eta-reduction outright —
+-- but the reason it stays this way is the next append: three 'ScriptHash' fields in a row are three
+-- positions a transposition type-checks in, and a validator address silently pointing at the wrong
+-- validator is a hash change nobody sees until a transaction fails on chain.
 mkProtocolParams :: V1.AssetClass -> ProtocolParams
-mkProtocolParams =
+mkProtocolParams oracleAC =
   ProtocolParams
-    profilesValidatorHashPlutus
-    attestationsValidatorHashPlutus
+    { profilesValidatorScriptHash = profilesValidatorHashPlutus,
+      attestationsValidatorScriptHash = attestationsValidatorHashPlutus,
+      disputesValidatorScriptHash = disputesValidatorHashPlutus,
+      oracleToken = oracleAC
+    }
 
 -- | Protocol params with a placeholder oracle token, for blueprint generation only.
 -- The actual oracle token is determined at deployment time.
@@ -128,6 +155,9 @@ profilesValidatorSize = compiledCodeSize profilesValidatorPlutus
 attestationsValidatorSize :: Int
 attestationsValidatorSize = compiledCodeSize attestationsValidatorPlutus
 
+disputesValidatorSize :: Int
+disputesValidatorSize = compiledCodeSize disputesValidatorPlutus
+
 oracleValidatorSize :: Int
 oracleValidatorSize = compiledCodeSize oracleValidatorPlutus
 
@@ -147,6 +177,9 @@ exportProfilesValidator = writeScript @'PlutusV3 Constants.defaultProfilesValida
 exportAttestationsValidator :: IO ()
 exportAttestationsValidator = writeScript @'PlutusV3 Constants.defaultAttestationsValidatorFile $ validatorToScript attestationsValidatorGY
 
+exportDisputesValidator :: IO ()
+exportDisputesValidator = writeScript @'PlutusV3 Constants.defaultDisputesValidatorFile $ validatorToScript disputesValidatorGY
+
 exportOracleValidator :: IO ()
 exportOracleValidator = writeScript @'PlutusV3 Constants.defaultOracleValidatorFile $ validatorToScript oracleValidatorGY
 
@@ -154,4 +187,5 @@ exportValidators :: IO ()
 exportValidators = do
   exportProfilesValidator
   exportAttestationsValidator
+  exportDisputesValidator
   exportOracleValidator

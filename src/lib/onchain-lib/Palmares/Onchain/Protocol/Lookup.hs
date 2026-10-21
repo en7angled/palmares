@@ -85,10 +85,16 @@ readOracleParams oracleAC refInputs =
 -- interval fee charged the membership-history field for years. An action cannot be mistyped into a
 -- different field, and this function is exhaustive, so a new minting redeemer that forgets its fee is
 -- a compile error.
+-- __Opening a dispute carries no protocol fee__, and that is a product decision rather than an
+-- omission: the deposit already bounds dispute spam and it comes BACK on either verdict, so the only
+-- unrecoverable cost of contesting a false claim is network fees. A protocol fee on top would make
+-- contesting cost money you never get back, which is a tax on exactly the behaviour this registry
+-- wants. If one is ever wanted it is a @fcDisputeFee@ field and one arm here.
 {-# INLINEABLE feeFor #-}
 feeFor :: MintAction -> FeeConfig -> Integer
 feeFor MintActionProfile = fcProfileCreationFee
 feeFor MintActionAttestation = fcAttestationFee
+feeFor MintActionDispute = const 0
 
 -- | Check that a fee payment is included in the transaction outputs.
 -- If 'opFeeConfig' is 'Nothing', no fee is required and the check passes.
@@ -100,6 +106,13 @@ feeFor MintActionAttestation = fcAttestationFee
 checkFee :: OracleParams -> MintAction -> [TxOut] -> Bool
 checkFee oracle action outputs = case opFeeConfig oracle of
   Nothing -> True
+  Just feeConfig
+    -- A zero fee is NO fee. Without this the check would demand an output to the fee address
+    -- carrying at least zero lovelace, which no honest transaction has a reason to build — so
+    -- `OracleSetFees (Just cfg)` with any zero field would have bricked that action until the admin
+    -- noticed. MintActionDispute is free by design and would have hit it immediately; the two
+    -- existing actions could have hit it the first time anyone priced one at nothing.
+    | feeFor action feeConfig <= 0 -> True
   Just feeConfig ->
     let requiredFee = feeFor action feeConfig
         feeAddr = fcFeeAddress feeConfig

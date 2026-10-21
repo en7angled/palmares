@@ -64,6 +64,7 @@ data Command
   | UnpauseProtocol
   | SetFees SetFeesArgs
   | SetMinUTxOValue Integer
+  | SetDisputeDeposit Integer
   | RotateAdmin GYPubKeyHash
   | QueryOracle
   | UpdateProfile UpdateProfileArgs
@@ -396,6 +397,12 @@ commandParser =
               (SetMinUTxOValue <$> option auto (long "lovelace" <> short 'n' <> metavar "LOVELACE" <> help "Minimum lovelace for protocol state outputs (oracle opMinUTxOValue)"))
               (progDesc "Set minimum UTxO value (lovelace) for protocol state outputs in the oracle")
           )
+        <> command
+          "set-dispute-deposit"
+          ( info
+              (SetDisputeDeposit <$> option auto (long "lovelace" <> short 'n' <> metavar "LOVELACE" <> help "Lovelace a new dispute must deposit (oracle opDisputeDeposit)"))
+              (progDesc "Set the deposit (lovelace) a NEW dispute must lock; disputes already open keep the price in their own datum")
+          )
         -- Inherited fix #2. No HTTP equivalent, on purpose: AdminActionType's FromJSON rejects it, so
         -- an action that changes who controls the protocol can only come from here, where the key
         -- that has to sign it already lives.
@@ -546,6 +553,10 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
     printYellow $ "Setting min UTxO value to " <> show n <> " lovelace..."
     (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (SetMinUTxOValueAction n)) Nothing
     printGreen $ "Min UTxO value updated successfully! TxId: " <> show txId
+  SetDisputeDeposit n -> do
+    printYellow $ "Setting dispute deposit to " <> show n <> " lovelace..."
+    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (SetDisputeDepositAction n)) Nothing
+    printGreen $ "Dispute deposit updated successfully! TxId: " <> show txId
   -- Inherited fix #2. Signed by the CURRENT admin, which is what the oracle validator's O1 requires,
   -- so this command is also the only proof that the key in `operation.prv` is still the live one.
   RotateAdmin newAdmin -> do
@@ -565,6 +576,7 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
     printGreen $ "  Admin PKH:          " <> show (opAdminPkh oracleParams)
     printGreen $ "  Paused:             " <> show (opPaused oracleParams)
     printGreen $ "  Min UTxO Value:     " <> show (opMinUTxOValue oracleParams) <> " lovelace"
+    printGreen $ "  Dispute Deposit:    " <> show (opDisputeDeposit oracleParams) <> " lovelace"
     case opFeeConfig oracleParams of
       Nothing -> printGreen "  Fee Config:          None"
       Just fc -> do

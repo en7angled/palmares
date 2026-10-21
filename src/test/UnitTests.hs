@@ -18,6 +18,7 @@ import UnitTests.MetricFixture qualified as MetricFixture
 import UnitTests.ApplySql qualified as ApplySqlTests
 import UnitTests.AttestSchema qualified as AttestSchema
 import UnitTests.Claim qualified as Claim
+import UnitTests.Dispute qualified as Dispute
 import UnitTests.Fees qualified as Fees
 import UnitTests.OracleRules qualified as OracleRules
 import UnitTests.QueryHardening (queryHardeningTests)
@@ -46,6 +47,7 @@ unitTests =
       ApplySqlTests.tests,
       AttestSchema.tests,
       Claim.tests,
+      Dispute.tests,
       Fees.tests,
       OracleRules.tests,
       reconcileTests,

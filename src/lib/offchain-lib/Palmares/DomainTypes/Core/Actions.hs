@@ -107,6 +107,13 @@ data AdminActionType
     -- action that changes who controls the protocol must come from the admin CLI, where the key that
     -- has to sign it already lives.
     RotateAdminAction GYPubKeyHash
+  | -- | Lovelace a NEW dispute must deposit (oracle opDisputeDeposit).
+    --
+    -- Reachable over HTTP, like 'SetMinUTxOValueAction' and unlike 'RotateAdminAction': repricing a
+    -- refundable deposit cannot hand the protocol to anyone, and it still needs the admin signature
+    -- the oracle validator requires. It cannot touch a dispute already open — that deposit is
+    -- recorded in the dispute's own datum.
+    SetDisputeDepositAction Integer
   deriving (Show, Generic)
 
 instance ToJSON AdminActionType where
@@ -117,6 +124,7 @@ instance ToJSON AdminActionType where
   -- The new admin's hash is deliberately NOT serialized: this instance exists for logging and for
   -- echoing an action back, and a rotation's log line has no business carrying the key.
   toJSON (RotateAdminAction _) = object ["tag" .= ("RotateAdminAction" :: Text)]
+  toJSON (SetDisputeDepositAction n) = object ["tag" .= ("SetDisputeDepositAction" :: Text), "lovelace" .= n]
 
 instance FromJSON AdminActionType where
   parseJSON = withObject "AdminActionType" $ \o -> do
@@ -125,6 +133,7 @@ instance FromJSON AdminActionType where
       "PauseProtocolAction" -> pure PauseProtocolAction
       "UnpauseProtocolAction" -> pure UnpauseProtocolAction
       "SetMinUTxOValueAction" -> SetMinUTxOValueAction <$> o .: "lovelace"
+      "SetDisputeDepositAction" -> SetDisputeDepositAction <$> o .: "lovelace"
       _ -> fail "AdminActionType: unsupported action for JSON deserialization"
 
 instance ToSchema AdminActionType where

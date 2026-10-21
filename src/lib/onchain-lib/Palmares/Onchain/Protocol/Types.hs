@@ -24,6 +24,11 @@ import Prelude qualified
 data ProtocolParams = ProtocolParams
   { profilesValidatorScriptHash :: ScriptHash,
     attestationsValidatorScriptHash :: ScriptHash,
+    -- | Where a dispute UTxO must be locked. Appended, and the append is not free: this record is
+    -- the minting policy's compile-time parameter, so it changes the policy's hash — AND it is
+    -- embedded in every 'OnchainProfile' datum, so it changes the profile datum format too. Both
+    -- are why disputes land before the first deployment rather than in a later increment.
+    disputesValidatorScriptHash :: ScriptHash,
     oracleToken :: AssetClass
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
@@ -73,7 +78,19 @@ data OracleParams = OracleParams
     -- | Optional fee configuration
     opFeeConfig :: Maybe FeeConfig,
     -- | Minimum lovelace for protocol state outputs (used on-chain only from oracle)
-    opMinUTxOValue :: Integer
+    opMinUTxOValue :: Integer,
+    -- | Lovelace a disputer must lock when opening a dispute, and gets back on either verdict.
+    --
+    -- __On 'OracleParams' and deliberately not in 'FeeConfig'__, because a returned deposit is not
+    -- a fee: nobody collects it. It is also the only shape that passes @scripts/check_vocabulary.sh@,
+    -- which permits a 'FeeConfig' field name in four places — a happy agreement between the semantic
+    -- argument and the lint.
+    --
+    -- __The amount a dispute actually paid is recorded in its own datum__, not read from here at
+    -- resolution time. Reading it here would let the admin lower this value, resolve, and keep the
+    -- difference — or raise it and make an open dispute unresolvable. The oracle sets the price for
+    -- NEW disputes; an open dispute's price is history.
+    opDisputeDeposit :: Integer
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
@@ -98,6 +115,13 @@ data OracleAdminAction
     -- Appended at index 4, never inserted: the four indices above are a deployed-data contract from
     -- the first deployment onward.
     OracleSetAdmin PubKeyHash
+  | -- | Reprice the dispute deposit for NEW disputes.
+    --
+    -- Here for the same reason 'OracleSetMinUTxOValue' is: a protocol constant that cannot be
+    -- repriced is one you must redeploy a validator to change, which is the thing the oracle exists
+    -- to avoid. It cannot affect a dispute already open — that deposit is recorded in the dispute's
+    -- own datum, see 'opDisputeDeposit'.
+    OracleSetDisputeDeposit Integer
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
 
@@ -107,7 +131,8 @@ makeIsDataSchemaIndexed
     ('OracleUnpause, 1),
     ('OracleSetFees, 2),
     ('OracleSetMinUTxOValue, 3),
-    ('OracleSetAdmin, 4)
+    ('OracleSetAdmin, 4),
+    ('OracleSetDisputeDeposit, 5)
   ]
 
 -- | Apply an admin action to current oracle params to obtain the new params.
@@ -119,6 +144,7 @@ applyOracleAdminAction OracleUnpause params = params {opPaused = False}
 applyOracleAdminAction (OracleSetFees mFeeConfig) params = params {opFeeConfig = mFeeConfig}
 applyOracleAdminAction (OracleSetMinUTxOValue lovelace) params = params {opMinUTxOValue = lovelace}
 applyOracleAdminAction (OracleSetAdmin newAdmin) params = params {opAdminPkh = newAdmin}
+applyOracleAdminAction (OracleSetDisputeDeposit lovelace) params = params {opDisputeDeposit = lovelace}
 
 -------------------------------------------------------------------------------
 
@@ -129,6 +155,8 @@ applyOracleAdminAction (OracleSetAdmin newAdmin) params = params {opAdminPkh = n
 type ProfileId = AssetClass
 
 type AttestationId = AssetClass
+
+type DisputeId = AssetClass
 
 -------------------------------------------------------------------------------
 
@@ -162,10 +190,20 @@ type AttestationId = AssetClass
 data MintAction
   = MintActionProfile
   | MintActionAttestation
-  deriving stock (Generic, Prelude.Show, Prelude.Eq)
+  | MintActionDispute
+  -- @Prelude.Enum@/@Prelude.Bounded@ are for the TESTS, not for the validator: PlutusTx never sees
+  -- them. They let @UnitTests.Fees@ drive itself off @[minBound .. maxBound]@, so a fourth action
+  -- is covered the moment it is added rather than when someone remembers to extend a list. The
+  -- list that was there named two actions and claimed to be every action.
+  deriving stock (Generic, Prelude.Show, Prelude.Eq, Prelude.Enum, Prelude.Bounded)
   deriving anyclass (HasBlueprintDefinition)
 
-makeIsDataSchemaIndexed ''MintAction [('MintActionProfile, 0), ('MintActionAttestation, 1)]
+makeIsDataSchemaIndexed
+  ''MintAction
+  [ ('MintActionProfile, 0),
+    ('MintActionAttestation, 1),
+    ('MintActionDispute, 2)
+  ]
 
 data OnchainProfileKind
   = PersonDRep
@@ -287,3 +325,103 @@ data OnchainAttestation = OnchainAttestation
   deriving anyclass (HasBlueprintDefinition)
 
 makeIsDataSchemaIndexed ''OnchainAttestation [('OnchainAttestation, 0)]
+
+-------------------------------------------------------------------------------
+
+-- * Dispute
+
+-------------------------------------------------------------------------------
+
+-- | How a dispute was decided.
+--
+-- Two outcomes and no third, because the deposit comes back either way: there is no "frivolous"
+-- verdict to punish, and adding one would turn the deposit into a fine the admin levies. The
+-- consequence of a verdict is entirely a read-layer one — an upheld dispute is shown beside the
+-- attestation it contests, and __the attestation is never hidden or deleted__ (spec §4.3). The
+-- record of a claim and the record of its being contested are both facts; suppressing the first
+-- would make the second unreadable.
+data Verdict
+  = VerdictUpheld
+  | VerdictRejected
+  deriving stock (Generic, Prelude.Show, Prelude.Eq)
+  deriving anyclass (HasBlueprintDefinition)
+
+makeIsDataSchemaIndexed ''Verdict [('VerdictUpheld, 0), ('VerdictRejected, 1)]
+
+-- PlutusTx's 'Eq', not the stock one above: under @NoImplicitPrelude@ the @==@ a validator compiles
+-- is this class, and the derived @Prelude.Eq@ is invisible to it. Written out rather than derived
+-- because PlutusTx has no deriving for it.
+instance Eq Verdict where
+  {-# INLINEABLE (==) #-}
+  VerdictUpheld == VerdictUpheld = True
+  VerdictRejected == VerdictRejected = True
+  _ == _ = False
+
+-- | A dispute: one profile contesting one attestation, with a deposit behind it.
+--
+-- __A separate UTxO pointing at an attestation, never a field on the attestation.__ That is what
+-- keeps the attestation path's ExUnits exactly as they were — 'OnchainAttestation' and the
+-- Attestations Validator learn nothing about disputes — and it is also what lets a dispute exist
+-- without the subject's or the issuer's cooperation.
+--
+-- Three of these fields are not in the plan's sketch of this type, and each is here because the
+-- plan's own checks cannot be written without it:
+--
+--   * __'disputeOracleToken'__ — @ResolveDispute@ requires the oracle admin's signature, and an
+--     unparameterised validator cannot tell which reference input IS the oracle without the token
+--     that identifies it. Without this field anyone could supply a forged \"oracle\" UTxO naming
+--     themselves as admin. Only the token, not the whole 'ProtocolParams': it is all this validator
+--     needs, and a datum is paid for in min-ADA.
+--   * __'disputeDepositTo'__ — the deposit has to go back to the disputer, and a validator cannot
+--     resolve a 'ProfileId' into an address. The disputer names the address when opening; pointing
+--     it somewhere useless only costs them.
+--   * __'disputeDeposit'__ — the amount actually paid, recorded at open time. See 'opDisputeDeposit'
+--     for why reading the oracle at resolution time instead would be a hole.
+data OnchainDispute = OnchainDispute
+  { disputeId :: DisputeId,
+    -- | The attestation being contested. Never modified by the dispute.
+    disputeTarget :: AttestationId,
+    -- | The profile that opened it, proven at open time by spending that profile's user token.
+    disputeOpenedBy :: ProfileId,
+    -- | When it was opened, bound to the opening transaction's validity interval like every other
+    -- date this protocol stores (inherited fix #4).
+    disputeOpenedAt :: POSIXTime,
+    disputeDeposit :: Integer,
+    disputeDepositTo :: Address,
+    disputeOracleToken :: AssetClass,
+    -- | 'Nothing' while open. Set once, by the oracle admin, and never unset.
+    disputeVerdict :: Maybe Verdict
+  }
+  deriving stock (Generic, Prelude.Show, Prelude.Eq)
+  deriving anyclass (HasBlueprintDefinition)
+
+makeIsDataSchemaIndexed ''OnchainDispute [('OnchainDispute, 0)]
+
+-- | Write a verdict onto a dispute, changing nothing else.
+--
+-- The same shape as 'applyOracleAdminAction', and for the same reason: the validator computes the
+-- expected output datum on-chain with this function and compares it to the actual output, so
+-- off-chain and on-chain cannot disagree about what resolving a dispute does. Anything this function
+-- preserves is a field the resolution provably cannot touch.
+{-# INLINEABLE resolveDispute #-}
+resolveDispute :: Verdict -> OnchainDispute -> OnchainDispute
+resolveDispute verdict dispute = dispute {disputeVerdict = Just verdict}
+
+-- | Is there no open dispute against this attestation?
+--
+-- __An off-chain courtesy, NOT an on-chain guarantee, and the difference matters.__ "One open
+-- dispute per attestation at a time" cannot be enforced on chain without an index UTxO that every
+-- dispute would have to contend for, so it is not enforced on chain. What bounds dispute spam is the
+-- deposit: each dispute is its own UTxO with its own deposit, so N disputes cost N deposits.
+--
+-- This predicate exists so the write path can refuse the duplicate a human would not have meant, and
+-- so the read layer can say "contested". Nothing downstream may present it as a protocol rule —
+-- there is no trace code for it, because there is no check.
+--
+-- Lives beside the type rather than in the off-chain library because 'applyOracleAdminAction' does
+-- too: a pure function over on-chain data, used by both sides, with one definition.
+{-# INLINEABLE checkNoOpenDispute #-}
+checkNoOpenDispute :: AttestationId -> [OnchainDispute] -> Bool
+checkNoOpenDispute target = not . any isOpenAgainstTarget
+  where
+    isOpenAgainstTarget d = disputeTarget d == target && disputeVerdict d == Nothing

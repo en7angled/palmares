@@ -90,7 +90,7 @@ library onchain-lib
     Palmares.Onchain.Protocol.Types
     Palmares.Onchain.Utils
     Palmares.Onchain.Validators.AttestationsValidator
-  --   Palmares.Onchain.Validators.DisputesValidator
+    Palmares.Onchain.Validators.DisputesValidator
     Palmares.Onchain.Validators.MintingPolicy
     Palmares.Onchain.Validators.OracleNFTPolicy
     Palmares.Onchain.Validators.OracleValidator
@@ -489,7 +489,7 @@ test-suite test
     UnitTests.Reconcile
     UnitTests.Refresh
     UnitTests.Views
-  --   UnitTests.Dispute
+    UnitTests.Dispute
   --   UnitTests.Oracle
   --   UnitTests.Profile
     UnitTests.StorageRoundtrip

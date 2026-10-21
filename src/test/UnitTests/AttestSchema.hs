@@ -18,8 +18,25 @@ module UnitTests.AttestSchema (tests) where
 
 import Data.List (sort)
 import Data.Text qualified as T
-import Database.Persist.Sql (ConnectionPool, Single (..), rawExecute, rawSql, toPersistValue)
-import Palmares.Storage (attestSchema, chainSyncTableNames, currentSchemaVersion, ensureAttestSchema, runAttest, runMigrations)
+import Database.Persist.Sql (ConnectionPool, Entity (..), Filter, Single (..), rawExecute, rawSql, selectList, toPersistValue)
+import Palmares.DomainTypes.Core.Types
+  ( attestationClaimedPeriod,
+    attestationId,
+    attestationIssuerProfileId,
+    attestationKind,
+    attestationSubjectProfileId,
+  )
+import Palmares.Storage
+  ( AttestationProjection (..),
+    attestSchema,
+    chainSyncTableNames,
+    currentSchemaVersion,
+    ensureAttestSchema,
+    putAttestationProjection,
+    runAttest,
+    runMigrations,
+  )
+import UnitTests.Conversions (sampleAttestation)
 import Test.Pg (runPg, withScratchDb)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -118,7 +135,60 @@ tests =
             ("column count changed — bump currentSchemaVersion with the schema: " <> shown)
             17
             (length cols)
-          assertEqual "currentSchemaVersion is the version this column set belongs to" 2 currentSchemaVersion
+          assertEqual "currentSchemaVersion is the version this column set belongs to" 2 currentSchemaVersion,
+      -- THE WRITE PATH, exercised rather than inspected. `putAttestationProjection` was a
+      -- 13-argument positional application and is now 16 named fields — but a review pointed out that
+      -- nothing in the suite CALLED it, so a transposition among the three GYAssetClass columns would
+      -- have gone green either way, and the commit that made the change claimed otherwise. The
+      -- fixture's three distinct asset classes only catch a swap if something actually writes a row.
+      testCase "an attestation projection writes every field to its own column" $
+        withScratchDb $ \pool -> do
+          runPg pool ensureAttestSchema
+          runAttest pool runMigrations
+          runAttest pool (putAttestationProjection 42 "blockhash" "txid" 3 sampleAttestation)
+          rows <- runAttest pool (selectList ([] :: [Filter AttestationProjection]) [])
+          case rows of
+            [Entity _ ap] -> do
+              -- The three same-typed columns together, by value. Checked as one tuple so the failure
+              -- message shows which pair was swapped rather than just the first mismatch.
+              assertEqual
+                "id / subject / issuer"
+                ( attestationId sampleAttestation,
+                  attestationSubjectProfileId sampleAttestation,
+                  attestationIssuerProfileId sampleAttestation
+                )
+                ( attestationProjectionAttestationId ap,
+                  attestationProjectionSubjectProfileId ap,
+                  attestationProjectionIssuerProfileId ap
+                )
+              assertEqual "kind" (attestationKind sampleAttestation) (attestationProjectionAttestationKind ap)
+              assertEqual
+                "claimed period, both columns or neither"
+                (fst <$> attestationClaimedPeriod sampleAttestation, snd <$> attestationClaimedPeriod sampleAttestation)
+                (attestationProjectionClaimedPeriodFrom ap, attestationProjectionClaimedPeriodTo ap)
+              -- The chain pointer, which is the other thing a positional call could have shuffled.
+              assertEqual
+                "chain pointer"
+                (42, "blockhash", "txid", 3)
+                ( attestationProjectionCreatedAtSlot ap,
+                  attestationProjectionCreatedAtHash ap,
+                  attestationProjectionCreatedTxId ap,
+                  attestationProjectionCreatedOutputIndex ap
+                )
+            _ -> assertFailure ("expected exactly one row, got " <> show (length rows)),
+      -- A period is both bounds or neither, and the writer is what guarantees it: it sets the two
+      -- columns from one `Maybe` pair, so they cannot disagree.
+      testCase "an attestation with no claimed period writes both columns null" $
+        withScratchDb $ \pool -> do
+          runPg pool ensureAttestSchema
+          runAttest pool runMigrations
+          runAttest pool (putAttestationProjection 1 "h" "t" 0 sampleAttestation {attestationClaimedPeriod = Nothing})
+          rows <- runAttest pool (selectList ([] :: [Filter AttestationProjection]) [])
+          case rows of
+            [Entity _ ap] ->
+              (attestationProjectionClaimedPeriodFrom ap, attestationProjectionClaimedPeriodTo ap)
+                @?= (Nothing, Nothing)
+            _ -> assertFailure ("expected exactly one row, got " <> show (length rows))
     ]
   where
     columnsIn :: ConnectionPool -> T.Text -> T.Text -> IO [T.Text]

@@ -274,7 +274,16 @@ getAttestations maybeLimitOffset maybeAttestationFilter maybeOrder = do
                   { attestationId = attestationProjectionAttestationId ap,
                     attestationSubjectProfileId = attestationProjectionSubjectProfileId ap,
                     attestationIssuerProfileId = attestationProjectionIssuerProfileId ap,
+                    attestationKind = attestationProjectionAttestationKind ap,
                     attestationAttestationDate = attestationProjectionAttestationDate ap,
+                    -- Both columns or neither, which is what the writer guarantees — it sets them
+                    -- from one `Maybe` pair. A half-set row could only come from a hand-written
+                    -- UPDATE, and reading it as "no period" is the safe answer: a period with one
+                    -- bound is not a period.
+                    attestationClaimedPeriod =
+                      case (attestationProjectionClaimedPeriodFrom ap, attestationProjectionClaimedPeriodTo ap) of
+                        (Just from, Just to) -> Just (from, to)
+                        _ -> Nothing,
                     attestationAccepted = attestationProjectionIsAccepted ap,
                     attestationName = attestationProjectionAttestationName ap,
                     attestationDescription = attestationProjectionAttestationDescription ap,

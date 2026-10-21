@@ -25,14 +25,17 @@ import GHC.Generics (Generic)
 import Palmares.Onchain.CIP68 (MetadataFields, deriveUserFromRefAC, generateRefAndUserTN, mkCIP68Datum, validateMetadataFields)
 import Palmares.Onchain.Protocol.Lookup (checkFee, readOracleParams)
 import Palmares.Onchain.Protocol.Types
-  ( MintAction (MintActionAttestation, MintActionProfile),
+  ( AttestationKind,
+    MintAction (MintActionAttestation, MintActionProfile),
     OnchainAttestation
       ( OnchainAttestation,
         attestationIssuer,
         attestationSubject,
         attestationDate,
         attestationId,
-        attestationIsAccepted
+        attestationIsAccepted,
+        attestationKind,
+        attestationPeriod
       ),
     OnchainProfile
       ( OnchainProfile,
@@ -61,7 +64,6 @@ import Palmares.Onchain.Utils qualified as Utils
   )
 import PlutusCore.Builtin.Debug (plcVersion110)
 import PlutusLedgerApi.V1 qualified as V1
-import PlutusLedgerApi.V1.Interval (before)
 import PlutusLedgerApi.V3
 import PlutusLedgerApi.V3.Contexts
 import PlutusTx
@@ -78,8 +80,11 @@ import Prelude qualified
 -- | Custom redeemer :
 -- Output indices are passed in the redeemer for efficient O(1) lookup instead of O(n) search.
 data MintingRedeemer
-  = -- | NewAttestation seedTxOutRef metadata222 otherMetadata subject issuer attestationDate attestationOutputIdx
-    NewAttestation TxOutRef MetadataFields [(BuiltinByteString, BuiltinByteString)] ProfileId ProfileId POSIXTime Integer
+  = -- | NewAttestation seedTxOutRef metadata222 otherMetadata subject issuer kind attestationDate claimedPeriod attestationOutputIdx
+    --
+    -- @kind@ and @claimedPeriod@ are the two the spec's §3 glossary required and the first cut
+    -- omitted. @claimedPeriod@ is self-reported and carries NO check — see 'attestationPeriod'.
+    NewAttestation TxOutRef MetadataFields [(BuiltinByteString, BuiltinByteString)] ProfileId ProfileId AttestationKind POSIXTime (Maybe (POSIXTime, POSIXTime)) Integer
   | -- | MintProfile seedTxOutRef kind claimedCredential metadata profileOutputIdx
     --
     -- The claim. @claimedCredential@ is 'Nothing' for a profile that corresponds to no on-chain
@@ -129,9 +134,9 @@ mintingPolicyLambda protocolParams (ScriptContext txInfo@TxInfo {..} (Redeemer b
            in -- Global gate: protocol must not be paused (M0).
               traceIfFalse "M0" (not (opPaused oracle)) -- Protocol is paused (M0)
                 && case redeemer of
-                  NewAttestation seedTxOutRef metadata otherMetadata subject issuer attestationDate attestationOutputIdx ->
+                  NewAttestation seedTxOutRef metadata otherMetadata subject issuer kind attestationDate claimedPeriod attestationOutputIdx ->
                     checkFee oracle MintActionAttestation txInfoOutputs
-                      && handleNewAttestation txInfo mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadata subject issuer attestationDate attestationOutputIdx
+                      && handleNewAttestation txInfo mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadata subject issuer kind attestationDate claimedPeriod attestationOutputIdx
                   MintProfile seedTxOutRef kind claimedCredential metadata profileOutputIdx ->
                     checkFee oracle MintActionProfile txInfoOutputs
                       && handleMintProfile txInfo mintingPolicyCurrencySymbol protocolParams ctx seedTxOutRef kind claimedCredential metadata profileOutputIdx
@@ -153,10 +158,12 @@ handleNewAttestation ::
   [(BuiltinByteString, BuiltinByteString)] ->
   ProfileId ->
   ProfileId ->
+  AttestationKind ->
   POSIXTime ->
+  Maybe (POSIXTime, POSIXTime) ->
   Integer ->
   Bool
-handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadataEncoded subject issuer attestationDate attestationOutputIdx =
+handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadataEncoded subject issuer kind attestationDate claimedPeriod attestationOutputIdx =
   let isSubjectValid = hasCurrencySymbol subject mintingPolicyCurrencySymbol
       isIssuerValid = hasCurrencySymbol issuer mintingPolicyCurrencySymbol
       minLv = ctxMinLv ctx
@@ -171,7 +178,16 @@ handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOu
           { attestationId = attestationRefAssetClass,
             attestationSubject = subject,
             attestationIssuer = issuer,
+            attestationKind = kind,
             attestationDate = attestationDate,
+            -- Carried through unchecked, on purpose. `Mk` below compares this whole datum against
+            -- the output, so the period the issuer put in the redeemer is the period that lands in
+            -- the record — and that is the entire guarantee, because the claim is the issuer's and
+            -- the chain cannot confirm it. The subject's counter-signature is what makes it a
+            -- record. A `from <= to` check here would be ExUnits on every issue for a nonsense the
+            -- subject would have to accept about itself, which is the trade this repo rejects by
+            -- standing rule; `issueAttestationTX` refuses it as a 400 instead.
+            attestationPeriod = claimedPeriod,
             attestationIsAccepted = False
           }
 

@@ -194,16 +194,20 @@ issueAttestationTX ::
   GYAssetClass ->
   -- | Profile ID of the issuer
   GYAssetClass ->
+  -- | What the attestation asserts about its subject
+  OnchainTypes.AttestationKind ->
   -- | CIP-68 metadata fields (name, description, image)
   MetadataFields ->
   -- | Additional metadata key-value pairs
   [(BuiltinByteString, BuiltinByteString)] ->
-  -- | Attestation date
+  -- | Attestation date — when it is ISSUED. Bounded by the validity window built below.
   POSIXTime ->
+  -- | The claimed period, self-reported. Bounded by nothing, and that is the point.
+  Maybe (POSIXTime, POSIXTime) ->
   -- | Issuer's wallet addresses (to spend User NFT)
   [GYAddress] ->
   m (GYTxSkeleton 'PlutusV3, GYAssetClass)
-issueAttestationTX gySubjectProfileId gyIssuerProfileId metadata otherMetadata attestationDate ownAddrs = do
+issueAttestationTX gySubjectProfileId gyIssuerProfileId kind metadata otherMetadata attestationDate claimedPeriod ownAddrs = do
   mapM_
     ( \(k, _) ->
         when (k `elem` cip68StandardMetadataKeys) $
@@ -229,6 +233,16 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId metadata otherMetadata a
   when (attestationDate < windowStart || attestationDate > windowEnd) $
     throwError (GYApplicationException AttestationDateOutOfRange)
 
+  -- The claimed period gets EXACTLY ONE check, and deliberately not a window check: a period that
+  -- begins before this transaction is the normal case — "a member since March 2024" — which is the
+  -- whole reason the field exists separately from the date above. Transposed bounds are the one thing
+  -- that cannot be a legitimate claim, and the only one a client can be told about, because the
+  -- minting policy carries the period through unvalidated on purpose.
+  case claimedPeriod of
+    Just (periodFrom, periodTo)
+      | periodFrom > periodTo -> throwError (GYApplicationException AttestationPeriodInverted)
+    _ -> pure ()
+
   -- Get a seed TxOutRef for uniqueness
   seedTxOutRef <- someUTxOWithoutRefScript
   let isSpendingSeedUTxO = mustHaveInput (GYTxIn seedTxOutRef GYTxInWitnessKey)
@@ -250,7 +264,9 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId metadata otherMetadata a
           otherMetadata
           (assetClassToPlutus gySubjectProfileId)
           (assetClassToPlutus gyIssuerProfileId)
+          kind
           attestationDate
+          claimedPeriod
           attestationOutputIdx
   let gyRedeemer = redeemerFromPlutusData redeemer
 
@@ -264,7 +280,9 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId metadata otherMetadata a
           { OnchainTypes.attestationId = assetClassToPlutus gyAttestationRefAC,
             OnchainTypes.attestationSubject = assetClassToPlutus gySubjectProfileId,
             OnchainTypes.attestationIssuer = assetClassToPlutus gyIssuerProfileId,
+            OnchainTypes.attestationKind = kind,
             OnchainTypes.attestationDate = attestationDate,
+            OnchainTypes.attestationPeriod = claimedPeriod,
             OnchainTypes.attestationIsAccepted = False
           }
   let attestationDatum = mkCIP68Datum attestationInfo metadata otherMetadata

@@ -12,13 +12,34 @@ import GeniusYield.Types
 import InteractionAppMonad (InteractionAppContext (..))
 import Network.Wai.Handler.Warp
 import RestAPI (apiSwagger, mkWebApp)
-import System.Exit (die)
+import System.Environment (getArgs)
+import System.Exit (die, exitSuccess)
 import Palmares.TxBuilding.Context
 import Palmares.Utils (decodeConfigEnvOrFile)
 import Palmares.WebAPI.Auth (getBasicAuthFromEnv)
 import Palmares.WebAPI.CORS (getCorsConfigFromEnv)
 import Palmares.WebAPI.Utils (getPortFromEnvOrDefault)
 import System.IO (BufferMode (LineBuffering), hSetBuffering, stdout)
+
+-- | The committed document this service's API type produces.
+--
+-- ONE producer, the same shape query-api already uses. It used to be written on every boot, which
+-- meant the only way to obtain it was to start a server — and starting THIS server needs an Atlas
+-- provider config, so CI never obtained it at all. The result was that the interaction API's
+-- published request contract had no drift gate and was not even in the repository, while the query
+-- API's had both. The @kind@/@claimed_period@ work found a wrong enum spelling in this document by
+-- generating it by hand, which is the argument for the gate rather than a theory about it.
+swaggerPath :: FilePath
+swaggerPath = "docs/generated/swagger/interaction-swagger-api.json"
+
+-- | @--write-swagger-only@: write the document and exit.
+--
+-- Touches nothing else — no Atlas config, no deployed-validators config, no port — because
+-- 'apiSwagger' is a pure value derived from the served API type.
+writeSwagger :: IO ()
+writeSwagger = do
+  BL8.writeFile swaggerPath (encodePretty apiSwagger)
+  putStrLn ("Wrote " <> swaggerPath)
 
 main :: IO ()
 main = do
@@ -27,9 +48,13 @@ main = do
   -- Measured on query-api, fixed in all three servers at once.
   hSetBuffering stdout LineBuffering
 
-  putStrLn "Writing Swagger file ..."
-  BL8.writeFile "docs/generated/swagger/interaction-swagger-api.json" (encodePretty apiSwagger)
+  args <- getArgs
+  case args of
+    ["--write-swagger-only"] -> writeSwagger >> exitSuccess
+    _ -> serve
 
+serve :: IO ()
+serve = do
   atlasConfig <- maybe (die "Atlas configuration failed") return =<< decodeConfigEnvOrFile "ATLAS_CORE_CONFIG" defaultAtlasCoreConfig
   deployedScriptsContext <- maybe (die "Deployed validators configuration failed") return =<< decodeConfigEnvOrFile "DEPLOYED_VALIDATORS_CONFIG" defaultTxBuildingContextFile
 

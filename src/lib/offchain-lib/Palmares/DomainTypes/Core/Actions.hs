@@ -55,9 +55,12 @@ data ProfileActionType
   | IssueAttestationAction
       { aa_subject_profile_id :: ProfileRefAC,
         aa_issuer_profile_id :: ProfileRefAC,
+        aa_kind :: AttestationType,
         aa_profile_data :: ProfileData,
         aa_other_metadata :: [(Text, Text)],
-        aa_attestation_date :: GYTime
+        aa_attestation_date :: GYTime,
+        -- | The claimed period, self-reported. Optional, and both bounds or neither.
+        aa_claimed_period :: Maybe (GYTime, GYTime)
       }
   | AcceptAttestationAction
       { aca_attestation_id :: GYAssetClass

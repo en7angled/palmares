@@ -15,7 +15,7 @@ import Data.Swagger (ToSchema (..), description, genericDeclareNamedSchema, prop
 import Data.Swagger qualified as Swagger
 import Data.Text (Text)
 import Deriving.Aeson
-import Palmares.DomainTypes.Core.Types (ProfileRefAC)
+import Palmares.DomainTypes.Core.Types (AttestationType, ProfileRefAC)
 import GeniusYield.Types (GYAddress, GYAssetClass)
 import GeniusYield.Types.Time (GYTime)
 import Palmares.TxBuilding.Interactions (UserAddresses)
@@ -62,11 +62,13 @@ instance ToSchema UpdateProfileRequest where
 data IssueAttestationRequest = IssueAttestationRequest
   { iarSubjectProfileId :: ProfileRefAC
   , iarIssuerProfileId :: ProfileRefAC
+  , iarKind :: AttestationType
   , iarName :: Text
   , iarDescription :: Text
   , iarImageURI :: Text
   , iarOtherMetadata :: [(Text, Text)]
   , iarAttestationDate :: GYTime
+  , iarClaimedPeriod :: Maybe (GYTime, GYTime)
   , iarUserAddresses :: UserAddresses
   , iarRecipient :: Maybe GYAddress
   }
@@ -82,6 +84,13 @@ instance ToSchema IssueAttestationRequest where
       & describeField "description" "Attestation description"
       & describeField "image_uri" "URI of the attestation image (the client hosts it; the protocol stores the URI)"
       & describeField "other_metadata" "Additional key-value metadata pairs (e.g. [[\"category\", \"competition\"]])"
+      -- No `describeField "kind"`: the property is a bare `$ref` to AttestationType, and a Swagger
+      -- 2.0 $ref cannot carry a sibling description — measured, the key was simply absent from the
+      -- generated document. The definition-level description in `addSharedSwaggerDescriptions` is
+      -- the mechanism for a $ref'd type, which is why that table already had an AttestationType row
+      -- before the type existed.
+      & describeField "attestation_date""When the attestation is ISSUED. Must fall inside the transaction's validity window (roughly the next 7 hours of chain time), which is what makes it chain-attested."
+      & describeField "claimed_period" "Optional [from, to] period the attestation CLAIMS, e.g. the span of an affiliation or a mandate. SELF-REPORTED: no on-chain fact can establish it, so it is never presented as verified, and only its ordering (from <= to) is checked. Both bounds or neither."
       & describeField "recipient" "Address to receive unlocked funds (defaults to change address if omitted)"
 
 -------------------------------------------------------------------------------

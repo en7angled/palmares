@@ -53,10 +53,23 @@ data ProfileType
   | Community
   | Vendor
   | Auditor
-  deriving (Show, Generic, ToSchema, ToParamSchema, Eq, Ord, Enum, Bounded)
+  deriving (Show, Generic, Eq, Ord, Enum, Bounded)
   deriving
     (FromJSON, ToJSON)
     via CustomJSON '[ConstructorTagModifier '[CamelToSnake]] ProfileType
+
+-- | Read out of 'ToJSON', not derived — see 'AttestationType' for the measurement.
+--
+-- __This was derived, and it was the same latent defect__: a derived instance publishes
+-- @PersonDRep@ while 'parseProfileType' and 'FromJSON' accept @person_drep@. It has not bitten yet
+-- only because no documented route mentions a profile type — @ProfileType@ is absent from both
+-- generated Swagger documents today. It would have become a live wire-contract lie the moment the
+-- profile routes land, so it is corrected here, where the identical fix for 'AttestationType' is.
+instance ToSchema ProfileType where
+  declareNamedSchema _ = pure (NamedSchema (Just "ProfileType") (jsonEnumSchema (Proxy :: Proxy ProfileType)))
+
+instance ToParamSchema ProfileType where
+  toParamSchema = jsonEnumParamSchema
 
 derivePersistFieldJSON "ProfileType"
 
@@ -120,12 +133,63 @@ newtype AttestationOtherMetadataJson = AttestationOtherMetadataJson
   deriving stock (Show, Eq, Generic)
   deriving newtype (FromJSON, ToJSON)
 
+-- | What an attestation asserts about its subject — the off-chain mirror of
+-- 'Palmares.Onchain.Protocol.Types.AttestationKind', same five constructors in the same order.
+--
+-- Named @AttestationType@ off-chain and @AttestationKind@ on-chain, which is the existing
+-- 'ProfileType' \/ @OnchainProfileKind@ split rather than a new one. The name is also not free:
+-- 'Palmares.WebAPI.Utils.addSharedSwaggerDescriptions' has carried a description for a definition
+-- named @AttestationType@ since before the type existed, and the lens was a silent no-op until now.
+data AttestationType
+  = MilestoneDelivered
+  | AuditPassed
+  | Affiliation
+  | RoleHeld
+  | Endorsement
+  deriving (Show, Generic, Eq, Ord, Enum, Bounded)
+  deriving
+    (FromJSON, ToJSON)
+    via CustomJSON '[ConstructorTagModifier '[CamelToSnake]] AttestationType
+
+-- | Read out of 'ToJSON' with 'jsonEnumSchema', NOT derived.
+--
+-- __A derived 'ToSchema' publishes the CONSTRUCTOR names__ — @MilestoneDelivered@ — while
+-- 'ToJSON' publishes @milestone_delivered@. That document describes five values the API rejects, and
+-- it compiles, and nothing downstream notices: it was measured in the generated
+-- @interaction-swagger-api.json@ before this instance existed. Every other enum in this module
+-- already does it this way; the derived instance is the trap.
+instance ToSchema AttestationType where
+  declareNamedSchema _ = pure (NamedSchema (Just "AttestationType") (jsonEnumSchema (Proxy :: Proxy AttestationType)))
+
+derivePersistFieldJSON "AttestationType"
+
+-- | Parse an 'AttestationType' from its wire spelling.
+--
+-- Driven by the derived 'ToJSON' rather than a second table, so a new constructor cannot be
+-- parseable in one direction only — the same reason 'parseProfileType' is written this way.
+parseAttestationType :: Text -> Maybe AttestationType
+parseAttestationType s = lookup s [(attestationTypeText k, k) | k <- [minBound .. maxBound]]
+
+-- | The wire spelling of an 'AttestationType', from its own 'ToJSON'.
+attestationTypeText :: AttestationType -> Text
+attestationTypeText k = case toJSON k of
+  String s -> s
+  _ -> T.pack (show k)
+
 -- | An attestation one profile issued about another.
 data Attestation = Attestation
   { attestationId :: AttestationAC,
     attestationSubjectProfileId :: ProfileRefAC,
     attestationIssuerProfileId :: ProfileRefAC,
+    attestationKind :: AttestationType,
     attestationAttestationDate :: GYTime,
+    -- | The period the attestation CLAIMS, self-reported and never chain-verified.
+    --
+    -- Published as @claimed_period@ precisely so that it cannot be mistaken for
+    -- @attestation_date@, which is the issuance time and IS bounded by the transaction's validity
+    -- interval. A consumer that renders the two alike is claiming something the chain never said.
+    -- Both bounds or neither: a half-open period is not representable, by design.
+    attestationClaimedPeriod :: Maybe (GYTime, GYTime),
     attestationAccepted :: Bool,
     attestationName :: Text,
     attestationDescription :: Text,
@@ -145,7 +209,9 @@ instance FromJSON Attestation where
       <$> o .: "id"
       <*> o .: "subject_profile_id"
       <*> o .: "issuer_profile_id"
+      <*> o .: "kind"
       <*> o .: "attestation_date"
+      <*> o .:? "claimed_period"
       <*> o .: "accepted"
       <*> o .: "name"
       <*> o .: "description"
@@ -168,7 +234,12 @@ instance Show Attestation where
         "│ Name: " <> stringFromJSON attestationName,
         "│ Issued To: " <> stringFromJSON attestationSubjectProfileId,
         "│ Issued By: " <> stringFromJSON attestationIssuerProfileId,
-        "│ Date: " <> stringFromJSON attestationAttestationDate,
+        "│ Kind: " <> stringFromJSON attestationKind,
+        "│ Issued On: " <> stringFromJSON attestationAttestationDate,
+        -- Labelled "claimed", not "period", because this printout is what an operator reads when
+        -- they are deciding whether a record says what they think it says.
+        "│ Claimed period: "
+          <> maybe "—" (\(f, t) -> stringFromJSON f <> " … " <> stringFromJSON t) attestationClaimedPeriod,
         "│ Accepted: " <> show attestationAccepted,
         "│ Other metadata pairs: " <> show (Prelude.length attestationOtherMetadata),
         "└─────────────────────────────────────────────────────────────"

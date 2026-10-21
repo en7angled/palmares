@@ -12,7 +12,7 @@ where
 import Data.ByteString.Short (fromShort)
 import Data.Set qualified as Set
 import Palmares.Onchain.CIP68 (CIP68Datum)
-import Palmares.Onchain.Protocol (OnchainAttestation, OnchainProfile, OnchainProfileKind, ProtocolParams)
+import Palmares.Onchain.Protocol (AttestationKind, OnchainAttestation, OnchainProfile, OnchainProfileKind, ProtocolParams)
 import Palmares.Onchain.Protocol.Types (FeeConfig, OracleAdminAction, OracleParams)
 import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer, attestationsCompile)
 import Palmares.Onchain.Validators.MintingPolicy (MintingRedeemer, mintingPolicyCompile)
@@ -47,7 +47,8 @@ contractBlueprint mp =
              AttestationsRedeemer,
              CIP68Datum OnchainAttestation,
              OnchainAttestation,
-             OnchainProfileKind
+             OnchainProfileKind,
+             AttestationKind
            ]
     }
 
@@ -100,11 +101,14 @@ mintingPolicyValidatorBlueprint mp =
           { argumentTitle = Just "Minting Redeemer",
             argumentDescription =
               Just
-                "NewAttestation seedTxOutRef metadata otherMetadata subject issuer date \
-                \outputIdx — mints a pending attestation CIP-68 token pair locked at the \
-                \Attestations Validator. Requires the issuer's user token to be spent, validates the \
-                \date against the transaction validity range, and pays the attestation fee when the \
-                \oracle configures one.",
+                "NewAttestation seedTxOutRef metadata otherMetadata subject issuer kind date \
+                \claimedPeriod outputIdx — mints a pending attestation CIP-68 token pair locked at \
+                \the Attestations Validator. Requires the issuer's user token to be spent, validates \
+                \the DATE against the transaction validity range, and pays the attestation fee when \
+                \the oracle configures one. The CLAIMED PERIOD is carried through unchecked and is \
+                \self-reported: no on-chain fact can establish when an affiliation or a mandate \
+                \began, so the protocol does not pretend to establish it. What makes a claimed \
+                \period part of the record is the subject's acceptance, not a validator rule.",
             argumentPurpose = Set.fromList [Mint],
             argumentSchema = definitionRef @MintingRedeemer
           },
@@ -187,7 +191,14 @@ attestationsValidatorBlueprint _mp =
               argumentDescription =
                 Just
                   "CIP-68 datum carrying the attestation: its id, the subject it is about, the issuer \
-                  \that authored it, the date, and whether the subject has accepted.",
+                  \that authored it, its kind (one of MilestoneDelivered, AuditPassed, Affiliation, \
+                  \RoleHeld, Endorsement), the date it was ISSUED, an optional CLAIMED PERIOD, and \
+                  \whether the subject has accepted. The two dates are not the same kind of fact and \
+                  \a consumer must not present them alike: the issuance date is bounded by the \
+                  \transaction's validity interval and is therefore chain-attested within hours, \
+                  \while the claimed period is whatever the issuer asserted and the subject \
+                  \counter-signed. No validator branches on the kind — it says what a reader is being \
+                  \told, not what the protocol permits.",
               argumentPurpose = Set.singleton Spend,
               -- NOT `definitionRef @()`. It was, so the published blueprint described the attestation
               -- datum as Unit — the one datum a reader most needs in order to decode a record off the

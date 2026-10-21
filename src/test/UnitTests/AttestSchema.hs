@@ -19,7 +19,7 @@ module UnitTests.AttestSchema (tests) where
 import Data.List (sort)
 import Data.Text qualified as T
 import Database.Persist.Sql (ConnectionPool, Single (..), rawExecute, rawSql, toPersistValue)
-import Palmares.Storage (attestSchema, chainSyncTableNames, ensureAttestSchema, runAttest, runMigrations)
+import Palmares.Storage (attestSchema, chainSyncTableNames, currentSchemaVersion, ensureAttestSchema, runAttest, runMigrations)
 import Test.Pg (runPg, withScratchDb)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -95,9 +95,43 @@ tests =
           runPg pool ensureAttestSchema
           runAttest pool runMigrations
           created <- tablesIn pool attestSchema
-          created @?= sort (map T.toLower chainSyncTableNames)
+          created @?= sort (map T.toLower chainSyncTableNames),
+      -- The schema-version TRIPWIRE, and it is honest about being one rather than a proof.
+      --
+      -- `currentSchemaVersion` is what makes a deployed attest-sync wipe and re-sync, and a column
+      -- added without bumping it leaves a running service migrating a new column onto rows that can
+      -- never hold a value for it — the three columns below are read off the datum, so they cannot
+      -- be backfilled from the database, only from the chain. Nothing in the suite noticed that
+      -- before this test: the version is a bare constant and no assertion mentioned it.
+      --
+      -- So the count is deliberate. Adding a column fails HERE, next to the version it owes.
+      testCase "attestation_projection's columns and currentSchemaVersion describe the same schema" $
+        withScratchDb $ \pool -> do
+          runPg pool ensureAttestSchema
+          runAttest pool runMigrations
+          cols <- columnsIn pool attestSchema "attestation_projection"
+          let shown = show cols
+          assertBool ("attestation_kind missing: " <> shown) ("attestation_kind" `elem` cols)
+          assertBool ("claimed_period_from missing: " <> shown) ("claimed_period_from" `elem` cols)
+          assertBool ("claimed_period_to missing: " <> shown) ("claimed_period_to" `elem` cols)
+          assertEqual
+            ("column count changed — bump currentSchemaVersion with the schema: " <> shown)
+            17
+            (length cols)
+          assertEqual "currentSchemaVersion is the version this column set belongs to" 2 currentSchemaVersion
     ]
   where
+    columnsIn :: ConnectionPool -> T.Text -> T.Text -> IO [T.Text]
+    columnsIn pool schema table =
+      map unSingle
+        <$> runPg
+          pool
+          ( rawSql
+              "SELECT column_name::text FROM information_schema.columns \
+              \WHERE table_schema = ? AND table_name = ? ORDER BY column_name"
+              [toPersistValue schema, toPersistValue table]
+          )
+
     tablesIn :: ConnectionPool -> T.Text -> IO [T.Text]
     tablesIn pool schema =
       map unSingle

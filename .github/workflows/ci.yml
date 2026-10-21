@@ -126,10 +126,15 @@ jobs:
       # config, pool or schema wiring, which is what makes this runnable here: no Postgres service,
       # no DSN, no port. It is a step in this job rather than a job of its own because the binary
       # is already built and cached here; a separate job would pay for a second cold build.
-      - name: Swagger document is not stale
+      # BOTH documents. The interaction API's was neither committed nor regenerated here until the
+      # attestation kind/period work generated it by hand and found a wrong enum spelling in it —
+      # the published values were the constructor names while the API accepts snake_case. A document
+      # outside the gate is a document that can say anything.
+      - name: Swagger documents are not stale
         run: |
           set -euo pipefail
           cabal run -v0 exe:query-api -- --write-swagger-only
+          cabal run -v0 exe:interaction-api -- --write-swagger-only
           git diff --exit-code docs/generated/swagger/
 
       # The diff above catches the document falling behind the code. It cannot catch the two

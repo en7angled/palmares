@@ -66,6 +66,26 @@ onchainProfileKindToProfileType Onchain.Community = Community
 onchainProfileKindToProfileType Onchain.Vendor = Vendor
 onchainProfileKindToProfileType Onchain.Auditor = Auditor
 
+-- | Map domain 'AttestationType' to its on-chain representation.
+--
+-- Arm by arm for the same reason 'profileTypeToOnchainProfileKind' is: agreeing in order today is a
+-- coincidence, not a contract, and @-Wincomplete-patterns@ is what catches a sixth kind added on one
+-- side only.
+attestationTypeToOnchainAttestationKind :: AttestationType -> Onchain.AttestationKind
+attestationTypeToOnchainAttestationKind MilestoneDelivered = Onchain.MilestoneDelivered
+attestationTypeToOnchainAttestationKind AuditPassed = Onchain.AuditPassed
+attestationTypeToOnchainAttestationKind Affiliation = Onchain.Affiliation
+attestationTypeToOnchainAttestationKind RoleHeld = Onchain.RoleHeld
+attestationTypeToOnchainAttestationKind Endorsement = Onchain.Endorsement
+
+-- | Map an on-chain attestation kind to the domain 'AttestationType'.
+onchainAttestationKindToAttestationType :: Onchain.AttestationKind -> AttestationType
+onchainAttestationKindToAttestationType Onchain.MilestoneDelivered = MilestoneDelivered
+onchainAttestationKindToAttestationType Onchain.AuditPassed = AuditPassed
+onchainAttestationKindToAttestationType Onchain.Affiliation = Affiliation
+onchainAttestationKindToAttestationType Onchain.RoleHeld = RoleHeld
+onchainAttestationKindToAttestationType Onchain.Endorsement = Endorsement
+
 -- | Extract 'ProfileData' from a CIP-68 profile datum's metadata fields.
 profileDatumToProfileData :: CIP68Datum Onchain.OnchainProfile -> ProfileData
 profileDatumToProfileData = metadataFieldsToProfileData . getMetadataFields
@@ -123,12 +143,20 @@ onchainAttestationToAttestation datum = do
   gyAttestationId <- assetClassFromPlutus' attestationId
   gySubject <- assetClassFromPlutus' attestationSubject
   gyIssuer <- assetClassFromPlutus' attestationIssuer
+  -- Bound to locals rather than written inline, because `RecordWildCards` above has already brought
+  -- the ON-CHAIN `attestationKind` into scope under the same name the off-chain field uses. Reading
+  -- `attestationKind = f attestationKind` and having to know which side each one is on is how a
+  -- conversion gets inverted; `attestationId`/`gyAttestationId` above is the same guard.
+  let gyKind = onchainAttestationKindToAttestationType attestationKind
+      gyClaimedPeriod = fmap (Data.Bifunctor.bimap timeFromPlutus timeFromPlutus) attestationPeriod
   return
     Attestation
       { attestationId = gyAttestationId,
         attestationSubjectProfileId = gySubject,
         attestationIssuerProfileId = gyIssuer,
+        attestationKind = gyKind,
         attestationAttestationDate = timeFromPlutus attestationDate,
+        attestationClaimedPeriod = gyClaimedPeriod,
         attestationAccepted = attestationIsAccepted,
         attestationName = profileDataName,
         attestationDescription = profileDataDescription,

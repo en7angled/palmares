@@ -46,4 +46,14 @@ addSharedSwaggerDescriptions s = s
   & definitions . at "GYPubKeyHash" . mapped . description ?~ "Blake2b-224 public key hash, 28 bytes, hex-encoded"
   & definitions . at "DRepId" . mapped . description ?~ "DRep identifier. CIP-129 bech32 (drep1...) is canonical; the CIP-105 and raw-hex forms are also accepted on input"
   & definitions . at "GovActionId" . mapped . description ?~ "Governance action identifier: CIP-129 bech32 (gov_action1...) over the 32-byte proposal tx id and its 1-byte index"
-  & definitions . at "AttestationType" . mapped . description ?~ "What an attestation asserts about its subject"
+  -- This row predated the type by a long way, and the `at` lens was a silent no-op the whole time:
+  -- there was no AttestationType in the repo, so the key matched nothing. It is also the ONLY place
+  -- this description can live — the request property is a bare `$ref`, and a Swagger 2.0 $ref cannot
+  -- carry a sibling description.
+  & definitions . at "AttestationType" . mapped . description
+    ?~ "What an attestation asserts about its subject: milestone_delivered (a budget administrator \
+       \attests a vendor's delivery), audit_passed (an auditor attests it reviewed one), affiliation \
+       \(organisation to member, usually with a claimed period), role_held (an extra-chain mandate \
+       \such as a working-group lead or committee chair, usually with a claimed period), endorsement. \
+       \No validator branches on it: the kind says what a reader is being told, not what the protocol \
+       \permits."

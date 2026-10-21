@@ -133,7 +133,10 @@ AttestationProjection
     attestationId             GYAssetClass
     subjectProfileId        GYAssetClass
     issuerProfileId        GYAssetClass
+    attestationKind           AttestationType
     attestationDate           GYTime
+    claimedPeriodFrom         (Maybe GYTime)
+    claimedPeriodTo           (Maybe GYTime)
     isAccepted                Bool
     attestationName           Text
     attestationDescription    Text
@@ -182,10 +185,18 @@ runMigrations :: (MonadIO m) => SqlPersistT m ()
 runMigrations = runMigration migrateAll
 
 -- | Bump when the chain-sync DB schema changes incompatibly; startup wipes + re-syncs on a mismatch.
--- v1: first schema of this registry (profile + attestation projections). Nothing is deployed yet, so
--- the inherited v4 history does not carry over.
+--
+--   * v1: first schema of this registry (profile + attestation projections). Nothing was deployed, so
+--     the inherited v4 history does not carry over.
+--   * v2: @AttestationProjection@ gained @attestation_kind@, @claimed_period_from@ and
+--     @claimed_period_to@. A re-sync is the point: the three columns are read off the datum, so rows
+--     written before them cannot be backfilled from the database — only from the chain.
+--
+-- @UnitTests.AttestSchema@ asserts this constant against the entity set, because a column added
+-- without a bump is a deployed service migrating a new column onto rows that will never hold a value
+-- for it, and nothing else in the test suite notices.
 currentSchemaVersion :: Int
-currentSchemaVersion = 1
+currentSchemaVersion = 2
 
 -- | Upsert a record by its unique key: insert if absent, replace if present.
 upsertByUnique ::
@@ -320,21 +331,35 @@ putProfileProjection createdSlot createdHash p = do
 -- | Store an attestation projection, upserting by attestation ID.
 putAttestationProjection :: (MonadIO m) => Integer -> Text -> Text -> Int -> Attestation -> SqlPersistT m ()
 putAttestationProjection createdSlot createdHash createdTxId createdOutIdx a = do
+  -- Named fields, not positional. This was a 13-argument positional application and the claimed
+  -- period took it to 16 — but the count is not the hazard: attestationId, subjectProfileId and
+  -- issuerProfileId are all GYAssetClass, so a transposition among them COMPILES and writes a
+  -- record attributing an attestation to the wrong profile. Names are what make that a type error
+  -- again, and this is the one site that writes the row.
   let ev =
         AttestationProjection
-          createdSlot
-          createdHash
-          createdTxId
-          createdOutIdx
-          (attestationId a)
-          (attestationSubjectProfileId a)
-          (attestationIssuerProfileId a)
-          (attestationAttestationDate a)
-          (attestationAccepted a)
-          (attestationName a)
-          (attestationDescription a)
-          (attestationImageURI a)
-          (Just $ AttestationOtherMetadataJson $ attestationOtherMetadata a)
+          { attestationProjectionCreatedAtSlot = createdSlot,
+            attestationProjectionCreatedAtHash = createdHash,
+            attestationProjectionCreatedTxId = createdTxId,
+            attestationProjectionCreatedOutputIndex = createdOutIdx,
+            attestationProjectionAttestationId = attestationId a,
+            attestationProjectionSubjectProfileId = attestationSubjectProfileId a,
+            attestationProjectionIssuerProfileId = attestationIssuerProfileId a,
+            attestationProjectionAttestationKind = attestationKind a,
+            attestationProjectionAttestationDate = attestationAttestationDate a,
+            -- Two typed columns rather than one JSON blob, because the obvious read on a claimed
+            -- period is a range ("who held this role in 2024?") and that is a plain WHERE on
+            -- timestamps instead of a cast out of JSON. The "both or neither" invariant the domain
+            -- type carries is held here by this being the only writer: `fst`/`snd` of one `Maybe`
+            -- cannot disagree.
+            attestationProjectionClaimedPeriodFrom = fst <$> attestationClaimedPeriod a,
+            attestationProjectionClaimedPeriodTo = snd <$> attestationClaimedPeriod a,
+            attestationProjectionIsAccepted = attestationAccepted a,
+            attestationProjectionAttestationName = attestationName a,
+            attestationProjectionAttestationDescription = attestationDescription a,
+            attestationProjectionAttestationImageURI = attestationImageURI a,
+            attestationProjectionOtherMetadata = Just $ AttestationOtherMetadataJson $ attestationOtherMetadata a
+          }
   upsertByUnique (UniqueAttestationProjection . attestationProjectionAttestationId) ev
 
 -- | The single source of chain-replay order: sort raw matches by true chain order

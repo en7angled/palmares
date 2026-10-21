@@ -19,7 +19,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Palmares.DomainTypes.Core.Actions (AdminActionType (..), ProfileActionType (..), ProfileData (..), ProtocolActionType (..))
 import Data.List (intercalate)
-import Palmares.DomainTypes.Core.Types (ProfileType (..), parseProfileType, profileTypeText)
+import Palmares.DomainTypes.Core.Types (AttestationType (..), ProfileType (..), attestationTypeText, parseAttestationType, parseProfileType, profileTypeText)
 import GeniusYield.GYConfig
 import GeniusYield.Imports
 import GeniusYield.Types
@@ -92,8 +92,10 @@ data UpdateProfileArgs = UpdateProfileArgs
 data IssueAttestationArgs = IssueAttestationArgs
   { iaaSubjectProfileId :: GYAssetClass,
     iaaIssuerProfileId :: GYAssetClass,
+    iaaKind :: AttestationType,
     iaaProfileData :: ProfileData,
     iaaAttestationDate :: GYTime,
+    iaaClaimedPeriod :: Maybe (GYTime, GYTime),
     iaaOutputId :: Bool
   }
   deriving (Show)
@@ -149,6 +151,48 @@ profileTypeParser =
     )
   where
     allKinds = [minBound .. maxBound] :: [ProfileType]
+
+-- | @--kind@ for an attestation: what it asserts about its subject.
+--
+-- Required, with no default. An attestation whose kind the issuer did not state is not a weaker
+-- record, it is an unreadable one — the read layer groups by this and a reader has nothing else to go
+-- on. The help text is derived from the constructors, so a sixth kind appears here by itself.
+attestationTypeParser :: Parser AttestationType
+attestationTypeParser =
+  option
+    (maybeReader (parseAttestationType . T.pack))
+    ( long "kind"
+        <> short 'k'
+        <> metavar "KIND"
+        <> help ("What the attestation asserts: " <> intercalate " | " (map (T.unpack . attestationTypeText) allKinds))
+    )
+  where
+    allKinds = [minBound .. maxBound] :: [AttestationType]
+
+-- | @--claimed-period FROM..TO@, POSIX milliseconds, the same unit as @--posix@.
+--
+-- __ONE option and not two__, so the datum's "both bounds or neither" cannot be broken at the command
+-- line. Two optional flags would let @--claimed-from@ through alone, and nothing downstream would
+-- catch it: the conversion to the action is a pure function that cannot fail, and the validator
+-- deliberately does not check this field at all.
+claimedPeriodParser :: Parser (Maybe (GYTime, GYTime))
+claimedPeriodParser =
+  optional $
+    option
+      (maybeReader readPeriod)
+      ( long "claimed-period"
+          <> metavar "FROM..TO"
+          <> help
+            "Optional period the attestation CLAIMS — two POSIX millisecond timestamps separated by \
+            \'..', e.g. 1709251200000..1767225600000. SELF-REPORTED: the chain cannot establish when \
+            \an affiliation or a mandate began, so it is never published as verified and only its \
+            \ordering is checked."
+      )
+  where
+    readPeriod s = case break (== '.') s of
+      (from, '.' : '.' : to) -> (,) <$> readTime from <*> readTime to
+      _ -> Nothing
+    readTime = fmap (timeFromPlutus . POSIXTime) . Text.readMaybe
 
 -- POSIX time parser
 posixTimeParser :: Parser GYTime
@@ -396,8 +440,10 @@ commandParser =
                   <$> ( IssueAttestationArgs
                           <$> option (maybeReader parseAssetClass) (long "issued-to-profile-id" <> metavar "SUBJECT_PROFILE_ID" <> help "Profile ID of the subject the attestation is about")
                           <*> option (maybeReader parseAssetClass) (long "issued-by-profile-id" <> metavar "ISSUER_PROFILE_ID" <> help "Profile ID of the issuing profile")
+                          <*> attestationTypeParser
                           <*> profileDataParser
                           <*> posixTimeParser
+                          <*> claimedPeriodParser
                           <*> outputIdParser
                       )
               )
@@ -423,8 +469,16 @@ updateProfileToActionType UpdateProfileArgs {upaProfileId, upaDescription, upaIm
   ProfileAction $ UpdateProfileAction upaProfileId upaDescription upaImageURI
 
 issueAttestationToActionType :: IssueAttestationArgs -> ActionType
-issueAttestationToActionType IssueAttestationArgs {iaaSubjectProfileId, iaaIssuerProfileId, iaaProfileData, iaaAttestationDate} =
-  ProfileAction $ IssueAttestationAction iaaSubjectProfileId iaaIssuerProfileId iaaProfileData [] iaaAttestationDate
+issueAttestationToActionType IssueAttestationArgs {iaaSubjectProfileId, iaaIssuerProfileId, iaaKind, iaaProfileData, iaaAttestationDate, iaaClaimedPeriod} =
+  ProfileAction $
+    IssueAttestationAction
+      iaaSubjectProfileId
+      iaaIssuerProfileId
+      iaaKind
+      iaaProfileData
+      []
+      iaaAttestationDate
+      iaaClaimedPeriod
 
 acceptAttestationToActionType :: AcceptAttestationArgs -> ActionType
 acceptAttestationToActionType AcceptAttestationArgs {acaAttestationId} =

@@ -512,6 +512,10 @@ test-suite test
     , extra
     , file-embed
     , http-types
+    -- lens + swagger2: UnitTests.Conversions reads the ToSchema instances' enum values back out
+    -- and compares them to the ToJSON tags. Both are already in the closure (offchain-lib and
+    -- webapi-lib use them); this only puts them in scope for the test suite.
+    , lens
     , monad-logger
     , mtl
     , deriving-aeson
@@ -520,6 +524,7 @@ test-suite test
     , persistent-sqlite
     , servant-server
     , stm
+    , swagger2
     , tasty
     , tasty-hunit
     , time

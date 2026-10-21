@@ -87,9 +87,17 @@ interactionToTxSkeleton Interaction {..} = do
               (textToBuiltinByteString <$> mbDesc)
               (textToBuiltinByteString imgURI)
               usedAddrs
-        IssueAttestationAction subjectId issuerId profileData otherMeta attestationDate -> do
+        IssueAttestationAction subjectId issuerId kind profileData otherMeta attestationDate claimedPeriod -> do
           let otherMetadataPlutus = map (Data.Bifunctor.bimap textToBuiltinByteString textToBuiltinByteString) otherMeta
-          issueAttestationTX subjectId issuerId (profileDataToMetadataFields profileData) otherMetadataPlutus (timeToPlutus attestationDate) usedAddrs
+          issueAttestationTX
+            subjectId
+            issuerId
+            (attestationTypeToOnchainAttestationKind kind)
+            (profileDataToMetadataFields profileData)
+            otherMetadataPlutus
+            (timeToPlutus attestationDate)
+            (fmap (Data.Bifunctor.bimap timeToPlutus timeToPlutus) claimedPeriod)
+            usedAddrs
         AcceptAttestationAction attestationId -> do
           skeleton <- acceptAttestationTX attestationId usedAddrs
           return (skeleton, attestationId)

@@ -127,7 +127,13 @@ data AttestationResponse = AttestationResponse
   { attestationId :: Core.AttestationAC,
     attestationSubjectProfileId :: Core.ProfileRefAC,
     attestationIssuerProfileId :: Core.ProfileRefAC,
+    attestationKind :: Core.AttestationType,
+    -- | When the attestation was ISSUED — chain-attested, bounded by the minting transaction's
+    -- validity interval.
     attestationAttestationDate :: GYTime,
+    -- | The period the attestation CLAIMS — self-reported, never chain-verified. Do not render it
+    -- like @attestation_date@ and do not sort or filter a record as though the chain had checked it.
+    attestationClaimedPeriod :: Maybe (GYTime, GYTime),
     attestationAccepted :: Bool,
     attestationName :: Text,
     attestationDescription :: Text,
@@ -150,7 +156,9 @@ attestationToResponse a =
     { attestationId = Core.attestationId a,
       attestationSubjectProfileId = Core.attestationSubjectProfileId a,
       attestationIssuerProfileId = Core.attestationIssuerProfileId a,
+      attestationKind = Core.attestationKind a,
       attestationAttestationDate = Core.attestationAttestationDate a,
+      attestationClaimedPeriod = Core.attestationClaimedPeriod a,
       attestationAccepted = Core.attestationAccepted a,
       attestationName = Core.attestationName a,
       attestationDescription = Core.attestationDescription a,
@@ -167,7 +175,10 @@ attestationToResponse a =
 -- any profile kind can issue or be the subject of an attestation.
 data AttestationInformationResponse = AttestationInformationResponse
   { attestationInfoId :: Core.AttestationAC,
+    attestationInfoKind :: Core.AttestationType,
     attestationInfoAttestationDate :: GYTime,
+    -- | Self-reported; see 'attestationClaimedPeriod'.
+    attestationInfoClaimedPeriod :: Maybe (GYTime, GYTime),
     attestationInfoAccepted :: Bool,
     attestationInfoName :: Text,
     attestationInfoDescription :: Text,
@@ -194,7 +205,9 @@ attestationInformationToResponse ::
 attestationInformationToResponse subject issuer a =
   AttestationInformationResponse
     { attestationInfoId = Core.attestationId a,
+      attestationInfoKind = Core.attestationKind a,
       attestationInfoAttestationDate = Core.attestationAttestationDate a,
+      attestationInfoClaimedPeriod = Core.attestationClaimedPeriod a,
       attestationInfoAccepted = Core.attestationAccepted a,
       attestationInfoName = Core.attestationName a,
       attestationInfoDescription = Core.attestationDescription a,

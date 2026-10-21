@@ -28,6 +28,14 @@ data TxBuildingException
     -- that window would otherwise fail as a script error, which reads to a client like a bug in the
     -- protocol rather than a bad request. So it is refused here, as a 400, before anything is built.
     AttestationDateOutOfRange
+  | -- | The claimed period ends before it begins.
+    --
+    -- The ONLY check the claimed period gets, and it is off-chain only. The minting policy carries
+    -- the period through unvalidated on purpose — nothing on chain can establish when an affiliation
+    -- began, and a @from <= to@ check would be ExUnits on every issue for a nonsense the subject
+    -- would have to counter-sign about itself. But a client that transposed two dates deserves to be
+    -- told so, which an unchecked field cannot do.
+    AttestationPeriodInverted
   | -- \* Oracle Errors
     OracleNotFound
   | OracleDatumInvalid
@@ -51,8 +59,12 @@ instance Exception TxBuildingException where
   displayException AttestationAlreadyAccepted = "Attestation is already accepted"
   displayException AttestationDateOutOfRange =
     "The attestation date must be within the transaction validity window (roughly the next 7 hours of \
-    \chain time). An attestation's date is when it is issued; an earlier event date is self-reported \
-    \and belongs in other_metadata."
+    \chain time). An attestation's date is when it is ISSUED. To record something that happened \
+    \earlier, send claimed_period instead: it is published as self-reported and is never presented as \
+    \chain-verified."
+  displayException AttestationPeriodInverted =
+    "claimed_period ends before it begins. Send [from, to] with from <= to, or omit the field \
+    \entirely — a period must have both bounds or neither."
   displayException AttestationOtherMetadataReservedKeys =
     "other_metadata must not use reserved keys: name, description, image (CIP-68 standard fields)"
   displayException OracleNotFound = "Oracle UTxO not found"
@@ -80,6 +92,7 @@ txBuildingExceptionToHttpStatus ProfileNotFound = 404
 txBuildingExceptionToHttpStatus AttestationNotFound = 404
 txBuildingExceptionToHttpStatus AttestationAlreadyAccepted = 400
 txBuildingExceptionToHttpStatus AttestationDateOutOfRange = 400
+txBuildingExceptionToHttpStatus AttestationPeriodInverted = 400
 txBuildingExceptionToHttpStatus AttestationOtherMetadataReservedKeys = 400
 txBuildingExceptionToHttpStatus OracleNotFound = 404
 txBuildingExceptionToHttpStatus DeployedScriptsNotReady = 503

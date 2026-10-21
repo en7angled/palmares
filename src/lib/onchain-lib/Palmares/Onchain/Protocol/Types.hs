@@ -216,11 +216,71 @@ makeIsDataSchemaIndexed ''OnchainProfile [('OnchainProfile, 0)]
 
 -------------------------------------------------------------------------------
 
+-- | What an attestation asserts about its subject.
+--
+-- The five the spec names (§3): a budget administrator attesting a vendor's delivery, an auditor
+-- attesting that it reviewed one, an organisation ↔ member affiliation, an extra-chain mandate such
+-- as a working-group lead or a committee chair, and a plain endorsement.
+--
+-- __A constructor and not a metadata key__, for the same reason 'OnchainProfileKind' is: the read
+-- layer filters and groups by it, CIP-68 metadata is a @Map BuiltinByteString BuiltinByteString@ the
+-- projection would have to parse, and an update redeemer could silently change a metadata key. One
+-- byte in the datum that cannot drift.
+--
+-- __No validator branches on it__, and that is deliberate. The kind decides what a reader is being
+-- told, not what the protocol permits: every kind is minted, accepted and disputed identically. A
+-- per-kind rule would be a per-transaction ExUnits cost buying a distinction the counter-signature
+-- already makes.
+--
+-- The enum is closed; a sixth kind is a redeploy. Indices are append-only from the first deployment.
+data AttestationKind
+  = MilestoneDelivered
+  | AuditPassed
+  | Affiliation
+  | RoleHeld
+  | Endorsement
+  deriving stock (Generic, Prelude.Show, Prelude.Eq)
+  deriving anyclass (HasBlueprintDefinition)
+
+makeIsDataSchemaIndexed
+  ''AttestationKind
+  [ ('MilestoneDelivered, 0),
+    ('AuditPassed, 1),
+    ('Affiliation, 2),
+    ('RoleHeld, 3),
+    ('Endorsement, 4)
+  ]
+
 data OnchainAttestation = OnchainAttestation
   { attestationId :: AttestationId,
     attestationIssuer :: ProfileId,
     attestationSubject :: ProfileId,
+    attestationKind :: AttestationKind,
+    -- | When the attestation was __issued__, and the only date on this record the chain says anything
+    -- about: 'Palmares.Onchain.Utils.checkDateInRange' requires it to be contained in the
+    -- transaction's validity interval, which off-chain builds from the chain tip. Inherited fix #4.
     attestationDate :: POSIXTime,
+    -- | The period the attestation __claims__, and it is __self-reported__.
+    --
+    -- The spec requires it: @Affiliation@ and @RoleHeld@ are defined /with intervals/, and an
+    -- affiliation that began before the attestation was issued is the normal case — "a member since
+    -- March 2024, attested today" — not an edge case. So the strict reading, where an attestation can
+    -- only ever date itself, was never available.
+    --
+    -- __It is deliberately NOT validated against the validity interval, and must never be.__
+    -- Validating it would be a lie: nothing on chain can confirm when a membership began. That is
+    -- also why the validator gains no rule for it — there is nothing to check. What stops a nonsense
+    -- period is the same thing that stops a nonsense attestation: the subject has to counter-sign it.
+    -- An inverted period is refused off-chain as a bad request, which is where a client can be told
+    -- why.
+    --
+    -- A @Maybe@ of a PAIR rather than two optional bounds, so "both or neither" is structural. A
+    -- half-open period would be a third state the read layer would have to render, and an open-ended
+    -- affiliation is expressed by the period's end being the far future, not by its absence.
+    --
+    -- The read layer must present this as claimed, never as verified — @claimed_period@ beside
+    -- @issued_at@ — and must not sort or filter the record as though the chain had checked it.
+    attestationPeriod :: Maybe (POSIXTime, POSIXTime),
     attestationIsAccepted :: Bool
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)

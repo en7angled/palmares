@@ -1,20 +1,39 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+-- | The emulator harness: deploy the protocol into a CLB ledger, then drive it through the same
+-- 'Interaction' pipeline the HTTP services use.
+--
+-- __Why every runner goes through 'interactionToTxSkeleton'.__ A test that hand-builds a skeleton
+-- proves the validator accepts that skeleton; it proves nothing about the transaction the service
+-- would actually send. The runners below take an 'ActionType' and nothing else, so what they exercise
+-- is the production path. The exceptions are the @malicious*@ builders, which exist precisely to send
+-- a transaction no production path can produce.
+--
+-- __This module was inherited from the Belt System and is now trimmed to this protocol.__ It deployed
+-- five spending validators into a seven-field context; two of those validators (Ranks, Memberships)
+-- do not exist here, and the promotion-acceptance attack they existed to test is gone with them. What
+-- survived is the shape: reference-script deployment, the one-shot oracle NFT, and the interaction
+-- runners.
 module TestRuns
-  ( deployValidators,
+  ( -- * Deployment
+    deployValidators,
+    userPlutusPkh,
+
+    -- * Interaction runners
     profileInteraction,
     protocolInteraction,
     adminInteraction,
+
+    -- * Griefing / dust
     sendDustToValidator,
-    userPlutusPkh,
-    logPractitionerProfileInformation,
-    getProfileAndRank,
-    maliciousAcceptPromotionTX,
-    maliciousBjjAcceptPromotion,
+    lockParsingDatumAt,
+
+    -- * Malicious builders
     maliciousMintOracleNFTWithExtraToken,
     maliciousMintOracleNFTWrongName,
-    maliciousCreateProfileWithBurn,
+    maliciousOracleUpdate,
   )
 where
 
@@ -22,27 +41,26 @@ import Control.Monad (void)
 import Control.Monad.Reader
 import Data.Foldable.Extra
 import Data.Maybe (fromMaybe)
-import Palmares.DomainTypes.Core.Actions
-import Palmares.DomainTypes.Core.Types
 import GHC.Stack
 import GeniusYield.Test.Clb (sendSkeleton')
 import GeniusYield.Test.Utils
 import GeniusYield.TxBuilder hiding (userAddresses)
 import GeniusYield.TxBuilder.User qualified as User
 import GeniusYield.Types
-import Palmares.Onchain.CIP68
-import Palmares.Onchain.Protocol (OnchainProfile (..), OnchainRank (..), getCurrentRankId, promoteProfile)
-import Palmares.Onchain.Protocol qualified as Onchain
-import Palmares.Onchain.Protocol.Types (OracleParams (..))
-import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (..))
-import PlutusLedgerApi.V3 hiding (Committee) -- ours is a profile kind; Plutus's is the CIP-1694 committee datum
+import Palmares.DomainTypes.Core.Actions
+import Palmares.Onchain.Protocol.Types (OracleAdminAction, OracleParams (..))
+import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer (OracleUpdate))
 import Palmares.TxBuilding.Context
 import Palmares.TxBuilding.Interactions
-import Palmares.TxBuilding.Lookups
+import Palmares.TxBuilding.Lookups (queryOracleParams)
+import Palmares.TxBuilding.Operations (adminActionToOracleAdminAction, applyAdminAction)
 import Palmares.TxBuilding.Skeletons
-import Palmares.TxBuilding.Utils (tnFromGYAssetClass, txOutRefToV3Plutus)
+import Palmares.TxBuilding.Utils (txOutRefToV3Plutus)
 import Palmares.TxBuilding.Validators
 import Palmares.Utils
+import PlutusLedgerApi.V3 (PubKeyHash)
+import PlutusLedgerApi.V3 qualified as V3
+import PlutusTx (ToData)
 
 ------------------------------------------------------------------------------------------------
 
@@ -61,13 +79,17 @@ deployReferenceScriptRun validator fromWallet toWallet = asUser fromWallet $ do
 
 ------------------------------------------------------------------------------------------------
 
+-- | Deploy the whole protocol: four spending validators as reference scripts, the one-shot oracle
+-- NFT with its initial params, then the minting policy compiled against that NFT.
+--
+-- The order is forced, not stylistic: the minting policy is parameterised by the oracle 'AssetClass',
+-- so it cannot be compiled — let alone deployed — before the NFT exists.
 deployValidators :: (GYTxGameMonad m, HasCallStack) => User -> m DeployedScriptsContext
 deployValidators w = do
   -- Step 1: Deploy spending validators as reference scripts
   (pVhash, refProfilesValidator) <- deployReferenceScriptRun profilesValidatorGY w w
-  (rVhash, refRanksValidator) <- deployReferenceScriptRun ranksValidatorGY w w
-  (mVhash, refMembershipsValidator) <- deployReferenceScriptRun membershipsValidatorGY w w
   (aVhash, refAttestationsValidator) <- deployReferenceScriptRun attestationsValidatorGY w w
+  (dVhash, refDisputesValidator) <- deployReferenceScriptRun disputesValidatorGY w w
   (ovHash, refOracleValidator) <- deployReferenceScriptRun oracleValidatorGY w w
 
   -- Step 2: Mint oracle NFT and lock initial OracleParams at oracle validator
@@ -77,21 +99,19 @@ deployValidators w = do
   let mpGY = compileMintingPolicy (assetClassToPlutus oracleNFTAC)
   (mphash, refMintingPolicy) <- deployReferenceScriptRun mpGY w w
 
-  -- Log deployed script sizes for reporting
+  -- Log deployed script sizes for reporting. The gate that FAILS on a regression is
+  -- 'UnitTests.ScriptSize'; this line is for reading the numbers off a test run.
   gyLogInfo' ("SCRIPTSIZE" :: GYLogNamespace) $
     cyanColorString $
       "SCRIPT_SIZES:\n"
         <> "  ProfilesValidator: "
         <> show profilesValidatorSize
         <> " bytes\n"
-        <> "  RanksValidator: "
-        <> show ranksValidatorSize
-        <> " bytes\n"
-        <> "  MembershipsValidator: "
-        <> show membershipsValidatorSize
-        <> " bytes\n"
         <> "  AttestationsValidator: "
         <> show attestationsValidatorSize
+        <> " bytes\n"
+        <> "  DisputesValidator: "
+        <> show disputesValidatorSize
         <> " bytes\n"
         <> "  OracleValidator: "
         <> show oracleValidatorSize
@@ -103,9 +123,8 @@ deployValidators w = do
   return
     DeployedScriptsContext
       { profilesValidatorHashAndRef = (pVhash, refProfilesValidator),
-        ranksValidatorHashAndRef = (rVhash, refRanksValidator),
-        membershipsValidatorHashAndRef = (mVhash, refMembershipsValidator),
         attestationsValidatorHashAndRef = (aVhash, refAttestationsValidator),
+        disputesValidatorHashAndRef = (dVhash, refDisputesValidator),
         mintingPolicyHashAndRef = (mphash, refMintingPolicy),
         oracleValidatorHashAndRef = (ovHash, refOracleValidator),
         oracleNFTAssetClass = oracleNFTAC
@@ -115,8 +134,24 @@ deployValidators w = do
 userPlutusPkh :: User -> PubKeyHash
 userPlutusPkh u =
   case addressToPlutus (User.userChangeAddress u) of
-    Address (PubKeyCredential pkh) _ -> pkh
+    V3.Address (V3.PubKeyCredential pkh) _ -> pkh
     _ -> error "userPlutusPkh: expected PubKeyCredential"
+
+-- | The initial oracle params every emulator test starts from.
+--
+-- 'opAdminPkh' must be a wallet that can actually sign, because the oracle validator checks the
+-- signature on chain — a placeholder hash here would make every admin test unfailable for the wrong
+-- reason. The other four are the deployment defaults: unpaused, no fees (the preprod configuration),
+-- 1 ADA minimum for protocol state, 5 ADA to open a dispute.
+initialOracleParamsFor :: User -> OracleParams
+initialOracleParamsFor w =
+  OracleParams
+    { opAdminPkh = userPlutusPkh w,
+      opPaused = False,
+      opFeeConfig = Nothing,
+      opMinUTxOValue = 1_000_000,
+      opDisputeDeposit = 5_000_000
+    }
 
 -- | Mint the oracle NFT in the test environment and lock initial OracleParams at the oracle validator.
 mintTestOracleNFT :: (GYTxGameMonad m, HasCallStack) => User -> m GYAssetClass
@@ -131,18 +166,6 @@ mintTestOracleNFT w = asUser w $ do
   let oracleNFTTN = "" -- empty token name
   let theOracleNFTAC = GYToken oracleNFTMPId oracleNFTTN
 
-  -- Build initial oracle params using the deployer wallet's real PubKeyHash.
-  -- The oracle validator checks admin signature on-chain, so this must match
-  -- a real wallet that can sign transactions.
-  let adminPkh = userPlutusPkh w
-  let initialOracleParams =
-        OracleParams
-          { opAdminPkh = adminPkh,
-            opPaused = False,
-            opFeeConfig = Nothing,
-            opMinUTxOValue = 1000000
-          }
-
   -- Spend seed UTxO
   let spendSeed = mustHaveInput (GYTxIn seedGYRef GYTxInWitnessKey)
 
@@ -152,7 +175,11 @@ mintTestOracleNFT w = asUser w $ do
   let mintNFT = mustMint mp gyRedeemer oracleNFTTN 1
 
   -- Lock oracle NFT + datum at oracle validator address
-  lockOutput <- txMustLockStateWithInlineDatumAndValue oracleValidatorGY initialOracleParams (valueSingleton theOracleNFTAC 1 <> valueFromLovelace 3500000)
+  lockOutput <-
+    txMustLockStateWithInlineDatumAndValue
+      oracleValidatorGY
+      (initialOracleParamsFor w)
+      (valueSingleton theOracleNFTAC 1 <> valueFromLovelace 3_500_000)
 
   void $ sendSkeleton' $ mconcat [spendSeed, mintNFT, lockOutput]
 
@@ -171,9 +198,6 @@ maliciousMintOracleNFTWithExtraToken w = asUser w $ do
   let oracleNFTPolicyGY = compileOracleNFTPolicy seedPlutus
   let oracleNFTMPId = mintingPolicyId oracleNFTPolicyGY
   let theOracleNFTAC = GYToken oracleNFTMPId ""
-  let adminPkh = userPlutusPkh w
-  let initialOracleParams =
-        OracleParams {opAdminPkh = adminPkh, opPaused = False, opFeeConfig = Nothing, opMinUTxOValue = 1000000}
   let spendSeed = mustHaveInput (GYTxIn seedGYRef GYTxInWitnessKey)
   let mp = GYMintScript @'PlutusV3 oracleNFTPolicyGY
   let gyRedeemer = redeemerFromPlutusData ()
@@ -182,8 +206,8 @@ maliciousMintOracleNFTWithExtraToken w = asUser w $ do
   lockOutput <-
     txMustLockStateWithInlineDatumAndValue
       oracleValidatorGY
-      initialOracleParams
-      (valueSingleton theOracleNFTAC 1 <> valueSingleton (GYToken oracleNFTMPId "EXTRA") 1 <> valueFromLovelace 3500000)
+      (initialOracleParamsFor w)
+      (valueSingleton theOracleNFTAC 1 <> valueSingleton (GYToken oracleNFTMPId "EXTRA") 1 <> valueFromLovelace 3_500_000)
   void $ sendSkeleton' $ mconcat [spendSeed, mintNFT, lockOutput]
   return theOracleNFTAC
 
@@ -196,9 +220,6 @@ maliciousMintOracleNFTWrongName w = asUser w $ do
   let oracleNFTPolicyGY = compileOracleNFTPolicy seedPlutus
   let oracleNFTMPId = mintingPolicyId oracleNFTPolicyGY
   let wrongAC = GYToken oracleNFTMPId "ORACLE"
-  let adminPkh = userPlutusPkh w
-  let initialOracleParams =
-        OracleParams {opAdminPkh = adminPkh, opPaused = False, opFeeConfig = Nothing, opMinUTxOValue = 1000000}
   let spendSeed = mustHaveInput (GYTxIn seedGYRef GYTxInWitnessKey)
   let mp = GYMintScript @'PlutusV3 oracleNFTPolicyGY
   let gyRedeemer = redeemerFromPlutusData ()
@@ -207,50 +228,51 @@ maliciousMintOracleNFTWrongName w = asUser w $ do
   lockOutput <-
     txMustLockStateWithInlineDatumAndValue
       oracleValidatorGY
-      initialOracleParams
-      (valueSingleton wrongAC 1 <> valueFromLovelace 3500000)
+      (initialOracleParamsFor w)
+      (valueSingleton wrongAC 1 <> valueFromLovelace 3_500_000)
   void $ sendSkeleton' $ mconcat [spendSeed, mintNFT, lockOutput]
   return wrongAC
 
--- | MALICIOUS: build a normal CreateProfile (InitProfileAction) skeleton for a NEW profile, then
--- append an extra burn (-1) of a protocol token the acting wallet already holds (a previously
--- minted User NFT) under the SAME minting-policy witness. Since 'GYTxSkeleton's Semigroup merges
--- mints for the same policy witness via 'Map.unionWith (+)' (keeping the LEFT skeleton's redeemer),
--- putting the real skeleton on the left means the merged tx runs under the genuine CreateProfile
--- redeemer while 'txInfoMint' also carries the burn. This tests the F-21 hardening:
--- 'mintValueBurned txInfoMint == mempty' in 'handleCreateProfile' (MintingPolicy.hs M5/M6) must
--- reject it.
-maliciousCreateProfileWithBurn ::
+-- | MALICIOUS: an oracle update signed by the ACTOR instead of by the admin.
+--
+-- This builder exists because 'updateOracleTX' cannot produce the transaction that reaches the
+-- validator's @O1@. It reads the current admin out of the oracle datum and adds
+-- @mustBeSignedBy adminPkh@, so a non-admin running it builds a transaction it cannot sign — and the
+-- submission fails at the required-signer layer, before any script runs. That failure says nothing
+-- about whether the oracle validator checks the admin at all.
+--
+-- Everything here is byte-identical to 'updateOracleTX' except the signatory, so what rejects it is
+-- @O1@ and nothing else.
+maliciousOracleUpdate ::
   (GYTxGameMonad m, HasCallStack) =>
   DeployedScriptsContext ->
-  -- | The attacker/actor (must hold the victim User NFT being burned).
+  -- | The actor, who signs; the attack is that this is not the admin.
   User ->
-  -- | Victim User NFT asset class held by the actor (burned alongside the new mint).
-  GYAssetClass ->
-  -- | The CreateProfile-style action for the NEW profile being (fraudulently) created.
-  ProfileActionType ->
+  AdminActionType ->
   m GYTxId
-maliciousCreateProfileWithBurn txBuildingContext actor victimUserAC actionType = asUser actor $ do
-  let interaction =
-        Interaction
-          { action = ProfileAction actionType,
-            userAddresses = UserAddresses (toList $ User.userAddresses actor) (User.userChangeAddress actor) Nothing,
-            recipient = Nothing
-          }
-  (realSkeleton, _mGyAC) <- runReaderT (interactionToTxSkeleton interaction) txBuildingContext
-
-  let mpGY = getMintingPolicyFromCtx txBuildingContext
-  let mpRef = getMintingPolicyRef txBuildingContext
-  let mp = GYMintReference @'PlutusV3 mpRef mpGY
-  victimUserTN <- tnFromGYAssetClass victimUserAC
-  -- Placeholder redeemer: discarded by the Semigroup merge (left/real skeleton's redeemer wins).
-  let placeholderRedeemer = redeemerFromPlutusData ()
-  let burnSkeleton = mustMint mp placeholderRedeemer victimUserTN (-1)
-
-  gyLogInfo' ("MALICIOUS" :: GYLogNamespace) "Attempting CreateProfile with a burn riding along (F-21)..."
-  (gyTxBody, gyTxId) <- sendSkeleton' $ realSkeleton <> burnSkeleton
+maliciousOracleUpdate ctx actor adminAction = asUser actor $ do
+  skeleton <- runReaderT (maliciousOracleUpdateTX (User.userPkh actor) adminAction) ctx
+  gyLogInfo' ("MALICIOUS" :: GYLogNamespace) "Attempting an oracle update signed by a non-admin (O1)..."
+  (gyTxBody, gyTxId) <- sendSkeleton' skeleton
   logTxBudget gyTxBody
   return gyTxId
+
+maliciousOracleUpdateTX ::
+  (HasCallStack, GYTxQueryMonad m, MonadReader DeployedScriptsContext m) =>
+  GYPubKeyHash ->
+  AdminActionType ->
+  m (GYTxSkeleton 'PlutusV3)
+maliciousOracleUpdateTX attackerPkh adminAction = do
+  ovRef <- asks getOracleValidatorRef
+  (currentParams, oracleRef, oracleValue) <- queryOracleParams
+  let actionPlutus = adminActionToOracleAdminAction adminAction :: OracleAdminAction
+  let gyRedeemer = redeemerFromPlutusData (OracleUpdate 0 actionPlutus)
+  let newParams = applyAdminAction adminAction currentParams
+  let currentDatum = datumFromPlutusData currentParams
+  let spendOracle = txMustSpendFromRefScriptWithKnownDatum ovRef oracleRef currentDatum gyRedeemer oracleValidatorGY
+  lockOracle <- txMustLockStateWithInlineDatumAndValue oracleValidatorGY newParams oracleValue
+  -- MALICIOUS: the attacker signs, the admin does not.
+  return $ mconcat [spendOracle, lockOracle, mustBeSignedBy attackerPkh]
 
 profileInteraction :: (GYTxGameMonad m, HasCallStack) => DeployedScriptsContext -> User -> ProfileActionType -> Maybe GYAddress -> m (GYTxId, GYAssetClass)
 profileInteraction txBuildingContext user actionType mrecipient = asUser user $ do
@@ -339,7 +361,6 @@ logTxBudget txBody = do
 ------------------------------------------------------------------------------------------------
 
 -- | Send a dust UTxO (ADA only, no datum) to a validator address to simulate griefing.
--- Returns the 'GYTxOutRef' of the created dust UTxO.
 sendDustToValidator :: (GYTxGameMonad m, HasCallStack) => User -> GYScript 'PlutusV3 -> m ()
 sendDustToValidator user validator = asUser user $ do
   validatorAddr <- scriptAddress validator
@@ -356,124 +377,17 @@ sendDustToValidator user validator = asUser user $ do
     yellowColorString $
       "Sent dust UTxO (2 ADA, no datum) to validator: " <> show (scriptHash validator)
 
-------------------------------------------------------------------------------------------------
-
--- * QueryRuns
-
-------------------------------------------------------------------------------------------------
-
-logPractitionerProfileInformation :: (GYTxGameMonad m, HasCallStack) => User -> ProfileRefAC -> m ()
-logPractitionerProfileInformation user profileRefAC = asUser user $ do
-  profileInformation <- getPractitionerInformation profileRefAC
-  gyLogInfo' ("TESTLOG" :: GYLogNamespace) $ greenColorString $ "PRACTITIONER PROFILE INFORMATION: \n" <> show profileInformation
-  return ()
-
-getProfileAndRank :: (GYTxGameMonad m, HasCallStack) => GYAssetClass -> m ((CIP68Datum OnchainProfile, Value), (OnchainRank, Value))
-getProfileAndRank profileRefAC = do
-  (profile, profileValue) <- getProfileStateDatumAndValue profileRefAC
-  rankRefAC <- assetClassFromPlutus' $ getCurrentRankId $ extra profile
-  (rank, rankValue) <- getRankStateDatumAndValue rankRefAC
-  return ((profile, profileValue), (rank, rankValue))
-
-------------------------------------------------------------------------------------------------
-
--- * Malicious Transaction Builders (for vulnerability testing)
-
-------------------------------------------------------------------------------------------------
-
--- | Malicious AcceptPromotion transaction that does NOT spend the student's User NFT
+-- | Lock a UTxO at a validator address carrying a datum that PARSES as that validator's state, but
+-- no protocol token.
 --
--- This tests the security of the AcceptPromotion flow:
--- - ProfilesValidator does NOT check User NFT (by design - avoids redundant check)
--- - RanksValidator DOES check User NFT consent (via deriveUserFromRefAC)
---
--- This malicious transaction will:
--- - PASS ProfilesValidator (no User NFT check - relies on RanksValidator)
--- - FAIL RanksValidator (correctly checks User AC is not spent)
---
--- The architecture intentionally delegates User NFT consent checking to RanksValidator
--- because AcceptPromotion MUST spend the Promotion UTxO, which triggers RanksValidator.
-maliciousAcceptPromotionTX ::
-  (HasCallStack, GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
-  -- | The promotion ID to accept
-  GYAssetClass ->
-  m (GYTxSkeleton 'PlutusV3, GYAssetClass)
-maliciousAcceptPromotionTX gyPromotionId = do
-  rvRef <- asks getRanksValidatorRef
-  pvRef <- asks getProfilesValidatorRef
-
-  (plutusPromotionRankDatum, plutusPromotionRankValue) <- getRankStateDatumAndValue gyPromotionId
-
-  let studentProfileRefAC = promotionSubject plutusPromotionRankDatum
-  gyStudentProfileRefAC <- assetClassFromPlutus' studentProfileRefAC
-
-  -- MALICIOUS: We intentionally DO NOT spend the student's User NFT
-  -- This is what an attacker would do - they don't have the User NFT!
-  --
-  -- Normal code would do:
-  --   gyStudentProfileUserAC <- gyDeriveUserFromRefAC gyStudentProfileRefAC
-  --   spendsStudentProfileUserNFT <- txMustSpendFromAddress gyStudentProfileUserAC ownAddrs
-
-  -- Output index tracking (order must match skeleton mconcat order)
-  -- Output 0: Updated profile state locked at profilesValidator
-  -- Output 1: Updated rank state locked at ranksValidator
-  let profileOutputIdx = 0 :: Integer
-  let rankOutputIdx = 1 :: Integer
-
-  let gySpendProfileRedeemer = redeemerFromPlutusData $ AcceptPromotion (assetClassToPlutus gyPromotionId) profileOutputIdx
-  spendsStudentProfileRefNFT <- txMustSpendStateFromRefScriptWithRedeemer pvRef gyStudentProfileRefAC gySpendProfileRedeemer profilesValidatorGY
-
-  (plutusProfileDatum, plutusProfileValue) <- getProfileStateDatumAndValue gyStudentProfileRefAC
-  let plutusStudentProfile = extra plutusProfileDatum
-  let studentCurrentRankId = Onchain.getCurrentRankId plutusStudentProfile
-  gyStudentCurrentRankAC <- assetClassFromPlutus' studentCurrentRankId
-
-  let (plutusStudentUpdatedProfileDatum, plutuStudentUpdatedRankDatum) = promoteProfile plutusProfileDatum plutusPromotionRankDatum
-
-  gyProfileValue <- valueFromPlutus' plutusProfileValue
-  -- Output 0: Updated profile state
-  isLockingUpdatedStudentProfile <- txMustLockStateWithInlineDatumAndValue profilesValidatorGY plutusStudentUpdatedProfileDatum gyProfileValue
-
-  gyRankValue <- valueFromPlutus' plutusPromotionRankValue
-  -- Output 1: Updated rank state
-  isLockingUpdatedRank <- txMustLockStateWithInlineDatumAndValue ranksValidatorGY plutuStudentUpdatedRankDatum gyRankValue
-
-  let gySpendPromotionRedeemer = redeemerFromPlutusData $ PromotionAcceptance profileOutputIdx rankOutputIdx
-  spendsPromotionRank <- txMustSpendStateFromRefScriptWithRedeemer rvRef gyPromotionId gySpendPromotionRedeemer ranksValidatorGY
-
-  -- Reference the student's current rank for acceptance-time validation
-  referencesCurrentRank <- txMustHaveUTxOsAsRefInputs [gyStudentCurrentRankAC]
-
-  gyRankAC <- assetClassFromPlutus' $ Onchain.rankId plutuStudentUpdatedRankDatum
-
-  gyLogInfo' "MALICIOUS TX" "Building malicious AcceptPromotion WITHOUT student's User NFT..."
-  gyLogInfo' "MALICIOUS TX" "This transaction should FAIL at RanksValidator (correct check)"
-  gyLogInfo' "MALICIOUS TX" "If it succeeded, ProfilesValidator's bug would be exploitable!"
-
-  return
-    ( mconcat
-        [ -- NOTICE: No spendsStudentProfileUserNFT here! This is the attack!
-          spendsStudentProfileRefNFT, -- Input (no output index)
-          isLockingUpdatedStudentProfile, -- Output 0: Updated profile state
-          spendsPromotionRank, -- Input (no output index)
-          isLockingUpdatedRank, -- Output 1: Updated rank state
-          referencesCurrentRank -- Reference input (no output index)
-        ],
-      gyRankAC
-    )
-
--- | Execute a malicious interaction that attempts to accept a promotion without consent
-maliciousBjjAcceptPromotion ::
-  (GYTxGameMonad m, HasCallStack) =>
-  DeployedScriptsContext ->
-  -- | The attacker (doesn't own student's User NFT)
-  User ->
-  -- | The promotion to accept
-  GYAssetClass ->
-  m (GYTxId, GYAssetClass)
-maliciousBjjAcceptPromotion txBuildingContext attacker promotionId = asUser attacker $ do
-  (skeleton, gyAC) <- runReaderT (maliciousAcceptPromotionTX promotionId) txBuildingContext
-  gyLogInfo' ("MALICIOUS" :: GYLogNamespace) "Attempting malicious AcceptPromotion..."
-  (gyTxBody, gyTxId) <- sendSkeleton' skeleton
-  logTxBudget gyTxBody
-  return (gyTxId, gyAC)
+-- That combination is what makes it interesting: 'Palmares.TxBuilding.Lookups.getDustUTxOs' selects
+-- on the absence of a protocol-policy token, so the cleanup sweep picks this UTxO up as dust and
+-- builds a @Cleanup@ spend for it — and then the validator must refuse, because its datum parses.
+-- Dust that merely lacks a datum never reaches that branch.
+lockParsingDatumAt :: (GYTxGameMonad m, HasCallStack, ToData a) => User -> GYScript 'PlutusV3 -> a -> m ()
+lockParsingDatumAt user validator datum = asUser user $ do
+  skeleton <- txMustLockStateWithInlineDatumAndValue validator datum (valueFromLovelace 2_000_000)
+  void $ sendSkeleton' skeleton
+  gyLogInfo' ("TESTLOG" :: GYLogNamespace) $
+    yellowColorString $
+      "Locked a PARSING datum (no protocol token) at validator: " <> show (scriptHash validator)

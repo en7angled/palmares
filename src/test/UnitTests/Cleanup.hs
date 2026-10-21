@@ -1,175 +1,122 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
+-- | Permissionless dust cleanup, in a real ledger.
+--
+-- Anyone can lock ADA at a validator address. Without a sweep those UTxOs accumulate forever at
+-- addresses the protocol has to enumerate, so every state validator carries a @Cleanup@ redeemer
+-- that lets anyone spend a UTxO that is __not__ protocol state and keep the ADA.
+--
+-- The whole safety of that rests on one distinction, drawn in two places. Off chain,
+-- 'Palmares.TxBuilding.Lookups.getDustUTxOs' selects only UTxOs carrying no token of the protocol's
+-- policy. On chain, each validator's @Cleanup@ arm refuses any UTxO whose datum parses as its own
+-- state. The inherited suite exercised the first and never the second: all five of its cases were
+-- sweeps that succeeded, so @Cleanup@ could have been @const True@ and they would all have passed.
+-- Test Case 3.5 is the one that fails on that.
 module UnitTests.Cleanup
   ( cleanupTests,
   )
 where
 
-import Palmares.DomainTypes.Core.Actions
-import Palmares.DomainTypes.Core.Types
+import Control.Monad (void)
 import GHC.Stack
 import GeniusYield.Test.Clb
 import GeniusYield.Test.Utils
 import GeniusYield.TxBuilder
 import GeniusYield.Types
-import Test.Fixtures (cleanupTestProfileData)
+import Palmares.DomainTypes.Core.Actions
+import Palmares.TxBuilding.Validators (attestationsValidatorGY, disputesValidatorGY, profilesValidatorGY)
+import Test.Fixtures (parsingDisputeDatum)
+import Test.Helpers (assert)
 import Test.Tasty
-import TestRuns (profileInteraction, deployValidators, logPractitionerProfileInformation, protocolInteraction, sendDustToValidator)
-import Palmares.TxBuilding.Validators (membershipsValidatorGY, profilesValidatorGY, ranksValidatorGY)
+import TestRuns (deployValidators, lockParsingDatumAt, protocolInteraction, sendDustToValidator)
 
 cleanupTests :: (HasCallStack) => TestTree
 cleanupTests =
   testGroup
     "Dust Cleanup Tests"
-    [ mkTestFor "Test Case 3.1: Cleanup dust at ProfilesValidator" cleanupDustAtProfiles,
-      mkTestFor "Test Case 3.2: Cleanup dust at RanksValidator" cleanupDustAtRanks,
-      mkTestFor "Test Case 3.3: Cleanup dust at both validators in a single transaction" cleanupDustAtBothValidators,
-      mkTestFor "Test Case 3.4: Cleanup does not affect legitimate protocol UTxOs" cleanupSafeWithProtocolState,
-      mkTestFor "Test Case 3.5: Cleanup dust at MembershipsValidator" cleanupDustAtMemberships
+    [ mkTestFor "Test Case 3.1: Cleanup dust at ProfilesValidator" (cleanupDustAt profilesValidatorGY),
+      mkTestFor "Test Case 3.2: Cleanup dust at AttestationsValidator" (cleanupDustAt attestationsValidatorGY),
+      mkTestFor "Test Case 3.3: Cleanup dust at DisputesValidator" (cleanupDustAt disputesValidatorGY),
+      mkTestFor "Test Case 3.4: Cleanup dust at all three validators in a single transaction" cleanupDustEverywhere,
+      mkTestFor "Test Case 3.5: Cleanup CANNOT spend a UTxO whose datum parses (D0)" cleanupRefusesParsingDatum,
+      mkTestFor "Test Case 3.6: Cleanup with nothing to sweep fails off-chain (NoDustFound)" cleanupWithNoDustFails
     ]
   where
-    -- Test Case 3.1: Send dust to ProfilesValidator and clean it up
-    cleanupDustAtProfiles :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    cleanupDustAtProfiles TestInfo {..} = do
+    -- One body, three validators. Each sweep is asserted by UTxO count rather than by "the
+    -- transaction did not throw": the inherited version logged a success message whether or not the
+    -- dust was actually gone.
+    cleanupDustAt :: (HasCallStack) => GYScript 'PlutusV3 -> TestInfo -> GYTxMonadClb ()
+    cleanupDustAt validator TestInfo {..} = do
       waitNSlots_ 1000
       ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
-      -- Simulate griefing: send ADA-only UTxO to profiles validator
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Sending dust UTxO to ProfilesValidator..."
-      sendDustToValidator (w2 testWallets) profilesValidatorGY
+      before <- utxoCountAt validator
+      sendDustToValidator (w2 testWallets) validator
       waitNSlots_ 1
+      assert . (== before + 1) =<< utxoCountAt validator
 
-      -- Any user (w3) can clean it up — permissionless
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Cleaning up dust via ProtocolAction CleanupDustAction..."
+      -- w3 sweeps, not w2 who created it and not w1 who deployed: the redeemer is permissionless and
+      -- the recovered ADA goes to whoever calls.
       _txId <- protocolInteraction ctx (w3 testWallets) CleanupDustAction
       waitNSlots_ 1
+      assert . (== before) =<< utxoCountAt validator
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Dust cleanup at ProfilesValidator succeeded!"
-      return ()
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Dust swept, and the address is back to where it started."
 
-    -- Test Case 3.2: Send dust to RanksValidator and clean it up
-    cleanupDustAtRanks :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    cleanupDustAtRanks TestInfo {..} = do
+    cleanupDustEverywhere :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    cleanupDustEverywhere TestInfo {..} = do
       waitNSlots_ 1000
       ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
-      -- Simulate griefing: send ADA-only UTxO to ranks validator
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Sending dust UTxO to RanksValidator..."
-      sendDustToValidator (w2 testWallets) ranksValidatorGY
+      let validators = [profilesValidatorGY, attestationsValidatorGY, disputesValidatorGY]
+      befores <- mapM utxoCountAt validators
+      mapM_ (sendDustToValidator (w2 testWallets)) validators
       waitNSlots_ 1
 
-      -- Any user (w3) can clean it up — permissionless
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Cleaning up dust via ProtocolAction CleanupDustAction..."
+      -- ONE transaction for all three addresses, which is what `cleanupDustTX` builds and the thing
+      -- that could silently sweep only the first.
       _txId <- protocolInteraction ctx (w3 testWallets) CleanupDustAction
       waitNSlots_ 1
+      afters <- mapM utxoCountAt validators
+      assert (afters == befores)
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Dust cleanup at RanksValidator succeeded!"
-      return ()
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "All three addresses swept by a single transaction."
 
-    -- Test Case 3.5: Send dust to MembershipsValidator and clean it up (F-33.6 coverage gap).
-    -- cleanupDustTX already sweeps the memberships address; this pins that it actually works.
-    cleanupDustAtMemberships :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    cleanupDustAtMemberships TestInfo {..} = do
+    -- THE CASE THE INHERITED SUITE DID NOT HAVE. A UTxO with a datum that parses as dispute state,
+    -- and no protocol token — so the off-chain selector offers it to the sweep, and only the
+    -- on-chain guard can refuse it. Delete the `Just _ -> traceError "D0"` arm and this test is the
+    -- one that notices.
+    --
+    -- Written against the Disputes Validator because it is the one that had never executed in an
+    -- emulator at all. Profiles and Attestations carry the identical guard; the stronger case for
+    -- those is a sweep run beside REAL protocol state, which needs the write path (T-ATTEST-6).
+    cleanupRefusesParsingDatum :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    cleanupRefusesParsingDatum TestInfo {..} = do
       waitNSlots_ 1000
       ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Sending dust UTxO to MembershipsValidator..."
-      sendDustToValidator (w2 testWallets) membershipsValidatorGY
+      lockParsingDatumAt (w2 testWallets) disputesValidatorGY parsingDisputeDatum
       waitNSlots_ 1
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Cleaning up dust via ProtocolAction CleanupDustAction..."
-      _txId <- protocolInteraction ctx (w3 testWallets) CleanupDustAction
-      waitNSlots_ 1
+      mustFail $ void $ protocolInteraction ctx (w3 testWallets) CleanupDustAction
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Cleanup refused the parsing datum (D0)."
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Dust cleanup at MembershipsValidator succeeded!"
-      return ()
-
-    -- Test Case 3.3: Send dust to both validators and clean up in a single transaction
-    cleanupDustAtBothValidators :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    cleanupDustAtBothValidators TestInfo {..} = do
-      waitNSlots_ 1000
+    -- The off-chain guard, which is what stops the API from building an empty transaction every time
+    -- someone pokes the cleanup endpoint.
+    cleanupWithNoDustFails :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    cleanupWithNoDustFails TestInfo {..} = do
       ctx <- deployValidators (w1 testWallets)
-      waitNSlots_ 1000
-
-      -- Simulate griefing at both validators
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Sending dust to ProfilesValidator and RanksValidator..."
-      sendDustToValidator (w2 testWallets) profilesValidatorGY
-      sendDustToValidator (w2 testWallets) ranksValidatorGY
       waitNSlots_ 1
+      mustFail $ void $ protocolInteraction ctx (w3 testWallets) CleanupDustAction
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Cleanup with nothing to sweep was refused (NoDustFound)."
 
-      -- Single cleanup transaction sweeps both
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Cleaning up dust at both validators in a single transaction..."
-      _txId <- protocolInteraction ctx (w3 testWallets) CleanupDustAction
-      waitNSlots_ 1
-
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Dust cleanup at both validators succeeded!"
-      return ()
-
-    -- Test Case 3.4: Dust cleanup does not affect legitimate protocol UTxOs
-    -- After creating a profile (which locks UTxOs at ProfilesValidator and RanksValidator),
-    -- send dust to both validators, then clean up. Verify the profile is still intact.
-    cleanupSafeWithProtocolState :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    cleanupSafeWithProtocolState TestInfo {..} = do
-      waitNSlots_ 1000
-      s <- slotOfCurrentBlock
-      t <- slotToBeginTime s
-      let creationDate = timeFromPOSIX $ timeToPOSIX t - 100000
-
-      ctx <- deployValidators (w1 testWallets)
-      waitNSlots_ 1000
-
-      -- Create a legitimate profile (locks UTxOs at PV and RV)
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Creating legitimate profile..."
-      (_txId, profileAC) <-
-        profileInteraction
-          ctx
-          (w1 testWallets)
-          (InitProfileAction cleanupTestProfileData Practitioner creationDate)
-          Nothing
-      waitNSlots_ 1
-
-      -- Verify profile is accessible
-      logPractitionerProfileInformation (w1 testWallets) profileAC
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Profile created and verified."
-
-      -- Simulate griefing at both validators
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Sending dust to both validators alongside legitimate state..."
-      sendDustToValidator (w2 testWallets) profilesValidatorGY
-      sendDustToValidator (w2 testWallets) ranksValidatorGY
-      waitNSlots_ 1
-
-      -- Clean up dust
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Cleaning up dust (should NOT touch legitimate protocol UTxOs)..."
-      _txId <- protocolInteraction ctx (w3 testWallets) CleanupDustAction
-      waitNSlots_ 1
-
-      -- Verify profile is still intact after cleanup
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Verifying profile is still accessible after cleanup..."
-      logPractitionerProfileInformation (w1 testWallets) profileAC
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Profile intact — cleanup correctly skipped legitimate protocol UTxOs!"
-      return ()
-
--- ------------------------------------------------------------------------------------------------
--- Security Test Documentation (not included in automated test suite)
---
--- MALICIOUS AcceptPromotion TEST - MANUALLY VERIFIED
---
--- A test was conducted to verify RanksValidator security. The test:
--- 1. Creates a master and student profile
--- 2. Master promotes student to Blue
--- 3. An attacker (w3) attempts to accept the promotion WITHOUT spending student's User NFT
---
--- RESULT: Transaction FAILS at RanksValidator with error:
---   "Must spend profile User NFT to accept promotion"
---
--- This proves the on-chain security is working correctly:
--- - RanksValidator (via deriveUserFromRefAC) correctly validates User NFT consent
--- - ProfilesValidator intentionally omits this check (avoiding redundancy)
--- - The architecture is secure by design
---
--- The test code is preserved in TestRuns.hs (maliciousBjjAcceptPromotion) for reference.
--- ------------------------------------------------------------------------------------------------
+    utxoCountAt :: (GYTxQueryMonad m) => GYScript 'PlutusV3 -> m Int
+    utxoCountAt validator = do
+      addr <- scriptAddress validator
+      length . utxosToList <$> utxosAtAddresses [addr]

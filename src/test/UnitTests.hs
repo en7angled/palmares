@@ -14,8 +14,12 @@ import UnitTests.GovIds (govIdsTests)
 import UnitTests.GovThresholds (govThresholdsTests)
 import UnitTests.MetricCatalog qualified as MetricCatalog
 import UnitTests.MetricDoc qualified as MetricDoc
+import PropertyTests (propertyTests)
 import UnitTests.MetricFixture qualified as MetricFixture
 import UnitTests.ApplySql qualified as ApplySqlTests
+import UnitTests.Cleanup (cleanupTests)
+import UnitTests.Oracle (oracleTests)
+import UnitTests.ScriptSize qualified as ScriptSize
 import UnitTests.AttestSchema qualified as AttestSchema
 import UnitTests.Claim qualified as Claim
 import UnitTests.Dispute qualified as Dispute
@@ -50,9 +54,15 @@ unitTests =
       Dispute.tests,
       Fees.tests,
       OracleRules.tests,
+      propertyTests,
       reconcileTests,
       Refresh.tests,
+      ScriptSize.tests,
       storageRoundtripTests,
       ThresholdMap.tests,
-      Views.tests
+      Views.tests,
+      -- The emulator groups last: every case in them deploys a protocol into a fresh CLB ledger, so
+      -- they are the slow part of the suite and a failure is easier to read at the bottom.
+      cleanupTests,
+      oracleTests
     ]

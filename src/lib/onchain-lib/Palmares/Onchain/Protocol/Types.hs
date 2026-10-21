@@ -212,7 +212,10 @@ data OnchainProfileKind
   | Community
   | Vendor
   | Auditor
-  deriving stock (Generic, Prelude.Show, Prelude.Eq)
+  -- Enum/Bounded are Haskell-only and generate no Plutus code, so the script hash is unaffected.
+  -- They are here so that a test can enumerate the kinds instead of restating them: a list someone
+  -- has to remember to extend is a list that will not be extended.
+  deriving stock (Generic, Prelude.Show, Prelude.Eq, Prelude.Enum, Prelude.Bounded)
   deriving anyclass (HasBlueprintDefinition)
 
 makeIsDataSchemaIndexed
@@ -277,7 +280,10 @@ data AttestationKind
   | Affiliation
   | RoleHeld
   | Endorsement
-  deriving stock (Generic, Prelude.Show, Prelude.Eq)
+  -- As with 'OnchainProfileKind': Haskell-only, hash-neutral, and what lets the round-trip test
+  -- cover a sixth kind the day it is added. The domain mirror 'DomainTypes.Core.Types.AttestationType'
+  -- already derives both.
+  deriving stock (Generic, Prelude.Show, Prelude.Eq, Prelude.Enum, Prelude.Bounded)
   deriving anyclass (HasBlueprintDefinition)
 
 makeIsDataSchemaIndexed

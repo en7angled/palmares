@@ -15,7 +15,7 @@ import Palmares.Onchain.Protocol.Types
     OracleParams (..),
     applyOracleAdminAction,
   )
-import Palmares.Onchain.Utils (checkDateInRange)
+import Palmares.Onchain.Utils (checkDateInRange, maxDateWindow)
 import PlutusLedgerApi.V1.Interval (from, interval, to)
 import PlutusLedgerApi.V3 (POSIXTime (..), PubKeyHash (..), always)
 import PlutusTx (Data (..), builtinDataToData, toBuiltinData)
@@ -76,7 +76,27 @@ tests =
       testCase "an interval with no upper bound is rejected too" $
         checkDateInRange (t 100) (from (t 90)) @?= False,
       testCase "the always interval is rejected, so an unbounded tx cannot date a record freely" $
-        checkDateInRange (t 100) always @?= False
+        checkDateInRange (t 100) always @?= False,
+      -- ---------------------------------------------------------------------------------------
+      -- FIX #4 WAS STILL OPEN, and an adversarial audit found it. Everything above tests
+      -- containment and finiteness, and the attacker pays nothing for either: they submit an
+      -- interval that is finite at BOTH ends and simply very wide. The ledger accepts it, because
+      -- the current slot lies inside it, and any date they like lies inside it too.
+      --
+      -- The function's own Haddock gave it away — it said "the caller's window is what gives this
+      -- meaning: off-chain builds a ~7h window". The caller is whoever builds the transaction, and
+      -- an attacker is a caller. So the width is now checked on chain, and these are the cases that
+      -- fail on the old code.
+      testCase "a WIDE but finite interval is rejected, which is how back-dating survived fix #4" $
+        checkDateInRange (t 0) (interval (t 0) (maxDateWindow + 1)) @?= False,
+      testCase "a far back-dated record inside a wide finite interval is rejected" $
+        checkDateInRange (t 1) (interval (t 1) (maxDateWindow + 1000)) @?= False,
+      -- The boundary, both sides, so the bound is a decision and not an accident.
+      testCase "an interval exactly maxDateWindow wide is still accepted" $
+        checkDateInRange (t 1) (interval (t 1) (1 + maxDateWindow)) @?= True,
+      -- And the honest builder keeps working: ~7h is well inside the bound.
+      testCase "the off-chain builder's ~7h window is comfortably inside the bound" $
+        checkDateInRange (t 1000) (interval (t 1000) (t 1000 + 25_920_000)) @?= True
     ]
   where
     pkhA = PubKeyHash "\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1"

@@ -218,7 +218,16 @@ updateProfileTX gyProfileRefAC mbNewDesc newImageURI ownAddrs = do
 -- input either.
 --
 -- @utxosAtPaymentCredential@ and not an address lookup, so a script UTxO that carries a staking part
--- is found too — the same breadth @checkCredentialControl@ has on chain.
+-- is found too — the script's own address with any stake credential on it, which is the right
+-- breadth because the PAYMENT half is what spending authenticates.
+--
+-- That last clause used to read "the same breadth @checkCredentialControl@ has on chain", and after
+-- commit @7e6b02a@ it was false in a way worth recording: the on-chain rule deliberately has LESS
+-- breadth now. It used to accept a credential found in the staking half of a spent input too, which
+-- made every script credential claimable by anyone, because the staking half of an address is
+-- attacker-chosen data the ledger never witnesses. The code here was always correct — a
+-- payment-credential lookup is exactly the right mirror — but the stated justification had become a
+-- licence for the hole that was closed.
 claimProofSkeleton ::
   (GYTxQueryMonad m) =>
   Credential ->

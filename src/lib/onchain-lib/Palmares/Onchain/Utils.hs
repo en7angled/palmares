@@ -33,6 +33,7 @@ module Palmares.Onchain.Utils
 
     -- * Time
     checkDateInRange,
+    maxDateWindow,
   )
 where
 
@@ -123,17 +124,38 @@ inputsSpendTxOutRef spendingTxOutRef = any ((== spendingTxOutRef) . txInInfoOutR
 -- anywhere. So the finiteness is required explicitly rather than inferred from whichever comparison
 -- the caller happens to use.
 --
--- The caller's window is what gives this meaning: off-chain builds a ~7h window from the chain tip
--- (@safeEraTime@), so "inside the interval" means "within hours of chain time", which is the honest
--- reading of an attestation\'s date — when it was __issued__. A claim about an earlier event is
--- self-reported and belongs in metadata, labelled as such.
+-- __And the interval must be NARROW, which is the half fix #4 still got wrong.__ This function used
+-- to be @isBounded range && member date range@, and its own Haddock gave the refutation away: it said
+-- "the caller's window is what gives this meaning: off-chain builds a ~7h window from the chain tip".
+-- The caller is whoever builds the transaction, and an attacker is a caller. Finiteness alone costs
+-- them nothing: they submit @Interval (Finite 2015-01-01) (Finite now+2h)@, which is finite at both
+-- ends, is accepted by the ledger because the current slot lies inside it, and contains any date they
+-- like. So back-dating was still completely unbounded — exactly the hole fix #4 was written to close,
+-- surviving the fix because containment was checked and WIDTH was not.
+--
+-- The remedy is to bound the width on chain, so "inside the interval" means "within hours of chain
+-- time" because the validator says so, not because the honest builder happens to be polite.
+--
+-- __Why a constant and not an oracle parameter.__ Every other protocol constant here is oracle-tunable
+-- precisely so a redeploy is not needed to change it, and this one deliberately is not: it is a
+-- statement about what a date in this registry MEANS, not a price. An admin who could widen it could
+-- retroactively make every back-dated record valid, which is the attack the bound exists to stop.
+-- Promoting it later is a one-field change if the window is ever genuinely wrong.
+--
+-- The value is four times the off-chain builder's @safeEraTime@ (25920s, ~7h), so an honest
+-- transaction built with that window has a wide margin, and a date more than about a day from chain
+-- time is refused. A claim about an earlier event is self-reported and belongs in the claimed period
+-- or in metadata, labelled as such — which is what those fields are for.
+{-# INLINEABLE maxDateWindow #-}
+maxDateWindow :: POSIXTime
+maxDateWindow = POSIXTime 103680000 -- 4 * safeEraTime, in milliseconds
+
 {-# INLINEABLE checkDateInRange #-}
 checkDateInRange :: POSIXTime -> V1.POSIXTimeRange -> Bool
-checkDateInRange date range =
-  isBounded range && V1.member date range
-  where
-    isBounded (V1.Interval (V1.LowerBound (V1.Finite _) _) (V1.UpperBound (V1.Finite _) _)) = True
-    isBounded _ = False
+checkDateInRange date range = case range of
+  V1.Interval (V1.LowerBound (V1.Finite lo) _) (V1.UpperBound (V1.Finite hi) _) ->
+    hi - lo <= maxDateWindow && V1.member date range
+  _ -> False
 
 -------------------------------------------------------------------------------
 

@@ -5,7 +5,7 @@ synopsis:
   Cardano governance reputation and track-record registry: an independently derived explorer over
   cardano-db-sync, plus a countersigned on-chain attestation protocol.
 
-homepage:      https://github.com/en7angled/palmares
+homepage:      https://github.com/mariusgeorgescu/palmares
 license:       Apache-2.0
 license-file:  LICENSE
 author:        Marius Georgescu
@@ -40,21 +40,6 @@ extra-source-files:
 -- resources/metrics/*.sql
 -- resources/metric-formulas.json
 
--- Trace messages cost script bytes and ExUnits, so the deployed build strips them — which also
--- strips every documented trace code (O1, D0, Md1, A3, …) out of the only place they could ever be
--- observed. A failing validator then reports "an error has occurred" and nothing else, in the
--- emulator and on preprod alike, so a `mustFail` test cannot tell WHICH check rejected a
--- transaction and an operator cannot tell why one was refused.
---
--- This flag is the way back: `cabal build -f preserve-logging` (or `cabal test -f preserve-logging`)
--- compiles the validators with their traces intact. OFF by default, because the default build must
--- stay the one that gets deployed. Turning it on changes every script's size, so
--- `UnitTests.ScriptSize`'s pinned table is expected to fail under it.
-flag preserve-logging
-  description: Compile the validators with trace messages intact, so trace codes are observable.
-  default:     False
-  manual:      True
-
 common common-options
   ghc-options:      -Wall -Wunused-packages
   default-language: GHC2021
@@ -81,14 +66,28 @@ common plinth-ghc-options
   -- set target plutus-core version
   ghc-options:        -fplugin-opt PlutusTx.Plugin:target-version=1.1.0
 
-  -- Traces: stripped for the deployed build, kept under `-f preserve-logging` for debugging. See the
-  -- flag's own comment at the top of this file for why that choice has consequences beyond size.
-  if flag(preserve-logging)
-    ghc-options: -fplugin-opt PlutusTx.Plugin:preserve-logging
-
-  else
-    ghc-options: -fplugin-opt PlutusTx.Plugin:remove-trace
-
+  -- TRACES ARE KEPT. Every validator documents numbered trace codes — O1, D0, Md1, A3 — and until
+  -- 2026-10-21 none of them existed in any build: this line said `remove-trace`, which strips them
+  -- before anything runs. A refused transaction reported "an error has occurred" and nothing else,
+  -- in the emulator and on preprod alike, so `mustFail` could not tell which check rejected a
+  -- transaction and neither could an operator looking at a failed one.
+  --
+  -- Owner decision, taken once the cost was measured: traces add 1.8%-3.4% to a script (the minting
+  -- policy, the largest, 11482 -> 11871 bytes of a 16384-byte transaction) and cost no ExUnits on
+  -- the success path, because a `traceIfFalse` only emits when its predicate is false. A registry
+  -- you cannot debug in production is one you cannot support, and the byte saving buys nothing at
+  -- 45% occupancy. `Test.Helpers.failedWithTrace` and `UnitTests.ScriptSize`'s pinned table both
+  -- depend on this line; swap it for `remove-trace` and they fail loudly rather than vacuously,
+  -- which is the right way round.
+  --
+  -- Note that `remove-trace` and `preserve-logging` are not opposites. `remove-trace` strips the
+  -- messages outright; `preserve-logging` stops the optimiser from dropping the ones that survive.
+  -- Keeping traces means passing neither `remove-trace` nor anything in its place, which is why this
+  -- line replaces it rather than negating it.
+  --
+  -- This was briefly a cabal `flag` and is deliberately not one any more: a flag whose only purpose
+  -- is to undo a decision already taken is configurability nobody asked for.
+  ghc-options:        -fplugin-opt PlutusTx.Plugin:preserve-logging
   ghc-options:        -fplugin-opt PlutusTx.Plugin:optimize
 
 -- Every `exposed-modules` / `other-modules` list in this file is present but comment-prefixed. The

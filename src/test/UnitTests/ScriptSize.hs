@@ -35,12 +35,12 @@ tests =
     [ -- The whole table in one assertion, so a failure prints every size rather than the first one
       -- that moved. Flat-encoded bytes, which is what goes in the reference-script output.
       testCase "every validator is exactly the size it was when this was last reviewed" $
-        assertEqual "if this fails under -f preserve-logging, that is expected: traces cost bytes" expected measured,
+        assertEqual "if this fails under -f -preserve-logging, that is expected: traces cost bytes" expected measured,
       -- The hard limit. `maxTxSize` is 16384 bytes, and the transaction that deploys a reference
       -- script carries the script PLUS its own inputs, outputs, change and witnesses. 14000 leaves
       -- about 2.4 KB for all of that, which is the margin `deployValidators` actually runs in.
       --
-      -- The MintingPolicy is the one to watch: at 11482 bytes it is 70% of a whole transaction, and
+      -- The MintingPolicy is the one to watch: at 11871 bytes it is 72% of a whole transaction, and
       -- it is the only script that grows when a redeemer case is added. The four spending validators
       -- sit near 7.5 KB each and have room.
       testCase "every validator leaves room for the transaction that deploys it" $
@@ -62,13 +62,17 @@ measured =
     placeholderOracleToken = AssetClass (CurrencySymbol "", TokenName "")
 
 -- | Measured on 2026-10-21, GHC 9.6.6 with the frozen plutus-tx, at the end of Plan B's Phase 2
--- (five validators, disputes included). A toolchain bump moves all five at once and is the one case
+-- (five validators, disputes included) and with traces preserved — which is the default build and
+-- therefore the one that gets deployed. A toolchain bump moves all five at once and is the one case
 -- where updating this table wholesale is the right response.
+--
+-- The same five under @-f -preserve-logging@, for reference: 7707, 7410, 8032, 7293, 11482. Traces
+-- cost between 1.8% and 3.4%, which is what made keeping them an easy decision.
 expected :: [(String, Int)]
 expected =
-  [ ("ProfilesValidator", 7707),
-    ("AttestationsValidator", 7410),
-    ("DisputesValidator", 8032),
-    ("OracleValidator", 7293),
-    ("MintingPolicy", 11482)
+  [ ("ProfilesValidator", 7879),
+    ("AttestationsValidator", 7554),
+    ("DisputesValidator", 8243),
+    ("OracleValidator", 7427),
+    ("MintingPolicy", 11871)
   ]

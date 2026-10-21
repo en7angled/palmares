@@ -29,7 +29,7 @@ import GeniusYield.Types
 import Palmares.DomainTypes.Core.Actions
 import Palmares.TxBuilding.Validators (attestationsValidatorGY, disputesValidatorGY, profilesValidatorGY)
 import Test.Fixtures (parsingDisputeDatum)
-import Test.Helpers (assert)
+import Test.Helpers (assert, failedWithTrace)
 import Test.Tasty
 import TestRuns (deployValidators, lockParsingDatumAt, protocolInteraction, sendDustToValidator)
 
@@ -104,7 +104,10 @@ cleanupTests =
       lockParsingDatumAt (w2 testWallets) disputesValidatorGY parsingDisputeDatum
       waitNSlots_ 1
 
-      mustFail $ void $ protocolInteraction ctx (w3 testWallets) CleanupDustAction
+      -- The code is ASSERTED, not just hoped for: `mustFail` alone would also pass if the sweep
+      -- failed to balance, or picked nothing up, or died off-chain — which would leave the guard
+      -- untested while the test went green.
+      mustFailWith (failedWithTrace "D0") $ void $ protocolInteraction ctx (w3 testWallets) CleanupDustAction
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Cleanup refused the parsing datum (D0)."
 
     -- The off-chain guard, which is what stops the API from building an empty transaction every time

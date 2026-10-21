@@ -16,13 +16,12 @@
 -- reason and would have kept passing with @O1@ deleted. 'TestRuns.maliciousOracleUpdate' is the same
 -- transaction signed by the attacker instead, and it is what the @O1@ cases below use.
 --
--- __What @(O1)@ in a test name does and does not claim.__ It names the check the case is aimed at,
--- not a string anyone asserted. The default build compiles the validators with
--- @PlutusTx.Plugin:remove-trace@, so no trace code reaches any log — the failure reads "an error has
--- occurred" and @mustFail@ cannot distinguish one rejected transaction from another. What these
--- cases do establish is that the transaction reaches the validator and the validator refuses it,
--- which is the part the required-signer failure never showed. To see the code itself, build with
--- @-f preserve-logging@ (see the flag in @palmares.cabal@).
+-- __@(O1)@ in a test name is asserted, not decorative.__ Every negative case below that expects a
+-- validator to do the rejecting uses @mustFailWith (failedWithTrace "O1")@, so it fails if the
+-- transaction is refused by anything else — a balancer error, a missing signatory, a different
+-- guard. That is only possible because the validators are compiled with their traces intact; see the
+-- @preserve-logging@ flag in @palmares.cabal@ for what that costs and why it is on. The two cases
+-- that do __not__ name a code are the ones where no script runs at all, and they say so.
 module UnitTests.Oracle
   ( oracleTests,
   )
@@ -40,7 +39,7 @@ import Palmares.DomainTypes.Core.Actions
 import Palmares.Onchain.Protocol.Types (FeeConfig (..), OracleParams (..))
 import Palmares.TxBuilding.Lookups (queryOracleParams)
 import PlutusTx.Prelude (isNothing)
-import Test.Helpers (assert, queryOracle)
+import Test.Helpers (assert, failedWithTrace, queryOracle)
 import Test.Tasty
 import TestRuns
   ( adminInteraction,
@@ -200,7 +199,7 @@ oracleAdminTests =
     nonAdminSignedUpdateFails TestInfo {..} = do
       ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1
-      mustFail $ void $ maliciousOracleUpdate ctx (w2 testWallets) PauseProtocolAction
+      mustFailWith (failedWithTrace "O1") $ void $ maliciousOracleUpdate ctx (w2 testWallets) PauseProtocolAction
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Attacker-signed oracle update rejected by the validator (O1)."
 
     -- O2 keeps the oracle UTxO where it is with what it holds. Without it an admin could pause the
@@ -268,7 +267,7 @@ oracleRotationTests =
 
       -- The malicious builder, because the production path would ask w2 to sign and w1 cannot. What
       -- must reject this is the validator reading the NEW admin out of the datum.
-      mustFail $ void $ maliciousOracleUpdate ctx (w1 testWallets) UnpauseProtocolAction
+      mustFailWith (failedWithTrace "O1") $ void $ maliciousOracleUpdate ctx (w1 testWallets) UnpauseProtocolAction
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "The rotated-out admin was rejected by the validator (O1)."
 
     -- The attack rotation exists to enable: seizing the oracle. If O1 did not hold, any wallet could
@@ -277,7 +276,7 @@ oracleRotationTests =
     nonAdminCannotSeizeOracle TestInfo {..} = do
       ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1
-      mustFail $
+      mustFailWith (failedWithTrace "O1") $
         void $
           maliciousOracleUpdate ctx (w3 testWallets) (RotateAdminAction (User.userPkh (w3 testWallets)))
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Oracle seizure rejected (O1)."
@@ -286,17 +285,21 @@ oracleNFTTests :: (HasCallStack) => TestTree
 oracleNFTTests =
   testGroup
     "Oracle NFT Policy Tests"
-    [ mkTestFor "Test Case 0.12: Minting the oracle NFT with an extra token fails (F-22a)" oracleExtraTokenMintFails,
-      mkTestFor "Test Case 0.13: Minting the oracle NFT with a non-empty token name fails" oracleWrongNameMintFails
+    [ mkTestFor "Test Case 0.12: Minting the oracle NFT with an extra token fails (N2, F-22a)" oracleExtraTokenMintFails,
+      mkTestFor "Test Case 0.13: Minting the oracle NFT with a non-empty token name fails (N2)" oracleWrongNameMintFails
     ]
   where
+    -- Both are N2, the one-shot policy's exact-mint check: the transaction must mint the oracle NFT
+    -- and nothing else. An extra token and a wrong token name are the two ways to break it, and they
+    -- matter because the oracle NFT is what every other script trusts — a policy that could mint a
+    -- second token under the same symbol would make "the oracle" forgeable.
     oracleExtraTokenMintFails :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     oracleExtraTokenMintFails TestInfo {..} =
-      mustFail $ void $ maliciousMintOracleNFTWithExtraToken (w1 testWallets)
+      mustFailWith (failedWithTrace "N2") $ void $ maliciousMintOracleNFTWithExtraToken (w1 testWallets)
 
     oracleWrongNameMintFails :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     oracleWrongNameMintFails TestInfo {..} =
-      mustFail $ void $ maliciousMintOracleNFTWrongName (w1 testWallets)
+      mustFailWith (failedWithTrace "N2") $ void $ maliciousMintOracleNFTWrongName (w1 testWallets)
 
 -- | A fee configuration paying a given wallet. The two amounts are deliberately different, so a
 -- transposition between 'fcProfileCreationFee' and 'fcAttestationFee' is a failed assertion rather

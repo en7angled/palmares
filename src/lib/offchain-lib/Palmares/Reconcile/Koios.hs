@@ -423,6 +423,13 @@ koiosActionType = \case
 -- not appear in @drep_list@ or @drep_info@ at all. They appear only in the power history, under
 -- their own ids, which is why 'KoiosPowerRow' carries no status.
 --
+-- __'DRepUnknown' has no Koios counterpart either, and that asymmetry is correct rather than a gap
+-- to close here.__ Koios computes the activity deadline itself, so it always has an answer and never
+-- reports "unknown"; we publish @unknown@ precisely where db-sync gave us no deadline. This function
+-- maps what KOIOS said, and widening it to absorb our own uncertainty would be putting words in the
+-- reference's mouth — the one thing a parity check must not do. The resulting difference is a real,
+-- reported divergence, waived with its measurements in @config\/reconcile-exceptions.yaml@ under R2.
+--
 -- Only @registered@ was observed on preprod. The other two lines are Koios's documented values and
 -- are the reason this returns a 'Maybe': an unknown status is a finding, not a default.
 koiosDRepStatus :: Text -> Bool -> Maybe DRepStatus

@@ -527,6 +527,7 @@
             "enum": [
                 "active",
                 "inactive",
+                "unknown",
                 "retired",
                 "reserved"
             ],
@@ -2563,6 +2564,7 @@
                             "enum": [
                                 "active",
                                 "inactive",
+                                "unknown",
                                 "retired",
                                 "reserved"
                             ],
@@ -3149,6 +3151,7 @@
                             "enum": [
                                 "active",
                                 "inactive",
+                                "unknown",
                                 "retired",
                                 "reserved"
                             ],

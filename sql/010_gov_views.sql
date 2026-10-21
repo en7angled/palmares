@@ -258,7 +258,13 @@ SELECT
   -- database with no blocks yet the sync_state subquery is NULL and the comparison would be too;
   -- a boolean flag that can be NULL invites a three-valued bug in the API layer.
   --
-  -- __AN UNKNOWN DEADLINE READS AS INACTIVE, AND THAT IS A KNOWN WRONG CLAIM FOR SOME DREPS.__
+  -- __AN UNKNOWN DEADLINE READS AS is_active = false, AND THE API NO LONGER CALLS THAT `inactive`.__
+  -- Owner decision 2026-10-21: the API publishes a third status, `unknown`, for exactly this case,
+  -- and `Query.Gov.drepStatusExpr` tests `active_until_epoch IS NULL` BEFORE it tests `is_active`.
+  -- This column stays two-valued on purpose: `false` here means "activity not affirmed", which is
+  -- the absence of a claim rather than the opposite claim, and the three-way distinction belongs in
+  -- the status expression that composes it with active_until_epoch. The numbers below are why.
+  --
   -- db-sync records active_until ONLY in drep_distr, and drep_distr holds a row only for a DRep
   -- the ledger included in that epoch's distribution. MEASURED on preprod at epoch 320: 90 of the
   -- 294 registered DReps have NEVER had a drep_distr row — not one, at any epoch — so we have no
@@ -274,10 +280,11 @@ SELECT
   -- that accounting would be a second derivation that can disagree with the ledger, which is the
   -- thing this schema exists not to do.
   --
-  -- So this stays as it is and the gap is a DOCUMENTED divergence in
-  -- config/reconcile-exceptions.yaml, with those numbers in its reason. Publishing a third status
-  -- would be the honest fix and it is an API decision, not a schema one: DRepStatus is a published
-  -- enum and adding a value to it breaks every exhaustive match a client has written.
+  -- So this stays as it is, the gap remains a DOCUMENTED divergence in
+  -- config/reconcile-exceptions.yaml with those numbers in its reason, and the honest fix was taken
+  -- where it belonged — in the API, not here. It cost nothing in this file, which is the evidence
+  -- that the schema was right: the information needed to tell the 90 apart (active_until_epoch IS
+  -- NULL) was already published and already nullable. Only the label above it was a guess.
   COALESCE(ld.active_until >= (SELECT epoch_no FROM palmares.sync_state), false) AS is_active,
   ld.active_until AS active_until_epoch,
   la.voting_anchor_id,

@@ -127,13 +127,13 @@ govDtoTests =
                 "treasury_withdrawal_enacted"
               ],
       testCase "DRepStatus / DRepUpdateKind / GovActionState / Vote / TallyBasis" $
-        ( map toJSON [DRepActive, DRepInactive, DRepRetired, DRepReserved],
+        ( map toJSON [DRepActive, DRepInactive, DRepUnknown, DRepRetired, DRepReserved],
           map toJSON [UpdateKindRegistered, UpdateKindUpdated, UpdateKindRetired],
           map toJSON [Proposed, Ratified, Enacted, Expired, Dropped],
           map toJSON [Yes, No, Abstain],
           toJSON CastVotesOnly
         )
-          @?= ( ["active", "inactive", "retired", "reserved"],
+          @?= ( ["active", "inactive", "unknown", "retired", "reserved"],
                 ["registered", "updated", "retired"],
                 ["proposed", "ratified", "enacted", "expired", "dropped"],
                 ["yes", "no", "abstain"],

@@ -85,6 +85,12 @@ echo "== enums a client switches on"
 check "VoterRole is the wire spelling" \
   '.definitions.VoterRole.enum == ["drep","spo","constitutional_committee"]'
 check "ActivityEventType has all thirteen kinds" '.definitions.ActivityEventType.enum | length == 13'
+# The third registered status, by value and in order. `unknown` is the one a client is most likely
+# to have no branch for, because it did not exist when the enum was first published: it means
+# "registered, and the ledger recorded no activity deadline we can read", which is 90 of preprod's
+# 294 registered DReps. A client that treats it as `inactive` is making the claim we stopped making.
+check "DRepStatus carries the third registered status" \
+  '.definitions.DRepStatus.enum == ["active","inactive","unknown","retired","reserved"]'
 # ONE source in F1, not two. Every arm of palmares.activity publishes 'governance'; 'attestation'
 # arrives with the attestation schema, and this assertion is what will have to be updated when it
 # does — deliberately, rather than the enum growing unnoticed.

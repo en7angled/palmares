@@ -362,7 +362,30 @@ instance ToSchema ChainPoint where
 -- @inactive@ is the one that surprises people: the ledger drops a DRep's voting power after
 -- @drep_activity@ epochs without a vote, so a DRep can be registered, in good standing, and
 -- powerless. @reserved@ is the two ledger options.
-data DRepStatus = DRepActive | DRepInactive | DRepRetired | DRepReserved
+--
+-- __@unknown@ is the third registered state, and it exists because we do not have the deadline for
+-- every DRep.__ db-sync records the ledger's @active_until@ only in @drep_distr@, and @drep_distr@
+-- holds a row only for a DRep the ledger included in that epoch's distribution. Measured on preprod
+-- at epoch 320: __90 of 294 registered DReps have never had a row there__, at any epoch. Koios,
+-- which computes the deadline itself, calls 21 of those 90 active and 69 inactive — so publishing
+-- @inactive@ for all 90 stated something false about 21 real actors, and the obvious "unknown means
+-- active" flip was implemented, measured and REVERTED, because it would be wrong for 69 to fix 21.
+--
+-- It is a __relabel, not new information__: @active_until_epoch@ has always been published and has
+-- always been nullable, so those 90 were already identifiable as @inactive@ with a null deadline.
+-- What changes is that the status field no longer carries a guess. @unknown@ is in the DEFAULT
+-- status set, so the default page shows the same population it always did — 90 rows are renamed,
+-- none appear and none disappear.
+--
+-- Deriving the deadline ourselves was measured and rejected: @max(last cert, last vote) +
+-- drep_activity@ disagrees with the ledger's own value by up to 5 epochs, because CIP-1694 does not
+-- count DORMANT epochs — ones with no proposal pending — toward inactivity. A second derivation that
+-- can contradict the ledger is the thing this schema exists not to be.
+--
+-- @is_active@ beside this field stays a two-valued boolean and is NOT wrong for those 90: it means
+-- "activity affirmed", which is the absence of a claim rather than the opposite claim. The
+-- three-way distinction lives here.
+data DRepStatus = DRepActive | DRepInactive | DRepUnknown | DRepRetired | DRepReserved
   deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
   deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "DRep", CamelToSnake]] DRepStatus
 

@@ -135,6 +135,10 @@ module Query.Gov
 
     -- * The page composites
     drepStatusExpr,
+    -- | Exported for one test: that it interpolates 'drepStatusExpr' instead of repeating it. The
+    -- duplicate it used to hold is the defect that expression exists to prevent, and nothing but a
+    -- test on the statement text can prove the copy is gone.
+    searchSql,
     effectiveDRepStatus,
     registeredDRepStatuses,
     DRepFacets (..),
@@ -1558,9 +1562,9 @@ searchSql =
   \         encode(d.drep_raw, 'hex') AS hex, d.has_script, \
   \         d.given_name AS title, encode(d.drep_raw, 'hex') AS subtitle, \
   \         CASE WHEN d.has_script THEN json_build_array('script') \
-  \              ELSE json_build_array() END AS badges, \
-  \         (CASE WHEN d.registration_status = 'retired' THEN 'retired' \
-  \               WHEN d.is_active THEN 'active' ELSE 'inactive' END) AS status \
+  \              ELSE json_build_array() END AS badges, "
+    <> drepStatusExpr
+    <> " AS status \
   \  FROM palmares.drep d \
   \  WHERE ? AND d.registration_status <> 'never_registered' \
   \    AND (lower(d.given_name) LIKE ? OR d.drep_raw = decode(?, 'hex')) \
@@ -1633,13 +1637,21 @@ searchSql =
 
 -- | The status expression, in ONE place.
 --
--- @status@ is not a column: it is @registration_status@ and @is_active@ composed. The composition
--- has to be byte-identical in the projection, the filter and the facet, or the sidebar counts a
--- population the list beside it excludes. It was already written twice; the facet statement would
--- have been the third copy.
+-- @status@ is not a column: it is @registration_status@, @active_until_epoch@ and @is_active@
+-- composed. The composition has to be byte-identical in the projection, the filter and the facet, or
+-- the sidebar counts a population the list beside it excludes. It was already written twice; the
+-- facet statement would have been the third copy, and 'searchSql' — which held the second copy —
+-- now interpolates this instead of repeating it.
+--
+-- __The @unknown@ arm comes before the @is_active@ one, and the order is the whole point.__
+-- @palmares.drep@ computes @is_active@ as @COALESCE(active_until >= tip_epoch, false)@, so a DRep
+-- with no @drep_distr@ row — no deadline recorded by the ledger at all — falls out as @false@ and is
+-- indistinguishable from one whose deadline has genuinely passed. Testing the null deadline FIRST is
+-- what separates them. See 'Palmares.DomainTypes.Core.Types.DRepStatus' for the measurements.
 drepStatusExpr :: Text
 drepStatusExpr =
   "(CASE WHEN d.registration_status = 'retired' THEN 'retired' \
+  \      WHEN d.active_until_epoch IS NULL THEN 'unknown' \
   \      WHEN d.is_active THEN 'active' ELSE 'inactive' END)"
 
 -- | The statuses a request actually selects, default included.
@@ -1647,20 +1659,26 @@ drepStatusExpr =
 -- Exported because the facet statement has to re-apply EXACTLY the predicate the page applied,
 -- down to the default. A facet that assumed \"no status given\" meant \"every status\" would count
 -- the 511 retired DReps into the anchor and language facets, which the page then does not show.
+-- @unknown@ is in the default set DELIBERATELY. Those 90 preprod DReps were on the default page
+-- before, labelled @inactive@; leaving the new value out of the default would have dropped 90
+-- registered DReps off the page in order to stop mislabelling 21 of them, which is worse than
+-- either label. With it in, the change is a pure relabel: the default page's population is
+-- unchanged, the sidebar gains a row, and nothing is claimed that is not known.
 effectiveDRepStatus :: DRepFilter -> [DRepStatus]
 effectiveDRepStatus f
-  | null (drepFilterStatus f) = [DRepActive, DRepInactive]
+  | null (drepFilterStatus f) = [DRepActive, DRepInactive, DRepUnknown]
   | otherwise = drepFilterStatus f
 
 -- | Every status 'drepStatusExpr' can produce: the facet universe.
 --
 -- @reserved@ is absent on purpose. 'DRepStatus' carries it for the two reserved ledger options,
 -- which have no @drep_registration@ row, never enter @\/dreps@ (D-20), and therefore can never be
--- a facet count. Measured: these three sum to 805 — 294 registered and 511 retired — against 812
+-- a facet count. Measured: these four sum to 805 — 294 registered and 511 retired — against 812
 -- credentials in @drep_hash@, the other 7 being the never-registered ones 'drepWhere' excludes
--- unconditionally.
+-- unconditionally. Of the 294, 90 carry no ledger deadline and so land in @unknown@; the split
+-- between @active@ and @inactive@ is over the remaining 204.
 registeredDRepStatuses :: [DRepStatus]
-registeredDRepStatuses = [DRepActive, DRepInactive, DRepRetired]
+registeredDRepStatuses = [DRepActive, DRepInactive, DRepUnknown, DRepRetired]
 
 -- | The explorer's facet block, decoded from one statement.
 --

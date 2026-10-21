@@ -38,8 +38,12 @@ import Query.Gov
     activityWindows,
     drepFacetsSql,
     drepSortSpec,
+    drepStatusExpr,
     drepWhere,
+    effectiveDRepStatus,
     parseCursor,
+    registeredDRepStatuses,
+    searchSql,
     voteBaseFrom,
     voteBaseSortSpec,
     voteBaseWhere,
@@ -139,14 +143,16 @@ boundsTests =
               ("the WHERE must exclude never_registered: " <> T.unpack w)
               ("d.registration_status <> 'never_registered'" `T.isInfixOf` w),
       -- An empty repeatable parameter is NO filter, never "match nothing": asking for no
-      -- particular anchor status is asking for any. The two placeholders that ARE there on the
-      -- empty filter are the default status pair, which is the one deliberate default.
+      -- particular anchor status is asking for any. The three placeholders that ARE there on the
+      -- empty filter are the default status set, which is the one deliberate default. Three and not
+      -- two since the `unknown` status landed — these two counts are what caught the default set and
+      -- the bind list going out of step when it did.
       testCase "an empty repeatable filter adds no clause" $
         let (w, ps) = drepWhere emptyDRepFilter
-         in (T.count "a.verdict" w, T.count "?" w, length ps) @?= (0, 2, 2),
+         in (T.count "a.verdict" w, T.count "?" w, length ps) @?= (0, 3, 3),
       testCase "a repeatable filter expands one placeholder per value" $
         let (w, ps) = drepWhere emptyDRepFilter {drepFilterAnchorStatus = [AnchorValid, AnchorInline]}
-         in (T.count "?" w, length ps) @?= (4, 4), -- 2 default statuses + 2 anchor values
+         in (T.count "?" w, length ps) @?= (5, 5), -- 3 default statuses + 2 anchor values
       -- Every clause must bring exactly its own placeholders, or the bind list and the statement
       -- fall out of step and postgresql-simple refuses the query at run time with a count
       -- mismatch. Asserting it here turns that into a test failure.
@@ -425,5 +431,47 @@ voteStageTests =
       -- And it must do that WITHOUT the interval join, which is the 9.5 s this rewrite removes.
       testCase "the voter filter does not reach for cc_cold_interval" $
         T.isInfixOf "cc_cold_interval" (fst (voteBaseWhere emptyVoteFilter {voteFilterVoterIds = ["aa"]}))
-          @?= False
+          @?= False,
+      -- ---- the third DRep status (owner decision 2026-10-21) --------------------------------
+      --
+      -- `palmares.drep` computes is_active as COALESCE(active_until >= tip, false), so a DRep with
+      -- NO ledger deadline at all falls out as false and is indistinguishable from one whose
+      -- deadline has passed. Measured on preprod at epoch 320: 90 of 294 registered DReps have
+      -- never had a drep_distr row, and Koios calls 21 of those 90 ACTIVE. So the arm ORDER is the
+      -- correctness property, not a style choice: test the null deadline first or publish a false
+      -- claim about 21 real actors. This asserts the order rather than the whole string, because
+      -- the string is allowed to be reformatted and the order is not.
+      testCase "the status expression tests the unknown deadline BEFORE is_active" $
+        let unknownAt = T.length (fst (T.breakOn "active_until_epoch IS NULL" drepStatusExpr))
+            activeAt = T.length (fst (T.breakOn "d.is_active" drepStatusExpr))
+         in ( T.isInfixOf "active_until_epoch IS NULL" drepStatusExpr,
+              T.isInfixOf "'unknown'" drepStatusExpr,
+              unknownAt < activeAt
+            )
+              @?= (True, True, True),
+      -- `unknown` must be in the DEFAULT set. Those 90 DReps were on the default page before,
+      -- labelled `inactive`; leaving the new value out of the default would drop 90 registered
+      -- DReps off the page in order to stop mislabelling 21 of them. With it in, the change is a
+      -- pure relabel and the page's population is unchanged.
+      testCase "the default status set includes unknown, so the default population is unchanged" $
+        (effectiveDRepStatus emptyDRepFilter, length (effectiveDRepStatus emptyDRepFilter))
+          @?= ([DRepActive, DRepInactive, DRepUnknown], 3),
+      -- An explicit filter still wins over the default, including for the new value alone.
+      testCase "an explicit status filter overrides the default" $
+        effectiveDRepStatus emptyDRepFilter {drepFilterStatus = [DRepUnknown]} @?= [DRepUnknown],
+      -- The facet universe is every value `drepStatusExpr` can produce and no others. `reserved` is
+      -- not one of them: the two reserved ledger options have no drep_registration row and never
+      -- enter /dreps at all, so a facet count for them could only ever be zero.
+      testCase "the facet universe is the four registered statuses, reserved excluded" $
+        (registeredDRepStatuses, DRepReserved `elem` registeredDRepStatuses)
+          @?= ([DRepActive, DRepInactive, DRepUnknown, DRepRetired], False),
+      -- The second copy of the CASE is gone. `drepStatusExpr` exists so that the projection, the
+      -- filter, the facet and the palette cannot disagree about what `status` means — and the
+      -- palette statement held a verbatim duplicate, which is how it would have kept answering
+      -- `inactive` after the projection beside it started answering `unknown`.
+      testCase "the palette statement interpolates the status expression instead of copying it" $
+        ( T.isInfixOf drepStatusExpr searchSql,
+          T.count "WHEN d.is_active" searchSql
+        )
+          @?= (True, 1)
     ]

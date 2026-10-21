@@ -92,4 +92,15 @@ BEGIN
   RAISE NOTICE 'drep views ok: % credentials (% registered, % retired, % never registered), % with CIP-119 metadata',
     n_total, n_reg, n_ret, n_never,
     (SELECT count(*) FROM palmares.drep WHERE given_name IS NOT NULL);
+
+  -- The size of the `unknown` bucket: registered DReps for whom the ledger recorded no activity
+  -- deadline, because drep_distr has never held a row for them. This is the whole justification for
+  -- the API's third status, so the number is worth printing on every run — a NOTICE and not an
+  -- ASSERT, per this file's own rule, because it is a live counter. 90 of 294 when the decision was
+  -- taken (2026-10-21, epoch 320). If it ever reaches 0 the third status has become dead weight; if
+  -- it grows, the status is carrying more weight than it did, which is the thing to know before
+  -- mainnet.
+  RAISE NOTICE '  of which % registered DReps have no ledger deadline (API status = unknown)',
+    (SELECT count(*) FROM palmares.drep
+     WHERE registration_status = 'registered' AND active_until_epoch IS NULL);
 END $$;

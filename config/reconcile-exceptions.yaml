@@ -70,9 +70,7 @@ exceptions:
   # active_until_epoch / status — db-sync records the ledger's DRep deadline ONLY in drep_distr,
   # and drep_distr holds a row only for a DRep the ledger included in that epoch's distribution.
   # MEASURED at epoch 320: 90 of preprod's 294 registered DReps have NEVER had a drep_distr row,
-  # at any epoch, so we have no deadline for them and `active_until_epoch` is null. `status` then
-  # falls back to `inactive`, which Koios agrees with for 69 of the 90 and contradicts for 21
-  # (Koios computes the deadline itself: 320-340 for those 21, 185-224 for the 69).
+  # at any epoch, so we have no deadline for them and `active_until_epoch` is null.
   #
   # The obvious flip — "unknown deadline means active" — was implemented, measured and REVERTED:
   # it would be wrong for 69 to fix 21. Deriving the deadline was also measured and rejected:
@@ -80,9 +78,13 @@ exceptions:
   # epochs, because CIP-1694 does not count DORMANT epochs toward inactivity, and reimplementing
   # that accounting would be a second derivation that can disagree with the ledger.
   #
-  # THE HONEST FIX IS AN API DECISION, NOT A SCHEMA ONE: publish a third status for "registered,
-  # deadline unknown". DRepStatus is a published enum and adding a value breaks every exhaustive
-  # match a client has written, so it is the user's call, not this file's.
+  # THE SHAPE OF THE `status` DIVERGENCE CHANGED ON 2026-10-21, and the entry below was rewritten
+  # rather than deleted. Owner decision: the API publishes a third status, `unknown`, for exactly
+  # this case. Before, `status` fell back to `inactive` — which Koios agreed with for 69 of the 90
+  # and CONTRADICTED for 21. Now all 90 read `unknown` while Koios still reports its own computed
+  # answer, so MORE keys differ (90 rather than 21) and NONE of them is a false claim any more. A
+  # waiver that got narrower would have been the wrong edit here: the count went up and the honesty
+  # went up with it, which is exactly the trade the decision made.
   - row: R2
     key: "*"
     field: active_until_epoch
@@ -92,7 +94,7 @@ exceptions:
   - row: R2
     key: "*"
     field: status
-    reason: "Follows from active_until_epoch being null: `inactive` is the fallback, right for 69 of those 90 DReps and wrong for 21. The 'unknown means active' flip was tried and reverted — it would be wrong for 69 to fix 21. The fix is a third published status, which is an API decision."
+    reason: "Follows from active_until_epoch being null: we publish the third status `unknown` for all 90 such DReps (owner decision 2026-10-21), while Koios computes the deadline itself and reports active for 21 of them (expiry 320-340) and inactive for 69 (expiry 185-224). So 90 keys differ in label and none states anything false; before the third status existed, 21 of them were a wrong claim. Koios's mapping is deliberately NOT widened to absorb our uncertainty."
     opened: 2026-10-21
     owner: it@blazarlabs.io
   # delegator_count — two different questions, not two answers to one. Ours counts DELEGATIONS in

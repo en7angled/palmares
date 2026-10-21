@@ -89,14 +89,22 @@ fact about the rows that happen to show it. That is what `key: "*"` in the waive
 | --- | --- | --- | --- |
 | R6 tally counts | counts a cast vote as cast | drops votes by **retired** DReps | a tally that shrank as DReps retire would rewrite what an action's vote looked like when it was decided |
 | R2 `delegator_count` | delegations **in force** | delegators with **stake** | a delegator with no stake still chose that DRep |
-| R2 `active_until_epoch` / `status` | `null`, so `status` falls back to `inactive` | computes the deadline itself | db-sync records the ledger's deadline only in `drep_distr`, and 90 of 294 registered DReps have never had a row there |
+| R2 `active_until_epoch` / `status` | `null`, so `status` is **`unknown`** | computes the deadline itself | db-sync records the ledger's deadline only in `drep_distr`, and 90 of 294 registered DReps have never had a row there |
 
-The last one is the only open question. `inactive` is right for 69 of those 90 and wrong for 21.
-Flipping "unknown deadline means active" was implemented, measured and **reverted** — it would be
-wrong for 69 to fix 21 — and deriving the deadline was measured and rejected: a naive
-`max(last cert, last vote) + drep_activity` is off by up to 5 epochs, because CIP-1694 does not
-count **dormant** epochs toward inactivity.
+The last one **was** the only open question, and it is settled: owner decision 2026-10-21, the API
+publishes a third status. Before it, `status` fell back to `inactive`, which was right for 69 of
+those 90 and **wrong for 21**. Flipping "unknown deadline means active" was implemented, measured and
+**reverted** — it would be wrong for 69 to fix 21 — and deriving the deadline was measured and
+rejected: a naive `max(last cert, last vote) + drep_activity` is off by up to 5 epochs, because
+CIP-1694 does not count **dormant** epochs toward inactivity.
 
-**The honest fix is a third published status** for "registered, deadline unknown". `DRepStatus` is a
-published enum and adding a value breaks every exhaustive match a client has written, so that is an
-API decision rather than a schema one.
+**Read the waiver's new shape before you read its count.** All 90 now report `unknown` while Koios
+still reports its own computed answer, so **more** keys diverge than before — 90 rather than 21 — and
+**none of them states anything false**. A parity count that went up is the right outcome here: the
+divergence is now a difference in what the two sides claim to know, not a difference in what they
+claim. `koiosDRepStatus` is deliberately **not** widened to absorb our uncertainty, because mapping
+Koios's answer into our own gap would be putting words in the reference's mouth.
+
+The information was always complete on the wire — `active_until_epoch` has always been published and
+always been nullable, so those 90 were already identifiable. Only the label above them was a guess.
+That is why the fix cost nothing in SQL.

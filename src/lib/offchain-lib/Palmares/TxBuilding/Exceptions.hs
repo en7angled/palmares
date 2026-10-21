@@ -3,6 +3,7 @@ module Palmares.TxBuilding.Exceptions where
 import Control.Exception
 import GHC.Generics (Generic)
 import GeniusYield.HTTP.Errors (IsGYApiError)
+import GeniusYield.Types (GYScriptHash)
 import Prelude
 
 ------------------------------------------------------------------------------------------------
@@ -21,13 +22,6 @@ data TxBuildingException
   | AttestationAlreadyAccepted
   | -- | @other_metadata@ keys must not duplicate CIP-68 standard keys @name@, @description@, or @image@.
     AttestationOtherMetadataReservedKeys
-  | -- | The attestation date is not inside the transaction's validity interval.
-    --
-    -- The off-chain half of inherited fix #4. The minting policy requires the date to be CONTAINED in
-    -- the validity interval, which this path builds from the chain tip; a caller-supplied date outside
-    -- that window would otherwise fail as a script error, which reads to a client like a bug in the
-    -- protocol rather than a bad request. So it is refused here, as a 400, before anything is built.
-    AttestationDateOutOfRange
   | -- | The claimed period ends before it begins.
     --
     -- The ONLY check the claimed period gets, and it is off-chain only. The minting policy carries
@@ -36,6 +30,41 @@ data TxBuildingException
     -- would have to counter-sign about itself. But a client that transposed two dates deserves to be
     -- told so, which an unchecked field cannot do.
     AttestationPeriodInverted
+  | -- | The attestation names a subject profile that does not exist.
+    --
+    -- Off-chain only, and that is not an oversight: the minting policy checks only that the subject
+    -- asset class carries the protocol currency symbol (@Mg@), and nothing in this protocol burns —
+    -- so an attestation about a non-existent subject is a record that is permanently pending (no
+    -- subject can counter-sign it) and permanently unremovable. The chain cannot be made to refuse
+    -- it without resolving a 'ProfileId' into a UTxO on chain, so the write path refuses it here,
+    -- where the client can be told.
+    SubjectProfileNotFound
+  | -- | __Claim errors.__ The credential is not a CIP-129 identifier this protocol can claim.
+    --
+    -- A CIP-105 DRep id or a bare hex hash lands here on purpose: neither carries the header byte
+    -- that says whether the credential is a key or a script, and the claim rule is a different rule
+    -- for each.
+    CredentialMalformed
+  | -- | A script credential that cannot be proven controlled in one transaction.
+    --
+    -- The spec's claim rule is \"prove you can spend as that credential\", and for a script that
+    -- means the transaction spends an input the script governs. A Plutus script that only votes or
+    -- withdraws holds no UTxO at its own address, so there is nothing to spend — the documented
+    -- limitation, refused HERE rather than left to fail inside the balancer, which is the whole
+    -- point of looking the UTxO up before building. Carries the script hash because a claim may name
+    -- a script the caller never looked at.
+    ScriptCredentialHasNoUtxo GYScriptHash
+  | -- \* Dispute Errors
+    DisputeNotFound
+  | -- | A dispute is already open against this attestation.
+    --
+    -- __A courtesy, not a protocol rule.__ Nothing on chain bounds the number of disputes against
+    -- one attestation — that would need an index UTxO every dispute had to contend for — and the
+    -- deposit is what bounds the spam, since N disputes cost N deposits. This refuses the duplicate a
+    -- human would not have meant; a client building its own transaction is not refused.
+    DisputeAlreadyOpen
+  | -- | The dispute already carries a verdict. @D3@ refuses it on chain as well.
+    DisputeAlreadyResolved
   | -- \* Oracle Errors
     OracleNotFound
   | OracleDatumInvalid
@@ -57,16 +86,29 @@ instance Exception TxBuildingException where
   displayException WrongProfileType = "Wrong profile type"
   displayException AttestationNotFound = "Attestation not found"
   displayException AttestationAlreadyAccepted = "Attestation is already accepted"
-  displayException AttestationDateOutOfRange =
-    "The attestation date must be within the transaction validity window (roughly the next 7 hours of \
-    \chain time). An attestation's date is when it is ISSUED. To record something that happened \
-    \earlier, send claimed_period instead: it is published as self-reported and is never presented as \
-    \chain-verified."
+  displayException SubjectProfileNotFound =
+    "The subject profile does not exist. An attestation about a profile that was never claimed can \
+    \never be counter-signed, so it would stay pending forever and nothing can remove it."
+  displayException CredentialMalformed =
+    "The credential must be a CIP-129 identifier (drep1…, cc_cold1…, cc_hot1…). A CIP-105 id or a \
+    \bare hex hash carries no header byte, so it cannot say whether the credential is a key or a \
+    \script — and the claim is a different proof for each."
+  displayException (ScriptCredentialHasNoUtxo sh) =
+    "No spendable UTxO at the address of script "
+      <> show sh
+      <> ", so this transaction cannot prove control of that script credential. The fix is one \
+         \transaction: send a UTxO to that script address, then claim. A script witness must also be \
+         \supplied, because the ledger has to be able to spend that input."
   displayException AttestationPeriodInverted =
     "claimed_period ends before it begins. Send [from, to] with from <= to, or omit the field \
     \entirely — a period must have both bounds or neither."
   displayException AttestationOtherMetadataReservedKeys =
     "other_metadata must not use reserved keys: name, description, image (CIP-68 standard fields)"
+  displayException DisputeNotFound = "Dispute not found"
+  displayException DisputeAlreadyOpen =
+    "A dispute is already open against this attestation. Wait for it to be resolved before opening \
+    \another; this is an off-chain courtesy, not a protocol rule."
+  displayException DisputeAlreadyResolved = "Dispute already carries a verdict and cannot be resolved twice"
   displayException OracleNotFound = "Oracle UTxO not found"
   displayException OracleDatumInvalid = "Oracle datum invalid or unparseable"
   displayException ProtocolPaused = "Protocol is paused"
@@ -91,7 +133,8 @@ txBuildingExceptionToHttpStatus :: TxBuildingException -> Int
 txBuildingExceptionToHttpStatus ProfileNotFound = 404
 txBuildingExceptionToHttpStatus AttestationNotFound = 404
 txBuildingExceptionToHttpStatus AttestationAlreadyAccepted = 400
-txBuildingExceptionToHttpStatus AttestationDateOutOfRange = 400
+txBuildingExceptionToHttpStatus SubjectProfileNotFound = 404
+txBuildingExceptionToHttpStatus DisputeNotFound = 404
 txBuildingExceptionToHttpStatus AttestationPeriodInverted = 400
 txBuildingExceptionToHttpStatus AttestationOtherMetadataReservedKeys = 400
 txBuildingExceptionToHttpStatus OracleNotFound = 404

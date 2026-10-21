@@ -255,6 +255,20 @@ instance ToSchema Attestation where
             { AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "attestation"
             }
 
+-- | How a dispute was decided — the off-chain mirror of
+-- 'Palmares.Onchain.Protocol.Types.Verdict', the same two constructors in the same order.
+--
+-- Two outcomes and no third, because __the deposit comes back either way__: there is no punitive
+-- verdict for the admin to levy, so losing a dispute costs network fees and nothing else. An upheld
+-- dispute is published beside the attestation it contests and the attestation is never hidden or
+-- deleted (spec §4.3).
+data DisputeVerdict = VerdictUpheld | VerdictRejected
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "Verdict", CamelToSnake]] DisputeVerdict
+
+instance ToSchema DisputeVerdict where
+  declareNamedSchema _ = pure (NamedSchema (Just "DisputeVerdict") (jsonEnumSchema (Proxy :: Proxy DisputeVerdict)))
+
 -- ---------------------------------------------------------------------------------------------
 
 -- * Governance ids and enums

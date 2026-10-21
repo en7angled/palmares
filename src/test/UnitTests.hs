@@ -31,6 +31,7 @@ import UnitTests.Refresh qualified as Refresh
 import UnitTests.StorageRoundtrip (storageRoundtripTests)
 import UnitTests.ThresholdMap qualified as ThresholdMap
 import UnitTests.Views qualified as Views
+import UnitTests.WritePath (writePathTests)
 
 unitTests :: (HasCallStack) => TestTree
 unitTests =
@@ -61,6 +62,7 @@ unitTests =
       storageRoundtripTests,
       ThresholdMap.tests,
       Views.tests,
+      writePathTests,
       -- The emulator groups last: every case in them deploys a protocol into a fresh CLB ledger, so
       -- they are the slow part of the suite and a failure is easier to read at the bottom.
       cleanupTests,

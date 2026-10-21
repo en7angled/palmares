@@ -7,6 +7,7 @@ import Data.Aeson
 import Data.Aeson.Types qualified as AesonTypes
 import Data.Bifunctor qualified
 import Data.List.Extra
+import Data.Maybe (fromMaybe)
 import Data.Swagger (ToSchema (..), genericDeclareNamedSchema)
 import Data.Swagger.Schema (SchemaOptions, fromAesonOptions)
 import Deriving.Aeson
@@ -54,6 +55,7 @@ data UserAddresses = UserAddresses
 
 data ActionType
   = ProfileAction ProfileActionType
+  | DisputeAction DisputeActionType
   | ProtocolAction ProtocolActionType
   | AdminAction AdminActionType
   deriving (Show, Generic, FromJSON, ToJSON, ToSchema)
@@ -87,7 +89,15 @@ interactionToTxSkeleton Interaction {..} = do
               (textToBuiltinByteString <$> mbDesc)
               (textToBuiltinByteString imgURI)
               usedAddrs
-        IssueAttestationAction subjectId issuerId kind profileData otherMeta attestationDate claimedPeriod -> do
+        ClaimProfileAction kind mCredText mWitness profileData -> do
+          -- Resolved before any chain query, so a pasted-wrong identifier is a 400 and not a timeout.
+          mCredential <- either (throwError . GYApplicationException) return (traverse parseClaimCredential mCredText)
+          claimProfileTX
+            (profileTypeToOnchainProfileKind kind)
+            mCredential
+            mWitness
+            (profileDataToMetadataFields profileData)
+        IssueAttestationAction subjectId issuerId kind profileData otherMeta claimedPeriod -> do
           let otherMetadataPlutus = map (Data.Bifunctor.bimap textToBuiltinByteString textToBuiltinByteString) otherMeta
           issueAttestationTX
             subjectId
@@ -95,12 +105,26 @@ interactionToTxSkeleton Interaction {..} = do
             (attestationTypeToOnchainAttestationKind kind)
             (profileDataToMetadataFields profileData)
             otherMetadataPlutus
-            (timeToPlutus attestationDate)
             (fmap (Data.Bifunctor.bimap timeToPlutus timeToPlutus) claimedPeriod)
             usedAddrs
         AcceptAttestationAction attestationId -> do
           skeleton <- acceptAttestationTX attestationId usedAddrs
           return (skeleton, attestationId)
+    DisputeAction disputeActionType -> case disputeActionType of
+      OpenDisputeAction targetId openerId mDepositTo profileData ->
+        fmap (fmap Just) $
+          openDisputeTX
+            targetId
+            openerId
+            -- The deposit returns to the change address unless the disputer named another: a
+            -- validator cannot resolve a profile id into an address, so SOME address has to be in
+            -- the datum, and the wallet that paid is the only sensible default.
+            (fromMaybe (changeAddress userAddresses) mDepositTo)
+            (profileDataToMetadataFields profileData)
+            usedAddrs
+      ResolveDisputeAction disputeId verdict -> do
+        skeleton <- resolveDisputeTX disputeId (disputeVerdictToOnchainVerdict verdict)
+        return (skeleton, Just disputeId)
     ProtocolAction protocolActionType -> case protocolActionType of
       CleanupDustAction -> do
         (skeleton, _dustCount) <- cleanupDustTX

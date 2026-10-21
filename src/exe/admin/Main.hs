@@ -95,7 +95,9 @@ data IssueAttestationArgs = IssueAttestationArgs
     iaaIssuerProfileId :: GYAssetClass,
     iaaKind :: AttestationType,
     iaaProfileData :: ProfileData,
-    iaaAttestationDate :: GYTime,
+    -- The issuance date is NOT an argument: it is derived from the chain tip, because the minting
+    -- policy requires it to fall inside the transaction's validity interval and that interval is
+    -- built from the tip. See 'Palmares.DomainTypes.Core.Actions.IssueAttestationAction'.
     iaaClaimedPeriod :: Maybe (GYTime, GYTime),
     iaaOutputId :: Bool
   }
@@ -194,18 +196,6 @@ claimedPeriodParser =
       (from, '.' : '.' : to) -> (,) <$> readTime from <*> readTime to
       _ -> Nothing
     readTime = fmap (timeFromPlutus . POSIXTime) . Text.readMaybe
-
--- POSIX time parser
-posixTimeParser :: Parser GYTime
-posixTimeParser =
-  timeFromPlutus . POSIXTime
-    <$> option
-      auto
-      ( long "posix"
-          <> short 't'
-          <> metavar "POSIX_TIME"
-          <> help "POSIX timestamp"
-      )
 
 -- Optional POSIX time parser
 optionalPosixTimeParser :: Parser (Maybe GYTime)
@@ -449,7 +439,6 @@ commandParser =
                           <*> option (maybeReader parseAssetClass) (long "issued-by-profile-id" <> metavar "ISSUER_PROFILE_ID" <> help "Profile ID of the issuing profile")
                           <*> attestationTypeParser
                           <*> profileDataParser
-                          <*> posixTimeParser
                           <*> claimedPeriodParser
                           <*> outputIdParser
                       )
@@ -476,7 +465,7 @@ updateProfileToActionType UpdateProfileArgs {upaProfileId, upaDescription, upaIm
   ProfileAction $ UpdateProfileAction upaProfileId upaDescription upaImageURI
 
 issueAttestationToActionType :: IssueAttestationArgs -> ActionType
-issueAttestationToActionType IssueAttestationArgs {iaaSubjectProfileId, iaaIssuerProfileId, iaaKind, iaaProfileData, iaaAttestationDate, iaaClaimedPeriod} =
+issueAttestationToActionType IssueAttestationArgs {iaaSubjectProfileId, iaaIssuerProfileId, iaaKind, iaaProfileData, iaaClaimedPeriod} =
   ProfileAction $
     IssueAttestationAction
       iaaSubjectProfileId
@@ -484,7 +473,6 @@ issueAttestationToActionType IssueAttestationArgs {iaaSubjectProfileId, iaaIssue
       iaaKind
       iaaProfileData
       []
-      iaaAttestationDate
       iaaClaimedPeriod
 
 acceptAttestationToActionType :: AcceptAttestationArgs -> ActionType

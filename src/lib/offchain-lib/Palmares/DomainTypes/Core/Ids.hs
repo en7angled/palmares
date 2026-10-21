@@ -29,6 +29,7 @@ module Palmares.DomainTypes.Core.Ids
     poolIdBech32,
     anyVoterIdHex,
     parseDrepIdAny,
+    parseCredentialCip129,
   )
 where
 
@@ -105,6 +106,27 @@ parseDrepIdAny t = case Bech32.decode t of
   _ -> invalid
   where
     invalid = Left "invalid_drep_id"
+
+-- | The credential behind any CIP-129 identifier: its script flag and its 28-byte hash.
+--
+-- Accepts only the three HRPs that carry a header byte — @cc_hot@, @cc_cold@, @drep@ — and only when
+-- the byte is that HRP's own key or script form, so a @drep1…@ carrying a committee header is
+-- rejected rather than silently read as a DRep. The byte layout is 'header' and not a second table.
+--
+-- __A CIP-105 id and a bare hex hash are deliberately rejected__, which is the difference from
+-- 'parseDrepIdAny': they carry no header byte, so they cannot say whether the credential is a key or
+-- a script, and the identity claim's rule turns on exactly that distinction. The read path can fill
+-- the flag in from @drep_hash.has_script@; the write path has no row to ask.
+parseCredentialCip129 :: Text -> Maybe (Bool, ByteString)
+parseCredentialCip129 t = case Bech32.decode t of
+  Right (hrp, dp)
+    | Just keyType <- lookup (Bech32.humanReadablePartToText hrp) [("cc_hot", 0x0), ("cc_cold", 0x1), ("drep", 0x2)],
+      Just bs <- Bech32.dataPartToBytes dp,
+      BS.length bs == 29,
+      Just (h, raw) <- BS.uncons bs,
+      h == header keyType False || h == header keyType True ->
+        Just (h == header keyType True, raw)
+  _ -> Nothing
 
 -- | Decode a CIP-129 governance action id back to its hex transaction id and index.
 --

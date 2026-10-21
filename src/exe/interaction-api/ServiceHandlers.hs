@@ -44,7 +44,6 @@ handleIssueAttestation req = do
         (iarKind req)
         pd
         (iarOtherMetadata req)
-        (iarAttestationDate req)
         (iarClaimedPeriod req)
   buildInteractionApp $ mkInteraction action (iarUserAddresses req) (iarRecipient req)
 

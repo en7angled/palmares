@@ -67,7 +67,10 @@ data IssueAttestationRequest = IssueAttestationRequest
   , iarDescription :: Text
   , iarImageURI :: Text
   , iarOtherMetadata :: [(Text, Text)]
-  , iarAttestationDate :: GYTime
+  -- The issuance date is NOT a request field. It is derived from the chain tip, because the minting
+  -- policy requires it to be contained in the transaction's validity interval (Ml, inherited fix #4)
+  -- and that interval is built from the tip — so a client-supplied date had exactly one acceptable
+  -- value and every other value was a 400.
   , iarClaimedPeriod :: Maybe (GYTime, GYTime)
   , iarUserAddresses :: UserAddresses
   , iarRecipient :: Maybe GYAddress
@@ -89,7 +92,6 @@ instance ToSchema IssueAttestationRequest where
       -- generated document. The definition-level description in `addSharedSwaggerDescriptions` is
       -- the mechanism for a $ref'd type, which is why that table already had an AttestationType row
       -- before the type existed.
-      & describeField "attestation_date" "When the attestation is ISSUED. Must fall inside the transaction's validity window (roughly the next 7 hours of chain time), which is what makes it chain-attested."
       & describeField "claimed_period" "Optional [from, to] period the attestation CLAIMS, e.g. the span of an affiliation or a mandate. SELF-REPORTED: no on-chain fact can establish it, so it is never presented as verified, and only its ordering (from <= to) is checked. Both bounds or neither."
       & describeField "recipient" "Address to receive unlocked funds (defaults to change address if omitted)"
 

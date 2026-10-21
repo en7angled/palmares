@@ -11,7 +11,7 @@ Sources in `src/exe/<name>/`.
 - **Tx commands**: Convert CLI args → `ActionType` → `runPalmaresActionWithPK txBuildingCtx signKey actionType Nothing`.
 - **Read-only commands**: `runQuery providerCtx (runReaderT lookupFn deployedScriptsCtx)` — no signing.
 - **Parsing**: Use `maybeReader` for asset classes (JSON-decode) and custom parsers for enums. Share
-  parsers (e.g. `profileDataParser`, `assetClassParser`, `posixTimeParser`, `outputIdParser`) across commands.
+  parsers (e.g. `profileDataParser`, `assetClassParser`, `claimedPeriodParser`, `outputIdParser`) across commands.
 - **New command**: Add `Command` constructor + `*Args` → parser with `command "kebab-name"` → conversion to
   `ActionType` → case in `executeCommand`.
 

@@ -114,14 +114,23 @@ txMustHaveUTxOAsRefInput gyAC = do
 txMustHaveUTxOsAsRefInputs :: (GYTxQueryMonad m) => [GYAssetClass] -> m (GYTxSkeleton 'PlutusV3)
 txMustHaveUTxOsAsRefInputs gyACs = mconcat <$> mapM txMustHaveUTxOAsRefInput gyACs
 
-txMustSpendFromAddress :: (GYTxQueryMonad m) => GYAssetClass -> [GYAddress] -> m (GYTxSkeleton 'PlutusV3)
-txMustSpendFromAddress tokenId addrs = do
+-- | Spend the UTxO holding a token from one of the given addresses, with the given witness.
+--
+-- __The witness is a parameter and not 'GYTxInWitnessKey'__, which it was until T-ATTEST-6. Authority
+-- in this protocol is token possession rather than a signature list — that is what is supposed to
+-- make an organisation or a committee acting through a script a first-class issuer — and a hardcoded
+-- key witness made every one of those issuers unreachable from our own off-chain code, while the
+-- blueprint advertised them. Callers that hold their token in an ordinary wallet pass
+-- 'GYTxInWitnessKey' and are unchanged.
+txMustSpendFromAddress ::
+  (GYTxQueryMonad m) => GYAssetClass -> [GYAddress] -> GYTxInWitness 'PlutusV3 -> m (GYTxSkeleton 'PlutusV3)
+txMustSpendFromAddress tokenId addrs witness = do
   tokenUtxo <- getUTxOWithTokenAtAddresses tokenId addrs ProfileNotFound
   return $
     mustHaveInput
       GYTxIn
         { gyTxInTxOutRef = utxoRef tokenUtxo,
-          gyTxInWitness = GYTxInWitnessKey
+          gyTxInWitness = witness
         }
 
 txMustLockStateWithInlineDatumAndValue :: (GYTxQueryMonad m, ToData a) => GYScript 'PlutusV3 -> a -> GYValue -> m (GYTxSkeleton 'PlutusV3)

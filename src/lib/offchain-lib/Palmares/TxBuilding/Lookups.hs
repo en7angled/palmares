@@ -15,6 +15,7 @@ import GeniusYield.Types.Address
 import GeniusYield.Types.Value
 import Palmares.Onchain.CIP68 (CIP68Datum (..), deriveRefFromUserAC, userTokenPrefixBS)
 import Palmares.Onchain.Protocol qualified as Onchain
+import Palmares.Onchain.Protocol.Types (checkNoOpenDispute)
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import PlutusLedgerApi.V1.Value (CurrencySymbol, Value, adaSymbol, flattenValue)
 import PlutusTx.Builtins (sliceByteString, lengthOfByteString)
@@ -22,8 +23,8 @@ import PlutusLedgerApi.V1.Value qualified as PlutusValue
 import Palmares.TxBuilding.Context (DeployedScriptsContext (..))
 import Palmares.TxBuilding.Conversions (profileDatumToProfileData)
 import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
-import Palmares.TxBuilding.Utils (attestationAndValueFromUTxO, getInlineDatumAndValue, oracleParamsFromDatum, profileAndValueFromUTxO)
-import Palmares.TxBuilding.Validators (oracleValidatorGY)
+import Palmares.TxBuilding.Utils (attestationAndValueFromUTxO, disputeAndValueFromUTxO, getInlineDatumAndValue, oracleParamsFromDatum, profileAndValueFromUTxO)
+import Palmares.TxBuilding.Validators (disputesValidatorGY, oracleValidatorGY)
 
 ------------------------------------------------------------------------------------------------
 
@@ -164,6 +165,53 @@ getDustUTxOs addr protocolCS = do
 getAttestationDatumAndValue :: (GYTxQueryMonad m) => GYAssetClass -> m (CIP68Datum OnchainTypes.OnchainAttestation, Value)
 getAttestationDatumAndValue attestationAC =
   getStateOrThrow attestationAC attestationAndValueFromUTxO AttestationNotFound DatumParseError
+
+-- | The thing an attestation is about must exist on chain before the attestation is built.
+--
+-- The off-chain half of Review Focus item 3, and it has to live off chain: the minting policy checks
+-- only that the subject's asset class carries the protocol currency symbol (@Mg@), and nothing in
+-- this protocol burns — so an attestation about a subject that was never minted is a record no
+-- subject can ever counter-sign and nobody can ever remove. A separate error from the issuer's
+-- 'ProfileNotFound', because the two are different mistakes made by different parties.
+--
+-- __Existence only, not kind.__ It deliberately does not require the subject to be a profile: an
+-- attestation ABOUT an earlier attestation is a lineage record the spec asks for, and its subject is
+-- an attestation id. Requiring a profile datum here would refuse that whole feature in order to
+-- catch nothing extra — a UTxO holding the subject NFT is what makes the record resolvable, which is
+-- the property at stake.
+ensureSubjectProfileExists :: (GYTxQueryMonad m) => GYAssetClass -> m ()
+ensureSubjectProfileExists subjectAC =
+  () <$ getUTxOWithNFTOrThrow subjectAC SubjectProfileNotFound
+
+------------------------------------------------------------------------------------------------
+
+-- * Dispute Lookup Functions
+
+------------------------------------------------------------------------------------------------
+
+-- | Get a dispute CIP68 datum and value by its NFT asset class.
+getDisputeDatumAndValue :: (GYTxQueryMonad m) => GYAssetClass -> m (CIP68Datum OnchainTypes.OnchainDispute, Value)
+getDisputeDatumAndValue disputeAC =
+  getStateOrThrow disputeAC disputeAndValueFromUTxO DisputeNotFound DatumParseError
+
+-- | Every unresolved dispute against this attestation, read off the Disputes validator address.
+--
+-- __What this is for is a courtesy, not a protocol rule.__ Nothing on chain bounds the number of
+-- disputes one attestation can carry; that would need an index UTxO every dispute had to contend for.
+-- The deposit is what bounds the spam, since N disputes cost N deposits. 'openDisputeTX' consults
+-- this so the duplicate a human would not have meant is refused with an explanation, and the read
+-- layer must not present the result as a guarantee.
+--
+-- The open-against-target test is 'checkNoOpenDispute' applied to one dispute at a time rather than a
+-- second copy of the same predicate: that function is the on-chain definition of \"open against this
+-- target\" and is already pinned by tests, so there is one place the rule is written.
+getOpenDisputesForAttestation ::
+  (GYTxQueryMonad m) => OnchainTypes.AttestationId -> m [OnchainTypes.OnchainDispute]
+getOpenDisputesForAttestation target = do
+  disputesAddr <- scriptAddress disputesValidatorGY
+  utxos <- utxosAtAddresses [disputesAddr]
+  let disputes = [extra datum | utxo <- utxosToList utxos, Just (datum, _v) <- [disputeAndValueFromUTxO utxo]]
+  return $ filter (\d -> not (checkNoOpenDispute target [d])) disputes
 
 
 -- | Find profile reference NFT AssetClasses for User NFTs held at the given addresses.

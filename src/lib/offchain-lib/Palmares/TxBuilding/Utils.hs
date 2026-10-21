@@ -19,7 +19,7 @@ import GeniusYield.Types.Time (timeFromPOSIX, timeFromPlutus, timeToPOSIX, timeT
 import GeniusYield.Types.Wallet
 import Palmares.Onchain.CIP68 (CIP68Datum)
 import Palmares.Onchain.Protocol qualified as Onchain
-import Palmares.Onchain.Protocol.Types (OnchainAttestation, OracleParams)
+import Palmares.Onchain.Protocol.Types (OnchainAttestation, OnchainDispute, OracleParams)
 import PlutusLedgerApi.V1.Tx qualified as V1
 import PlutusLedgerApi.V1.Value (flattenValue)
 import PlutusLedgerApi.V3
@@ -170,5 +170,20 @@ attestationAndValueFromUTxO :: GYUTxO -> Maybe (CIP68Datum OnchainAttestation, V
 attestationAndValueFromUTxO utxo = do
   (gyDatum, gyValue) <- getInlineDatumAndValue utxo
   datum <- attestationDatumFromDatum gyDatum
+  let pVal = valueToPlutus gyValue
+  return (datum, pVal)
+
+disputeDatumFromDatum :: GYDatum -> Maybe (CIP68Datum OnchainDispute)
+disputeDatumFromDatum gyDatum =
+  fromBuiltinData (datumToPlutus' gyDatum)
+
+-- | A dispute datum and value from a UTxO, or 'Nothing' when the datum is absent or is not a dispute.
+--
+-- 'Nothing' is also how a dust UTxO at the Disputes validator address is skipped when scanning the
+-- address for a target's disputes, which is the same thing the @Cleanup@ redeemer treats as sweepable.
+disputeAndValueFromUTxO :: GYUTxO -> Maybe (CIP68Datum OnchainDispute, Value)
+disputeAndValueFromUTxO utxo = do
+  (gyDatum, gyValue) <- getInlineDatumAndValue utxo
+  datum <- disputeDatumFromDatum gyDatum
   let pVal = valueToPlutus gyValue
   return (datum, pVal)

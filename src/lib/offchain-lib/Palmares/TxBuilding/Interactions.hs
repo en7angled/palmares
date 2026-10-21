@@ -8,7 +8,7 @@ import Data.Aeson.Types qualified as AesonTypes
 import Data.Bifunctor qualified
 import Data.List.Extra
 import Data.Maybe (fromMaybe)
-import Data.Swagger (ToSchema (..), genericDeclareNamedSchema)
+import Data.Swagger (NamedSchema (..), Schema (..), ToSchema (..), defaultSchemaOptions, genericDeclareNamedSchema)
 import Data.Swagger.Schema (SchemaOptions, fromAesonOptions)
 import Deriving.Aeson
 import Palmares.DomainTypes.Core.Actions
@@ -58,7 +58,21 @@ data ActionType
   | DisputeAction DisputeActionType
   | ProtocolAction ProtocolActionType
   | AdminAction AdminActionType
-  deriving (Show, Generic, FromJSON, ToJSON, ToSchema)
+  deriving (Show, Generic, FromJSON, ToJSON)
+
+-- | Tagged, not constructor-keyed: 'taggedSumSchema' carries the measured defect and the mechanism.
+-- This is the type @\/build-tx@ takes, so its published shape IS the request contract.
+--
+-- The one sentence added on top is about the admin arm. It is in the union and therefore in the tag
+-- enum, and every request body carrying it is refused — which a tag enum on its own cannot say.
+instance ToSchema ActionType where
+  declareNamedSchema p = withAdminNote . taggedSumSchema <$> genericDeclareNamedSchema defaultSchemaOptions p
+    where
+      withAdminNote (NamedSchema n sch) =
+        NamedSchema n sch {_schemaDescription = (<> adminNote) <$> _schemaDescription sch}
+      adminNote =
+        " The AdminAction arm is NOT accepted in a request body — it is a 400. Those actions are \
+        \built and signed by the admin CLI, which holds the key the oracle validator requires."
 
 data Interaction
   = Interaction

@@ -20,19 +20,26 @@
             "type": "object"
         },
         "ActionType": {
-            "maxProperties": 1,
-            "minProperties": 1,
+            "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: ProfileAction: \"contents\" is ProfileActionType; DisputeAction: \"contents\" is DisputeActionType; ProtocolAction: \"contents\" is ProtocolActionType; AdminAction: \"contents\" is AdminActionType. The AdminAction arm is NOT accepted in a request body — it is a 400. Those actions are built and signed by the admin CLI, which holds the key the oracle validator requires.",
             "properties": {
-                "AdminAction": {
+                "contents": {
+                    "description": "The arm's payload. Its schema depends on \"tag\" — see the shapes in this schema's description."
+                },
+                "tag": {
+                    "description": "Which arm of the union this object is.",
+                    "enum": [
+                        "ProfileAction",
+                        "DisputeAction",
+                        "ProtocolAction",
+                        "AdminAction"
+                    ],
                     "type": "string"
-                },
-                "ProfileAction": {
-                    "$ref": "#/definitions/ProfileActionType"
-                },
-                "ProtocolAction": {
-                    "$ref": "#/definitions/ProtocolActionType"
                 }
             },
+            "required": [
+                "tag",
+                "contents"
+            ],
             "type": "object"
         },
         "AddWitAndSubmitParams": {
@@ -50,6 +57,10 @@
             ],
             "type": "object"
         },
+        "AdminActionType": {
+            "description": "NOT ACCEPTED OVER HTTP — every request body carrying an admin action is a 400. These actions change oracle parameters and the oracle validator requires the admin's signature, so a service can only ever return an unsigned transaction; they are built and signed by the admin CLI. Listed because the action union has an arm for them.",
+            "type": "object"
+        },
         "AttestationType": {
             "description": "What an attestation asserts about its subject: milestone_delivered (a budget administrator attests a vendor's delivery), audit_passed (an auditor attests it reviewed one), affiliation (organisation to member, usually with a claimed period), role_held (an extra-chain mandate such as a working-group lead or committee chair, usually with a claimed period), endorsement. No validator branches on it: the kind says what a reader is being told, not what the protocol permits.",
             "enum": [
@@ -58,6 +69,93 @@
                 "affiliation",
                 "role_held",
                 "endorsement"
+            ],
+            "type": "string"
+        },
+        "ClaimProfileRequest": {
+            "description": "Mint a profile, optionally claiming a Cardano credential. `recipient` receives any unlocked funds and defaults to the change address. `witness` says how the input that proves control of `credential` is spent; both are omitted for an unclaimed profile.",
+            "properties": {
+                "credential": {
+                    "description": "CIP-129 credential identifier being claimed (drep1…, cc_cold1…, cc_hot1…). Omit for a profile that corresponds to no on-chain credential. A CIP-105 id is refused: it carries no header byte, so it cannot say key or script.",
+                    "type": "string"
+                },
+                "description": {
+                    "description": "Profile description",
+                    "type": "string"
+                },
+                "image_uri": {
+                    "description": "URI of the profile image (the client hosts it; the protocol stores the URI)",
+                    "type": "string"
+                },
+                "kind": {
+                    "$ref": "#/definitions/ProfileType"
+                },
+                "name": {
+                    "description": "Profile name. Immutable once minted.",
+                    "type": "string"
+                },
+                "recipient": {
+                    "$ref": "#/definitions/GYAddress"
+                },
+                "user_addresses": {
+                    "$ref": "#/definitions/UserAddresses"
+                },
+                "witness": {
+                    "$ref": "#/definitions/ClaimWitness"
+                }
+            },
+            "required": [
+                "kind",
+                "name",
+                "description",
+                "image_uri",
+                "user_addresses"
+            ],
+            "type": "object"
+        },
+        "ClaimWitness": {
+            "description": "How control of the claimed credential is proven. One of {\"tag\": \"key\"}, {\"tag\": \"simple_script\", \"script\": <native script>}, or {\"tag\": \"plutus_script\", \"script\": \"<script CBOR hex>\", \"redeemer\": <script data>}.",
+            "type": "object"
+        },
+        "DisputeActionType": {
+            "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: OpenDisputeAction: od_attestation_id, od_opened_by_profile_id, od_deposit_to, od_profile_data; ResolveDisputeAction: rd_dispute_id, rd_verdict.",
+            "properties": {
+                "od_attestation_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "od_deposit_to": {
+                    "$ref": "#/definitions/GYAddress"
+                },
+                "od_opened_by_profile_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "od_profile_data": {
+                    "$ref": "#/definitions/ProfileData"
+                },
+                "rd_dispute_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "rd_verdict": {
+                    "$ref": "#/definitions/DisputeVerdict"
+                },
+                "tag": {
+                    "description": "Which arm of the union this object is.",
+                    "enum": [
+                        "OpenDisputeAction",
+                        "ResolveDisputeAction"
+                    ],
+                    "type": "string"
+                }
+            },
+            "required": [
+                "tag"
+            ],
+            "type": "object"
+        },
+        "DisputeVerdict": {
+            "enum": [
+                "upheld",
+                "rejected"
             ],
             "type": "string"
         },
@@ -105,15 +203,36 @@
             ],
             "type": "object"
         },
+        "InteractionStatusResponse": {
+            "description": "Which provider and network this service is configured against, whether its reference scripts resolve, and whether the protocol is paused. Always 200: /ready is the route that fails.",
+            "properties": {
+                "deployed_scripts": {
+                    "type": "boolean"
+                },
+                "network": {
+                    "type": "string"
+                },
+                "oracle_paused": {
+                    "type": "boolean"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "provider",
+                "network",
+                "deployed_scripts",
+                "version"
+            ],
+            "type": "object"
+        },
         "IssueAttestationRequest": {
             "description": "Issue an attestation to a profile.",
             "properties": {
-                "attestation_date": {
-                    "description": "When the attestation is ISSUED. Must fall inside the transaction's validity window (roughly the next 7 hours of chain time), which is what makes it chain-attested.",
-                    "example": "1970-01-01T00:00:00Z",
-                    "format": "ISO8601",
-                    "type": "string"
-                },
                 "claimed_period": {
                     "description": "Optional [from, to] period the attestation CLAIMS, e.g. the span of an affiliation or a mandate. SELF-REPORTED: no on-chain fact can establish it, so it is never presented as verified, and only its ordering (from <= to) is checked. Both bounds or neither.",
                     "items": [
@@ -187,111 +306,139 @@
                 "description",
                 "image_uri",
                 "other_metadata",
-                "attestation_date",
+                "user_addresses"
+            ],
+            "type": "object"
+        },
+        "OpenDisputeRequest": {
+            "description": "Open a dispute against an attestation, locking the deposit the oracle currently requires. `attestation_id` is the attestation being contested and `opened_by_profile_id` the disputer, whose user token the wallet must hold. `deposit_to` is where the deposit returns on EITHER verdict and defaults to the change address: a validator cannot resolve a profile id into an address, so the disputer names one, and pointing it somewhere useless costs only the disputer. `recipient` receives any unlocked funds and also defaults to the change address.",
+            "properties": {
+                "attestation_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "deposit_to": {
+                    "$ref": "#/definitions/GYAddress"
+                },
+                "description": {
+                    "description": "What is being contested, and why",
+                    "type": "string"
+                },
+                "image_uri": {
+                    "description": "URI of the dispute image (the client hosts it; the protocol stores the URI)",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Dispute name",
+                    "type": "string"
+                },
+                "opened_by_profile_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "recipient": {
+                    "$ref": "#/definitions/GYAddress"
+                },
+                "user_addresses": {
+                    "$ref": "#/definitions/UserAddresses"
+                }
+            },
+            "required": [
+                "attestation_id",
+                "opened_by_profile_id",
+                "name",
+                "description",
+                "image_uri",
                 "user_addresses"
             ],
             "type": "object"
         },
         "ProfileActionType": {
-            "maxProperties": 1,
-            "minProperties": 1,
+            "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: UpdateProfileAction: profile_id, new_desc, image_uri; ClaimProfileAction: cp_kind, cp_credential, cp_witness, cp_profile_data; IssueAttestationAction: aa_subject_profile_id, aa_issuer_profile_id, aa_kind, aa_profile_data, aa_other_metadata, aa_claimed_period; AcceptAttestationAction: aca_attestation_id.",
             "properties": {
-                "AcceptAttestationAction": {
-                    "properties": {
-                        "aca_attestation_id": {
-                            "$ref": "#/definitions/GYAssetClass"
-                        }
-                    },
-                    "required": [
-                        "aca_attestation_id"
-                    ],
-                    "type": "object"
-                },
-                "IssueAttestationAction": {
-                    "properties": {
-                        "aa_attestation_date": {
+                "aa_claimed_period": {
+                    "items": [
+                        {
                             "description": "This is the posix time in ISO8601 format.",
                             "example": "1970-01-01T00:00:00Z",
                             "format": "ISO8601",
                             "type": "string"
                         },
-                        "aa_claimed_period": {
-                            "items": [
-                                {
-                                    "description": "This is the posix time in ISO8601 format.",
-                                    "example": "1970-01-01T00:00:00Z",
-                                    "format": "ISO8601",
-                                    "type": "string"
-                                },
-                                {
-                                    "description": "This is the posix time in ISO8601 format.",
-                                    "example": "1970-01-01T00:00:00Z",
-                                    "format": "ISO8601",
-                                    "type": "string"
-                                }
-                            ],
-                            "maxItems": 2,
-                            "minItems": 2,
-                            "type": "array"
-                        },
-                        "aa_issuer_profile_id": {
-                            "$ref": "#/definitions/GYAssetClass"
-                        },
-                        "aa_kind": {
-                            "$ref": "#/definitions/AttestationType"
-                        },
-                        "aa_other_metadata": {
-                            "items": {
-                                "items": [
-                                    {
-                                        "type": "string"
-                                    },
-                                    {
-                                        "type": "string"
-                                    }
-                                ],
-                                "maxItems": 2,
-                                "minItems": 2,
-                                "type": "array"
-                            },
-                            "type": "array"
-                        },
-                        "aa_profile_data": {
-                            "$ref": "#/definitions/ProfileData"
-                        },
-                        "aa_subject_profile_id": {
-                            "$ref": "#/definitions/GYAssetClass"
+                        {
+                            "description": "This is the posix time in ISO8601 format.",
+                            "example": "1970-01-01T00:00:00Z",
+                            "format": "ISO8601",
+                            "type": "string"
                         }
-                    },
-                    "required": [
-                        "aa_subject_profile_id",
-                        "aa_issuer_profile_id",
-                        "aa_kind",
-                        "aa_profile_data",
-                        "aa_other_metadata",
-                        "aa_attestation_date"
                     ],
-                    "type": "object"
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
                 },
-                "UpdateProfileAction": {
-                    "properties": {
-                        "image_uri": {
-                            "type": "string"
-                        },
-                        "new_desc": {
-                            "type": "string"
-                        },
-                        "profile_id": {
-                            "$ref": "#/definitions/GYAssetClass"
-                        }
+                "aa_issuer_profile_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "aa_kind": {
+                    "$ref": "#/definitions/AttestationType"
+                },
+                "aa_other_metadata": {
+                    "items": {
+                        "items": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "string"
+                            }
+                        ],
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
                     },
-                    "required": [
-                        "profile_id",
-                        "image_uri"
+                    "type": "array"
+                },
+                "aa_profile_data": {
+                    "$ref": "#/definitions/ProfileData"
+                },
+                "aa_subject_profile_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "aca_attestation_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "cp_credential": {
+                    "type": "string"
+                },
+                "cp_kind": {
+                    "$ref": "#/definitions/ProfileType"
+                },
+                "cp_profile_data": {
+                    "$ref": "#/definitions/ProfileData"
+                },
+                "cp_witness": {
+                    "$ref": "#/definitions/ClaimWitness"
+                },
+                "image_uri": {
+                    "type": "string"
+                },
+                "new_desc": {
+                    "type": "string"
+                },
+                "profile_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "tag": {
+                    "description": "Which arm of the union this object is.",
+                    "enum": [
+                        "UpdateProfileAction",
+                        "ClaimProfileAction",
+                        "IssueAttestationAction",
+                        "AcceptAttestationAction"
                     ],
-                    "type": "object"
+                    "type": "string"
                 }
             },
+            "required": [
+                "tag"
+            ],
             "type": "object"
         },
         "ProfileData": {
@@ -313,11 +460,45 @@
             ],
             "type": "object"
         },
+        "ProfileType": {
+            "enum": [
+                "person_d_rep",
+                "organization",
+                "committee",
+                "community",
+                "vendor",
+                "auditor"
+            ],
+            "type": "string"
+        },
         "ProtocolActionType": {
             "enum": [
                 "CleanupDustAction"
             ],
             "type": "string"
+        },
+        "ResolveDisputeRequest": {
+            "description": "Settle a dispute, naming it by `dispute_id`. Returns an UNSIGNED transaction: the oracle validator requires the admin's signature, so the admin signs what this route builds. `recipient` receives any unlocked funds and defaults to the change address.",
+            "properties": {
+                "dispute_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "recipient": {
+                    "$ref": "#/definitions/GYAddress"
+                },
+                "user_addresses": {
+                    "$ref": "#/definitions/UserAddresses"
+                },
+                "verdict": {
+                    "$ref": "#/definitions/DisputeVerdict"
+                }
+            },
+            "required": [
+                "dispute_id",
+                "verdict",
+                "user_addresses"
+            ],
+            "type": "object"
         },
         "ServiceProbeStatus": {
             "properties": {
@@ -441,7 +622,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Hex-encoded unsigned transaction CBOR. Sign with your wallet and submit via /submit-tx.",
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
                         "schema": {
                             "type": "string"
                         }
@@ -480,7 +661,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Hex-encoded unsigned transaction CBOR. Sign with your wallet and submit via /submit-tx.",
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
                         "schema": {
                             "type": "string"
                         }
@@ -498,6 +679,45 @@
                 "summary": "Build Transaction"
             }
         },
+        "/claim-profile": {
+            "post": {
+                "consumes": [
+                    "application/json;charset=utf-8"
+                ],
+                "description": "Mints a profile, optionally claiming a Cardano credential (a CIP-129 DRep or committee id) by proving the claimant can spend as it.",
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ClaimProfileRequest"
+                        }
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
+                    },
+                    "404": {
+                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                    },
+                    "503": {
+                        "description": "Protocol is paused or deployed validator scripts are not yet available"
+                    }
+                },
+                "summary": "Claim Profile"
+            }
+        },
         "/health": {
             "get": {
                 "description": "Returns the health status of the service",
@@ -506,7 +726,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Hex-encoded unsigned transaction CBOR. Sign with your wallet and submit via /submit-tx.",
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
                         "schema": {
                             "$ref": "#/definitions/ServiceProbeStatus"
                         }
@@ -545,7 +765,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Hex-encoded unsigned transaction CBOR. Sign with your wallet and submit via /submit-tx.",
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
                         "schema": {
                             "type": "string"
                         }
@@ -563,6 +783,45 @@
                 "summary": "Issue Attestation"
             }
         },
+        "/open-dispute": {
+            "post": {
+                "consumes": [
+                    "application/json;charset=utf-8"
+                ],
+                "description": "Contests an attestation, locking the deposit the oracle currently requires.",
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/OpenDisputeRequest"
+                        }
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
+                    },
+                    "404": {
+                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                    },
+                    "503": {
+                        "description": "Protocol is paused or deployed validator scripts are not yet available"
+                    }
+                },
+                "summary": "Open Dispute"
+            }
+        },
         "/ready": {
             "get": {
                 "description": "Returns the readiness status of the service",
@@ -571,7 +830,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Hex-encoded unsigned transaction CBOR. Sign with your wallet and submit via /submit-tx.",
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
                         "schema": {
                             "$ref": "#/definitions/ServiceProbeStatus"
                         }
@@ -587,6 +846,71 @@
                     }
                 },
                 "summary": "Readiness Check"
+            }
+        },
+        "/resolve-dispute": {
+            "post": {
+                "consumes": [
+                    "application/json;charset=utf-8"
+                ],
+                "description": "Settles a dispute. The oracle validator requires the admin's signature, so the unsigned transaction this returns is for the admin to sign — which is why the route exists at all, while no admin action is accepted over HTTP.",
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ResolveDisputeRequest"
+                        }
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
+                    },
+                    "404": {
+                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                    },
+                    "503": {
+                        "description": "Protocol is paused or deployed validator scripts are not yet available"
+                    }
+                },
+                "summary": "Resolve Dispute"
+            }
+        },
+        "/status": {
+            "get": {
+                "description": "The provider family, the network, whether the five reference scripts resolve, and the oracle's pause flag. Always 200 — /ready is the route that fails.",
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
+                        "schema": {
+                            "$ref": "#/definitions/InteractionStatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
+                    },
+                    "404": {
+                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                    },
+                    "503": {
+                        "description": "Protocol is paused or deployed validator scripts are not yet available"
+                    }
+                },
+                "summary": "Service Status"
             }
         },
         "/submit-tx": {
@@ -610,7 +934,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Hex-encoded unsigned transaction CBOR. Sign with your wallet and submit via /submit-tx.",
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
                         "schema": {
                             "$ref": "#/definitions/GYTxId"
                         }
@@ -645,7 +969,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Hex-encoded unsigned transaction CBOR. Sign with your wallet and submit via /submit-tx.",
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
                         "schema": {
                             "$ref": "#/definitions/TxStatusResponse"
                         }
@@ -684,7 +1008,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Hex-encoded unsigned transaction CBOR. Sign with your wallet and submit via /submit-tx.",
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
                         "schema": {
                             "type": "string"
                         }

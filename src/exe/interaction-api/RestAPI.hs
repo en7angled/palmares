@@ -24,6 +24,7 @@ import Servant.Swagger
 import Servant.Swagger.UI
 import ServiceHandlers
 import ServiceRequests
+import ServiceStatus (InteractionStatusResponse, getStatus)
 import Palmares.TxBuilding.Interactions
 import Palmares.WebAPI.Auth
 import Palmares.WebAPI.CORS
@@ -124,12 +125,18 @@ transactionsServer = handleBuildTx :<|> handleSubmitTx :<|> handleTxStatus
 ------------------------------------------------------------------------------------------------
 
 type ServiceAPI =
-  ( Summary "Update Profile"
-      :> Description "Updates profile metadata (description, image URI). The name is immutable."
-      :> "update-profile"
-      :> ReqBody '[JSON] UpdateProfileRequest
+  ( Summary "Claim Profile"
+      :> Description "Mints a profile, optionally claiming a Cardano credential (a CIP-129 DRep or committee id) by proving the claimant can spend as it."
+      :> "claim-profile"
+      :> ReqBody '[JSON] ClaimProfileRequest
       :> Post '[JSON] String
   )
+    :<|> ( Summary "Update Profile"
+             :> Description "Updates profile metadata (description, image URI). The name is immutable."
+             :> "update-profile"
+             :> ReqBody '[JSON] UpdateProfileRequest
+             :> Post '[JSON] String
+         )
     :<|> ( Summary "Issue Attestation"
              :> Description "Issues a pending attestation about a subject profile."
              :> "issue-attestation"
@@ -142,12 +149,27 @@ type ServiceAPI =
              :> ReqBody '[JSON] AcceptAttestationRequest
              :> Post '[JSON] String
          )
+    :<|> ( Summary "Open Dispute"
+             :> Description "Contests an attestation, locking the deposit the oracle currently requires."
+             :> "open-dispute"
+             :> ReqBody '[JSON] OpenDisputeRequest
+             :> Post '[JSON] String
+         )
+    :<|> ( Summary "Resolve Dispute"
+             :> Description "Settles a dispute. The oracle validator requires the admin's signature, so the unsigned transaction this returns is for the admin to sign — which is why the route exists at all, while no admin action is accepted over HTTP."
+             :> "resolve-dispute"
+             :> ReqBody '[JSON] ResolveDisputeRequest
+             :> Post '[JSON] String
+         )
 
 serviceServer :: ServerT ServiceAPI InteractionAppMonad
 serviceServer =
-  handleUpdateProfile
+  handleClaimProfile
+    :<|> handleUpdateProfile
     :<|> handleIssueAttestation
     :<|> handleAcceptAttestation
+    :<|> handleOpenDispute
+    :<|> handleResolveDispute
 
 ------------------------------------------------------------------------------------------------
 
@@ -162,12 +184,29 @@ interactionProbeServer = alwaysHealthy (pack appVersion) "interaction-api" :<|> 
 
 ------------------------------------------------------------------------------------------------
 
+--  Status API
+
+------------------------------------------------------------------------------------------------
+
+-- | Public, beside the probes, and for the reason 'ServiceStatus' documents: @\/health@ cannot
+-- answer any of this and @\/ready@ answers only with a status code.
+type StatusAPI =
+  Summary "Service Status"
+    :> Description "The provider family, the network, whether the five reference scripts resolve, and the oracle's pause flag. Always 200 — /ready is the route that fails."
+    :> "status"
+    :> Get '[JSON] InteractionStatusResponse
+
+statusServer :: ServerT StatusAPI InteractionAppMonad
+statusServer = getStatus
+
+------------------------------------------------------------------------------------------------
+
 --  Swagger API
 
 ------------------------------------------------------------------------------------------------
 
 -- | Public API surface used for Swagger generation (excludes auth wrappers).
-type PublicAPI = ProbeAPI :<|> Transactions :<|> ServiceAPI
+type PublicAPI = ProbeAPI :<|> StatusAPI :<|> Transactions :<|> ServiceAPI
 
 proxyPublicAPI :: Proxy PublicAPI
 proxyPublicAPI = Proxy
@@ -181,7 +220,10 @@ apiSwagger =
     & info . license ?~ "GPL-3.0 license"
     & host .~ Nothing
     -- Response descriptions
-    & allOperations . responses . at 200 . mapped . _Inline . description .~ ("Hex-encoded unsigned transaction CBOR. Sign with your wallet and submit via /submit-tx." :: Text)
+    -- One description for every operation, so it has to be true of every operation: /health, /ready,
+    -- /status and /tx-status return their own JSON and always did, while the blanket text said
+    -- "hex-encoded unsigned transaction CBOR" about all of them.
+    & allOperations . responses . at 200 . mapped . _Inline . description .~ ("Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names." :: Text)
     & allOperations . responses . at 400 ?~ Inline (mempty {_responseDescription = "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"})
     & allOperations . responses . at 404 ?~ Inline (mempty {_responseDescription = "Referenced entity not found (profile, attestation, or NFT)"})
     & allOperations . responses . at 503 ?~ Inline (mempty {_responseDescription = "Protocol is paused or deployed validator scripts are not yet available"})
@@ -220,6 +262,7 @@ privateServiceServer = const serviceServer
 type FullAPI =
   SwaggerSchemaUI "swagger-ui" "swagger-api.json"
     :<|> ProbeAPI
+    :<|> StatusAPI
     :<|> PrivateTransactions
     :<|> PrivateServiceAPI
 
@@ -230,6 +273,7 @@ fullServer :: ServerT FullAPI InteractionAppMonad
 fullServer =
   swaggerServer
     :<|> interactionProbeServer
+    :<|> statusServer
     :<|> privateTransactionsServer
     :<|> privateServiceServer
 

@@ -2,25 +2,31 @@
 
 module Palmares.DomainTypes.Core.Actions where
 
-import Control.Lens ((&), (?~))
+import Control.Lens ((&), (.~), (?~), (^.), at, itoList)
 import Data.Aeson
 import Data.Aeson.Types qualified as AesonTypes
 import Data.ByteString.Base16 qualified as B16
 import Data.ByteString.Short qualified as SBS
 import Data.List.Extra
-import Data.Proxy (Proxy (..))
 import Data.Swagger
   ( NamedSchema (..),
-    SwaggerType (SwaggerObject),
+    Reference (..),
+    Referenced (..),
+    SwaggerType (..),
     ToSchema (..),
     description,
+    enum_,
     genericDeclareNamedSchema,
+    properties,
+    required,
     type_,
   )
 import Data.Swagger.Internal.Schema ()
 import Data.Swagger.ParamSchema
+-- `defaultSchemaOptions` is in scope from the unqualified 'Data.Swagger.ParamSchema' above.
 import Data.Swagger.SchemaOptions (fromAesonOptions)
 import Data.Text hiding (init, tail)
+import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Deriving.Aeson
 import Palmares.DomainTypes.Core.Types
@@ -134,6 +140,99 @@ instance ToSchema ClaimWitness where
                \{\"tag\": \"simple_script\", \"script\": <native script>}, or \
                \{\"tag\": \"plutus_script\", \"script\": \"<script CBOR hex>\", \"redeemer\": <script data>}."
 
+-------------------------------------------------------------------------------
+
+-- * The sum types' published schema
+
+-------------------------------------------------------------------------------
+
+-- | Rewrite @swagger2@'s generic sum-type schema into the tagged object aeson actually accepts.
+--
+-- __The defect this exists for, measured.__ @swagger2@'s 'Data.Swagger.SchemaOptions' has no
+-- @sumEncoding@ field, so its generic 'ToSchema' always publishes a CONSTRUCTOR-KEYED object —
+-- @{"\<ConstructorName\>": {…}}@ with @maxProperties: 1@ — while aeson's derived 'FromJSON' for the
+-- same type reads a @TaggedObject@: @{"tag": "\<ConstructorName\>", …fields inlined}@. The committed
+-- @docs\/generated\/swagger\/interaction-swagger-api.json@ carried the constructor-keyed shape for
+-- @ActionType@ and 'ProfileActionType', so a client that followed the published document got a 400
+-- on every write. Same class of defect as the derived enum schema
+-- 'Palmares.DomainTypes.Core.Types.AttestationType' shipped with, and the same remedy: the document
+-- must describe the values the API accepts.
+--
+-- __Why it takes the generic schema apart instead of replacing it.__ The tag enum and the field list
+-- come from the constructors themselves, so adding an arm updates the document and there is no
+-- hand-maintained table to forget. That is the whole anti-drift mechanism —
+-- @UnitTests.InteractionApi@ pins it from the other side by encoding a value of each arm and
+-- requiring every key it emits to be a documented property.
+--
+-- __What Swagger 2.0 cannot say.__ There is no @oneOf@, so WHICH fields go with which tag is not
+-- expressible structurally: the per-arm shapes go in the description, where a reader can act on
+-- them, and only @tag@ (plus @contents@, when every arm carries one) stays required. The
+-- 'ClaimWitness' instance above makes the same trade for the same reason.
+--
+-- Two notes on the result. Fields of different arms that share a name collapse into one property —
+-- none do today, every arm's fields are prefixed — and an arm with no fields of its own is an arm
+-- aeson wraps in @contents@, which is how it is documented.
+taggedSumSchema :: NamedSchema -> NamedSchema
+taggedSumSchema (NamedSchema name s) =
+  NamedSchema name $
+    mempty
+      & type_ ?~ SwaggerObject
+      & properties .~ (tagProperty <> inlinedFields <> contentsProperty)
+      & required .~ requiredKeys
+      & description ?~ maybe shapes (\d -> d <> " " <> shapes) (s ^. description)
+  where
+    -- One entry per constructor: the key is the constructor name, the value is the schema swagger2
+    -- generated for that arm.
+    arms = itoList (s ^. properties)
+
+    -- A record arm's own fields; empty for an arm aeson wraps in @contents@ (swagger2 gives those a
+    -- @$ref@ or a scalar schema, neither of which has properties).
+    fieldsOf (Inline sub) = sub ^. properties
+    fieldsOf (Ref _) = mempty
+
+    keysOf = fmap fst . itoList . fieldsOf
+
+    payloadArms = [a | a <- arms, Prelude.null (keysOf (snd a))]
+
+    tagProperty =
+      mempty
+        & at "tag"
+          ?~ Inline
+            ( mempty
+                & type_ ?~ SwaggerString
+                & enum_ ?~ fmap (String . fst) arms
+                & description ?~ "Which arm of the union this object is."
+            )
+
+    inlinedFields = mconcat (fmap (fieldsOf . snd) arms)
+
+    contentsProperty
+      | Prelude.null payloadArms = mempty
+      | otherwise =
+          mempty
+            & at "contents"
+              ?~ Inline
+                ( mempty
+                    & description ?~ "The arm's payload. Its schema depends on \"tag\" — see the shapes in this schema's description."
+                )
+
+    -- `contents` is required only when EVERY arm carries one; a union that mixes record arms with
+    -- payload arms has no field that is required by all of them except the tag.
+    requiredKeys
+      | not (Prelude.null arms), Prelude.length payloadArms == Prelude.length arms = ["tag", "contents"]
+      | otherwise = ["tag"]
+
+    shapes =
+      "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields \
+      \sit beside it. Shapes: "
+        <> T.intercalate "; " (fmap shapeOf arms)
+        <> "."
+
+    shapeOf (con, r) = con <> ": " <> case (keysOf r, r) of
+      ([], Ref (Reference n)) -> "\"contents\" is " <> n
+      ([], _) -> "\"contents\""
+      (ks, _) -> T.intercalate ", " ks
+
 -- NOTE: DeleteProfileAction is intentionally not supported to preserve lineage integrity.
 -- An attestation record is a permanent historical fact and must stay resolvable.
 data ProfileActionType
@@ -173,7 +272,11 @@ data ProfileActionType
   | AcceptAttestationAction
       { aca_attestation_id :: GYAssetClass
       }
-  deriving (Show, Generic, FromJSON, ToJSON, ToSchema)
+  deriving (Show, Generic, FromJSON, ToJSON)
+
+-- | Tagged, not constructor-keyed — see 'taggedSumSchema' for the defect this fixes.
+instance ToSchema ProfileActionType where
+  declareNamedSchema p = taggedSumSchema <$> genericDeclareNamedSchema defaultSchemaOptions p
 
 -------------------------------------------------------------------------------
 
@@ -205,7 +308,11 @@ data DisputeActionType
       { rd_dispute_id :: GYAssetClass,
         rd_verdict :: DisputeVerdict
       }
-  deriving (Show, Generic, FromJSON, ToJSON, ToSchema)
+  deriving (Show, Generic, FromJSON, ToJSON)
+
+-- | Tagged, not constructor-keyed — see 'taggedSumSchema' for the defect this fixes.
+instance ToSchema DisputeActionType where
+  declareNamedSchema p = taggedSumSchema <$> genericDeclareNamedSchema defaultSchemaOptions p
 
 -------------------------------------------------------------------------------
 
@@ -230,10 +337,25 @@ data ProtocolActionType
 -- | Admin actions for managing protocol parameters via the oracle.
 -- These modify the oracle UTxO datum and require the admin signing key.
 --
--- Note: These actions are only constructed programmatically (admin CLI),
--- never deserialized from JSON. The ToJSON/FromJSON/ToSchema instances
--- are minimal stubs required because ActionType is embedded in Interaction
--- which needs full JSON support for the REST API.
+-- __None of them is reachable over HTTP.__ Every constructor's 'FromJSON' fails, so an admin action
+-- cannot arrive in a request body — not through a dedicated route, which does not exist, and not
+-- through @\/build-tx@, which takes an @ActionType@ and used to accept four of these from any
+-- Basic-auth holder.
+--
+-- The reasoning, because this is a behaviour change on a route that exists: the oracle validator
+-- requires the admin's signature on chain, so a server can only ever hand back an UNSIGNED
+-- transaction. HTTP therefore buys the admin nothing — the @admin@ CLI already builds and signs in
+-- one step, with the key that has to sign it — while the parsers left a credential holder able to
+-- make the server build a protocol-pause transaction, spend provider calls doing it, and present the
+-- result as something to sign. A surface with no use and a non-zero cost comes off.
+--
+-- 'Palmares.DomainTypes.Core.Actions.DisputeActionType'\'s @ResolveDisputeAction@ is the deliberate
+-- contrast: it IS reachable over HTTP and needs the admin's signature just the same, because there
+-- the unsigned transaction is the product — a verdict a disputing party asked for, built by the
+-- service and signed by the admin.
+--
+-- The 'ToJSON' instance stays: it is used for logging and for echoing an action back, and
+-- @ActionType@ needs it to have one. 'ToSchema' stays and says the refusal.
 data AdminActionType
   = PauseProtocolAction
   | UnpauseProtocolAction
@@ -242,17 +364,10 @@ data AdminActionType
   | -- | Minimum lovelace for protocol state outputs (oracle opMinUTxOValue)
     SetMinUTxOValueAction Integer
   | -- | Hand the oracle to a new admin — inherited fix #2.
-    --
-    -- Deliberately NOT deserializable from an HTTP body (see the 'FromJSON' instance below): an
-    -- action that changes who controls the protocol must come from the admin CLI, where the key that
-    -- has to sign it already lives.
     RotateAdminAction GYPubKeyHash
   | -- | Lovelace a NEW dispute must deposit (oracle opDisputeDeposit).
     --
-    -- Reachable over HTTP, like 'SetMinUTxOValueAction' and unlike 'RotateAdminAction': repricing a
-    -- refundable deposit cannot hand the protocol to anyone, and it still needs the admin signature
-    -- the oracle validator requires. It cannot touch a dispute already open — that deposit is
-    -- recorded in the dispute's own datum.
+    -- It cannot touch a dispute already open — that deposit is recorded in the dispute's own datum.
     SetDisputeDepositAction Integer
   deriving (Show, Generic)
 
@@ -266,15 +381,27 @@ instance ToJSON AdminActionType where
   toJSON (RotateAdminAction _) = object ["tag" .= ("RotateAdminAction" :: Text)]
   toJSON (SetDisputeDepositAction n) = object ["tag" .= ("SetDisputeDepositAction" :: Text), "lovelace" .= n]
 
+-- | Always fails — see the type's Haddock. The message is a 400 body a client reads, so it says
+-- where the action belongs rather than only that it was refused.
 instance FromJSON AdminActionType where
-  parseJSON = withObject "AdminActionType" $ \o -> do
-    tag <- o .: "tag"
-    case (tag :: Text) of
-      "PauseProtocolAction" -> pure PauseProtocolAction
-      "UnpauseProtocolAction" -> pure UnpauseProtocolAction
-      "SetMinUTxOValueAction" -> SetMinUTxOValueAction <$> o .: "lovelace"
-      "SetDisputeDepositAction" -> SetDisputeDepositAction <$> o .: "lovelace"
-      _ -> fail "AdminActionType: unsupported action for JSON deserialization"
+  parseJSON _ =
+    fail
+      "AdminActionType: admin actions are not accepted over HTTP. The oracle validator requires the \
+      \admin's signature, so this service could only ever return an unsigned transaction; build and \
+      \sign it with the admin CLI, which holds that key."
 
+-- | A named schema, so the refusal is IN the published document: the generated @ActionType@ schema
+-- @$ref@s this one, and a reader following the reference finds out that the arm exists and is
+-- rejected. It was previously 'Text' — unnamed, hence inlined as a bare @{"type":"string"}@, which
+-- documented the arm as something a client could send.
 instance ToSchema AdminActionType where
-  declareNamedSchema _ = declareNamedSchema (Proxy :: Proxy Text)
+  declareNamedSchema _ =
+    pure $
+      NamedSchema (Just "AdminActionType") $
+        mempty
+          & type_ ?~ SwaggerObject
+          & description
+            ?~ "NOT ACCEPTED OVER HTTP — every request body carrying an admin action is a 400. These \
+               \actions change oracle parameters and the oracle validator requires the admin's \
+               \signature, so a service can only ever return an unsigned transaction; they are built \
+               \and signed by the admin CLI. Listed because the action union has an arm for them."

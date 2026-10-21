@@ -405,6 +405,7 @@ executable interaction-api
     RestAPI
     ServiceHandlers
     ServiceRequests
+    ServiceStatus
 
   build-depends:
     , offchain-lib
@@ -500,6 +501,7 @@ test-suite test
     UnitTests.GovDto
     UnitTests.GovIds
     UnitTests.GovThresholds
+    UnitTests.InteractionApi
     UnitTests.MetricCatalog
     UnitTests.MetricDoc
     UnitTests.MetricFixture

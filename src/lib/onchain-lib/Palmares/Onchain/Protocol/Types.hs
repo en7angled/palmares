@@ -6,7 +6,7 @@ module Palmares.Onchain.Protocol.Types where
 
 import GHC.Generics (Generic)
 import PlutusLedgerApi.V1.Value (AssetClass)
-import PlutusLedgerApi.V3 (Address, POSIXTime, PubKeyHash, ScriptHash)
+import PlutusLedgerApi.V3 (Address, Credential, POSIXTime, PubKeyHash, ScriptHash)
 import PlutusTx
 import PlutusTx.Blueprint
 import PlutusTx.Prelude
@@ -122,6 +122,25 @@ type AttestationId = AssetClass
 --
 -- __The enum is closed.__ A seventh kind is a redeploy, which is the right price for changing what
 -- this registry recognises. @Organization@ keeps index 1, the one index that survives the rename.
+-- | Which minting action a transaction is performing.
+--
+-- __This exists so that a fee is never selected by passing a function.__ The inherited design had
+-- @checkFee :: OracleParams -> (FeeConfig -> Integer) -> [TxOut] -> Bool@, and that selector-passing
+-- shape is exactly how the Belt System's interval fee ended up charging the wrong field: the caller
+-- names the field, so every call site is a place the wrong name can be written. With an action, the
+-- only place a @FeeConfig@ field is ever named is 'Palmares.Onchain.Protocol.Lookup.feeFor' — one
+-- function, one naming site, no selectors. Inherited fix #1.
+--
+-- One constructor per minting redeemer, and the correspondence is the point: adding a redeemer without
+-- adding an action leaves @feeFor@ non-exhaustive, which is a compile error rather than a silent zero.
+data MintAction
+  = MintActionProfile
+  | MintActionAttestation
+  deriving stock (Generic, Prelude.Show, Prelude.Eq)
+  deriving anyclass (HasBlueprintDefinition)
+
+makeIsDataSchemaIndexed ''MintAction [('MintActionProfile, 0), ('MintActionAttestation, 1)]
+
 data OnchainProfileKind
   = PersonDRep
   | Organization
@@ -146,6 +165,18 @@ data OnchainProfile
   = OnchainProfile
   { profileId :: ProfileId,
     profileKind :: OnchainProfileKind,
+    -- | The Cardano credential this profile claims, if any.
+    --
+    -- A 'Credential' and not a bare hash, because that is what CIP-129 encodes — header byte
+    -- included — so the key-or-script distinction the claim rule turns on is never thrown away. It
+    -- covers a DRep id, a constitutional-committee cold credential and a stake credential
+    -- identically, which is why the claim rule needs no per-kind cases.
+    --
+    -- __'Nothing' is legitimate.__ A Community or an Auditor need not correspond to any on-chain
+    -- credential, and requiring one would make the registry refuse actors the spec names. What
+    -- 'Nothing' means is "this profile claims nothing", which the read layer must present as
+    -- @unclaimed@ — never as verified.
+    profileCredential :: Maybe Credential,
     protocolParams :: ProtocolParams
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)

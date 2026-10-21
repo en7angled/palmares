@@ -11,6 +11,7 @@ import GeniusYield.TxBuilder
 import GeniusYield.Types
 import Palmares.Onchain.CIP68 (CIP68Datum (..), ImageURI, MetadataFields (..), extra, getMetadataFields, mkCIP68Datum, updateCIP68DatumMetadata)
 import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
+import Palmares.Onchain.Protocol.Lookup qualified as Lookup
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer (..))
 import Palmares.Onchain.Validators.MintingPolicy
@@ -39,15 +40,20 @@ getOracleRefInputSkeleton = do
   return (mustHaveRefInput oracleRef, oracleParams)
 
 -- | Build a skeleton component that pays a fee if fees are configured.
+-- Takes a 'MintAction', never a @(FeeConfig -> Integer)@ selector — inherited fix #1. The selector
+-- shape is what let the Belt System's interval fee charge the wrong field: with a selector every call
+-- site names a field, and one of them named the wrong one. 'Lookup.feeFor' is now the single place on
+-- chain or off where a 'FeeConfig' field is named, and this function calls it, so the off-chain fee
+-- and the on-chain check read the same number from the same code.
 getFeeSkeleton ::
   (GYTxQueryMonad m) =>
   OnchainTypes.OracleParams ->
-  (OnchainTypes.FeeConfig -> Integer) ->
+  OnchainTypes.MintAction ->
   m (GYTxSkeleton 'PlutusV3)
-getFeeSkeleton oracle feeSelector = case OnchainTypes.opFeeConfig oracle of
+getFeeSkeleton oracle action = case OnchainTypes.opFeeConfig oracle of
   Nothing -> return mempty
   Just feeConfig -> do
-    let feeAmount = feeSelector feeConfig
+    let feeAmount = Lookup.feeFor action feeConfig
     let plutusFeeAddr = OnchainTypes.fcFeeAddress feeConfig
     gyFeeAddr <- addressFromPlutus' plutusFeeAddr
     txMustPayValueToAddress gyFeeAddr (valueFromLovelace feeAmount)
@@ -57,11 +63,11 @@ getFeeSkeleton oracle feeSelector = case OnchainTypes.opFeeConfig oracle of
 -- Min lovelace for state outputs comes from 'OnchainTypes.opMinUTxOValue' of the returned 'OracleParams'.
 getOracleFeeAndValiditySkeleton ::
   (GYTxQueryMonad m, MonadReader DeployedScriptsContext m) =>
-  (OnchainTypes.FeeConfig -> Integer) ->
+  OnchainTypes.MintAction ->
   m (GYTxSkeleton 'PlutusV3, OnchainTypes.OracleParams, GYTxSkeleton 'PlutusV3, GYTxSkeleton 'PlutusV3)
-getOracleFeeAndValiditySkeleton feeSelector = do
+getOracleFeeAndValiditySkeleton action = do
   (oracleRefSkeleton, oracleParams) <- getOracleRefInputSkeleton
-  feeSkeleton <- getFeeSkeleton oracleParams feeSelector
+  feeSkeleton <- getFeeSkeleton oracleParams action
   now <- slotOfCurrentBlock
   let isValidForSafeEra = txIsValidForSafeEra now
   return (oracleRefSkeleton, oracleParams, feeSkeleton, isValidForSafeEra)
@@ -206,7 +212,7 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId metadata otherMetadata a
     otherMetadata
   mpGY <- asks getMintingPolicyFromCtx
   mpRef <- asks getMintingPolicyRef
-  (oracleRefSkeleton, oracleParams, feeSkeleton, isInvalidBeforeNow) <- getOracleFeeAndValiditySkeleton OnchainTypes.fcAttestationFee
+  (oracleRefSkeleton, oracleParams, feeSkeleton, isInvalidBeforeNow) <- getOracleFeeAndValiditySkeleton OnchainTypes.MintActionAttestation
   let minLv = OnchainTypes.opMinUTxOValue oracleParams
 
   -- Get a seed TxOutRef for uniqueness

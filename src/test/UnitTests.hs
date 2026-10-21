@@ -17,6 +17,8 @@ import UnitTests.MetricDoc qualified as MetricDoc
 import UnitTests.MetricFixture qualified as MetricFixture
 import UnitTests.ApplySql qualified as ApplySqlTests
 import UnitTests.AttestSchema qualified as AttestSchema
+import UnitTests.Claim qualified as Claim
+import UnitTests.Fees qualified as Fees
 import UnitTests.QueryHardening (queryHardeningTests)
 import UnitTests.Reconcile (reconcileTests)
 import UnitTests.Refresh qualified as Refresh
@@ -42,6 +44,8 @@ unitTests =
       queryHardeningTests,
       ApplySqlTests.tests,
       AttestSchema.tests,
+      Claim.tests,
+      Fees.tests,
       reconcileTests,
       Refresh.tests,
       storageRoundtripTests,

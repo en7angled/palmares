@@ -27,6 +27,9 @@ module Palmares.Onchain.Utils
     -- * Inputs Spend TxOutRef Helper Functions
     hasTxInAtAddressWithNFT,
     inputsSpendTxOutRef,
+
+    -- * Credential Control
+    checkCredentialControl,
   )
 where
 
@@ -95,6 +98,56 @@ hasTxInAtAddressWithNFT ac address = any (\(TxInInfo _inOutRef (TxOut {txOutAddr
 {-# INLINEABLE inputsSpendTxOutRef #-}
 inputsSpendTxOutRef :: TxOutRef -> [TxInInfo] -> Bool
 inputsSpendTxOutRef spendingTxOutRef = any ((== spendingTxOutRef) . txInInfoOutRef)
+
+-------------------------------------------------------------------------------
+
+-- * Credential Control
+
+-------------------------------------------------------------------------------
+
+-- | Does this transaction demonstrate control of the given credential?
+--
+-- __This is the identity claim's whole rule__, and the spec states it in one sentence: /prove you can
+-- spend as that credential/. It applies identically to a DRep id, a constitutional-committee cold
+-- credential and a stake credential, because all three are a 'Credential' — which is also what CIP-129
+-- encodes, header byte included, so the key-or-script distinction is never thrown away.
+--
+--   * __A key credential__ is controlled by whoever can make the transaction carry its signature. One
+--     list membership, and it is the @extra signatory@ the spec names.
+--
+--   * __A script credential__ is controlled by whoever can get the ledger to spend an input that
+--     script governs — in the payment half of its address or in the staking half. We do not verify
+--     the script's own condition and could not: if the ledger is spending that input, the condition
+--     was /already/ satisfied, before this validator ran. A native timelock or multisig script has no
+--     redeemer for us to inspect anyway, and committees and multisig organisations are the majority
+--     case the spec calls out.
+--
+-- __Why the staking half as well as the payment half.__ A stake credential that is a script normally
+-- appears in the staking half of an address, not the payment half, so checking only payment would make
+-- "I cannot claim my own stake script" a permanent support question. It costs one more field read per
+-- input, and it is `onchain-lib/CLAUDE.md`'s security rule 13 — reason about full addresses — applied
+-- in the useful direction.
+--
+-- __The documented limitation.__ A Plutus script that holds no UTxO at its own address — one that only
+-- ever votes or withdraws — cannot claim in a single transaction. Its workaround is one transaction:
+-- send yourself a UTxO at your own script address, then claim. We deliberately do __not__ inspect
+-- @txInfoRedeemers@ to cover that case: it would cost ExUnits on every claim to serve a case whose
+-- workaround is free, which is the trade this repository rejects by standing rule.
+--
+-- __What control is not.__ This proves control of a credential, not the identity of whoever holds it —
+-- the only thing a chain can prove. Nothing downstream may phrase it as "is"; the wording is
+-- "controls this credential".
+--
+-- Takes the two lists rather than a @TxInfo@ so that the rule is a pure function of its actual inputs:
+-- it is cheaper to pass, and it is what makes the rule unit-testable without building a transaction.
+{-# INLINEABLE checkCredentialControl #-}
+checkCredentialControl :: Credential -> [PubKeyHash] -> [TxInInfo] -> Bool
+checkCredentialControl credential signatories inputs = case credential of
+  PubKeyCredential pkh -> PlutusTx.List.elem pkh signatories
+  ScriptCredential _ -> any inputGovernedByCredential inputs
+  where
+    inputGovernedByCredential (TxInInfo _ TxOut {txOutAddress = Address payment staking}) =
+      payment == credential || staking == Just (StakingHash credential)
 
 {-# INLINEABLE isGivenInlineDatum #-}
 isGivenInlineDatum :: (ToData a) => a -> OutputDatum -> Bool

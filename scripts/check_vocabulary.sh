@@ -136,5 +136,25 @@ while IFS=: read -r file _ prefix; do
 done < <(grep -rnoE 'StripPrefix "[A-Za-z]+"' src --include='*.hs' | sed 's/StripPrefix "\([A-Za-z]*\)"/\1/')
 [ "$stale" = 0 ] && echo "ok   every StripPrefix names a prefix its own file still uses"
 
+# ---------------------------------------------------------------------------------------------
+# Inherited fix #1: a FeeConfig field is named in exactly TWO places — where the record is defined,
+# and in `feeFor`. Every other mention is a second naming site, and a second naming site is how the
+# Belt System's interval fee came to charge the membership-history field. The type now forbids passing
+# a selector; this forbids reintroducing the habit by hand.
+#
+# `src/exe/admin/Main.hs` is excluded: it CONSTRUCTS a FeeConfig from flags and PRINTS one back,
+# and a record cannot be built or displayed without naming its fields. It never selects a fee for
+# a check, which is what this invariant is about.
+echo
+feesites="$(grep -rlE 'fcProfileCreationFee|fcAttestationFee' src --include='*.hs' 2>/dev/null \
+  | grep -vE 'Onchain/Protocol/Types\.hs$|Onchain/Protocol/Lookup\.hs$|src/test/|src/exe/admin/Main\.hs$' || true)"
+if [ -n "$feesites" ]; then
+  echo "FAIL a FeeConfig field is named outside Protocol/Types.hs and feeFor:"
+  echo "$feesites" | sed 's/^/       /'
+  fail=1
+else
+  echo "ok   a FeeConfig field is named only where it is defined and in feeFor"
+fi
+
 if [ "$fail" = 0 ]; then echo "vocabulary OK"; else echo "vocabulary FAILED"; fi
 exit $fail

@@ -8,6 +8,7 @@ module Palmares.Onchain.Protocol.Lookup
     unsafeGetProfileDatumAndValue,
     unsafeGetProtocolParamsFromProfileRefInput,
     readOracleParams,
+    feeFor,
     checkFee,
   )
 where
@@ -76,16 +77,31 @@ readOracleParams oracleAC refInputs =
     hasOracleNFT (TxInInfo _ TxOut {txOutValue}) =
       V1.assetClassValueOf txOutValue oracleAC == 1
 
+-- | The fee a 'MintAction' costs — __the only place in this codebase, on chain or off, where a
+-- 'FeeConfig' field is named.__
+--
+-- That is the whole of inherited fix #1. The inherited 'checkFee' took a @(FeeConfig -> Integer)@
+-- selector, so every call site named a field, and one of them named the wrong one: the Belt System's
+-- interval fee charged the membership-history field for years. An action cannot be mistyped into a
+-- different field, and this function is exhaustive, so a new minting redeemer that forgets its fee is
+-- a compile error.
+{-# INLINEABLE feeFor #-}
+feeFor :: MintAction -> FeeConfig -> Integer
+feeFor MintActionProfile = fcProfileCreationFee
+feeFor MintActionAttestation = fcAttestationFee
+
 -- | Check that a fee payment is included in the transaction outputs.
 -- If 'opFeeConfig' is 'Nothing', no fee is required and the check passes.
 -- If 'opFeeConfig' is 'Just', validates that at least one output pays
--- >= the required fee (extracted via the selector) to 'fcFeeAddress'.
+-- >= the fee 'feeFor' gives for this action to 'fcFeeAddress'.
+--
+-- Takes the __action__, never a selector. See 'feeFor'.
 {-# INLINEABLE checkFee #-}
-checkFee :: OracleParams -> (FeeConfig -> Integer) -> [TxOut] -> Bool
-checkFee oracle feeSelector outputs = case opFeeConfig oracle of
+checkFee :: OracleParams -> MintAction -> [TxOut] -> Bool
+checkFee oracle action outputs = case opFeeConfig oracle of
   Nothing -> True
   Just feeConfig ->
-    let requiredFee = feeSelector feeConfig
+    let requiredFee = feeFor action feeConfig
         feeAddr = fcFeeAddress feeConfig
         feeValue = V1.lovelaceValue (V1.Lovelace requiredFee)
      in traceIfFalse "K2" -- Must pay required fee (K2)

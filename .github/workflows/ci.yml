@@ -28,6 +28,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # FIRST, because it costs under a second and the failure it catches otherwise costs an hour.
+      #
+      # A path in `extra-source-files` with no matching COPY in the service Dockerfiles breaks the
+      # IMAGE build and nothing else — `cabal build` and `cabal test` stay green, because the file is
+      # right there in the working tree. `images.yml` then spends an hour on the shared base image
+      # before all four services die on `cabal: sdist … filepath wildcard`. That is measured, not
+      # hypothetical: it is how `resources/` landed.
+      #
+      # Placed before the apt and blst steps so it reports in seconds rather than after the build.
+      - name: Everything packaged is in the image build context
+        run: bash scripts/check_packaging.sh
+
       # The -dev packages below are not a wish list: every pkg-config dependency the frozen plan
       # forces has to be here, because the freeze pins the flag and leaves the solver no fallback.
       # `grep -E '\+(pkg-config|pkgconfig|use-pkg-config)' cabal.project.freeze` is the check —

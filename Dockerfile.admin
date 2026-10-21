@@ -30,6 +30,11 @@ COPY LICENSE NOTICE ./
 COPY licenses ./licenses
 COPY sql ./sql
 COPY test/fixtures ./test/fixtures
+# `resources/` is in extra-source-files (metric-formulas.json + metrics/*.sql) and was added
+# without this line, so `cabal install` failed its sdist step with "filepath wildcard
+# 'resources/metric-formulas.json' does not match any files" — the exact failure the cabal
+# file's own comment warns about. Every extra-source-files path must be COPYed here.
+COPY resources ./resources
 
 RUN cabal install admin \
     --enable-executable-static \

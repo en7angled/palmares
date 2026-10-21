@@ -122,7 +122,10 @@ tests =
       -- before this test: the version is a bare constant and no assertion mentioned it.
       --
       -- So the count is deliberate. Adding a column fails HERE, next to the version it owes.
-      testCase "attestation_projection's columns and currentSchemaVersion describe the same schema" $
+      --
+      -- All three projection tables, not just the attestation one: v3 added @profile_credential@ to
+      -- a table this case did not pin, which is exactly the hole the tripwire exists to close.
+      testCase "the projection columns and currentSchemaVersion describe the same schema" $
         withScratchDb $ \pool -> do
           runPg pool ensureAttestSchema
           runAttest pool runMigrations
@@ -132,10 +135,39 @@ tests =
           assertBool ("claimed_period_from missing: " <> shown) ("claimed_period_from" `elem` cols)
           assertBool ("claimed_period_to missing: " <> shown) ("claimed_period_to" `elem` cols)
           assertEqual
-            ("column count changed — bump currentSchemaVersion with the schema: " <> shown)
+            ("attestation_projection column count changed — bump currentSchemaVersion with it: " <> shown)
             17
             (length cols)
-          assertEqual "currentSchemaVersion is the version this column set belongs to" 2 currentSchemaVersion,
+
+          profileCols <- columnsIn pool attestSchema "profile_projection"
+          let shownProfile = show profileCols
+          assertBool ("profile_credential missing: " <> shownProfile) ("profile_credential" `elem` profileCols)
+          assertEqual
+            ("profile_projection column count changed — bump currentSchemaVersion with it: " <> shownProfile)
+            9
+            (length profileCols)
+
+          disputeCols <- columnsIn pool attestSchema "dispute_projection"
+          let shownDispute = show disputeCols
+          assertBool ("verdict missing: " <> shownDispute) ("verdict" `elem` disputeCols)
+          assertBool ("target_attestation_id missing: " <> shownDispute) ("target_attestation_id" `elem` disputeCols)
+          assertEqual
+            ("dispute_projection column count changed — bump currentSchemaVersion with it: " <> shownDispute)
+            12
+            (length disputeCols)
+
+          assertEqual "currentSchemaVersion is the version this column set belongs to" 3 currentSchemaVersion,
+      -- The index that must NOT be unique. A credential may be claimed by two profiles (Review
+      -- Focus item 2) and the read layer reports that as `contested`; a unique index here would
+      -- make ingestion drop the second claim instead, which is the opposite behaviour and would
+      -- pass every other test in this module.
+      testCase "profile_credential is indexed but not unique, so two profiles may claim one credential" $
+        withScratchDb $ \pool -> do
+          runPg pool ensureAttestSchema
+          runAttest pool runMigrations
+          idx <- indexesOn pool attestSchema "profile_projection" "profile_credential"
+          assertBool ("no index on profile_credential: " <> show idx) (not (null idx))
+          assertEqual ("a UNIQUE index on profile_credential: " <> show idx) [] (filter snd idx),
       -- THE WRITE PATH, exercised rather than inspected. `putAttestationProjection` was a
       -- 13-argument positional application and is now 16 named fields — but a review pointed out that
       -- nothing in the suite CALLED it, so a transposition among the three GYAssetClass columns would
@@ -200,6 +232,20 @@ tests =
               "SELECT column_name::text FROM information_schema.columns \
               \WHERE table_schema = ? AND table_name = ? ORDER BY column_name"
               [toPersistValue schema, toPersistValue table]
+          )
+
+    -- Indexes on @table@ whose definition mentions @column@, each paired with whether it is UNIQUE.
+    -- Read off @pg_indexes@ rather than @pg_constraint@ because a unique CONSTRAINT and a unique
+    -- INDEX both land here, and either one would be the bug.
+    indexesOn :: ConnectionPool -> T.Text -> T.Text -> T.Text -> IO [(T.Text, Bool)]
+    indexesOn pool schema table column =
+      map (\(Single n, Single u) -> (n, u))
+        <$> runPg
+          pool
+          ( rawSql
+              "SELECT indexname::text, (indexdef LIKE '%UNIQUE%') FROM pg_indexes \
+              \WHERE schemaname = ? AND tablename = ? AND indexdef LIKE '%' || ? || '%'"
+              [toPersistValue schema, toPersistValue table, toPersistValue column]
           )
 
     tablesIn :: ConnectionPool -> T.Text -> IO [T.Text]

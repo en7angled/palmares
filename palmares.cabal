@@ -493,7 +493,6 @@ test-suite test
     UnitTests.Fees
     UnitTests.OracleRules
     UnitTests.ApiHardening
-  --   UnitTests.Attestation
     UnitTests.ChainSyncReplay
     UnitTests.Cleanup
     UnitTests.Conversions
@@ -503,6 +502,7 @@ test-suite test
     UnitTests.MetricCatalog
     UnitTests.MetricDoc
     UnitTests.MetricFixture
+    UnitTests.Projections
     UnitTests.QueryHardening
     UnitTests.Reconcile
     UnitTests.Refresh
@@ -511,7 +511,6 @@ test-suite test
     UnitTests.Dispute
     UnitTests.ScriptSize
     UnitTests.Oracle
-  --   UnitTests.Profile
     UnitTests.StorageRoundtrip
     UnitTests.ThresholdMap
 
@@ -557,5 +556,10 @@ test-suite test
   --- Cardano specific dependencies
   build-depends:
     , atlas-cardano
+    -- cardano-api: UnitTests.Projections builds a hex-CBOR inline datum the way a KupoMatch
+    -- carries one, with `serialiseToCBOR . datumToApi'` — the definitional inverse of
+    -- kupoDatumToGYDatum's decoder, so a CBOR divergence cannot surface as a confusing
+    -- "Invalid CBOR datum" at runtime.
+    , cardano-api
     , plutus-ledger-api
     , plutus-tx

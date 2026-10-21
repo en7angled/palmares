@@ -25,6 +25,7 @@ import UnitTests.Claim qualified as Claim
 import UnitTests.Dispute qualified as Dispute
 import UnitTests.Fees qualified as Fees
 import UnitTests.OracleRules qualified as OracleRules
+import UnitTests.Projections qualified as Projections
 import UnitTests.QueryHardening (queryHardeningTests)
 import UnitTests.Reconcile (reconcileTests)
 import UnitTests.Refresh qualified as Refresh
@@ -55,6 +56,7 @@ unitTests =
       Dispute.tests,
       Fees.tests,
       OracleRules.tests,
+      Projections.tests,
       propertyTests,
       reconcileTests,
       Refresh.tests,

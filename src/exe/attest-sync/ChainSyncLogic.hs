@@ -19,7 +19,7 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Text qualified as T
 import Data.Time (getCurrentTime)
 import Database.Persist.Sql (ConnectionPool)
-import GeniusYield.Types (GYNetworkId)
+import GeniusYield.Types (GYMintingPolicyId, GYNetworkId, mintingPolicyIdToText)
 import Palmares.ChainSync.KupoClient (KupoCheckpoint (..), KupoMatch (..), runKupoCheckpointsList, runKupoMatches)
 import Palmares.Storage (ChainCursor (..), getCursorValue, putCursor, putMatchAndProjections, runAttest)
 
@@ -79,8 +79,13 @@ getBlockchainTip kupoUrl = do
 -- | Recursively fetch and project Kupo matches in batches from @start@ to @end@. The continuation
 -- recurses only on success; on error it tail-retries the SAME window. Windows overlap by one slot
 -- (Kupo bounds are inclusive) — duplicate-safe via idempotent upserts.
-fetchingMatches :: MVar SyncMetrics -> String -> T.Text -> T.Text -> GYNetworkId -> ConnectionPool -> Integer -> Integer -> Integer -> IO ()
-fetchingMatches metricsVar kupoUrl matchPattern policyHexText networkId pool start end batchSize
+--
+-- The protocol policy arrives as a 'GYMintingPolicyId' rather than loose hex because the projection
+-- path authenticates each output against it (inherited fix #3); the Kupo query's own @policy_id@
+-- filter is rendered back out of it, so the indexer and the projection cannot disagree about which
+-- policy is ours.
+fetchingMatches :: MVar SyncMetrics -> String -> T.Text -> GYMintingPolicyId -> GYNetworkId -> ConnectionPool -> Integer -> Integer -> Integer -> IO ()
+fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool start end batchSize
   | end <= start = putStrLn "No more matches to fetch"
   | otherwise = do
       let endInterval = if (start + batchSize) > end then end else start + batchSize
@@ -89,7 +94,7 @@ fetchingMatches metricsVar kupoUrl matchPattern policyHexText networkId pool sta
         runKupoMatches
           kupoUrl
           matchPattern
-          (Just policyHexText)
+          (Just (mintingPolicyIdToText ourPolicy))
           Nothing
           Nothing
           Nothing
@@ -106,17 +111,17 @@ fetchingMatches metricsVar kupoUrl matchPattern policyHexText networkId pool sta
           putStrLn "Kupo client error while fetching matches (retrying)"
           putStrLn "Retrying in 10 seconds"
           threadDelay 10000000
-          fetchingMatches metricsVar kupoUrl matchPattern policyHexText networkId pool start end batchSize
+          fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool start end batchSize
         Right matches -> do
-          applyMatches networkId pool matches
+          applyMatches networkId ourPolicy pool matches
           now <- getCurrentTime
           modifyMVar_ metricsVar $ \m -> pure m {smLocalTip = endInterval, smLastSyncTime = now}
-          fetchingMatches metricsVar kupoUrl matchPattern policyHexText networkId pool endInterval end batchSize
+          fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool endInterval end batchSize
 
-applyMatches :: GYNetworkId -> ConnectionPool -> [KupoMatch] -> IO ()
-applyMatches _networkId _pool [] = return ()
-applyMatches networkId pool matches = do
+applyMatches :: GYNetworkId -> GYMintingPolicyId -> ConnectionPool -> [KupoMatch] -> IO ()
+applyMatches _networkId _ourPolicy _pool [] = return ()
+applyMatches networkId ourPolicy pool matches = do
   liftIO $ putStrLn ("-----------------------------------------> Applying matches: " <> show (length matches))
   runAttest
     pool
-    (forM_ matches (putMatchAndProjections networkId))
+    (forM_ matches (putMatchAndProjections networkId ourPolicy))

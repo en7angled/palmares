@@ -25,6 +25,7 @@ import Data.Time
 import Database.Persist.Postgresql (ConnectionString, createPostgresqlPool)
 import Database.Persist.Sql (runSqlPool)
 import GeniusYield.GYConfig (GYCoreConfig (..))
+import GeniusYield.Types (mintingPolicyIdFromText)
 import Palmares.ChainSync.KupoClient (KupoCheckpoint (..))
 import Palmares.Storage
   ( currentSchemaVersion,
@@ -82,6 +83,15 @@ main = do
 
   deployedScriptsContext <- maybe (die "Deployed validators configuration failed") return =<< decodeConfigEnvOrFile @DeployedScriptsContext "DEPLOYED_VALIDATORS_CONFIG" defaultTxBuildingContextFile
   let policyHexText = T.pack $ printf "%s" (getMintingPolicyHash deployedScriptsContext)
+
+  -- The same hash, typed, because the projection path needs it to authenticate every output it
+  -- indexes (inherited fix #3) and the Kupo pattern needs it as text. Parsed once, here, so a
+  -- deployed-config hash that is not a policy id is a boot failure and not a per-match surprise.
+  ourPolicy <-
+    either
+      (\e -> die ("Deployed minting policy hash is not a policy id: " <> e))
+      return
+      (mintingPolicyIdFromText policyHexText)
 
   -- Probe the existing schema BEFORE migrating. Wipe (drop) the chain-sync tables if the schema
   -- version or minting policy changed, so migrateAll only CREATEs fresh tables and never runs an
@@ -145,16 +155,16 @@ main = do
       Behind _isWayBehind -> do
         liftIO $ putStrLn "Chain is behind"
         liftIO $ putStrLn "Fetching matches"
-        fetchingMatches metricsVar kupoUrl matchPattern policyHexText networkId pool (ck_slot_no localTip) (ck_slot_no blockchainTip) fetchBatchSize
+        fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool (ck_slot_no localTip) (ck_slot_no blockchainTip) fetchBatchSize
         updateLocalTip pool blockchainTip
       Ahead -> do
         liftIO $ putStrLn "Chain is ahead"
         let rollbackSlot = max 0 (ck_slot_no blockchainTip - rollbackMargin)
-        runAttest pool (rollbackTo networkId rollbackSlot)
+        runAttest pool (rollbackTo networkId ourPolicy rollbackSlot)
         updateLocalTip pool (KupoCheckpoint rollbackSlot "")
         liftIO $ putStrLn ("Rolled back to slot " <> show rollbackSlot <> "; will re-sync forward")
       UpToDateButDifferentBlockHash -> do
         liftIO $ putStrLn "Same slot, different block hash; rolling back with margin"
         let rollbackSlot = max 0 (ck_slot_no blockchainTip - rollbackMargin)
-        runAttest pool (rollbackTo networkId rollbackSlot)
+        runAttest pool (rollbackTo networkId ourPolicy rollbackSlot)
         updateLocalTip pool (KupoCheckpoint rollbackSlot "")

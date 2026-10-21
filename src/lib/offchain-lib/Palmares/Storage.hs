@@ -37,6 +37,11 @@ import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..))
 
 derivePersistFieldJSON "GYAssetClass"
 
+-- | Stored the way 'ProfileType' and 'AttestationType' are — through the enum's own JSON, which is
+-- the one place its wire spelling is written. Here rather than beside the type because
+-- "Palmares.DomainTypes.Core.Types" holds no @persistent@ import and this is the only writer.
+derivePersistFieldJSON "DisputeVerdict"
+
 -- | Persist 'Integer' columns (chain slots, interval numbers) as PostgreSQL @bigint@ so SQL
 -- comparisons and @ORDER BY@ are numeric, not lexicographic. Cardano slots are ~10^9, far under
 -- 'Int64' range; the overflow guard is defensive and unreachable for real slot/interval values.
@@ -114,6 +119,12 @@ OnchainMatchEvent
 -- stamped at ingest is re-stamped by every 'rollbackTo' + replay, which silently renumbers
 -- anything ordered by it; the chain's slot is immune to replay. Readers convert with
 -- 'Palmares.TxBuilding.Utils.slotToUTC'.
+--
+-- profileCredential is the CIP-129 rendering of the credential the datum claims, and it carries
+-- NO unique constraint on purpose: a credential may be claimed by two profiles and the read layer
+-- reports that as `contested` rather than the ingest path refusing the second claim. A unique
+-- index here would make the losing claim invisible instead of visible-and-flagged, which is the
+-- opposite of what the registry is for. 'runMigrations' adds the plain index.
 ProfileProjection
     createdAtSlot    Integer
     createdAtHash    Text
@@ -122,6 +133,7 @@ ProfileProjection
     profileDescription Text
     profileImageURI  Text
     profileType      ProfileType
+    profileCredential Text Maybe
     UniqueProfileProjection profileId
     deriving Show
 
@@ -143,6 +155,24 @@ AttestationProjection
     attestationImageURI       Text
     otherMetadata             (Maybe AttestationOtherMetadataJson)
     UniqueAttestationProjection attestationId
+    deriving Show
+
+-- A dispute is its own UTxO pointing at an attestation and never a field on one, so it is its own
+-- table: an upheld dispute is published BESIDE the attestation it contests and never hides or
+-- deletes it (spec 4.3). @verdict@ is NULL while the dispute is open.
+DisputeProjection
+    createdAtSlot        Integer
+    createdAtHash        Text
+    disputeId            GYAssetClass
+    targetAttestationId  GYAssetClass
+    openedByProfileId    GYAssetClass
+    openedAt             GYTime
+    deposit              Integer
+    verdict              (Maybe DisputeVerdict)
+    disputeName          Text
+    disputeDescription   Text
+    disputeImageURI      Text
+    UniqueDisputeProjection disputeId
     deriving Show
 |]
 
@@ -182,7 +212,15 @@ runAttest pool act = runSqlPool (pinSearchPath >> act) pool
     pinSearchPath = rawExecute ("SET LOCAL search_path TO " <> attestSchema <> ", public") []
 
 runMigrations :: (MonadIO m) => SqlPersistT m ()
-runMigrations = runMigration migrateAll
+runMigrations = do
+  runMigration migrateAll
+  -- A PLAIN index, deliberately not unique — see 'ProfileProjection'. Raw SQL because the
+  -- @persistLowerCase@ quasi-quoter has syntax for unique constraints and none for a bare index,
+  -- and the whole point of this one is that it is not a constraint.
+  rawExecute
+    "CREATE INDEX IF NOT EXISTS profile_projection_credential_idx \
+    \ON profile_projection (profile_credential)"
+    []
 
 -- | Bump when the chain-sync DB schema changes incompatibly; startup wipes + re-syncs on a mismatch.
 --
@@ -191,12 +229,17 @@ runMigrations = runMigration migrateAll
 --   * v2: @AttestationProjection@ gained @attestation_kind@, @claimed_period_from@ and
 --     @claimed_period_to@. A re-sync is the point: the three columns are read off the datum, so rows
 --     written before them cannot be backfilled from the database — only from the chain.
+--   * v3: @DisputeProjection@ added, @ProfileProjection@ gained @profile_credential@, and
+--     'Palmares.Ingestion.projectChainEvent' now authenticates a UTxO before projecting it
+--     (inherited fix #3). The re-sync is not optional: the credential comes off the datum, and
+--     every row already written was written WITHOUT the authentication check — so a v2 database may
+--     hold planted rows that no replay of the raw match log would produce again.
 --
 -- @UnitTests.AttestSchema@ asserts this constant against the entity set, because a column added
 -- without a bump is a deployed service migrating a new column onto rows that will never hold a value
 -- for it, and nothing else in the test suite notices.
 currentSchemaVersion :: Int
-currentSchemaVersion = 2
+currentSchemaVersion = 3
 
 -- | Upsert a record by its unique key: insert if absent, replace if present.
 upsertByUnique ::
@@ -230,6 +273,7 @@ chainSyncTableNames =
   [ "attestation_projection",
     "chain_cursor",
     "chain_sync_config",
+    "dispute_projection",
     "onchain_match_event",
     "profile_projection"
   ]
@@ -272,16 +316,20 @@ readSchemaProbe = do
     _ -> pure Nothing
 
 -- | Store a raw Kupo match and its derived projections.
-putMatchAndProjections :: (MonadIO m) => GYNetworkId -> KupoMatch -> SqlPersistT m ()
-putMatchAndProjections networkId km = do
+--
+-- The raw match is stored unconditionally and the projection only if the output authenticates: the
+-- match log is the replay source and must stay complete, while the projections are the state the
+-- read API serves. 'Palmares.Ingestion.projectChainEvent' is where that line is drawn.
+putMatchAndProjections :: (MonadIO m) => GYNetworkId -> GYMintingPolicyId -> KupoMatch -> SqlPersistT m ()
+putMatchAndProjections networkId ourPolicy km = do
   putKupoMatch km
-  projectAndStore networkId km
+  projectAndStore networkId ourPolicy km
 
 -- | Derive and store the projections for a raw match (does NOT re-store the raw match). Reused by
 -- 'rollbackTo' to replay the surviving log. Conversion/projection failures are logged and skipped.
 -- TODO(stream ?): dead-letter table for replayable failed projections.
-projectAndStore :: (MonadIO m) => GYNetworkId -> KupoMatch -> SqlPersistT m ()
-projectAndStore networkId km =
+projectAndStore :: (MonadIO m) => GYNetworkId -> GYMintingPolicyId -> KupoMatch -> SqlPersistT m ()
+projectAndStore networkId ourPolicy km =
   case kupoMatchToAtlasMatch km of
     Left convErr -> liftIO $ putStrLn ("PROJECTION ERROR (dropped, raw match retained): conversion error: " <> convErr)
     Right am -> do
@@ -289,12 +337,13 @@ projectAndStore networkId km =
           header = header_hash (created_at km)
           txId = transaction_id km
           outIdx = output_index km
-      ev <- runExceptT (projectChainEvent networkId am)
+      ev <- runExceptT (projectChainEvent networkId ourPolicy am)
       case ev of
         Left e -> liftIO $ putStrLn ("PROJECTION ERROR (dropped, raw match retained): " <> show e)
         Right proj -> case proj of
-          ProfileEvent p -> putProfileProjection slotNoInt header p
+          ProfileEvent p credential -> putProfileProjection slotNoInt header p credential
           AttestationEvent a -> putAttestationProjection slotNoInt header txId outIdx a
+          DisputeEvent d -> putDisputeProjection slotNoInt header d
           NoEvent _ -> pure ()
 
 -- | Store a raw Kupo match event, upserting by (slot, header, txId, outputIndex) — the on-chain
@@ -315,18 +364,43 @@ putKupoMatch km = do
     ev
 
 -- | Store a profile projection, upserting by profile ID.
-putProfileProjection :: (MonadIO m) => Integer -> Text -> Profile -> SqlPersistT m ()
-putProfileProjection createdSlot createdHash p = do
+putProfileProjection :: (MonadIO m) => Integer -> Text -> Profile -> Maybe Text -> SqlPersistT m ()
+putProfileProjection createdSlot createdHash p credential = do
+  -- Named fields, not positional, for the reason 'putAttestationProjection' spells out: name,
+  -- description and image URI are all 'Text', so a transposition among them compiles and writes a
+  -- row with the description in the name column. Three same-typed neighbours is enough.
   let ev =
         ProfileProjection
-          createdSlot
-          createdHash
-          (profileId p)
-          (profileName p)
-          (profileDescription p)
-          (profileImageURI p)
-          (profileType p)
+          { profileProjectionCreatedAtSlot = createdSlot,
+            profileProjectionCreatedAtHash = createdHash,
+            profileProjectionProfileId = profileId p,
+            profileProjectionProfileName = profileName p,
+            profileProjectionProfileDescription = profileDescription p,
+            profileProjectionProfileImageURI = profileImageURI p,
+            profileProjectionProfileType = profileType p,
+            profileProjectionProfileCredential = credential
+          }
   upsertByUnique (UniqueProfileProjection . profileProjectionProfileId) ev
+
+-- | Store a dispute projection, upserting by dispute ID.
+putDisputeProjection :: (MonadIO m) => Integer -> Text -> ProjectedDispute -> SqlPersistT m ()
+putDisputeProjection createdSlot createdHash d = do
+  -- Named fields: dispute id, target and opener are all 'GYAssetClass'.
+  let ev =
+        DisputeProjection
+          { disputeProjectionCreatedAtSlot = createdSlot,
+            disputeProjectionCreatedAtHash = createdHash,
+            disputeProjectionDisputeId = pdDisputeId d,
+            disputeProjectionTargetAttestationId = pdTarget d,
+            disputeProjectionOpenedByProfileId = pdOpenedBy d,
+            disputeProjectionOpenedAt = pdOpenedAt d,
+            disputeProjectionDeposit = pdDeposit d,
+            disputeProjectionVerdict = pdVerdict d,
+            disputeProjectionDisputeName = pdName d,
+            disputeProjectionDisputeDescription = pdDescription d,
+            disputeProjectionDisputeImageURI = pdImageURI d
+          }
+  upsertByUnique (UniqueDisputeProjection . disputeProjectionDisputeId) ev
 
 -- | Store an attestation projection, upserting by attestation ID.
 putAttestationProjection :: (MonadIO m) => Integer -> Text -> Text -> Int -> Attestation -> SqlPersistT m ()
@@ -377,13 +451,15 @@ replayOrder =
 -- | Roll back to @slot@: discard raw matches beyond it, wipe the derived projection tables, and
 -- rebuild them by replaying the surviving raw-match log in chain order. Correct because callers pass
 -- a slot strictly below any orphan (guaranteed by the F-08 rollback margin >= 1).
-rollbackTo :: (MonadIO m) => GYNetworkId -> Integer -> SqlPersistT m ()
-rollbackTo networkId slot = do
+rollbackTo :: (MonadIO m) => GYNetworkId -> GYMintingPolicyId -> Integer -> SqlPersistT m ()
+rollbackTo networkId ourPolicy slot = do
   -- 1. Discard raw matches strictly beyond the rollback slot (numeric compare; F-02 fixed).
   deleteWhere [OnchainMatchEventCreatedSlot >. slot]
-  -- 2. Wipe all derived projection tables.
+  -- 2. Wipe all derived projection tables. Every table here must also be rebuilt by step 3, or the
+  --    rollback is a deletion: a projection the replay cannot produce again is one this wipe loses.
   deleteWhere ([] :: [Filter ProfileProjection])
   deleteWhere ([] :: [Filter AttestationProjection])
+  deleteWhere ([] :: [Filter DisputeProjection])
   -- 3. Replay surviving raw matches in true chain order.
   surviving <- selectList [] []
-  mapM_ (projectAndStore networkId . onchainMatchEventKupoMatch) (replayOrder (map entityVal surviving))
+  mapM_ (projectAndStore networkId ourPolicy . onchainMatchEventKupoMatch) (replayOrder (map entityVal surviving))

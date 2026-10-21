@@ -18,13 +18,20 @@ import Database.Persist (Filter, selectList)
 import Database.Persist.Sql (SqlBackend)
 import Database.Persist.Sqlite (runSqlite)
 import Data.Text (Text)
-import GeniusYield.Types (GYNetworkId (GYTestnetPreview))
+import GeniusYield.Types (GYMintingPolicyId, GYNetworkId (GYTestnetPreview))
 import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..))
 import Palmares.Storage (OnchainMatchEvent, putKupoMatch, rollbackTo, runMigrations)
 import Test.Tasty
 import Test.Tasty.HUnit
 
 -- | A raw match with an irrelevant Kupo payload; vary slot / txId / outputIndex.
+-- | Any policy id. T-ATTEST-8 gave 'rollbackTo' the protocol minting policy, because a replay must
+-- re-authenticate what it re-projects (inherited fix #3). These cases exercise raw-match deletion
+-- and their fixtures project nothing, so the value is irrelevant here — the projection-level replay
+-- cases live in 'UnitTests.Projections', against real addresses and real datums.
+testPolicy :: GYMintingPolicyId
+testPolicy = "c0ffee00000000000000000000000000000000000000000000000001"
+
 mkMatch :: Integer -> Text -> Int -> KupoMatch
 mkMatch slot txid outIx =
   KupoMatch
@@ -67,7 +74,7 @@ storageRoundtripTests =
           runMigrations
           putKupoMatch (mkMatch 99999999 "tx-old" 0) -- 8-digit slot
           putKupoMatch (mkMatch 100000000 "tx-new" 0) -- 9-digit slot; lexically "100000000" < "99999999"
-          rollbackTo GYTestnetPreview 99999999 -- must remove only the 9-digit one
+          rollbackTo GYTestnetPreview testPolicy 99999999 -- must remove only the 9-digit one
           n <- countMatches
           liftIO $ assertEqual "only slots > 99999999 removed (numeric compare)" 1 n
     ]

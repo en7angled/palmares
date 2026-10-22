@@ -513,6 +513,7 @@ test-suite test
     UnitTests.GovIds
     UnitTests.GovThresholds
     UnitTests.InteractionApi
+    UnitTests.DisputeRules
     UnitTests.MetadataLimits
     UnitTests.MetricCatalog
     UnitTests.MintInputs

@@ -16,6 +16,7 @@ import UnitTests.GovDto (govDtoTests)
 import UnitTests.GovIds (govIdsTests)
 import UnitTests.GovThresholds (govThresholdsTests)
 import UnitTests.InteractionApi (interactionApiTests)
+import UnitTests.DisputeRules qualified as DisputeRules
 import UnitTests.MetadataLimits qualified as MetadataLimits
 import UnitTests.MintInputs qualified as MintInputs
 import UnitTests.MutationGuards qualified as MutationGuards
@@ -68,6 +69,7 @@ unitTests =
       MintInputs.tests,
       MutationGuards.tests,
       MetadataLimits.tests,
+      DisputeRules.tests,
       Blueprint.tests,
       attestReadTests,
       Dispute.tests,

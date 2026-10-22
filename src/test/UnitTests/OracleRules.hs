@@ -129,7 +129,15 @@ tests =
       testCase "one millisecond inside an exclusive upper bound is accepted" $
         checkDateInRange (t 109) (Interval (lowerBound (t 90)) (strictUpperBound (t 110))) @?= True,
       testCase "an exclusive lower bound excludes its own instant" $
-        checkDateInRange (t 90) (Interval (strictLowerBound (t 90)) (strictUpperBound (t 110))) @?= False
+        checkDateInRange (t 90) (Interval (strictLowerBound (t 90)) (strictUpperBound (t 110))) @?= False,
+      -- And the raw-width claim above, which was prose with no test behind it until an independent
+      -- reader pointed that out — the exact shape this file keeps finding elsewhere. The closure
+      -- moves the MEMBERSHIP boundary and leaves the WIDTH boundary alone, so an interval that is
+      -- exclusive at the top and exactly `maxDateWindow` wide still passes: `hi - lo` satisfies the
+      -- `<=` on the raw bounds, and `member` holds because the inclusive upper bound is the instant
+      -- below `hi`.
+      testCase "an exclusive-ended interval exactly maxDateWindow wide still passes the width check" $
+        checkDateInRange (t 1) (Interval (lowerBound (t 1)) (strictUpperBound (1 + maxDateWindow))) @?= True
     ]
   where
     pkhA = PubKeyHash "\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1"

@@ -23,6 +23,10 @@ module Palmares.Onchain.CIP68
     -- * Validation
     validateMetadataFields,
     validateImageURI,
+    validateOtherMetadata,
+    maxOtherMetadataEntries,
+    isRefTokenName,
+    isProtocolRefToken,
 
     -- * CIP-67 Token Name Derivation
     generateRefAndUserTN,
@@ -102,6 +106,96 @@ validateMetadataFields Metadata222 {..} =
 {-# INLINEABLE validateImageURI #-}
 validateImageURI :: BuiltinByteString -> Bool
 validateImageURI uri = lengthOfByteString uri <= maxImageURILength -- Image URI too long (max 256 bytes)
+
+-- | Bounds for the caller-supplied half of the metadata map.
+--
+-- 'otherMetadata' is a CIP-68 extension point and it went into the permanent datum unbounded and
+-- unchecked, which is two problems rather than one.
+--
+-- __Unbounded.__ The issuer pays the min-ADA for a bloated attestation, which looks like self-harm
+-- until you read the accept path: @A1@ re-locks @ownValue@, so the SUBJECT is the one who has to
+-- spend and relock that UTxO to accept. A big enough datum makes accepting an attestation about you
+-- expensive, and past the datum limit, impossible. The attestation cannot be removed either, because
+-- nothing in this protocol burns. So the griefing lands on the subject, not the issuer.
+--
+-- __Unchecked for duplicates.__ 'mkCIP68Datum' builds the map with @AssocMap.unsafeFromList@ and a
+-- comment saying it is safe because the keys are unique. That is true of the three literals and says
+-- nothing about the list appended after them. Duplicate keys break the precondition, and then
+-- @AssocMap.lookup@ is whichever entry comes first while an off-chain decoder is free to disagree —
+-- so the datum means two different things depending on who reads it. Collisions with the three
+-- reserved keys are the worst version, since they let @otherMetadata@ shadow @name@.
+-- 'Palmares.TxBuilding.Operations' already refuses those off chain
+-- (@AttestationOtherMetadataReservedKeys@); this is the half a hand-built transaction cannot skip.
+{-# INLINEABLE maxOtherMetadataEntries #-}
+maxOtherMetadataEntries :: Integer
+maxOtherMetadataEntries = 16
+
+{-# INLINEABLE maxOtherMetadataKeyLength #-}
+maxOtherMetadataKeyLength :: Integer
+maxOtherMetadataKeyLength = 64
+
+{-# INLINEABLE maxOtherMetadataValueLength #-}
+maxOtherMetadataValueLength :: Integer
+maxOtherMetadataValueLength = 256
+
+-- | Validate the caller-supplied metadata entries: count, sizes, and key uniqueness.
+--
+-- __The count is checked FIRST and that ordering is load-bearing.__ The duplicate-key check is
+-- quadratic, and a quadratic scan over a list the attacker sizes is a budget-exhaustion vector of
+-- its own. Sixteen entries is at most 120 key comparisons, which is why bounding the count before
+-- scanning turns an unbounded cost into a constant one.
+{-# INLINEABLE validateOtherMetadata #-}
+validateOtherMetadata :: [(BuiltinByteString, BuiltinByteString)] -> Bool
+validateOtherMetadata entries =
+  countAtMost maxOtherMetadataEntries entries
+    && all sizesOk entries
+    && keysAreUnique (reservedKeys <> map fst entries)
+  where
+    sizesOk (k, v) =
+      lengthOfByteString k <= maxOtherMetadataKeyLength
+        && lengthOfByteString v <= maxOtherMetadataValueLength
+
+    -- The three keys 'mkCIP68Datum' writes itself. Prepended rather than compared separately, so a
+    -- caller key equal to one of them is caught by the same comparison as any other duplicate.
+    reservedKeys = [encodeUtf8 "name", encodeUtf8 "description", encodeUtf8 "image"]
+
+    -- `length` would walk the whole list before comparing, which is the cost this is here to bound.
+    countAtMost n xs = case xs of
+      [] -> True
+      (_ : rest) -> n > 0 && countAtMost (n - 1) rest
+
+    keysAreUnique ks = case ks of
+      [] -> True
+      (k : rest) -> not (k `elem` rest) && keysAreUnique rest
+
+-- | Is this token name a CIP-67 __reference__ token name?
+--
+-- __Why a profile id has to be checked for this and not only for its currency symbol.__ A
+-- 'ProfileId' is the reference token's 'AssetClass', and the mint handlers used to accept any asset
+-- class of this protocol's currency symbol. Name a profile's __user__ token instead and the
+-- derivation becomes the identity: @deriveUserFromRefTN@ replaces the first four bytes with the user
+-- prefix, so for a name that already starts with the user prefix it returns the name unchanged.
+--
+-- That makes @Mf@ and @A1@ satisfiable by the profile's real owner — they hold that user token — so
+-- the attestation is issued and accepted by exactly the right people while
+-- @attestation_projection.subject_profile_id@ records an id that no @profile_projection@ row has.
+-- The record is accepted on chain and detached from its subject in the read layer, which is a
+-- deception rather than a loss: "I accepted it" is true on chain and the registry never shows it.
+--
+-- Four bytes of comparison on a mint path, against an effect the read layer cannot repair. The
+-- three reserved-prefix bytes of CIP-67 are not checked separately; the whole four-byte prefix is
+-- the test.
+{-# INLINEABLE isRefTokenName #-}
+isRefTokenName :: TokenName -> Bool
+isRefTokenName (TokenName bs) = sliceByteString 0 4 bs == refTokenPrefixBS
+
+-- | Is this asset class a protocol REFERENCE token: right policy, right CIP-67 prefix?
+--
+-- The pair of checks a protocol id has to pass, kept together because passing only the first was
+-- the finding. 'isRefTokenName' above says what naming a user token instead buys an attacker.
+{-# INLINEABLE isProtocolRefToken #-}
+isProtocolRefToken :: AssetClass -> CurrencySymbol -> Bool
+isProtocolRefToken (AssetClass (cs, tn)) cs' = cs == cs' && isRefTokenName tn
 
 -- All UTF-8 encoded keys and values need to be converted into their respective byte's representation when creating the datum on-chain.
 {-# INLINEABLE mkCIP68Datum #-}

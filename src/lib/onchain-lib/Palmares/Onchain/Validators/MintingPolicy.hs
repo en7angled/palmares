@@ -22,7 +22,15 @@ module Palmares.Onchain.Validators.MintingPolicy
 where
 
 import GHC.Generics (Generic)
-import Palmares.Onchain.CIP68 (MetadataFields, deriveUserFromRefAC, generateRefAndUserTN, mkCIP68Datum, validateMetadataFields)
+import Palmares.Onchain.CIP68
+  ( MetadataFields,
+    deriveUserFromRefAC,
+    generateRefAndUserTN,
+    isProtocolRefToken,
+    mkCIP68Datum,
+    validateMetadataFields,
+    validateOtherMetadata,
+  )
 import Palmares.Onchain.Protocol.Lookup (checkFee, readOracleParams)
 import Palmares.Onchain.Protocol.Types
   ( AttestationId,
@@ -66,7 +74,6 @@ import Palmares.Onchain.Protocol.Types
         profilesValidatorScriptHash
       ),
   )
-import Palmares.Onchain.Utils (hasCurrencySymbol)
 import Palmares.Onchain.Utils qualified as Utils
   ( checkCredentialControl,
     checkDateInRange,
@@ -193,8 +200,8 @@ handleNewAttestation ::
   Integer ->
   Bool
 handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadataEncoded subject issuer kind attestationDate claimedPeriod attestationOutputIdx =
-  let isSubjectValid = hasCurrencySymbol subject mintingPolicyCurrencySymbol
-      isIssuerValid = hasCurrencySymbol issuer mintingPolicyCurrencySymbol
+  let isSubjectValid = isProtocolRefToken subject mintingPolicyCurrencySymbol
+      isIssuerValid = isProtocolRefToken issuer mintingPolicyCurrencySymbol
       minLv = ctxMinLv ctx
       attestationsValidatorAddress = ctxAttestationsAddress ctx
 
@@ -223,8 +230,9 @@ handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOu
       attestationDatum = mkCIP68Datum attestationInfo metadata otherMetadataEncoded
    in traceIfFalse "Ml" (Utils.checkDateInRange attestationDate txInfoValidRange) -- Attestation date not inside validity interval (Ml)
         && traceIfFalse "Mm" (validateMetadataFields metadata) -- Metadata fields validation failed (Mm)
+        && traceIfFalse "Mn" (validateOtherMetadata otherMetadataEncoded) -- otherMetadata too big, or duplicate keys (Mn)
         && traceIfFalse "Mf" (V1.assetClassValueOf (valueSpent txInfo) (deriveUserFromRefAC issuer) == 1) -- Must spend issued by user NFT (Mf)
-        && traceIfFalse "Mg" (isSubjectValid && isIssuerValid) -- Profiles must have correct currency symbol (Mg)
+        && traceIfFalse "Mg" (isSubjectValid && isIssuerValid) -- Profile ids must be this protocol's REF tokens (Mg)
         && traceIfFalse "Mh" (Utils.inputsSpendTxOutRef seedTxOutRef txInfoInputs) -- Must spend seed for uniqueness (Mh)
         && traceIfFalse
           "Mj" -- Tx must mint JUST attestation NFT (Mj)
@@ -358,7 +366,7 @@ handleOpenDispute txInfo@TxInfo {..} mintingPolicyCurrencySymbol protocolParams 
           "Md2" -- Tx must mint JUST the dispute ref NFT (Md2)
           (mintValueMinted txInfoMint == disputeNFT && mintValueBurned txInfoMint == mempty)
         && traceIfFalse "Md3" (V1.assetClassValueOf (valueSpent txInfo) (deriveUserFromRefAC openedBy) == 1) -- Must spend the disputer's user NFT (Md3)
-        && traceIfFalse "Md4" (hasCurrencySymbol target mintingPolicyCurrencySymbol && hasCurrencySymbol openedBy mintingPolicyCurrencySymbol) -- Target and opener must belong to this protocol (Md4)
+        && traceIfFalse "Md4" (isProtocolRefToken target mintingPolicyCurrencySymbol && isProtocolRefToken openedBy mintingPolicyCurrencySymbol) -- Target and opener must be this protocol's REF tokens (Md4)
         && traceIfFalse "Md8" (any ((== depositTo) . txOutAddress . txInInfoResolved) txInfoInputs) -- Deposit address must be spent from by this tx (Md8)
         && traceIfFalse "Md5" (Utils.checkTxOutAtIndexWithDatumMinValueAndAddress disputeOutputIdx disputeDatum disputeValue disputesValidatorAddress txInfoOutputs) -- Lock dispute + deposit at DisputesValidator address (Md5)
         && traceIfFalse "Md6" (Utils.checkDateInRange openedAt txInfoValidRange) -- Open date not inside validity interval (Md6)

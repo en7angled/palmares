@@ -28,6 +28,7 @@ where
 
 import Control.Monad (void)
 import Data.Text (Text)
+import Data.Text qualified as T
 import GHC.Stack
 import GeniusYield.Test.Clb
 import GeniusYield.Test.Utils
@@ -77,6 +78,8 @@ attestationTests =
       mkTestFor "Issue attestation with reserved other_metadata key fails" reservedMetadataKeyFails,
       mkTestFor "Test Case 5.10: an attestation whose subject profile does not exist is refused" missingSubjectRefused,
       mkTestFor "Test Case 5.11: an attestation about another ATTESTATION (lineage) succeeds" lineageAttestation,
+      mkTestFor "Test Case 5.11b: a lineage attestation can NEVER be accepted, and that is the feature's limit" lineageCannotBeAccepted,
+      mkTestFor "Test Case 5.14: other_metadata past the entry limit FAILS (Mn)" oversizedOtherMetadataFails,
       mkTestFor "Test Case 5.12: a back-dated attestation FAILS (Ml, fix #4)" backDatedAttestationFails,
       mkTestFor "Test Case 5.13: an attestation issued with someone else's user NFT FAILS (Mf)" wrongIssuerNFTFails,
       mkTestFor "a paused protocol refuses a profile update and an acceptance, not only an issuance" pauseStopsEverything
@@ -280,6 +283,64 @@ attestationTests =
       assert (lineageAC /= baseAC)
 
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "An attestation about an attestation landed."
+
+    -- Test Case 5.11b. THE LIMIT OF THE FEATURE ABOVE, which nothing stated until an audit looked.
+    --
+    -- `A1` requires the transaction to spend the user NFT derived from the subject's id, and that is
+    -- how a subject consents. An attestation mints only a reference token — no user token exists to
+    -- spend — so a lineage attestation cannot be accepted by anybody, ever. It stays
+    -- `isAccepted = False` for as long as the chain exists, and nothing burns it.
+    --
+    -- This is asserted rather than fixed, and the reasoning is written down here because the
+    -- alternative is worse than the limit. Accepting a lineage record would mean letting the SUBJECT
+    -- ATTESTATION's own subject consent on its behalf, which needs that attestation as a reference
+    -- input on the accept path — and the validator cannot tell a profile id from an attestation id,
+    -- since both are CIP-67 reference tokens of the same policy. So it would cost a reference input
+    -- on EVERY acceptance to serve a case that has no user yet.
+    --
+    -- What the limit actually requires is a READ-LAYER distinction: an `Endorsement` of a record is
+    -- its issuer's statement and stands on the issuer alone, so presenting it as "pending" — which
+    -- is what `isAccepted = False` reads as on a normal attestation — is the real defect. That is
+    -- T-ATTEST-9's business, not a validator's.
+    --
+    -- `mustFail` and not `mustFailWith`: the off-chain path refuses first, because
+    -- `acceptAttestationTX` looks for the subject's user NFT and there is none to find. A trace-code
+    -- assertion here would be asserting which layer happens to say no first.
+    lineageCannotBeAccepted :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    lineageCannotBeAccepted info@TestInfo {..} = do
+      (ctx, issuerAC, subjectAC) <- deployWithTwoProfiles info
+      (_t1, baseAC) <- issue ctx (w1 testWallets) subjectAC issuerAC MilestoneDelivered milestoneAttestationData []
+      waitNSlots_ 1
+      (_t2, lineageAC) <- issue ctx (w1 testWallets) baseAC issuerAC Endorsement lineageAttestationData []
+      waitNSlots_ 1
+
+      -- w2 holds the base attestation's SUBJECT profile, which is the closest thing to an interested
+      -- party. It is not enough, and that is the point.
+      mustFail $ void $ profileInteraction ctx (w2 testWallets) (AcceptAttestationAction lineageAC) Nothing
+      -- w1 issued both, which is not enough either: an issuer accepting its own claim is the thing
+      -- `A1` exists to prevent.
+      mustFail $ void $ profileInteraction ctx (w1 testWallets) (AcceptAttestationAction lineageAC) Nothing
+
+      (datum, _value) <- getAttestationDatumAndValue lineageAC
+      assert (not (OnchainTypes.attestationIsAccepted (extra datum)))
+
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A lineage attestation stayed unaccepted, as it always will."
+
+    -- Test Case 5.14. `Mn`. `otherMetadata` went into the permanent datum unbounded, and the cost
+    -- lands on the SUBJECT rather than the issuer who paid for it: `A1` re-locks `ownValue`, so the
+    -- subject is who has to spend and relock that UTxO to accept, and nothing can remove it.
+    --
+    -- Reachable through the production path, which is what made it a finding: the off-chain guard
+    -- checks reserved-key collisions only, not the count, not the sizes, and not duplicates among
+    -- the caller's own keys.
+    oversizedOtherMetadataFails :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    oversizedOtherMetadataFails info@TestInfo {..} = do
+      (ctx, issuerAC, subjectAC) <- deployWithTwoProfiles info
+      let tooMany = [(T.pack ("k" <> show i), "v") | i <- [1 .. 17 :: Int]]
+      mustFailWith (failedWithTrace "Mn") $
+        void $
+          issue ctx (w1 testWallets) subjectAC issuerAC MilestoneDelivered milestoneAttestationData tooMany
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "An oversized other_metadata map was rejected (Mn)."
 
     -- Test Case 5.12, inherited fix #4 end to end. @Ml@ requires the recorded date to fall inside the
     -- transaction's validity interval, and the interval is built from the chain tip — so a date ten

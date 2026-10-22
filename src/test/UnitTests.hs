@@ -14,6 +14,7 @@ import UnitTests.GovDto (govDtoTests)
 import UnitTests.GovIds (govIdsTests)
 import UnitTests.GovThresholds (govThresholdsTests)
 import UnitTests.InteractionApi (interactionApiTests)
+import UnitTests.MintInputs qualified as MintInputs
 import UnitTests.MetricCatalog qualified as MetricCatalog
 import UnitTests.MetricDoc qualified as MetricDoc
 import PropertyTests (propertyTests)
@@ -59,6 +60,7 @@ unitTests =
       AttestSchema.tests,
       Claim.tests,
       Satisfaction.tests,
+      MintInputs.tests,
       Dispute.tests,
       Fees.tests,
       OracleRules.tests,

@@ -40,7 +40,7 @@ tests =
       -- script carries the script PLUS its own inputs, outputs, change and witnesses. 14000 leaves
       -- about 2.4 KB for all of that, which is the margin `deployValidators` actually runs in.
       --
-      -- The MintingPolicy is the one to watch: at 11920 bytes it is 73% of a whole transaction, and
+      -- The MintingPolicy is the one to watch: at 12241 bytes it is 75% of a whole transaction, and
       -- it is the only script that grows when a redeemer case is added. The four spending validators
       -- sit between 7.5 and 8.4 KB and have room.
       testCase "every validator leaves room for the transaction that deploys it" $
@@ -95,11 +95,23 @@ measured =
 -- the dispute fixes touched the dispute path, the oracle fix touched the oracle, and the shared
 -- helper added to 'Palmares.Onchain.Utils' ('spentExactlyOnceFromAddress') is reached from exactly
 -- one validator rather than linked into all five.
+--
+-- Then the mint-path redeemer checks, and this is the most expensive single change so far:
+--
+--   MintingPolicy 11920 -> 12241  @Mn@ ('validateOtherMetadata') and the CIP-67 reference-prefix
+--                                 half of @Mg@ and @Md4@ ('isProtocolRefToken'). The other four did
+--                                 not budge.
+--
+-- 321 bytes, and almost all of it is @Mn@: the duplicate-key check is a quadratic scan written as
+-- two recursive functions, and recursion is what PlutusTx cannot share. It buys a bounded datum on
+-- a record nobody can remove, so it is worth it — but it is the one line in this table where the
+-- cost is worth looking at again if the policy ever approaches the ceiling. The prefix check is
+-- four bytes of comparison reused at four call sites.
 expected :: [(String, Int)]
 expected =
   [ ("ProfilesValidator", 7879),
     ("AttestationsValidator", 7554),
     ("DisputesValidator", 8340),
     ("OracleValidator", 7492),
-    ("MintingPolicy", 11920)
+    ("MintingPolicy", 12241)
   ]

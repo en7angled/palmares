@@ -503,6 +503,7 @@ test-suite test
     UnitTests.GovThresholds
     UnitTests.InteractionApi
     UnitTests.MetricCatalog
+    UnitTests.MintInputs
     UnitTests.MetricDoc
     UnitTests.MetricFixture
     UnitTests.Projections

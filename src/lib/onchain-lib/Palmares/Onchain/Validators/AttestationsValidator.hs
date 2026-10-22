@@ -10,6 +10,27 @@
 {-# HLINT ignore "Use &&" #-}
 
 -- | Attestations validator enforcing attestation acceptance and permissionless cleanup.
+--
+-- __A LINEAGE ATTESTATION CAN NEVER BE ACCEPTED, and that is a limit of the feature rather than a
+-- missing check.__ An attestation about an earlier attestation is a record the spec asks for, and
+-- 'Palmares.TxBuilding.Lookups.ensureSubjectProfileExists' permits it on purpose. But @A1@ is how a
+-- subject consents: the transaction must spend the user NFT derived from the subject's id, and
+-- @handleNewAttestation@ mints only a __reference__ token. No user token for an attestation exists,
+-- in any wallet, so no transaction can satisfy @A1@ for a lineage record. It stays
+-- @attestationIsAccepted = False@ for as long as the chain exists, and nothing in this protocol
+-- burns it.
+--
+-- Letting the subject attestation's own subject consent on its behalf would be the semantically
+-- right fix and is deliberately not done: it needs that attestation as a reference input on the
+-- accept path, and a validator cannot tell a profile id from an attestation id — both are CIP-67
+-- reference tokens of the same policy — so it would cost a reference input on EVERY acceptance to
+-- serve a case that has no users yet. @UnitTests.Attestation@ 5.11b pins the limit so it cannot be
+-- rediscovered as a bug.
+--
+-- What the limit actually requires is a READ-LAYER distinction. An @Endorsement@ of a record is its
+-- issuer's statement and stands on the issuer alone; presenting it as "pending", which is what
+-- @isAccepted = False@ means on a normal attestation, is the real defect and belongs to the read
+-- surface.
 module Palmares.Onchain.Validators.AttestationsValidator
   ( -- * Attestations Redeemer
     AttestationsRedeemer (..),

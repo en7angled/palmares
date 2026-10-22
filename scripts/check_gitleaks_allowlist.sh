@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # The allowlist in .gitleaks.toml is not a hole, and this is what says so.
 #
-# That file turns OFF one rule — `generic-api-key` — in three narrow places, because that rule
+# That file turns OFF one rule — `generic-api-key` — in four narrow places, because that rule
 # cannot tell a public credential hash from a secret. The risk of any allowlist is that it quietly
 # stops catching the thing it was never meant to excuse, so each narrowing is tested from both
 # sides: a real-looking credential in the same place must still fail the gate, and the public value
 # the narrowing exists for must not. Both halves matter: a gate that catches nothing and a gate that
 # catches everything are equally useless.
 #
-# Two of the three are covered here — the Koios wire fixtures (by path) and bech32 governance
-# identifiers (by value shape, any path). The third, `cabal.project`'s CHaP root keys, is a single
-# published constant in a file no test writes to.
+# Three of the four are covered here — the Koios wire fixtures (by path), bech32 governance
+# identifiers and raw 28-byte credential hashes (both by value shape, any path). The fourth,
+# `cabal.project`'s CHaP root keys, is a single published constant in a file no test writes to.
 #
 # Nothing it writes is a real credential: the AWS key id is the one from gitleaks' own test
 # corpus, and the private key is a BEGIN marker with eight bytes of nothing after it.
@@ -126,6 +126,45 @@ if scan; then
 else
   echo "  FAIL a bech32 DRep id under a 'Key'-named binding trips the gate"
   fail=1
+fi
+
+# 4. The raw-credential entry, the same value in the other encoding. It fired at
+#    `UnitTests/AttestRead.hs:126` under `hexCredential`, so that is the binding name used here.
+#
+#    This entry is bounded by a WIDTH — 56 hex characters, 28 bytes, blake2b-224 — so it takes three
+#    plants and not two. The third is the one that matters: a 64-hex value under the same name must
+#    still be caught, because if it is not, the entry has stopped meaning "a credential hash" and
+#    started meaning "hex is fine", which is a hole big enough for an actual key.
+#
+#    The 64-hex plant is HIGH ENTROPY on purpose. Measured while writing this: a 64-hex value of
+#    `aa` followed by zeros is not flagged by `generic-api-key` at all, so using one here would have
+#    produced a passing assertion that proves nothing about the allowlist.
+HEX56="81378d3ea89b68f0fc09944b1f93f2feb8""51318f196f98ba4029d8a8"
+HEX64="9f3c1d7ba8e24056c1fb09d4e7a3528b""46d0ea91c7f5382604bd1a9e8c73f501"
+plant_hex() { printf 'module ZzPlanted where\n\nhexCredential :: String\nhexCredential = "%s"\n' "$1" > "$HS"; }
+
+plant_hex "$HEX56"
+if scan; then
+  echo "  ok   a 28-byte credential hash under a 'Credential'-named binding does not trip the gate"
+else
+  echo "  FAIL a 28-byte credential hash under a 'Credential'-named binding trips the gate"
+  fail=1
+fi
+
+plant_hex "$AWS"
+if scan; then
+  echo "  FAIL a planted AWS key under a 'Credential'-named binding did NOT trip the gate"
+  fail=1
+else
+  echo "  ok   a planted AWS key under a 'Credential'-named binding still trips the gate"
+fi
+
+plant_hex "$HEX64"
+if scan; then
+  echo "  FAIL a 32-byte hex value is excused, so the allowlist reads 'hex' and not '28 bytes'"
+  fail=1
+else
+  echo "  ok   a 32-byte hex value under the same binding still trips the gate"
 fi
 rm -rf "$ROOT/src"
 

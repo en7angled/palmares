@@ -258,9 +258,13 @@ jobs:
           /tmp/gitleaks version
           /tmp/gitleaks git --redact --no-banner --exit-code 1 .
 
-      # .gitleaks.toml turns ONE rule off on ONE path: generic-api-key over the Koios wire
-      # recordings, which carry on-chain credential hashes under field names containing "key".
-      # An allowlist that is never tested is an allowlist nobody notices going wide, so this
-      # plants an AWS key and a GitHub token at that exact path and asserts the gate still fails.
+      # .gitleaks.toml turns ONE rule off — generic-api-key — in four narrow places, because it
+      # cannot tell a published on-chain credential from a secret. Only the first is scoped by PATH
+      # (the Koios wire recordings); the other three are scoped by the VALUE'S SHAPE, which is
+      # strictly narrower: CHaP's root keys, bech32 governance identifiers, and raw 28-byte
+      # credential hashes. An allowlist that is never tested is an allowlist nobody notices going
+      # wide, so the script below plants a real-looking secret in each narrowed place and asserts
+      # the gate still fails — including a 32-byte hex value, which must stay caught, or the
+      # 28-byte entry would mean "hex is fine".
       - name: the gitleaks allowlist is rule-scoped, not path-scoped
         run: bash scripts/check_gitleaks_allowlist.sh /tmp/gitleaks

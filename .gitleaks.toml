@@ -94,3 +94,35 @@ description = "bech32 governance identifiers: public on-chain credentials, not s
 targetRules = ["generic-api-key"]
 regexTarget = "match"
 regexes = ['''\b(drep_script|drep|cc_cold|cc_hot)1[02-9ac-hj-np-z]{40,}\b''']
+
+# `generic-api-key` on a RAW blake2b-224 credential hash — the same value as the entry above, in the
+# other encoding.
+#
+# WHAT IT FIRED ON: `hexCredential = "81378d3e…"` at `src/test/UnitTests/AttestRead.hs:126`. The
+# diagnosis is the one above, repeated and therefore no longer a coincidence: that binding's three
+# siblings two lines up — `keyCredential`, `scriptCredential`, `cip105Credential` — are the SAME 28
+# bytes, and they did not fire, because they are computed from `credentialRaw` instead of written as
+# a literal. Nor did `otherRaw` on line 120, which is also 56 hex characters, nor `txIdHex` on 131,
+# which is 64. Repository-wide there are 15 such literals across 9 test modules and exactly one
+# tripped the gate. What `generic-api-key` actually reacted to is the word "Credential" in an
+# identifier next to a high-entropy value. It read the NAME.
+#
+# WHY 56 HEX CHARACTERS IS A SHAPE NO SECRET HAS: 56 lowercase hex is exactly 28 bytes, which is
+# blake2b-224 — Cardano's credential-hash width, used for payment key hashes, script hashes and DRep
+# credentials, all of them published on chain as public identities. Issued secrets are 16, 24, 32 or
+# 64 bytes; nothing mints a 28-byte key. So this narrowing has no secret to widen into, which is the
+# same argument the bech32 entry makes and the reason both are scoped by value and not by path.
+#
+# THE QUOTES IN THE PATTERN ARE LOAD-BEARING. `"[0-9a-f]{56}"` requires the 56 hex characters to be
+# the WHOLE quoted literal. Without them, `\b[0-9a-f]{56}\b` would also excuse a 56-hex substring of
+# a longer secret — a 64-hex key contains sixteen of them.
+#
+# Verified, not assumed: `scripts/check_gitleaks_allowlist.sh` plants four values under this exact
+# binding name and asserts that only the credential passes — an AWS key id still trips the gate, and
+# so does a 64-hex value, which is what proves the entry is bounded by the 28-byte width rather than
+# by "hex is fine".
+[[allowlists]]
+description = "raw blake2b-224 credential hashes: 28 bytes, the width no secret is issued at"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''"[0-9a-f]{56}"''']

@@ -38,7 +38,8 @@
 #   PALMARES_QUERY_API         read API base URL                  (default http://localhost:8083)
 #   BASIC_USER / BASIC_PASS    Basic auth for the write API       (required; routes are 401 without)
 #   ATTEST_SMOKE_ADDR          the wallet's address, RAW CBOR HEX (required; see the note below)
-#   ATTEST_SMOKE_DREP_ID       CIP-129 drep1y… of the SAME key    (required; see the note below)
+#   ATTEST_SMOKE_DREP_ID       CIP-129 drep1y… of the SAME key    (required; `operator-address`
+#                                                                 prints it — see the note below)
 #   PALMARES_SIGN_CMD          wallet signer, stdin→stdout        (required)
 #   PALMARES_ADMIN_SIGN_CMD    oracle admin signer                (default $PALMARES_SIGN_CMD)
 #   PALMARES_ADMIN_CMD         admin CLI, read-only here          (default "cabal run -v0 admin --")
@@ -56,6 +57,11 @@
 # Claiming a key credential puts `mustBeSignedBy <that key hash>` in the transaction
 # (TxBuilding/Operations.hs `claimProofSkeleton`), so an arbitrary DRep id — a golden vector, say —
 # builds a transaction that cannot be signed. It is configuration for that reason, not a constant.
+#
+# WHERE BOTH VALUES COME FROM: `$PALMARES_ADMIN_CMD operator-address` prints the address in raw hex
+# and the CIP-129 DRep id of the same key, from one derivation. Taking them from there is what keeps
+# them naming the same key; assembling the DRep id by slicing the hash out of the address hex is
+# deriving it with a second tool, and a mismatch would surface as a node rejection at step 2.
 #
 # -- Exit codes ----------------------------------------------------------------------------------
 #   0  every step passed
@@ -200,6 +206,17 @@ step 1 "preflight — both services reachable, and honest about it"
 # ---------------------------------------------------------------------------------------------
 probe() { curl -fsS -H 'Accept: application/json' "$1$2" | jq -c "$3"; }
 
+# Checked here rather than left to the 400 at step 2, because step 2 is two minted profiles later.
+# `drep1y` is the bech32 of a CIP-129 header byte (0x22 key, 0x23 script — the first five bits are
+# the same, so this does not distinguish the two kinds and is not trying to). What it does catch is
+# the mistake the note above warns about: a CIP-105 id or a bare hex hash, neither of which carries
+# a header byte at all, and both of which `parseClaimCredential` refuses as CredentialMalformed.
+case "$ATTEST_SMOKE_DREP_ID" in
+  drep1y*) ;;
+  *) die "ATTEST_SMOKE_DREP_ID=$ATTEST_SMOKE_DREP_ID is not a CIP-129 drep1y… id — \
+run '$PALMARES_ADMIN_CMD operator-address' and use the DRep id it prints" ;;
+esac
+
 [ "$(probe "$API" /health '.status' || true)" = '"healthy"' ] ||
   die "the interaction API at $API is not answering /health"
 check "interaction-api identifies itself" "$(probe "$API" /health '.service' || true)" '"interaction-api"'
@@ -226,13 +243,29 @@ PAUSED=$(printf '%s' "$ISTATUS" | jq -c '.oracle_paused')
 echo "  ok   /status: provider=$(printf '%s' "$ISTATUS" | jq -r '.provider') network=$(printf '%s' "$ISTATUS" | jq -r '.network')"
 
 # The read API's /status 503s on its own when db-sync is behind, so reaching here means it is
-# fresh. Its lag is printed because it is the number a stale run is diagnosed from — and because
-# it is the GOVERNANCE index's lag, not attest-sync's, which nothing here reports.
+# fresh. Its lag is printed because it is the number a stale run is diagnosed from — and it is the
+# GOVERNANCE index's lag specifically, which is why attest-sync's is read separately just below.
 QSTATUS=$(curl -fsS "$QAPI/status")
 [ "$(printf '%s' "$QSTATUS" | jq -c '.governance.is_ready')" = "true" ] ||
   die "the query API reports governance.is_ready=false"
 echo "  ok   /status: network=$(printf '%s' "$QSTATUS" | jq -r '.network') governance lag=$(printf '%s' "$QSTATUS" | jq -r '.governance.lag_seconds')s"
-echo "  ..   neither service reports attest-sync's lag; the polls below are what catch a dead projector"
+
+# THE SECOND INDEXER, and the one every assertion after step 2 depends on. `governance.lag_seconds`
+# above is db-sync's; this is attest-sync's, from `palmares_attest.chain_cursor`. Without it this
+# script found a dead projector by waiting ATTEST_SMOKE_TIMEOUT seconds for a projection that was
+# never coming, and then reported a timeout — exit 2 for "could not be driven", which is correct but
+# arrives ten minutes late and does not say which indexer was at fault.
+#
+# `null` is fatal HERE and not elsewhere: it means there is no cursor row, so attest-sync has never
+# run against this database. That is a legitimate state for a governance-only deployment, which is
+# why /ready passes it, and an impossible one for this flow, which reads nothing but projections.
+ATTEST_LAG=$(printf '%s' "$QSTATUS" | jq -r '.attest_lag_seconds')
+case "$ATTEST_LAG" in
+  null | "")
+    die "the query API reports attest_lag_seconds=null — attest-sync has never run against this \
+database, so every projection this flow waits for would time out" ;;
+  *) echo "  ok   /status: attest-sync lag=${ATTEST_LAG}s (the projector every assertion below reads)" ;;
+esac
 
 # ---------------------------------------------------------------------------------------------
 step 2 "two profiles — an auditor that issues, and a DRep that claims a credential"

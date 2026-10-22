@@ -13,10 +13,10 @@
 --
 -- __A LINEAGE ATTESTATION CAN NEVER BE ACCEPTED, and that is a limit of the feature rather than a
 -- missing check.__ An attestation about an earlier attestation is a record the spec asks for, and
--- 'Palmares.TxBuilding.Lookups.ensureSubjectProfileExists' permits it on purpose. But @A1@ is how a
+-- 'Palmares.TxBuilding.Lookups.ensureSubjectProfileExists' permits it on purpose. But @A5@ is how a
 -- subject consents: the transaction must spend the user NFT derived from the subject's id, and
 -- @handleNewAttestation@ mints only a __reference__ token. No user token for an attestation exists,
--- in any wallet, so no transaction can satisfy @A1@ for a lineage record. It stays
+-- in any wallet, so no transaction can satisfy @A5@ for a lineage record. It stays
 -- @attestationIsAccepted = False@ for as long as the chain exists, and nothing in this protocol
 -- burns it.
 --
@@ -93,7 +93,7 @@ attestationsLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) script
             Just (Datum bd) -> case fromBuiltinData @AttestationsDatum bd of
               Nothing -> True
               Just (parkedDatum :: AttestationsDatum) ->
-                traceIfFalse "A0" (Utils.isUnbackedDatum (attestationId (extra parkedDatum)) spendingTxOutRef txInfoInputs) -- Cannot cleanup backed state (A0)
+                traceIfFalse "A4" (Utils.isUnbackedDatum (attestationId (extra parkedDatum)) spendingTxOutRef txInfoInputs) -- Cannot cleanup backed state (A4)
           AcceptAttestation outputIdx -> case mdatum of
             Nothing -> traceError "A0" -- No datum (A0)
             Just (Datum bdatum) -> case fromBuiltinData bdatum of
@@ -117,22 +117,32 @@ attestationsLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) script
                     -- non-exploitable-defence case the repo rejects: the off-chain guard is bypassable
                     -- and the consequence is permanent.
                     traceIfFalse "A3" (not (attestationIsAccepted attestation)) -- Already accepted (A3)
+                      -- THREE STATEMENTS, THREE CODES, and they were one until 2026-10-22. The
+                      -- argument is A3's own, four lines up: \"'already accepted' and 'wrong output'
+                      -- are different mistakes and an operator should be able to tell them apart.\"
+                      -- These three are as different from each other as either is from A3 — a
+                      -- malformed output, a missing counter-signature, and a UTxO that is not the
+                      -- attestation it claims to be. One code for all three told an operator only
+                      -- that acceptance failed, which on the protocol's single irreversible write is
+                      -- the least useful thing it could say.
+                      --
+                      -- Free to do now and not later: a trace code is an operator's runbook entry
+                      -- once anything is deployed, and nothing is.
                       && traceIfFalse
-                        "A1"
-                        ( and
-                        [ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress
+                        "A1" -- Must re-lock the attestation, accepted, at the same address (A1)
+                        ( Utils.checkTxOutAtIndexWithDatumMinValueAndAddress
                             outputIdx
                             updatedAttestationDatum
                             ownValue
                             ownAddress
-                            txInfoOutputs, -- Lock attestation; >= ownValue (balancer may add min-ADA)
-                          V1.assetClassValueOf
-                            (valueSpent txInfo)
-                            subjectUserAC
-                            == 1, -- Must spend the subject's user NFT
-                          V1.assetClassValueOf ownValue (attestationId attestation) == 1 -- Own attestation NFT
-                        ]
+                            txInfoOutputs -- >= ownValue (balancer may add min-ADA)
                         )
+                      -- The subject's consent, and the only thing that makes an attestation about
+                      -- somebody more than an assertion by its issuer.
+                      && traceIfFalse "A5" (V1.assetClassValueOf (valueSpent txInfo) subjectUserAC == 1) -- Subject's user NFT must be spent (A5)
+                      -- And the UTxO being spent must actually be this attestation, not something
+                      -- else carrying a copy of its datum. Same statement as D2's second element.
+                      && traceIfFalse "A6" (V1.assetClassValueOf ownValue (attestationId attestation) == 1) -- Own attestation NFT (A6)
         _ -> traceError "A2" -- Invalid script info (A2)
 
 -------------------------------------------------------------------------------

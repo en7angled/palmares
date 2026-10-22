@@ -347,7 +347,9 @@ unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs =
 -- ('Palmares.Onchain.Protocol.Types.profileId', @attestationId@, @disputeId@), so the question each
 -- validator can actually ask is whether its own input holds that asset — the authentication the
 -- inherited check skipped. The caller sweeps when this is 'True' and refuses with its own trace code
--- (@P0@, @A0@, @D0@) when it is 'False'.
+-- (@P7@, @A4@, @D8@) when it is 'False'. Those are codes of their own and not the validators' datum
+-- codes, because "this datum is not protocol state" and "it IS protocol state and you may not sweep
+-- it" are different mistakes — the second is somebody attempting to delete a live record.
 --
 -- __This cannot sweep real state__, and the reason is the token flow rather than this function. A
 -- state NFT is minted exactly once into a UTxO whose whole datum the minting policy pinned

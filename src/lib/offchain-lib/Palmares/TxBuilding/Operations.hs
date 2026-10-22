@@ -396,7 +396,7 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId kind metadata otherMetad
   -- is permanently pending AND permanently unremovable. See 'ensureSubjectProfileExists'.
   ensureSubjectProfileExists gySubjectProfileId
 
-  -- The off-chain half of inherited fix #4, finished. @Ml@ requires the date to be CONTAINED in the
+  -- The off-chain half of inherited fix #4, finished. @Mq@ requires the date to be CONTAINED in the
   -- validity interval, and the interval this transaction carries is [tip, tip + safeEraTime] — so a
   -- caller-supplied date could only ever agree with the tip or be refused, which made it a field
   -- whose only possible values were one correct one and a 400. It is now DERIVED from the tip and is

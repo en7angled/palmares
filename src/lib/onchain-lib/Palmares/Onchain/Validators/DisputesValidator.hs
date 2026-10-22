@@ -97,7 +97,10 @@ disputesLambda (ScriptContext TxInfo {..} (Redeemer bredeemer) scriptInfo) =
             Just (Datum bd) -> case fromBuiltinData @DisputesDatum bd of
               Nothing -> True
               Just (parkedDatum :: DisputesDatum) ->
-                traceIfFalse "D0" (Utils.isUnbackedDatum (disputeId (extra parkedDatum)) spendingTxOutRef txInfoInputs) -- Cannot cleanup backed state (D0)
+                -- ITS OWN CODE, not `D0`, for the reason `D3` has its own and `D7` has its own:
+                -- "this datum is not a dispute" and "it is a dispute and you may not sweep it" are
+                -- different mistakes.
+                traceIfFalse "D8" (Utils.isUnbackedDatum (disputeId (extra parkedDatum)) spendingTxOutRef txInfoInputs) -- Cannot cleanup backed state (D8)
           ResolveDispute verdict outputIdx -> case mdatum of
             Nothing -> traceError "D0" -- No datum (D0)
             Just (Datum bdatum) -> case fromBuiltinData bdatum of

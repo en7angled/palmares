@@ -40,6 +40,7 @@ import UnitTests.QueryHardening (queryHardeningTests)
 import UnitTests.Reconcile (reconcileTests)
 import UnitTests.Refresh qualified as Refresh
 import UnitTests.Satisfaction qualified as Satisfaction
+import UnitTests.SignTx qualified as SignTx
 import UnitTests.StorageRoundtrip (storageRoundtripTests)
 import UnitTests.ThresholdMap qualified as ThresholdMap
 import UnitTests.Views qualified as Views
@@ -66,6 +67,7 @@ unitTests =
       AttestSchema.tests,
       Claim.tests,
       Satisfaction.tests,
+      SignTx.tests,
       MintInputs.tests,
       MutationGuards.tests,
       MetadataLimits.tests,

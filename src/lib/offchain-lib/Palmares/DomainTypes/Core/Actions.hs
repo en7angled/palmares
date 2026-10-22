@@ -264,7 +264,7 @@ data ProfileActionType
         --
         -- The issuance date is deliberately NOT a field beside this one. It is derived from the chain
         -- tip, because the minting policy requires it to fall inside the transaction's validity
-        -- interval (@Ml@, inherited fix #4) and that interval is built from the tip — so a
+        -- interval (@Mq@, inherited fix #4) and that interval is built from the tip — so a
         -- client-supplied date could only ever agree with it or be refused. This field is the one
         -- that can say something about the past, and it is published as a claim.
         aa_claimed_period :: Maybe (GYTime, GYTime)

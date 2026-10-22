@@ -163,7 +163,7 @@ mintingPolicyValidatorBlueprint =
                 "NewAttestation seedTxOutRef metadata otherMetadata subject issuer kind date \
                 \claimedPeriod outputIdx — mints a pending attestation CIP-68 REFERENCE token (no user \
                 \token exists for an attestation, which is why a lineage attestation can never \
-                \satisfy A1) locked at \
+                \satisfy A5) locked at \
                 \the Attestations Validator. Requires the issuer's user token to be spent, validates \
                 \the DATE against the transaction validity range, and pays the attestation fee when \
                 \the oracle configures one. The CLAIMED PERIOD is carried through unchecked and is \

@@ -197,7 +197,7 @@ validateOtherMetadata entries =
 -- derivation becomes the identity: @deriveUserFromRefTN@ replaces the first four bytes with the user
 -- prefix, so for a name that already starts with the user prefix it returns the name unchanged.
 --
--- That makes @Mf@ and @A1@ satisfiable by the profile's real owner — they hold that user token — so
+-- That makes @Mf@ and @A5@ satisfiable by the profile's real owner — they hold that user token — so
 -- the attestation is issued and accepted by exactly the right people while
 -- @attestation_projection.subject_profile_id@ records an id that no @profile_projection@ row has.
 -- The record is accepted on chain and detached from its subject in the read layer, which is a

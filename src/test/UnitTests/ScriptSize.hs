@@ -213,13 +213,29 @@ measured =
 --     it could make the policy LARGER, because passing three arguments to three handlers is more
 --     binders than one record.
 --
+-- __The trace-code splits of 2026-10-22, which cost 3 bytes in total.__
+--
+--   AttestationsValidator 7637 -> 7640  (+3)  @A1@ split into @A1@/@A5@/@A6@
+--
+-- The three renames cost NOTHING, which is the useful part: @P0@->@P7@, @A0@->@A4@, @D0@->@D8@ and
+-- @Ml@->@Mq@ are all two characters for two, so a clearer code is free whenever the old one was the
+-- same width. Only the @A1@ split added anything, and even there the two new trace strings were
+-- nearly paid for by dropping the @and [...]@ list those three conjuncts used to sit in — which is
+-- the Attestations half of the audit's declined item 3, landed here as a side effect and no longer
+-- a diagnostic trade, because each conjunct now reports its own code instead of all three reporting
+-- @A1@.
+--
+-- Worth the lesson for the next time a code reads badly: diagnostics at this scale are not priced in
+-- bytes. They are priced in whether anything is deployed, because a trace code becomes an operator's
+-- runbook entry the moment something is.
+--
 -- Still declined from the earlier round, unchanged: @unsafeFromBuiltinData@ on the oracle read
 -- (450-850 bytes across three scripts). It trades @K1@ — the only diagnostic on the only path that
 -- reads external state — for bytes. It is the first lever if the policy ever approaches 14000.
 expected :: [(String, Int)]
 expected =
   [ ("ProfilesValidator", 8414),
-    ("AttestationsValidator", 7637),
+    ("AttestationsValidator", 7640),
     ("DisputesValidator", 8457),
     ("OracleValidator", 7547),
     ("MintingPolicy", 12276)

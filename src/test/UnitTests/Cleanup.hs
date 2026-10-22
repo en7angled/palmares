@@ -69,7 +69,7 @@ cleanupTests =
       mkTestFor "Test Case 3.4: Cleanup dust at all three validators in a single transaction" cleanupDustEverywhere,
       mkTestFor "Test Case 3.5: Cleanup CAN spend a parsing datum that no NFT backs" cleanupSweepsUnbackedDatum,
       mkTestFor "Test Case 3.6: Cleanup with nothing to sweep fails off-chain (NoDustFound)" cleanupWithNoDustFails,
-      mkTestFor "Test Case 3.7: Cleanup CANNOT spend real protocol state (P0/A0/D0)" cleanupRefusesRealState
+      mkTestFor "Test Case 3.7: Cleanup CANNOT spend real protocol state (P7/A4/D8)" cleanupRefusesRealState
     ]
   where
     -- One body, three validators. Each sweep is asserted by UTxO count rather than by "the
@@ -167,7 +167,7 @@ cleanupTests =
       -- thing that can stop it is the value-backed guard.
       let sweeper = w3 testWallets
 
-      mustFailWith (failedWithTrace "P0") $
+      mustFailWith (failedWithTrace "P7") $
         void $
           maliciousCleanupState
             ctx
@@ -176,7 +176,7 @@ cleanupTests =
             profilesValidatorGY
             (redeemerFromPlutusData ProfilesValidator.Cleanup)
             profileAC
-      mustFailWith (failedWithTrace "A0") $
+      mustFailWith (failedWithTrace "A4") $
         void $
           maliciousCleanupState
             ctx
@@ -185,7 +185,7 @@ cleanupTests =
             attestationsValidatorGY
             (redeemerFromPlutusData AttestationsValidator.Cleanup)
             attestationAC
-      mustFailWith (failedWithTrace "D0") $
+      mustFailWith (failedWithTrace "D8") $
         void $
           maliciousCleanupState
             ctx
@@ -195,7 +195,7 @@ cleanupTests =
             (redeemerFromPlutusData DisputesValidator.Cleanup)
             disputeAC
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Real state at all three validators refused the sweep (P0/A0/D0)."
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Real state at all three validators refused the sweep (P7/A4/D8)."
 
     -- One live UTxO at each of the three state addresses: a profile, an attestation about a second
     -- profile, and a dispute against that attestation. The attestation is deliberately NOT accepted —

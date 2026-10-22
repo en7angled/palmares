@@ -4,7 +4,8 @@
 -- | Behavioural guards for three conjuncts that no test noticed the absence of.
 --
 -- __Why this module exists.__ A mutation run deleted @traceIfFalse \"M0\"@ — the protocol-pause gate
--- on every mint — and the whole @A1@ conjunct — the attestation-acceptance rule — from the on-chain
+-- on every mint — and the whole acceptance conjunct, then named @A1@ and since split into
+-- @A1@/@A5@/@A6@ — from the on-chain
 -- code. 526 tests ran and one failed: @UnitTests.ScriptSize@, because the scripts got /smaller/. Not
 -- one behavioural test observed that the pause gate and the acceptance rule had vanished. A suite
 -- that detects a deletion only by the byte count is not testing the rule.
@@ -39,7 +40,14 @@
 -- Disputes Validator was out of scope; 'd6Tests' now reaches into it, because @D6@ is the one
 -- Disputes conjunct whose statement is about the shape of the INPUT LIST and so the one a hand-built
 -- context can make while every other conjunct still passes. The groups below close @Mp1@, @Mh@ and
--- @Md1@ (the seed check on all three mint paths), @K1@ (the oracle read itself) and @D6@.
+-- @Md1@ (the seed check on all three mint paths), @K1@ (the oracle read itself), @D6@, and @K2@ with
+-- the two facts about @feeFor@ that sit either side of it.
+--
+-- __And @K2@ was wrongly written off as emulator-only__, which is worth recording because the
+-- reasoning that excluded it would exclude half of this module. A 'FeeConfig' is a three-field
+-- record and @checkFee@ is a pure function of 'OracleParams', a @MintAction@ and @[TxOut]@, so
+-- pricing the protocol costs one fixture and the fee payment is one more output. Nothing about it
+-- needs a ledger. See 'k2Tests'.
 module UnitTests.MutationGuards (tests) where
 
 import Control.Exception (SomeException, evaluate, try)
@@ -55,6 +63,7 @@ import Palmares.Onchain.CIP68
   )
 import Palmares.Onchain.Protocol.Types
   ( AttestationKind (MilestoneDelivered),
+    FeeConfig (..),
     OnchainAttestation (..),
     OnchainDispute (..),
     OnchainProfile (..),
@@ -117,6 +126,7 @@ tests =
       p3Tests,
       seedTests,
       k1Tests,
+      k2Tests,
       d6Tests
     ]
 
@@ -176,18 +186,20 @@ profileMint =
 
 -------------------------------------------------------------------------------
 
--- | @A1@: the conjunct in 'attestationsLambda' that makes an acceptance mean something, and it is
--- three statements rather than one — the record is re-locked with @isAccepted = True@, the subject's
--- user NFT is spent, and the UTxO being spent is the attestation it claims to be.
+-- | @A1@, @A5@ and @A6@: what makes an acceptance mean something. It was ONE conjunct named @A1@
+-- when these cases were written, over three statements — the record is re-locked with
+-- @isAccepted = True@, the subject's user NFT is spent, and the UTxO being spent is the attestation
+-- it claims to be. These three cases are what argued it should be three codes, and it now is.
 --
 -- One case per statement, each breaking that statement alone, because the mutation that produced this
 -- module deleted the conjunct whole: a single case would catch the whole deletion but would not tell
--- you which of the three went. Every context here keeps @A3@ satisfied — the input datum is pending,
+-- you which of the three went — which is also why each now has a code of its own. Every context
+-- here keeps @A3@ satisfied — the input datum is pending,
 -- never already accepted — so @A3@ cannot be what refuses them.
 a1Tests :: TestTree
 a1Tests =
   testGroup
-    "A1: what an acceptance must actually do"
+    "A1/A5/A6: what an acceptance must actually do"
     [ testCase "Test Case 8.2: the acceptance must be WRITTEN, not merely transacted (A1)" $
         ( attestationsLambda (acceptCtx attestationOwnValue [subjectConsentInput] acceptedStateOut),
           -- The same transaction re-locking the datum it came in with: the attestation is spent,
@@ -201,14 +213,14 @@ a1Tests =
             )
         )
           @?= (True, False),
-      testCase "Test Case 8.3: the SUBJECT must consent, by spending the user NFT derived from its id (A1)" $
+      testCase "Test Case 8.3: the SUBJECT must consent, by spending the user NFT derived from its id (A5)" $
         ( attestationsLambda (acceptCtx attestationOwnValue [subjectConsentInput] acceptedStateOut),
           -- The counter-signature is the whole protocol: without this half anyone could accept an
           -- attestation about anybody, and the record would read as consented to.
           attestationsLambda (acceptCtx attestationOwnValue [noConsentInput] acceptedStateOut)
         )
           @?= (True, False),
-      testCase "Test Case 8.4: the UTxO being spent must hold the attestation NFT its datum names (A1)" $
+      testCase "Test Case 8.4: the UTxO being spent must hold the attestation NFT its datum names (A6)" $
         ( attestationsLambda (acceptCtx attestationOwnValue [subjectConsentInput] acceptedStateOut),
           -- A datum that merely parses is not state — the same distinction `isUnbackedDatum` draws
           -- for the sweep. Without this half, a parked copy of a real attestation's datum could be
@@ -236,7 +248,7 @@ acceptCtx ownValue extraInputs stateOut =
     ownInput =
       TxInInfo attestationOwnRef (inlineOut attestationsAddr ownValue (toBuiltinData pendingAttestationDatum))
 
--- | The subject spending the user NFT derived from its profile id — the consent @A1@ asks for.
+-- | The subject spending the user NFT derived from its profile id — the consent @A5@ asks for.
 subjectConsentInput :: TxInInfo
 subjectConsentInput =
   TxInInfo
@@ -367,7 +379,7 @@ profileUserTN :: V1.TokenName
 profileRefAC :: V1.AssetClass
 profileRefAC = V1.AssetClass (protocolCS, profileRefTN)
 
--- | Derived rather than assembled from 'profileUserTN', which is what @P3@ and @A1@ actually ask for.
+-- | Derived rather than assembled from 'profileUserTN', which is what @P3@ and @A5@ actually ask for.
 profileUserAC :: V1.AssetClass
 profileUserAC = deriveUserFromRefAC profileRefAC
 
@@ -414,7 +426,7 @@ issuerRefAC = V1.AssetClass (protocolCS, fst (generateRefAndUserTN (nameFromTxOu
     seed = TxOutRef (TxId (b32 0xc0)) 0
 
 -- | The attestation as @handleNewAttestation@ wrote it: @isAccepted = False@, which keeps @A3@
--- satisfied so that @A1@ is the only conjunct left to refuse an acceptance.
+-- satisfied so that @A1@, @A5@ and @A6@ are the only conjuncts left to refuse an acceptance.
 attestation :: OnchainAttestation
 attestation =
   OnchainAttestation
@@ -497,8 +509,9 @@ lv = V1.lovelaceValue . V1.Lovelace
 
 -- | Everything these three lambdas never read, filled in once.
 --
--- The validity range is 'always' on purpose: none of @M0@, @A1@ or @P3@ is a date check, and the one
--- mint path used here (@MintProfile@) has none either — @Ml@ and @Md6@ belong to the other two.
+-- The validity range is 'always' on purpose: no acceptance conjunct and neither @M0@ nor @P3@ is a
+-- date check, and the one
+-- mint path used here (@MintProfile@) has none either — @Mq@ and @Md6@ belong to the other two.
 mkTxInfo :: [TxInInfo] -> [TxInInfo] -> [TxOut] -> MintValue -> TxInfo
 mkTxInfo ins refIns outs mint =
   TxInfo
@@ -622,7 +635,7 @@ notTheSeedRef = TxOutRef (TxId (b32 0xdd)) 0
 --
 -- 'Palmares.Onchain.Utils.checkDateInRange' matches only on two 'V1.Finite' bounds and then bounds
 -- the WIDTH, so 'always' — which is what 'mkTxInfo' fills in, correctly, for the three undated
--- lambdas this module started with — fails @Ml@ and @Md6@ outright. Without the override the
+-- lambdas this module started with — fails @Mq@ and @Md6@ outright. Without the override the
 -- positive control would be 'False' and neither @Mh@ nor @Md1@ would ever be reached.
 datedRange :: V1.POSIXTimeRange
 datedRange = V1.interval (POSIXTime 1_699_999_000_000) (POSIXTime 1_700_001_000_000)
@@ -636,7 +649,7 @@ datedAt = POSIXTime 1_700_000_000_000
 
 -- | An attestation issue the policy accepts, used only as the subject of Test Case 8.7.
 --
--- Its own fixtures rather than @A1@'s: 'attestationAC' is an attestation already on chain, and both
+-- Its own fixtures rather than the acceptance group's: 'attestationAC' is an attestation already on chain, and both
 -- its seed and its metadata live in @where@ bindings that a mint redeemer cannot name — and @Mk@
 -- compares the whole datum, so a redeemer that cannot reproduce the metadata cannot satisfy it.
 --
@@ -968,3 +981,175 @@ adminPkh = opAdminPkh (oracleParamsWith False)
 -- fixtures build.
 disputesAddr :: Address
 disputesAddr = V1.scriptHashAddress disputesSH
+
+-------------------------------------------------------------------------------
+
+-- * K2 — the fee a priced protocol charges, and the two actions that are free
+
+-------------------------------------------------------------------------------
+
+-- | @K2@: @traceIfFalse \"K2\"@ in 'Palmares.Onchain.Protocol.Lookup.checkFee' — at least the
+-- configured amount, paid to the address the config names — plus the two statements that bound it:
+-- @feeFor MintActionDispute = const 0@, and the @feeFor action feeConfig <= 0@ guard above it.
+--
+-- __What the suite had, and what it did not.__ @UnitTests.Fees@ pins 'feeFor' as a pure mapping —
+-- distinct fields per action, no two sharing one, every action free under an all-zero config — which
+-- is inherited fix #1's half of this. It never calls @checkFee@, and nor did anything else:
+-- @UnitTests.Oracle@'s @setAndClearFees@ sets a 'FeeConfig', reads the datum back and clears it
+-- again without minting in between, @TestRuns@ deploys the oracle with @opFeeConfig = Nothing@ so
+-- every emulator mint in the repository runs against a protocol priced at nothing — spec §4.3 rules
+-- fees out as a business model — and every pure mint context, here and in @UnitTests.DisputeRules@,
+-- sets 'Nothing' ON PURPOSE so the fee path cannot be what refuses a case (see 'oracleParamsWith').
+-- So the amount 'feeFor' selects was pinned and the ENFORCEMENT of it was never exercised: @K2@
+-- could be deleted and nothing in the suite would move.
+--
+-- __And an emulator case could not have closed it.__ The off-chain builder adds the fee output, so a
+-- happy path priced through @OracleSetFees@ succeeds whether or not the validator looks — the exact
+-- shape of the two deletions that produced this module. What @K2@ needs is an output list with the
+-- fee output REMOVED, which no builder will produce, and @checkFee@ is a pure function of
+-- 'OracleParams', a @MintAction@ and @[TxOut]@, so it takes one directly.
+--
+-- __These complement @UnitTests.Fees@ rather than repeat it.__ Its zero-fee case uses a config whose
+-- every field is zero, so an arm mis-wired to another field still returns zero and that case stays
+-- green. Test Case 8.14 prices the profile at 3 ADA while asking the DISPUTE path for nothing, which
+-- is the config that tells @const 0@ apart from @fcProfileCreationFee@.
+--
+-- __The positive control is the whole proof, and @checkFee@'s position is why.__ It sits FIRST:
+-- @checkFee oracle MintActionProfile txInfoOutputs && handleMintProfile ...@. So a failing @K2@
+-- short-circuits and @Mp1@-@Mp6@ never run, and a broken-half 'False' would be indistinguishable
+-- from a context that was malformed all along. 'pricedMintCtx' is therefore Test Case 8.1's ACCEPTED
+-- mint with two record updates — the oracle datum re-priced, and outputs APPENDED — so the valid
+-- half of every pair is a transaction already known to satisfy the whole chain. Appending is safe
+-- because @Mp5@ and @Mp6@ read output index 0 and only index 0; the fee lands at index 2.
+--
+-- __One mutation these cases catch for free, and it is inherited fix #1's own bug.__
+-- 'profileFeeLovelace' is deliberately SMALLER than 'attestationFeeLovelace'. @feeFor@ exists so an
+-- action cannot be mistyped into a different 'FeeConfig' field — the Belt System's interval fee
+-- charged the membership-history field for years — and if @feeFor MintActionProfile@ were re-wired to
+-- @fcAttestationFee@ it would demand 7 ADA of an output paying 3, so the VALID half of 8.12, 8.13 and
+-- 8.16 would turn 'False'. Priced the other way round the @geq@ would swallow the swap silently.
+k2Tests :: TestTree
+k2Tests =
+  testGroup
+    "K2: a priced protocol gets paid, and a free action stays free"
+    [ testCase "Test Case 8.12: a priced profile mint that pays no fee at all is refused (K2)" $
+        ( mintingPolicyLambda params (pricedMintCtx pricedOracle [feeOut profileFeeLovelace]),
+          mintingPolicyLambda params (pricedMintCtx pricedOracle [])
+        )
+          @?= (True, False),
+      -- The amount, isolated from the existence of the output: the fee output is present, at the
+      -- right address, one lovelace short. `geq` means "at least", so short is the only side of the
+      -- amount that can fail — 8.16 pins the other.
+      testCase "Test Case 8.13: one lovelace short of the configured fee is refused (K2)" $
+        ( mintingPolicyLambda params (pricedMintCtx pricedOracle [feeOut profileFeeLovelace]),
+          mintingPolicyLambda params (pricedMintCtx pricedOracle [feeOut (profileFeeLovelace - 1)])
+        )
+          @?= (True, False),
+      -- OPENING A DISPUTE CARRIES NO PROTOCOL FEE, and it is a product decision rather than an
+      -- omission: the deposit already bounds dispute spam and it comes BACK on either verdict, so a
+      -- fee on top would make contesting a false claim cost money you never get back — a tax on
+      -- exactly the behaviour this registry wants. Both halves read the SAME priced oracle and
+      -- neither carries a fee output, so the only difference is the action, which is precisely what
+      -- `feeFor` selects on.
+      testCase "Test Case 8.14: opening a dispute under the same priced oracle needs no fee output" $
+        ( mintingPolicyLambda params pricedOpenDisputeCtx,
+          mintingPolicyLambda params (pricedMintCtx pricedOracle [])
+        )
+          @?= (True, False),
+      -- A ZERO FEE IS NO FEE. Without the guard this context would demand an output to the fee
+      -- address carrying at least zero lovelace, which no honest transaction has a reason to build —
+      -- so `OracleSetFees (Just cfg)` with any zero field would have bricked that action until the
+      -- admin noticed. The left half is a `FeeConfig` that IS set, so the `Nothing` arm does not
+      -- apply and the guard is the only thing that can accept it.
+      testCase "Test Case 8.15: a fee priced at ZERO demands no output, so a zero price is not a brick" $
+        ( mintingPolicyLambda params (pricedMintCtx zeroPricedOracle []),
+          mintingPolicyLambda params (pricedMintCtx pricedOracle [])
+        )
+          @?= (True, False),
+      -- `geq` and not `==`, deliberately, and recorded because "must pay the required fee" reads
+      -- like an equality: the balancer picks the fee output's exact lovelace and a strict equality
+      -- would make an ordinary balanced transaction unsubmittable. The same note
+      -- `UnitTests.DisputeRules` makes twice about the deposit, which is the one other place this
+      -- protocol moves money.
+      testCase "Test Case 8.16: paying MORE than the configured fee is accepted" $
+        mintingPolicyLambda params (pricedMintCtx pricedOracle [feeOut (profileFeeLovelace + 1)])
+          @?= True
+    ]
+
+-- | Test Case 8.1's accepted profile mint, re-priced, with a case's fee output APPENDED.
+--
+-- Two record updates and no re-built fixture, so the valid half of each pair is literally the
+-- transaction 8.1 asserts: the oracle reference input's DATUM is swapped for priced params, and the
+-- outputs grow at the end. Index 0 stays the state output and index 1 the change, which is what
+-- keeps @Mp5@ and @Mp6@ — the only conjuncts that read an output index — untouched.
+pricedMintCtx :: OracleParams -> [TxOut] -> ScriptContext
+pricedMintCtx ps extraOuts =
+  ctx
+    { scriptContextTxInfo =
+        info
+          { txInfoReferenceInputs = [oracleRefInputFor ps],
+            txInfoOutputs = txInfoOutputs info <> extraOuts
+          }
+    }
+  where
+    ctx = mintProfileCtx False
+    info = scriptContextTxInfo ctx
+
+-- | Test Case 8.8's accepted dispute opening with the oracle re-priced and NOTHING else changed —
+-- no fee output added, which is the point of Test Case 8.14.
+--
+-- Re-pricing cannot disturb @Md5@: 'oracleParamsPricedAt' builds on 'oracleParamsWith', so
+-- @opMinUTxOValue@ and @opDisputeDeposit@ are the values 'openedDispute' already records.
+pricedOpenDisputeCtx :: ScriptContext
+pricedOpenDisputeCtx =
+  ctx {scriptContextTxInfo = (scriptContextTxInfo ctx) {txInfoReferenceInputs = [oracleRefInputFor pricedOracle]}}
+  where
+    ctx = openDisputeCtx
+
+-- | The oracle reference input carrying arbitrary params, which is what 'oracleRefInput' is the
+-- two-valued special case of.
+--
+-- Built by swapping the datum of 'oracleRefInput' rather than by restating the address, the value
+-- and the ref, so a change to the oracle fixture cannot leave this one behind: @K1@'s own case would
+-- go green against an oracle these contexts no longer carry.
+oracleRefInputFor :: OracleParams -> TxInInfo
+oracleRefInputFor ps = TxInInfo ref (resolved {txOutDatum = OutputDatum (Datum (toBuiltinData ps))})
+  where
+    TxInInfo ref resolved = oracleRefInput False
+
+-- | Unpaused, with fees configured and the profile mint priced at the given amount.
+oracleParamsPricedAt :: Integer -> OracleParams
+oracleParamsPricedAt profileFee =
+  (oracleParamsWith False)
+    { opFeeConfig =
+        Just
+          FeeConfig
+            { fcFeeAddress = feeAddr,
+              fcProfileCreationFee = profileFee,
+              fcAttestationFee = attestationFeeLovelace
+            }
+    }
+
+pricedOracle :: OracleParams
+pricedOracle = oracleParamsPricedAt profileFeeLovelace
+
+-- | A 'FeeConfig' that IS set and prices a profile at nothing, which is the only state the @<= 0@
+-- guard is about. Not the same thing as @opFeeConfig = Nothing@, which the arm above it handles and
+-- which 'oracleParamsWith' already gives every other case in this module.
+zeroPricedOracle :: OracleParams
+zeroPricedOracle = oracleParamsPricedAt 0
+
+-- | Distinct, and the profile's the SMALLER of the two on purpose — see 'k2Tests'.
+profileFeeLovelace, attestationFeeLovelace :: Integer
+profileFeeLovelace = 3_000_000
+attestationFeeLovelace = 7_000_000
+
+-- | An output paying the fee collector, which is all @K2@ looks for.
+feeOut :: Integer -> TxOut
+feeOut paid = plainOut feeAddr (lv paid)
+
+-- | The fee collector: a key address distinct from every other address in this module, so that no
+-- output an existing fixture builds can satisfy @K2@ by accident. If it collided with 'walletAddr'
+-- the change output would pay the fee and Test Cases 8.12 and 8.15 would both be vacuous.
+feeAddr :: Address
+feeAddr = Address (PubKeyCredential (PubKeyHash (b28 0x08))) Nothing

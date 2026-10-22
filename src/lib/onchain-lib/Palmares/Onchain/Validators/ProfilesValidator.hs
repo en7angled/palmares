@@ -84,7 +84,11 @@ profilesLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) scriptInfo
             Just (Datum bd) -> case fromBuiltinData @(CIP68Datum OnchainProfile) bd of
               Nothing -> True
               Just (CIP68Datum _metadata _version (profile :: OnchainProfile)) ->
-                traceIfFalse "P0" (Utils.isUnbackedDatum (profileId profile) spendingTxOutRef txInfoInputs) -- Cannot cleanup backed state (P0)
+                -- ITS OWN CODE, not `P0`. `P0` means "this UTxO's datum is not a profile", which is
+                -- a malformed transaction; this means "it IS a profile and you may not sweep it",
+                -- which is somebody attempting to delete live state. One code for both told an
+                -- operator nothing about which had happened.
+                traceIfFalse "P7" (Utils.isUnbackedDatum (profileId profile) spendingTxOutRef txInfoInputs) -- Cannot cleanup backed state (P7)
           _ -> case mdatum of
             Nothing -> traceError "P0" -- No datum (P0)
             Just (Datum bdatum) -> case fromBuiltinData bdatum of

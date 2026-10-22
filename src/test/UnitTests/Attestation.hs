@@ -80,7 +80,7 @@ attestationTests =
       mkTestFor "Test Case 5.11: an attestation about another ATTESTATION (lineage) succeeds" lineageAttestation,
       mkTestFor "Test Case 5.11b: a lineage attestation can NEVER be accepted, and that is the feature's limit" lineageCannotBeAccepted,
       mkTestFor "Test Case 5.14: other_metadata past the entry limit FAILS (Mn)" oversizedOtherMetadataFails,
-      mkTestFor "Test Case 5.12: a back-dated attestation FAILS (Ml, fix #4)" backDatedAttestationFails,
+      mkTestFor "Test Case 5.12: a back-dated attestation FAILS (Mq, fix #4)" backDatedAttestationFails,
       mkTestFor "Test Case 5.13: an attestation issued with someone else's user NFT FAILS (Mf)" wrongIssuerNFTFails,
       mkTestFor "a paused protocol refuses a profile update and an acceptance, not only an issuance" pauseStopsEverything
     ]
@@ -351,7 +351,7 @@ attestationTests =
     backDatedAttestationFails :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     backDatedAttestationFails info@TestInfo {..} = do
       (ctx, issuerAC, subjectAC) <- deployWithTwoProfiles info
-      mustFailWith (failedWithTrace "Ml") $
+      mustFailWith (failedWithTrace "Mq") $
         void $
           maliciousIssueAttestation
             ctx
@@ -362,7 +362,7 @@ attestationTests =
             (profileDataToMetadataFields milestoneAttestationData)
             600_000 -- ten minutes before the tip
             issuerAC
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A back-dated attestation was rejected (Ml)."
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A back-dated attestation was rejected (Mq)."
 
     -- Test Case 5.13. @Mf@ is the only thing standing between this protocol and anyone issuing
     -- attestations as anyone else: authority here is token possession, so the transaction has to

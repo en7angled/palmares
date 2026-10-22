@@ -234,7 +234,13 @@ handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOu
           }
 
       attestationDatum = mkCIP68Datum attestationInfo metadata otherMetadataEncoded
-   in traceIfFalse "Ml" (Utils.checkDateInRange attestationDate txInfoValidRange) -- Attestation date not inside validity interval (Ml)
+   in -- RENAMED FROM `Ml` on 2026-10-22, and the reason is the terminal: a lowercase L is
+      -- indistinguishable from a digit 1 in most monospace fonts, and `M1` is a different code on
+      -- the same script ("invalid purpose"). An operator reading a failed transaction's log would
+      -- have debugged the wrong rule. This code sequence already skips `i` for exactly that reason
+      -- — f, g, h, j, k, m, n — so `l` was the one letter that undid its own convention; `o` is
+      -- skipped on the same grounds.
+      traceIfFalse "Mq" (Utils.checkDateInRange attestationDate txInfoValidRange) -- Attestation date not inside validity interval (Mq)
         && traceIfFalse "Mm" (validateMetadataFields metadata) -- Metadata fields validation failed (Mm)
         && traceIfFalse "Mn" (validateOtherMetadata otherMetadataEncoded) -- otherMetadata too big, or duplicate keys (Mn)
         && traceIfFalse "Mf" (V1.assetClassValueOf (valueSpent txInfo) (deriveUserFromRefAC issuer) == 1) -- Must spend issued by user NFT (Mf)

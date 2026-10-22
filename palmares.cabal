@@ -525,6 +525,7 @@ test-suite test
     UnitTests.Reconcile
     UnitTests.Refresh
     UnitTests.Satisfaction
+    UnitTests.SignTx
     UnitTests.Views
     UnitTests.WritePath
     UnitTests.Dispute

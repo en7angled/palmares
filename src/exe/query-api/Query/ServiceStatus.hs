@@ -89,6 +89,7 @@ currentFreshness = asks freshness >>= liftIO . readTVarIO
 readyInputs :: QueryAppMonad (Int, ReadyInputs)
 readyInputs = do
   mf <- currentFreshness
+  attest <- asks attestLag >>= liftIO . readTVarIO
   net <- asks expectedNetwork
   maxLag <- asks readyMaxLag
   pure . (maxLag,) $ case mf of
@@ -99,7 +100,10 @@ readyInputs = do
           readyEpochNo = 0,
           readyDrepDistrEpoch = 0,
           readyNetworkName = "",
-          readyExpectedNetwork = net
+          readyExpectedNetwork = net,
+          -- No database reading at all, so no evidence about the projector either. `readyDbOk`
+          -- already fails this case; claiming a projector lag here would be inventing one.
+          readyAttestLagSeconds = Nothing
         }
     Just f ->
       ReadyInputs
@@ -108,5 +112,6 @@ readyInputs = do
           readyEpochNo = freshEpoch f,
           readyDrepDistrEpoch = maybe (-1) id (freshDrepDistrEpoch f),
           readyNetworkName = maybe "" id (freshNetworkName f),
-          readyExpectedNetwork = net
+          readyExpectedNetwork = net,
+          readyAttestLagSeconds = attest
         }

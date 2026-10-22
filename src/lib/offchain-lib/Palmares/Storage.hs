@@ -189,6 +189,37 @@ DisputeProjection
 attestSchema :: Text
 attestSchema = "palmares_attest"
 
+-- | The attestation projector's own chain position, in slots, read from __outside__ this service.
+--
+-- @Nothing@ means the projector has never run against this database: either 'ChainCursor' does not
+-- exist yet, or the reading role cannot see it. Both are the same statement to a caller — "no
+-- evidence" — and deliberately not the same as "behind", because a reader that turned absence into
+-- a failure would take a governance-only deployment permanently out of rotation.
+--
+-- __Why a probe and not a column on @palmares.sync_state@.__ That view is created by
+-- @sql/010_gov_views.sql@ on every query-api boot, right after @sql/000_schema.sql@ drops and
+-- recreates the @palmares@ schema. PostgreSQL resolves a view's identifiers when the view is
+-- created, so a reference to @palmares_attest.chain_cursor@ would make query-api's boot fail
+-- outright on any database where this service has not run yet. The probe cannot: it asks the
+-- catalog first.
+--
+-- The table is named with its schema rather than through @search_path@, because the caller is
+-- query-api, whose path is its own.
+attestCursorSlot :: (MonadIO m) => SqlPersistT m (Maybe Integer)
+attestCursorSlot = do
+  tbl <-
+    rawSql
+      "SELECT EXISTS (SELECT 1 FROM information_schema.tables \
+      \WHERE table_name = 'chain_cursor' AND table_schema = ?)"
+      [toPersistValue attestSchema]
+  case tbl of
+    [Single True] -> do
+      rows <- rawSql ("SELECT slot_no FROM " <> attestSchema <> ".chain_cursor LIMIT 1") []
+      pure $ case rows of
+        [Single s] -> Just s
+        _ -> Nothing
+    _ -> pure Nothing
+
 -- | Create 'attestSchema' if it is absent, so a fresh database needs no manual step.
 --
 -- @admin apply-roles@ also creates it, @AUTHORIZATION palmares_owner@; this is the path for a

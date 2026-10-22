@@ -235,6 +235,7 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     VoteTally,
   )
 import Palmares.Metrics.Catalog (lookupMetricSql)
+import Palmares.Storage (attestCursorSlot)
 import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.Envelope (Cursor (..), ErrorCode (..), Page (..))
 import Query.Common (Limit, Offset, SortSpec (..), likePat, orderClause)
@@ -310,7 +311,10 @@ data ReadyInputs = ReadyInputs
     readyEpochNo :: Int,
     readyDrepDistrEpoch :: Int,
     readyNetworkName :: Text,
-    readyExpectedNetwork :: Text
+    readyExpectedNetwork :: Text,
+    -- | The attestation projector's lag in seconds, or 'Nothing' for no evidence either way. See
+    -- 'startFreshnessPoll' for why absence is not a failure.
+    readyAttestLagSeconds :: Maybe Int
   }
   deriving (Show, Eq)
 
@@ -330,13 +334,19 @@ data ReadyInputs = ReadyInputs
 --     epoch behind, so @epoch_no - 1@ is normal and anything older means @ledger: enable@ is not
 --     taking, which makes every voting-power number missing rather than wrong;
 --   * the wrong network — the single worst failure available to this service, because it would
---     answer every question confidently with another chain's data.
+--     answer every question confidently with another chain's data;
+--   * the attestation projector is behind — the four above are all about db-sync's governance
+--     index, and a service perfectly current on all of them can still be serving attestation
+--     routes off a projection that stopped advancing. @Nothing@ is NO EVIDENCE and passes, which is
+--     the one asymmetry here: a governance-only deployment runs no projector, and a probe that
+--     failed on absence would take it out of rotation for doing nothing wrong.
 readyVerdict :: Int -> ReadyInputs -> Maybe ErrorCode
 readyVerdict maxLag ReadyInputs {..}
   | not readyDbOk = Just DbUnavailable
   | readyLagSeconds > maxLag = Just IndexerBehind
   | readyDrepDistrEpoch < readyEpochNo - 1 = Just IndexerBehind
   | readyNetworkName /= readyExpectedNetwork = Just NotReady
+  | Just lag <- readyAttestLagSeconds, lag > maxLag = Just IndexerBehind
   | otherwise = Nothing
 
 -- | The lag at which @\/ready@ turns red: 300 s, about thirteen preprod blocks.
@@ -464,23 +474,56 @@ readFreshness = readTVarIO
 -- connection should not make the whole service report itself unready. The poll is seeded
 -- synchronously before the thread starts, so the first request never sees an empty 'TVar' on a
 -- healthy database.
-startFreshnessPoll :: ConnectionPool -> Int -> IO (TVar (Maybe Freshness), ThreadId)
+-- __The second 'TVar' is the ATTESTATION PROJECTOR's lag__, in seconds, and it is a separate
+-- reading because it comes from a separate service. Everything above is about db-sync's
+-- governance index; none of it says anything about whether @attest-sync@ is still running. Without
+-- it a probe could report @ready@ while every attestation route served a projection frozen hours
+-- ago — the one failure this surface cannot detect from its own data.
+--
+-- @Nothing@ means NO EVIDENCE, not \"fine\": the cursor table is absent, or unreadable, or the
+-- projector has never written a row. It is deliberately not a readiness failure, because a
+-- governance-only deployment runs no projector and would otherwise be permanently out of rotation.
+--
+-- __So absence is currently SILENT, and that is a known half of this.__ A projector that stopped is
+-- caught, because its cursor stops advancing and the lag grows; a projector that never started is
+-- not distinguishable on the wire from a deployment that has none. Closing that means a field on
+-- the @\/status@ body, which is a DTO change, a Swagger version bump and an update to
+-- @scripts\/check_swagger.sh@ — a follow-up, deliberately not smuggled in here. Until then the only
+-- signal for an unreadable cursor is the stderr line below.
+--
+-- The lag is measured against db-sync's tip rather than the wall clock, because both numbers then
+-- come from the same source and a slow database shows up once rather than twice. Clamped at zero:
+-- the projector reads from Kupo and can legitimately be AHEAD of db-sync.
+startFreshnessPoll :: ConnectionPool -> Int -> IO (TVar (Maybe Freshness), TVar (Maybe Int), ThreadId)
 startFreshnessPoll pool pollMs = do
   tv <- newTVarIO Nothing
-  poll tv
+  av <- newTVarIO Nothing
+  poll tv av
   tid <- forkIO . forever $ do
     threadDelay (pollMs * 1000)
-    poll tv
-  pure (tv, tid)
+    poll tv av
+  pure (tv, av, tid)
   where
-    poll tv = do
+    poll tv av = do
       r <- try (runGovRead pool freshnessQuery)
       case r of
-        Right (Just f) -> atomically (writeTVar tv (Just f))
+        Right (Just f) -> do
+          atomically (writeTVar tv (Just f))
+          pollAttest av (freshSlot f)
         Right Nothing ->
           hPutStrLn stderr "[freshness] palmares.sync_state is empty: db-sync has no blocks yet"
         Left (e :: SomeException) ->
           hPutStrLn stderr ("[freshness] poll failed, keeping the previous value: " <> show e)
+
+    -- Only ever called with a tip slot in hand, so the lag is always against a known tip.
+    pollAttest av tipSlot = do
+      r <- try (runGovRead pool attestCursorSlot)
+      case r of
+        Right (Just cursor) ->
+          atomically (writeTVar av (Just (fromIntegral (max 0 (tipSlot - cursor)))))
+        Right Nothing -> atomically (writeTVar av Nothing)
+        Left (e :: SomeException) ->
+          hPutStrLn stderr ("[freshness] attestation cursor unreadable, reporting unknown: " <> show e)
 
 -- | Stamp every response with the chain point its data came from.
 --

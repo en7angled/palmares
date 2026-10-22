@@ -34,6 +34,10 @@ data QueryAppContext = QueryAppContext
     -- and the response headers, so the service has exactly one answer to \"how fresh are we\" and
     -- the hot path adds no query.
     freshness :: TVar (Maybe Freshness),
+    -- | How far behind db-sync's tip the ATTESTATION projector is, in seconds, or 'Nothing' when
+    -- there is no evidence either way. Fed by the same poller as 'freshness', from a different
+    -- service's cursor — nothing in @palmares.sync_state@ says whether @attest-sync@ is alive.
+    attestLag :: TVar (Maybe Int),
     -- | @PALMARES_NETWORK_NAME@. Compared against @meta.network_name@ by @\/ready@: an instance
     -- pointed at the wrong network would answer every question confidently and wrongly.
     expectedNetwork :: Text,

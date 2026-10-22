@@ -238,24 +238,44 @@ govDtoTests =
       -- Each of these is a way the service can be running perfectly and still unable to answer
       -- honestly. Reproducing "db-sync is 301 seconds behind" against a live stack is not
       -- something a test suite can arrange, which is why the verdict is a pure function.
-      testCase "readiness verdict: all four checks, 300 s red" $
+      testCase "readiness verdict: all five checks, 300 s red" $
         map
           (readyVerdict readyMaxLagDefault)
-          [ ReadyInputs True 42 320 320 "preprod" "preprod",
-            ReadyInputs True 301 320 320 "preprod" "preprod",
+          [ ReadyInputs True 42 320 320 "preprod" "preprod" Nothing,
+            ReadyInputs True 301 320 320 "preprod" "preprod" Nothing,
             -- the ledger produces drep_distr one epoch behind, so 319 is normal and 318 is not
-            ReadyInputs True 42 320 318 "preprod" "preprod",
-            ReadyInputs True 42 320 319 "preprod" "preprod",
-            ReadyInputs True 42 320 320 "mainnet" "preprod",
-            ReadyInputs False 42 320 320 "preprod" "preprod"
+            ReadyInputs True 42 320 318 "preprod" "preprod" Nothing,
+            ReadyInputs True 42 320 319 "preprod" "preprod" Nothing,
+            ReadyInputs True 42 320 320 "mainnet" "preprod" Nothing,
+            ReadyInputs False 42 320 320 "preprod" "preprod" Nothing
           ]
           @?= [Nothing, Just IndexerBehind, Just IndexerBehind, Nothing, Just NotReady, Just DbUnavailable],
+      -- THE FIFTH CHECK IS ABOUT A DIFFERENT SERVICE, and the three cases below are the whole of
+      -- its semantics. Everything above is db-sync's governance index; none of it says whether
+      -- attest-sync is alive, so a service green on all four could be serving attestation routes
+      -- off a projection that stopped advancing hours ago.
+      --
+      -- The third case is the asymmetry and the reason it is a `Maybe`: no evidence PASSES. A
+      -- governance-only deployment runs no projector, and a probe that failed on absence would take
+      -- it out of rotation for doing nothing wrong.
+      testCase "the attestation projector: current passes, stale fails, unknown passes" $
+        map
+          (readyVerdict readyMaxLagDefault)
+          [ ReadyInputs True 42 320 320 "preprod" "preprod" (Just 42),
+            ReadyInputs True 42 320 320 "preprod" "preprod" (Just 301),
+            ReadyInputs True 42 320 320 "preprod" "preprod" Nothing
+          ]
+          @?= [Nothing, Just IndexerBehind, Nothing],
       -- PALMARES_READY_MAX_LAG_SECONDS has to be able to change the verdict, or it is decorative.
+      -- It governs the projector's ceiling too, which is deliberate: one knob, because an operator
+      -- who widens the tolerance for a slow database means the whole read surface, not half of it.
       testCase "the configured ceiling overrides the default in both directions" $
-        ( readyVerdict 30 (ReadyInputs True 42 320 320 "preprod" "preprod"),
-          readyVerdict 600 (ReadyInputs True 301 320 320 "preprod" "preprod")
+        ( readyVerdict 30 (ReadyInputs True 42 320 320 "preprod" "preprod" Nothing),
+          readyVerdict 600 (ReadyInputs True 301 320 320 "preprod" "preprod" Nothing),
+          readyVerdict 30 (ReadyInputs True 1 320 320 "preprod" "preprod" (Just 42)),
+          readyVerdict 600 (ReadyInputs True 1 320 320 "preprod" "preprod" (Just 301))
         )
-          @?= (Just IndexerBehind, Nothing),
+          @?= (Just IndexerBehind, Nothing, Just IndexerBehind, Nothing),
       testCase "amber is 120 s and is a UI band, never the probe" $
         (readyMaxLagDefault, amberLagDefault) @?= (300, 120),
       testCase "mkServantErr sets a JSON content type and an ApiError body" $

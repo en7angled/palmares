@@ -108,7 +108,7 @@ serve = do
 
   -- One freshness poller, seeded synchronously, feeding /ready, /status and the response headers.
   pollMs <- freshnessPollMsFromEnv
-  (freshTv, freshTid) <- startFreshnessPoll pool pollMs
+  (freshTv, attestTv, freshTid) <- startFreshnessPoll pool pollMs
   network <- expectedNetworkFromEnv
   maxLag <- readyMaxLagFromEnv
   amber <- amberLagFromEnv
@@ -117,6 +117,7 @@ serve = do
         QueryAppContext
           { pgPool = pool,
             freshness = freshTv,
+            attestLag = attestTv,
             expectedNetwork = network,
             readyMaxLag = maxLag,
             amberLag = amber

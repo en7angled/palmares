@@ -63,3 +63,34 @@ targetRules = ["generic-api-key"]
 paths = ['''cabal\.project$''']
 regexTarget = "match"
 regexes = ['''root-keys''']
+
+# `generic-api-key` on bech32 GOVERNANCE IDENTIFIERS, wherever they appear.
+#
+# WHAT IT FIRED ON: `drepKeyBech32 = "drep1y2qn0rf…"` in `src/test/UnitTests/WritePath.hs` — a
+# CIP-129 DRep id, one of the golden vectors the claim path is tested against. The rule matched a
+# high-entropy value next to an identifier containing "Key", and the binding is named for the
+# credential KIND (key vs script), which is the distinction the test exists to pin. Its three
+# siblings on the next lines — `drepScriptBech32`, `drepCip105`, `ccColdBech32` — carry the same
+# 28 bytes and did NOT fire, which is the whole diagnosis: the gate read the NAME, not the value.
+# `UnitTests.GovIds` has pinned these same vectors since T-ATTEST-2 and never tripped it either.
+#
+# WHY THIS ENTRY IS SCOPED BY VALUE SHAPE AND NOT BY PATH: a path allowlist would excuse every
+# future high-entropy string in that file, including a real one. A bech32 string whose human-
+# readable part is a Cardano governance HRP cannot be a credential — the payload is a 28-byte
+# blake2b-224 credential hash (29 with CIP-129's header byte) plus a checksum over it, and the
+# chain publishes it as the DRep's or committee member's public identity. There is no secret of
+# that shape, so this narrowing cannot widen into one. It also means the next module that pins a
+# governance id is not a surprise CI failure, which is the same reason the fixture entry above
+# covers `test/fixtures/` whole.
+#
+# THE CHARACTER CLASS IS BECH32'S: digits and lowercase letters minus `1`, `b`, `i` and `o`, which
+# is why `1` appears only as the separator. The length floor is 40: CIP-105 is 51 data+checksum
+# characters and CIP-129 is 53, so 40 clears any truncation while refusing a short accident.
+#
+# Verified, not assumed: `scripts/check_gitleaks_allowlist.sh` plants an AWS key id in a binding
+# named exactly like the one that fired and asserts the gate still catches it.
+[[allowlists]]
+description = "bech32 governance identifiers: public on-chain credentials, not secrets"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''\b(drep_script|drep|cc_cold|cc_hot)1[02-9ac-hj-np-z]{40,}\b''']

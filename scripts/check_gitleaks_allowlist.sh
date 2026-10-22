@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # The allowlist in .gitleaks.toml is not a hole, and this is what says so.
 #
-# That file turns OFF one rule — `generic-api-key` — on `test/fixtures/koios/*.json`, because the
-# Koios recordings carry on-chain credential hashes in proposal metadata and that rule cannot tell
-# a public key hash from a secret. The risk of any allowlist is that it quietly stops catching the
-# thing it was never meant to excuse. So this plants a real-looking credential in exactly that
-# path and asserts the gate still fails, then plants a high-entropy hash under a field named
-# `keyHash` and asserts it does not. Both halves matter: a gate that catches nothing and a gate
-# that catches everything are equally useless.
+# That file turns OFF one rule — `generic-api-key` — in three narrow places, because that rule
+# cannot tell a public credential hash from a secret. The risk of any allowlist is that it quietly
+# stops catching the thing it was never meant to excuse, so each narrowing is tested from both
+# sides: a real-looking credential in the same place must still fail the gate, and the public value
+# the narrowing exists for must not. Both halves matter: a gate that catches nothing and a gate that
+# catches everything are equally useless.
+#
+# Two of the three are covered here — the Koios wire fixtures (by path) and bech32 governance
+# identifiers (by value shape, any path). The third, `cabal.project`'s CHaP root keys, is a single
+# published constant in a file no test writes to.
 #
 # Nothing it writes is a real credential: the AWS key id is the one from gitleaks' own test
 # corpus, and the private key is a BEGIN marker with eight bytes of nothing after it.
@@ -94,6 +97,37 @@ else
   fail=1
 fi
 rm -f "$DECOY"
+
+# 3. The bech32-governance-identifier entry is scoped by VALUE SHAPE, not by path, so both halves
+#    are planted in a Haskell source file under the same binding name that tripped the gate —
+#    `drepKeyBech32` in `UnitTests/WritePath.hs`, whose "Key" is what `generic-api-key` read.
+#
+#    First half: the narrowing must not excuse the binding. An AWS key id assigned to that exact
+#    name is still a leak, and if this stops failing the entry has gone from value-scoped to
+#    name-scoped without anyone editing it.
+HS_DIR="$ROOT/src/test/UnitTests"
+HS="$HS_DIR/ZzPlanted.hs"
+mkdir -p "$HS_DIR"
+printf 'module ZzPlanted where\n\ndrepKeyBech32 :: String\ndrepKeyBech32 = "%s"\n' "$AWS" > "$HS"
+if scan; then
+  echo "  FAIL a planted AWS key under a 'Key'-named binding did NOT trip the gate"
+  fail=1
+else
+  echo "  ok   a planted AWS key under a 'Key'-named binding still trips the gate"
+fi
+
+#    Second half: the identifier the entry exists for. Split for the same reason every other plant
+#    here is — this file is scanned too, and the point is that the CONFIG allows this shape, not
+#    that this script is exempt from its own test.
+DREP="drep1y2qn0rf74zdk3u8""upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg"
+printf 'module ZzPlanted where\n\ndrepKeyBech32 :: String\ndrepKeyBech32 = "%s"\n' "$DREP" > "$HS"
+if scan; then
+  echo "  ok   a bech32 DRep id under a 'Key'-named binding does not trip the gate"
+else
+  echo "  FAIL a bech32 DRep id under a 'Key'-named binding trips the gate"
+  fail=1
+fi
+rm -rf "$ROOT/src"
 
 if [ "$fail" = 0 ]; then echo "allowlist OK"; else echo "allowlist FAILED" >&2; fi
 exit $fail

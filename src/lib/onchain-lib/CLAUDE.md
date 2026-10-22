@@ -8,10 +8,12 @@ PlutusTx on-chain code. No off-chain imports (no Aeson, Servant, Swagger). Plutu
 - **Trace messages**: Short unique codes: `traceIfFalse "M0" condition -- Description (M0)`. Same for `traceError`.
 - **Validators**: Keep lambdas under ~80 lines. Extract per-redeemer logic into named helpers.
 - **Output checks**: Use output-index checks only (no O(n) search). Redeemers carry expected output index.
-  - **Min-value** (`checkTxOutAtIndexWithDatumMinValueAndAddress`): For continuing outputs (value ≥ spent
-    value) and newly created state outputs (value ≥ minLv + NFT). Balancer may add lovelace.
-  - **Exact-value** (`checkTxOutAtIndexWithDatumValueAndAddress`): Only when value is not modified by the
-    balancer (rare).
+  - **Min-value** (`checkTxOutAtIndexWithDatumMinValueAndAddress`): the only shape. For continuing outputs
+    (value ≥ spent value) and newly created state outputs (value ≥ minLv + NFT). Balancer may add lovelace.
+  - There is no exact-value variant. One existed, documented here as "only when value is not modified by
+    the balancer (rare)", and it had zero callers for the reason that sentence hints at: every state
+    output in this protocol carries datum-size-dependent min-ADA, so no call site can name the value
+    exactly. Both halves of the pair were deleted rather than left as an option nothing can take.
 - **Validator structure**: `mkUntypedLambda` wraps typed lambda. Pattern-match
   `ScriptContext txInfo (Redeemer bredeemer) scriptInfo`; `SpendingScript spendingTxOutRef mdatum` for spending.
 - **Constants**: Named constants from `Palmares.Onchain.Utils`. No magic numbers.
@@ -22,9 +24,9 @@ PlutusTx on-chain code. No off-chain imports (no Aeson, Servant, Swagger). Plutu
 - **Types**: New types in `Protocol/Types.hs`. Use `makeIsDataSchemaIndexed` with **stable** indices. Never
   reorder constructors. Add `HasBlueprintDefinition` for CIP-57.
 - **ID derivation**: `Utils.nameFromTxOutRef` (`blake2b_224` of the seed `TxOutRef`) prefixed by
-  `CIP68.generateRefAndUserTN`. NOT `Protocol/Id.hs` — that module has zero callers and this line sent
-  readers to write derivations nothing would call.
-  CIP-68 ref/user tokens via `generateRefAndUserTN`.
+  `CIP68.generateRefAndUserTN`, which applies the CIP-67 ref/user prefixes. This is the only derivation
+  path. `Protocol/Id.hs` used to hold a second one with zero callers and has been deleted; if you are
+  reading an older commit, that module is not where a new derivation goes.
 - **Datum optimization**: Derive IDs from datum fields, don't store derivable IDs. Reduces datum size and min-ADA.
 - **ProtocolParams**: Carried in datums for unparameterized validators. Only MintingPolicy is parameterized.
 - **Address resolution**: ProfilesValidator and AttestationsValidator are **unparameterized**; they get

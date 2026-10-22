@@ -36,7 +36,7 @@ depends on `chainsync-lib`.
 
 **Three conceptual flows**:
 1. **Type hierarchy**: Transfer (API DTOs) → Domain (`Core/Types.hs`, `Core/Actions.hs`) → Onchain
-   (`Protocol/Types.hs`, `Protocol/Id.hs`). Conversions bridge onchain↔domain.
+   (`Protocol/Types.hs`). Conversions bridge onchain↔domain.
 2. **Interactions → Transactions**: Interaction → `interactionToTxSkeleton` → Operations (Skeletons +
    Lookups) → `GYTxSkeleton` → `interactionToTxBody` → tx. Do not bypass.
 3. **Onchain events → projections** (attestations only): Kupo matches → `projectChainEvent` (Ingestion) →
@@ -46,7 +46,8 @@ depends on `chainsync-lib`.
 
 | Change | Files |
 | --- | --- |
-| New on-chain type | `Onchain/Protocol/Types.hs`, `Onchain/Protocol/Id.hs`, `.cabal` |
+| New on-chain type | `Onchain/Protocol/Types.hs`, `.cabal` |
+| New deterministic token name | `Onchain/Utils.hs` (`nameFromTxOutRef`), `Onchain/CIP68.hs` (`generateRefAndUserTN` applies the CIP-67 prefixes) |
 | New validator | `Onchain/Validators/<Name>Validator.hs`, `Onchain/Protocol.hs`, `TxBuilding/Validators.hs`, `TxBuilding/Context.hs`, `TxBuilding/Transactions.hs`, `.cabal` |
 | New minting redeemer | `Onchain/Validators/MintingPolicy.hs` |
 | New off-chain domain type | `DomainTypes/Core/Types.hs`, `DomainTypes/Core/Actions.hs` |

@@ -107,7 +107,6 @@ library onchain-lib
     Palmares.Onchain.Blueprint
     Palmares.Onchain.CIP68
     Palmares.Onchain.Protocol
-    Palmares.Onchain.Protocol.Id
     Palmares.Onchain.Protocol.Lookup
     Palmares.Onchain.Protocol.Types
     Palmares.Onchain.Utils

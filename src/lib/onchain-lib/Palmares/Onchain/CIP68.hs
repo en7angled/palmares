@@ -6,6 +6,14 @@
 -- | CIP-68 Datum Metadata Standard implementation.
 -- Provides datum types, metadata field handling, and CIP-67 token name
 -- derivation for reference and user NFTs.
+--
+-- Two exports are gone and are worth naming so they are not written again. @updateCIP68DatumImage@
+-- set the @image@ key alone; the only datum update this protocol has is @UpdateProfile@, which
+-- replaces all three fields through 'updateCIP68DatumMetadata', so a single-field variant had no
+-- caller. @validateImageURI@ checked @lengthOfByteString uri <= maxImageURILength@ — the SAME
+-- comparison 'validateMetadataFields' already makes inline on @metadataImageURI@, so it enforced
+-- nothing that was not enforced, and a reader finding two statements of one bound has to work out
+-- which is live. Both were @INLINEABLE@ and unreached, so removing them cannot move a script hash.
 module Palmares.Onchain.CIP68
   ( -- * Types
     CIP68Datum (..),
@@ -17,12 +25,10 @@ module Palmares.Onchain.CIP68
     -- * Datum Construction and Access
     mkCIP68Datum,
     getMetadataFields,
-    updateCIP68DatumImage,
     updateCIP68DatumMetadata,
 
     -- * Validation
     validateMetadataFields,
-    validateImageURI,
     validateOtherMetadata,
     maxOtherMetadataEntries,
     isRefTokenName,
@@ -101,11 +107,6 @@ validateMetadataFields Metadata222 {..} =
   (lengthOfByteString metadataName <= maxNameLength) -- Name too long (max 128 bytes)
     && (lengthOfByteString metadataDescription <= maxDescriptionLength) -- Description too long (max 1024 bytes)
     && (lengthOfByteString metadataImageURI <= maxImageURILength) -- Image URI too long (max 256 bytes)
-
--- | Validate image URI size only (for updates)
-{-# INLINEABLE validateImageURI #-}
-validateImageURI :: BuiltinByteString -> Bool
-validateImageURI uri = lengthOfByteString uri <= maxImageURILength -- Image URI too long (max 256 bytes)
 
 -- | Bounds for the caller-supplied half of the metadata map.
 --
@@ -245,16 +246,6 @@ getMetadataFields (CIP68Datum metadata _ _) =
     }
   where
     lookupMetadata label = fromMaybe @BuiltinByteString "" $ PlutusTx.AssocMap.lookup (encodeUtf8 label) metadata
-
-{-# INLINEABLE updateCIP68DatumImage #-}
-updateCIP68DatumImage :: forall a. BuiltinByteString -> CIP68Datum a -> CIP68Datum a
-updateCIP68DatumImage newImageURI oldDatum =
-  let newMetadata = PlutusTx.AssocMap.insert (encodeUtf8 "image") newImageURI (metadata oldDatum)
-   in CIP68Datum
-        { metadata = newMetadata,
-          version = version oldDatum,
-          extra = extra oldDatum
-        }
 
 {-# INLINEABLE updateCIP68DatumMetadata #-}
 updateCIP68DatumMetadata :: MetadataFields -> CIP68Datum a -> CIP68Datum a

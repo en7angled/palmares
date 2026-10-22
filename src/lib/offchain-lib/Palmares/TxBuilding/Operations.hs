@@ -4,7 +4,6 @@ module Palmares.TxBuilding.Operations where
 import Control.Monad (unless, when)
 import Control.Monad.Reader.Class (MonadReader, ask, asks)
 import Data.Maybe
-import Data.Typeable (cast)
 import Palmares.DomainTypes.Core.Actions (AdminActionType (..), ClaimWitness (..))
 import GHC.Stack (HasCallStack)
 import GeniusYield.TxBuilder
@@ -24,7 +23,18 @@ import PlutusLedgerApi.V3
 import Palmares.TxBuilding.Context (DeployedScriptsContext (..), getAttestationsValidatorRef, getDisputesValidatorRef, getMintingPolicyFromCtx, getMintingPolicyRef, getOracleValidatorRef, getProfilesValidatorRef, getProtocolParamsFromCtx)
 import Palmares.TxBuilding.Conversions (cip68StandardMetadataKeys, claimWitnessToTxInWitness)
 import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
-import Palmares.TxBuilding.Lookups (ensureSubjectProfileExists, getAttestationDatumAndValue, getDisputeDatumAndValue, getDustUTxOs, getOpenDisputesForAttestation, getProfileStateDatumAndValue, getUTxOWithTokenAtAddresses, queryOracleParams)
+-- getUTxOWithTokenAtAddresses dropped with `hasUserNFTAt`, its only caller in this module. The
+-- function itself stays: `Skeletons.txMustSpendFromAddress` calls it, and `Lookups.queryOracleParams`
+-- calls it internally.
+import Palmares.TxBuilding.Lookups
+  ( ensureSubjectProfileExists,
+    getAttestationDatumAndValue,
+    getDisputeDatumAndValue,
+    getDustUTxOs,
+    getOpenDisputesForAttestation,
+    getProfileStateDatumAndValue,
+    queryOracleParams,
+  )
 import Palmares.TxBuilding.Skeletons
 import Palmares.TxBuilding.Utils (pPOSIXTimeFromGYSlot, txOutRefToV3Plutus)
 import Palmares.TxBuilding.Validators
@@ -327,15 +337,6 @@ claimProfileTX kind mCredential mWitness metadata = do
           feeSkeleton -- Output 1 (optional): Fee payment
         ],
       gyProfileRefAC
-    )
-
-hasUserNFTAt :: (GYTxQueryMonad m) => GYAssetClass -> [GYAddress] -> m Bool
-hasUserNFTAt nftAC addrs =
-  catchError
-    (True <$ getUTxOWithTokenAtAddresses nftAC addrs ProfileNotFound)
-    ( \e -> case e of
-        GYApplicationException ex | Just ProfileNotFound <- cast ex -> return False
-        _ -> throwError e
     )
 
 -- * Attestation Operations

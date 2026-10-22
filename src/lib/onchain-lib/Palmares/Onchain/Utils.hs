@@ -10,8 +10,6 @@ module Palmares.Onchain.Utils
     nameFromTxOutRef,
 
     -- * Datum Helper Functions
-    checkTxOutAtIndexWithDatumValueAndAddress,
-    isTxOutAtIndexWithDatumValueAndAddress,
     checkTxOutAtIndexWithDatumMinValueAndAddress,
     valueAtOutputIdx,
     isTxOutAtIndexWithDatumMinValueAndAddress,
@@ -27,7 +25,6 @@ module Palmares.Onchain.Utils
     hasCurrencySymbol,
 
     -- * Inputs Spend TxOutRef Helper Functions
-    hasTxInAtAddressWithNFT,
     inputsSpendTxOutRef,
     spentExactlyOnceFromAddress,
 
@@ -75,17 +72,13 @@ nameFromTxOutRef (TxOutRef (TxId txIdbs) txIdx) = blake2b_224 (txIdbs `appendByt
 
 -------------------------------------------------------------------------------
 
--- | Check that the output at a specific index has the expected datum, value, and address.
--- This is more efficient than searching through all outputs with hasTxOutWithInlineDatumAndValue.
-{-# INLINEABLE checkTxOutAtIndexWithDatumValueAndAddress #-}
-checkTxOutAtIndexWithDatumValueAndAddress :: (ToData a) => Integer -> a -> Value -> Address -> [TxOut] -> Bool
-checkTxOutAtIndexWithDatumValueAndAddress idx datum value address outputs =
-  isTxOutAtIndexWithDatumValueAndAddress datum value address (outputs !! idx)
-
-{-# INLINEABLE isTxOutAtIndexWithDatumValueAndAddress #-}
-isTxOutAtIndexWithDatumValueAndAddress :: (ToData a) => a -> Value -> Address -> TxOut -> Bool
-isTxOutAtIndexWithDatumValueAndAddress datum value address TxOut {txOutValue, txOutAddress, txOutDatum} =
-  (value == txOutValue) && (address == txOutAddress) && isGivenInlineDatum datum txOutDatum
+-- The EXACT-VALUE pair that used to stand here — checkTxOutAtIndexWithDatumValueAndAddress and
+-- isTxOutAtIndexWithDatumValueAndAddress — is gone, and the reason is the min-ADA rule below.
+-- An exact-value comparison requires the validator to know the output's value to the lovelace, and
+-- every state output in this protocol carries min-ADA that depends on its own datum's size. No
+-- call site could satisfy the exact form, so none ever used it, and the @MinValue@ pair is the
+-- only shape the protocol can be written in. Deleting it removes the choice rather than leaving
+-- the wrong half of it documented.
 
 -- | Check that the output at a specific index has the expected datum and address, and that its value is >= minValue.
 -- Use this in the minting policy where the exact output value depends on datum size (min-ADA); we only require value >= (minLv + NFT).
@@ -132,9 +125,11 @@ isTxOutAtIndexWithDatumMinValueAndAddress :: (ToData a) => a -> Value -> Address
 isTxOutAtIndexWithDatumMinValueAndAddress datum minValue address TxOut {txOutValue, txOutAddress, txOutDatum} =
   (txOutValue `geq` minValue) && (address == txOutAddress) && isGivenInlineDatum datum txOutDatum
 
-{-# INLINEABLE hasTxInAtAddressWithNFT #-}
-hasTxInAtAddressWithNFT :: AssetClass -> Address -> [TxInInfo] -> Bool
-hasTxInAtAddressWithNFT ac address = any (\(TxInInfo _inOutRef (TxOut {txOutAddress, txOutValue})) -> (address == txOutAddress) && (V1.assetClassValueOf txOutValue ac == 1))
+-- hasTxInAtAddressWithNFT is gone: an `any` over inputs matching address AND NFT, with no caller.
+-- The protocol's two input questions are asked by `spentExactlyOnceFromAddress` (which counts, and
+-- counting is what the multiple-satisfaction guard needs) and by
+-- `checkAndGetCurrentStateDatumAndValue` (which returns the datum, not a Bool). An existence check
+-- that answers neither is a third shape nothing wanted.
 
 {-# INLINEABLE inputsSpendTxOutRef #-}
 inputsSpendTxOutRef :: TxOutRef -> [TxInInfo] -> Bool
@@ -317,6 +312,28 @@ checkCredentialControl credential signatories inputs = case credential of
     inputGovernedByCredential (TxInInfo _ TxOut {txOutAddress = Address payment _}) =
       payment == credential
 
+-------------------------------------------------------------------------------
+
+-- * Output and Datum Predicates
+
+-------------------------------------------------------------------------------
+
+-- These four sat under @Credential Control@ above, which is three sections' worth of distance from
+-- what they do. The banner matters more than banners usually do here: 'isUnbackedDatum' carries a
+-- fifty-line argument about a forgery vector, and 'valueAtOutputIdx' had been inserted BETWEEN that
+-- Haddock block and the function it describes — so the published documentation attributed the whole
+-- argument to the index helper, and the function the argument is about appeared undocumented.
+
+-- | The value of the output at this index, or a script failure if the index names none.
+--
+-- @PlutusTx.List.!!@ traces on a negative index and past the end, so an out-of-range index fails
+-- the script rather than returning something. Used where a check is about what an output does NOT
+-- contain, which 'checkTxOutAtIndexWithDatumMinValueAndAddress' cannot express: its `geq` says
+-- "at least this", so it positively permits extra tokens.
+{-# INLINEABLE valueAtOutputIdx #-}
+valueAtOutputIdx :: Integer -> [TxOut] -> Value
+valueAtOutputIdx idx outputs = txOutValue (outputs PlutusTx.List.!! idx)
+
 {-# INLINEABLE isGivenInlineDatum #-}
 isGivenInlineDatum :: (ToData a) => a -> OutputDatum -> Bool
 isGivenInlineDatum datum outdat = case outdat of
@@ -391,16 +408,6 @@ unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs =
 -- completely, and narrows — does not close — a plant naming a ref-prefixed token of the attacker's
 -- OWN policy. That residue is permanent clutter at min-ADA plus a self-mint, with no forgery
 -- attached, and closing it needs a parameter these validators deliberately do not take.
--- | The value of the output at this index, or a script failure if the index names none.
---
--- @PlutusTx.List.!!@ traces on a negative index and past the end, so an out-of-range index fails
--- the script rather than returning something. Used where a check is about what an output does NOT
--- contain, which 'checkTxOutAtIndexWithDatumMinValueAndAddress' cannot express: its `geq` says
--- "at least this", so it positively permits extra tokens.
-{-# INLINEABLE valueAtOutputIdx #-}
-valueAtOutputIdx :: Integer -> [TxOut] -> Value
-valueAtOutputIdx idx outputs = txOutValue (outputs PlutusTx.List.!! idx)
-
 {-# INLINEABLE isUnbackedDatum #-}
 isUnbackedDatum :: AssetClass -> TxOutRef -> [TxInInfo] -> Bool
 isUnbackedDatum stateNFT@(AssetClass (_, tn)) spendingTxOutRef txInfoInputs =

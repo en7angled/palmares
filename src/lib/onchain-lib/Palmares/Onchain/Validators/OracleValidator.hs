@@ -22,7 +22,7 @@ module Palmares.Onchain.Validators.OracleValidator
 where
 
 import GHC.Generics (Generic)
-import Palmares.Onchain.Protocol.Types (OracleAdminAction, OracleParams (..), applyOracleAdminAction)
+import Palmares.Onchain.Protocol.Types (OracleAdminAction (OracleSetAdmin), OracleParams (..), applyOracleAdminAction)
 import Palmares.Onchain.Utils qualified as Utils
 import PlutusLedgerApi.V3
 import PlutusTx
@@ -72,9 +72,28 @@ oracleLambda (ScriptContext TxInfo {..} (Redeemer bredeemer) scriptInfo) =
                   !newParams = applyOracleAdminAction action currentParams
                in and
                     [ traceIfFalse "O1" $ elem (opAdminPkh currentParams) txInfoSignatories, -- Must be signed by admin (O1)
-                      traceIfFalse "O2" $ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress oracleOutputIdx newParams ownValue ownAddr txInfoOutputs -- Must return oracle UTxO at index (O2); >= ownValue (balancer may add min-ADA)
+                      traceIfFalse "O2" $ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress oracleOutputIdx newParams ownValue ownAddr txInfoOutputs, -- Must return oracle UTxO at index (O2); >= ownValue (balancer may add min-ADA)
+                      traceIfFalse "O5" $ incomingAdminSigned action -- Handover must be signed by the INCOMING admin too (O5)
                     ]
     _ -> traceError "O3" -- Invalid script purpose (O3)
+  where
+    -- A HANDOVER IS TWO-SIDED, and only the outgoing side was ever checked.
+    --
+    -- `O1` proves the current admin consented. Nothing proved the new key exists or that anybody
+    -- holds it, so a mistyped `OracleSetAdmin` — or a malicious one — hands the oracle to a key
+    -- nobody can sign with, and `O1` then refuses every future update including the one that would
+    -- undo it. That is not a recoverable mistake, it is the end of the protocol: no pause, no
+    -- reprice, and every open dispute becomes unresolvable because `D1` wants this signature.
+    --
+    -- The signature of the incoming key is the proof. It costs one list membership on the one action
+    -- that needs it and nothing on the other five, and it is the standard two-sided handover.
+    --
+    -- 'OracleParams.opAdminPkh' documents the outgoing requirement — "a key already lost is not
+    -- [recoverable], because the rotation itself needs its signature" — and says nothing about the
+    -- incoming one, which is the half that was missing. Worth noticing as a habit: the sentence
+    -- explaining why a rule is right is usually about the rule that IS enforced.
+    incomingAdminSigned (OracleSetAdmin newAdmin) = elem newAdmin txInfoSignatories
+    incomingAdminSigned _ = True
 
 -------------------------------------------------------------------------------
 

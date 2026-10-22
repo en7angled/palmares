@@ -43,6 +43,7 @@ import Test.Helpers (assert, failedWithTrace, queryOracle)
 import Test.Tasty
 import TestRuns
   ( adminInteraction,
+    adminRotateInteraction,
     deployValidators,
     maliciousMintOracleNFTWithExtraToken,
     maliciousMintOracleNFTWrongName,
@@ -227,7 +228,8 @@ oracleRotationTests =
     "Oracle Rotation Tests"
     [ mkTestFor "Test Case 0.9: Rotate the admin key, and the new admin can act (fix #2)" rotateAndNewAdminActs,
       mkTestFor "Test Case 0.10: The OLD admin cannot act after rotation (O1)" oldAdminCannotActAfterRotation,
-      mkTestFor "Test Case 0.11: A non-admin cannot rotate the oracle to itself (O1)" nonAdminCannotSeizeOracle
+      mkTestFor "Test Case 0.11: A non-admin cannot rotate the oracle to itself (O1)" nonAdminCannotSeizeOracle,
+      mkTestFor "Test Case 0.11b: A rotation the INCOMING admin did not sign fails (O5)" rotationNeedsIncomingSignature
     ]
   where
     -- Inherited fix #2, end to end. Before it, `OracleAdminAction` had no SetAdmin case and the
@@ -242,7 +244,7 @@ oracleRotationTests =
       params0 <- queryOracle ctx
       assert (opAdminPkh params0 == userPlutusPkh (w1 testWallets))
 
-      _ <- adminInteraction ctx (w1 testWallets) (RotateAdminAction (User.userPkh (w2 testWallets)))
+      _ <- adminRotateInteraction ctx (w1 testWallets) (w2 testWallets)
       waitNSlots_ 1
       params1 <- queryOracle ctx
       assert (opAdminPkh params1 == userPlutusPkh (w2 testWallets))
@@ -262,7 +264,7 @@ oracleRotationTests =
       ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
-      _ <- adminInteraction ctx (w1 testWallets) (RotateAdminAction (User.userPkh (w2 testWallets)))
+      _ <- adminRotateInteraction ctx (w1 testWallets) (w2 testWallets)
       waitNSlots_ 1
 
       -- The malicious builder, because the production path would ask w2 to sign and w1 cannot. What
@@ -280,6 +282,25 @@ oracleRotationTests =
         void $
           maliciousOracleUpdate ctx (w3 testWallets) (RotateAdminAction (User.userPkh (w3 testWallets)))
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Oracle seizure rejected (O1)."
+
+    -- A HANDOVER IS TWO-SIDED, and only the outgoing side was ever checked. `O1` proved the current
+    -- admin consented; nothing proved the incoming key exists or that anybody holds it. So a
+    -- mistyped `RotateAdminAction` was not a recoverable mistake, it was the end of the protocol:
+    -- `O1` then refuses every later update including the one that would undo it, no pause, no
+    -- reprice, and every open dispute unresolvable because `D1` wants that same signature.
+    --
+    -- The malicious builder is used because the production path cannot express this any more —
+    -- `updateOracleTX` adds the incoming admin as a required signer precisely so that it cannot. It
+    -- signs as the actor only, so passing the CURRENT admin as the actor gives a transaction with
+    -- `O1` satisfied and `O5` not, which is exactly the shape that used to validate.
+    rotationNeedsIncomingSignature :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    rotationNeedsIncomingSignature TestInfo {..} = do
+      ctx <- deployValidators (w1 testWallets)
+      waitNSlots_ 1
+      mustFailWith (failedWithTrace "O5") $
+        void $
+          maliciousOracleUpdate ctx (w1 testWallets) (RotateAdminAction (User.userPkh (w2 testWallets)))
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A rotation the incoming admin did not sign was rejected (O5)."
 
 oracleNFTTests :: (HasCallStack) => TestTree
 oracleNFTTests =

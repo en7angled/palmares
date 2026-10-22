@@ -300,7 +300,15 @@ data DisputeActionType
         od_opened_by_profile_id :: ProfileRefAC,
         -- | Where the deposit returns, on either verdict. Defaults to the change address when
         -- omitted. A validator cannot resolve a profile id into an address, so the disputer names
-        -- one; pointing it somewhere useless costs only the disputer.
+        -- one.
+        --
+        -- __This used to say "pointing it somewhere useless costs only the disputer". It does
+        -- not.__ Resolution pays this address with @txOutAddress == disputeDepositTo@, so an address
+        -- no real output can carry makes @D4@ unsatisfiable and the dispute UNRESOLVABLE — left open
+        -- against its target forever, for the price of one deposit. The cost falls on the subject of
+        -- the attestation, not on the disputer, which is what made this a griefing vector rather
+        -- than a foot-gun. @Md8@ now requires the address to be one the opening transaction spends
+        -- from.
         od_deposit_to :: Maybe GYAddress,
         od_profile_data :: ProfileData
       }

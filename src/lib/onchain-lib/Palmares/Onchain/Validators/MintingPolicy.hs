@@ -292,6 +292,27 @@ handleMintProfile TxInfo {..} mintingPolicyCurrencySymbol protocolParams ctx see
 -- additions: @Md6@ bounds @openedAt@ to the transaction's validity interval, which
 -- `onchain-lib/CLAUDE.md` requires of every date stored in a datum (inherited fix #4), and @Md7@
 -- validates the metadata sizes exactly as the other two mint paths do.
+--
+-- __@openedBy@ had no currency-symbol check, and that made @Md3@ self-issued.__ @Md4@ checked only
+-- @target@; the sibling handler's @Mg@ has always checked both of its 'ProfileId's. @Md3@ proves the
+-- opener by requiring the transaction to spend the user NFT derived from @openedBy@ — but an
+-- 'AssetClass' with an attacker-chosen currency symbol derives a token under the attacker's OWN
+-- policy, which they mint beforehand and spend here. So anyone could open a dispute while owning no
+-- profile in this protocol, and the dispute would be recorded as opened by a profile id that does not
+-- exist. @Md4@ now covers both, exactly as @Mg@ does.
+--
+-- __@depositTo@ entered a permanent datum unvalidated, and an unsatisfiable @D4@ is a locked UTxO.__
+-- The address is redeemer data that nothing checked, and resolution pays the deposit with
+-- @txOutAddress == disputeDepositTo@. An address no real output can carry — @PubKeyCredential
+-- (PubKeyHash \"\")@ is representable in Plutus data and not in a ledger address — makes @D4@
+-- unsatisfiable, so the oracle admin CANNOT resolve the dispute, ever. The dispute's NFT and deposit
+-- stay locked and the dispute stays open against the target attestation forever, which is the attack:
+-- five ADA buys a permanent, unresolvable accusation on somebody else's record. @Md8@ requires the
+-- address to be one this transaction spends from, which is the cheapest proof that it is a real
+-- address somebody controls — they just controlled it.
+--
+-- @Md8@ rather than extending @Md5@: \"the dispute output is wrong\" and \"the payout address is not
+-- real\" are different mistakes, and the same argument the attestation path makes for @A3@ over @A1@.
 {-# INLINEABLE handleOpenDispute #-}
 handleOpenDispute ::
   TxInfo ->
@@ -337,7 +358,8 @@ handleOpenDispute txInfo@TxInfo {..} mintingPolicyCurrencySymbol protocolParams 
           "Md2" -- Tx must mint JUST the dispute ref NFT (Md2)
           (mintValueMinted txInfoMint == disputeNFT && mintValueBurned txInfoMint == mempty)
         && traceIfFalse "Md3" (V1.assetClassValueOf (valueSpent txInfo) (deriveUserFromRefAC openedBy) == 1) -- Must spend the disputer's user NFT (Md3)
-        && traceIfFalse "Md4" (hasCurrencySymbol target mintingPolicyCurrencySymbol) -- Target must be an attestation of this protocol (Md4)
+        && traceIfFalse "Md4" (hasCurrencySymbol target mintingPolicyCurrencySymbol && hasCurrencySymbol openedBy mintingPolicyCurrencySymbol) -- Target and opener must belong to this protocol (Md4)
+        && traceIfFalse "Md8" (any ((== depositTo) . txOutAddress . txInInfoResolved) txInfoInputs) -- Deposit address must be spent from by this tx (Md8)
         && traceIfFalse "Md5" (Utils.checkTxOutAtIndexWithDatumMinValueAndAddress disputeOutputIdx disputeDatum disputeValue disputesValidatorAddress txInfoOutputs) -- Lock dispute + deposit at DisputesValidator address (Md5)
         && traceIfFalse "Md6" (Utils.checkDateInRange openedAt txInfoValidRange) -- Open date not inside validity interval (Md6)
         && traceIfFalse "Md7" (validateMetadataFields metadata) -- Metadata fields validation failed (Md7)

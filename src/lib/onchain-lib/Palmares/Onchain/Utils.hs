@@ -27,6 +27,7 @@ module Palmares.Onchain.Utils
     -- * Inputs Spend TxOutRef Helper Functions
     hasTxInAtAddressWithNFT,
     inputsSpendTxOutRef,
+    spentExactlyOnceFromAddress,
 
     -- * Credential Control
     checkCredentialControl,
@@ -102,6 +103,40 @@ hasTxInAtAddressWithNFT ac address = any (\(TxInInfo _inOutRef (TxOut {txOutAddr
 {-# INLINEABLE inputsSpendTxOutRef #-}
 inputsSpendTxOutRef :: TxOutRef -> [TxInInfo] -> Bool
 inputsSpendTxOutRef spendingTxOutRef = any ((== spendingTxOutRef) . txInInfoOutRef)
+
+-- | Is this address spent from exactly once in this transaction?
+--
+-- __This is the guard against multiple satisfaction__, and it is needed wherever a validator proves
+-- an obligation with @any@ over the transaction's outputs. Two instances of the same script, spent in
+-- one transaction, each run their own check against the SAME output list — so one output that happens
+-- to satisfy both lets the second obligation be discharged for free.
+--
+-- Concretely, the case that found this: the Disputes Validator's @D4@ required the deposit to come
+-- back with @any paysDeposit txInfoOutputs@, and two open disputes naming the same payout address (one
+-- person contesting two attestations, which is the ordinary case) could be resolved in a single
+-- transaction with ONE deposit returned. The second deposit left the script and landed in the
+-- transaction's change, which belongs to whoever built it — the oracle admin, since @D1@ requires
+-- their signature. One output, two obligations discharged, one deposit stolen.
+--
+-- __Why uniqueness of the input and not uniqueness of the output.__ Pinning the output by index does
+-- not help: both script instances can name the same index. Tagging the output with the dispute's own
+-- identifier would work and would preserve batching, at the cost of forcing a datum onto a payout to
+-- an ordinary key address. Refusing the batch is one comparison, needs nothing of the recipient, and
+-- gives up only an ability nobody asked for — dispute resolution is admin-driven and one at a time.
+--
+-- The address is the script's own, read off the input being spent, so this counts instances of THIS
+-- script and not of scripts in general. A transaction may still carry other scripts' inputs.
+{-# INLINEABLE spentExactlyOnceFromAddress #-}
+spentExactlyOnceFromAddress :: V1.Address -> [TxInInfo] -> Bool
+spentExactlyOnceFromAddress address inputs = go inputs 0
+  where
+    -- Counted with an early exit rather than `length . filter`: two is already a refusal, and this
+    -- runs inside a validator where the list is attacker-sized.
+    go [] n = n == (1 :: Integer)
+    go (TxInInfo _ TxOut {txOutAddress} : rest) n
+      | txOutAddress /= address = go rest n
+      | n >= 1 = False
+      | otherwise = go rest (n + 1)
 
 -------------------------------------------------------------------------------
 

@@ -509,6 +509,7 @@ test-suite test
     UnitTests.QueryHardening
     UnitTests.Reconcile
     UnitTests.Refresh
+    UnitTests.Satisfaction
     UnitTests.Views
     UnitTests.WritePath
     UnitTests.Dispute

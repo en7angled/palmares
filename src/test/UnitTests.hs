@@ -32,6 +32,7 @@ import UnitTests.Profile (profileTests)
 import UnitTests.QueryHardening (queryHardeningTests)
 import UnitTests.Reconcile (reconcileTests)
 import UnitTests.Refresh qualified as Refresh
+import UnitTests.Satisfaction qualified as Satisfaction
 import UnitTests.StorageRoundtrip (storageRoundtripTests)
 import UnitTests.ThresholdMap qualified as ThresholdMap
 import UnitTests.Views qualified as Views
@@ -57,6 +58,7 @@ unitTests =
       ApplySqlTests.tests,
       AttestSchema.tests,
       Claim.tests,
+      Satisfaction.tests,
       Dispute.tests,
       Fees.tests,
       OracleRules.tests,

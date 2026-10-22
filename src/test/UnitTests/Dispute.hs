@@ -25,10 +25,14 @@
 module UnitTests.Dispute (tests, disputeEmulatorTests) where
 
 import Control.Monad (void)
+import Data.Text (Text)
+import Data.Text qualified as T
 import GHC.Stack (HasCallStack)
 import GeniusYield.Test.Clb
+import GeniusYield.Test.FakeCoin (FakeCoin (..))
 import GeniusYield.Test.Utils
 import GeniusYield.TxBuilder
+import GeniusYield.TxBuilder.User qualified as User
 import GeniusYield.Types
 import Palmares.DomainTypes.Core.Actions
 import Palmares.DomainTypes.Core.Types qualified as Domain
@@ -65,7 +69,13 @@ import Test.Tasty
 -- `GYTxMonadClb`, where HUnit's IO-based `assert` would not typecheck anyway. Hiding the one that
 -- cannot be meant here is cheaper than qualifying eleven call sites.
 import Test.Tasty.HUnit hiding (assert)
-import TestRuns (deployValidators, disputeInteraction, maliciousResolveDispute, profileInteraction)
+import TestRuns
+  ( deployValidators,
+    disputeInteraction,
+    maliciousResolveDispute,
+    maliciousResolveTwoDisputes,
+    profileInteraction,
+  )
 
 tests :: TestTree
 tests =
@@ -201,7 +211,10 @@ disputeEmulatorTests =
       mkTestFor "Test Case 6.4: a non-admin resolution FAILS (D1)" nonAdminResolutionFails,
       mkTestFor "Test Case 6.5: resolving an already-resolved dispute FAILS (D3)" doubleResolutionFails,
       mkTestFor "Test Case 6.6: the attestation is untouched by the dispute's whole lifecycle" attestationUntouched,
-      mkTestFor "Test Case 6.7: a second dispute while one is open is refused off-chain" secondDisputeRefused
+      mkTestFor "Test Case 6.7: a second dispute while one is open is refused off-chain" secondDisputeRefused,
+      mkTestFor "Test Case 6.8: a payout address this tx does not spend from FAILS (Md8)" foreignDepositToFails,
+      mkTestFor "Test Case 6.9: an opener id under a FOREIGN policy FAILS (Md4)" foreignOpenerFails,
+      mkTestFor "Test Case 6.10: two disputes resolved with ONE returned deposit FAILS (D6)" twoDisputesOneDepositFails
     ]
   where
     -- Test Case 6.1. The deposit is part of the LOCKED value, not a payment to anyone, which is the
@@ -328,6 +341,126 @@ disputeEmulatorTests =
 
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A second open dispute was refused off-chain (DisputeAlreadyOpen)."
 
+    -- Test Case 6.8. `Md8`. The payout address went into the permanent datum unchecked, and
+    -- resolution pays it with `txOutAddress == disputeDepositTo`. An address no real output can
+    -- carry — `PubKeyCredential (PubKeyHash "")` is representable in Plutus data and not in a ledger
+    -- address — makes `D4` UNSATISFIABLE, so the oracle admin cannot resolve the dispute ever. Both
+    -- the deposit and the dispute's NFT stay locked and the dispute stays open against its target
+    -- forever. That is the attack: five ADA buys a permanent unresolvable accusation on somebody
+    -- else's record, and `od_deposit_to` is a field of the public API.
+    --
+    -- The address used here is w3's, which is a perfectly real address — the point is that this
+    -- transaction does not spend from it. A validator cannot tell "real but not mine" from
+    -- "impossible"; what it can check is that the transaction just demonstrated control of it, which
+    -- rules out both.
+    --
+    -- `Palmares.DomainTypes.Core.Actions.od_deposit_to`'s own Haddock said "pointing it somewhere
+    -- useless costs only the disputer". It does not: it costs the subject of the attestation.
+    foreignDepositToFails :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    foreignDepositToFails info@TestInfo {..} = do
+      (ctx, _issuerAC, disputerAC, attestationAC) <- deployWithAcceptedAttestation info
+      let strangerAddr = User.userChangeAddress (w3 testWallets)
+      mustFailWith (failedWithTrace "Md8") $
+        void $
+          openWith ctx (w2 testWallets) attestationAC disputerAC (Just strangerAddr)
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A payout address the tx does not spend from was rejected (Md8)."
+
+    -- Test Case 6.9. `Md4`, which used to check only the TARGET's currency symbol while the sibling
+    -- mint path's `Mg` has always checked both of its profile ids.
+    --
+    -- `Md3` is what authorises the opener: the transaction must spend the user NFT derived from
+    -- `openedBy`. `spendUserNFTForProfile` is policy-agnostic and `deriveUserFromRefAC` only swaps
+    -- the CIP-67 prefix, keeping the currency symbol — so a token minted under the CALLER's own
+    -- policy satisfies it, and the authorisation is self-issued. Before this, anyone could open a
+    -- dispute while owning no profile in this protocol, and the dispute recorded an opener id that
+    -- does not exist.
+    --
+    -- The foreign NFT is minted first, under atlas's fake-coin policy, with the CIP-67 USER prefix
+    -- on its name. The claimed opener id is the same policy with the REF prefix, so the derivation
+    -- lands exactly on the token w3 holds. Note that w3 has no profile at all here, which is the
+    -- whole point.
+    foreignOpenerFails :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    foreignOpenerFails info@TestInfo {..} = do
+      (ctx, _issuerAC, _disputerAC, attestationAC) <- deployWithAcceptedAttestation info
+      asUser (w3 testWallets) $ mintTestAssets [(foreignUserCoin, 1)]
+      waitNSlots_ 1
+      mustFailWith (failedWithTrace "Md4") $
+        void $
+          openWith ctx (w3 testWallets) attestationAC foreignOpenerAC Nothing
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "An opener id under a foreign policy was rejected (Md4)."
+
+    -- Test Case 6.10. `D6`, and this is the exploit rather than a shape: two deposits leave the
+    -- script, one comes back, and the difference lands in the change of whoever built the
+    -- transaction. `D1` means that is the oracle admin.
+    --
+    -- The precondition is ordinary, not contrived: both disputes are opened by w2 with no
+    -- `od_deposit_to`, so both default to w2's change address and both `paysDeposit` predicates
+    -- accept the same output. One person contesting two attestations is the normal case.
+    --
+    -- Two attestations are needed because a second dispute against the SAME attestation is refused
+    -- off-chain (6.7), so the second one is issued here.
+    twoDisputesOneDepositFails :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    twoDisputesOneDepositFails info@TestInfo {..} = do
+      (ctx, issuerAC, disputerAC, attestationA) <- deployWithAcceptedAttestation info
+      attestationB <- issueAndAccept ctx (w1 testWallets) (w2 testWallets) issuerAC disputerAC
+      waitNSlots_ 1
+
+      (_t1, disputeA) <- open ctx (w2 testWallets) attestationA disputerAC
+      waitNSlots_ 1
+      (_t2, disputeB) <- open ctx (w2 testWallets) attestationB disputerAC
+      waitNSlots_ 1
+
+      mustFailWith (failedWithTrace "D6") $
+        void $
+          maliciousResolveTwoDisputes ctx (w1 testWallets) disputeA disputeB Domain.VerdictUpheld
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Resolving two disputes with one returned deposit was rejected (D6)."
+
+    -- CIP-67 prefixes, as hex, because the whole trick is which four bytes a token name starts with:
+    -- `000de140` is the user half and `000643b0` the reference half. The fake-coin policy is derived
+    -- from the token NAME, so the policy that mints the user token is also the policy the claimed
+    -- reference id must name — which is why one coin gives both halves of this attack.
+    foreignUserCoin :: FakeCoin
+    foreignUserCoin = FakeCoin (unsafeTokenName "000de140666f726569676e")
+
+    foreignOpenerAC :: GYAssetClass
+    foreignOpenerAC = case fakeCoin foreignUserCoin of
+      GYToken pid _ -> GYToken pid (unsafeTokenName "000643b0666f726569676e")
+      ac -> error ("foreignOpenerAC: fake coin is not a token: " <> show ac)
+
+    unsafeTokenName :: Text -> GYTokenName
+    unsafeTokenName hex =
+      either (\e -> error ("unsafeTokenName: " <> T.unpack hex <> ": " <> T.unpack e)) id (tokenNameFromHex hex)
+
+    -- Issue one more attestation about the same subject and have the subject accept it, so there are
+    -- two accepted attestations to dispute. Returns the new attestation's id.
+    issueAndAccept ::
+      (HasCallStack) =>
+      DeployedScriptsContext ->
+      User ->
+      User ->
+      GYAssetClass ->
+      GYAssetClass ->
+      GYTxMonadClb GYAssetClass
+    issueAndAccept ctx issuer subject issuerAC subjectAC = do
+      (_t, attestationAC) <-
+        profileInteraction
+          ctx
+          issuer
+          ( IssueAttestationAction
+              { aa_subject_profile_id = subjectAC,
+                aa_issuer_profile_id = issuerAC,
+                aa_kind = Domain.MilestoneDelivered,
+                aa_profile_data = milestoneAttestationData,
+                aa_other_metadata = [],
+                aa_claimed_period = Nothing
+              }
+          )
+          Nothing
+      waitNSlots_ 1
+      void $ profileInteraction ctx subject (AcceptAttestationAction attestationAC) Nothing
+      waitNSlots_ 1
+      return attestationAC
+
     -- Deploy, give w1 an organisation and w2 a DRep person, issue an attestation about w2 and have
     -- w2 accept it. Every case disputes an ACCEPTED attestation, because that is the interesting
     -- one: a pending claim nobody has agreed to needs no contesting.
@@ -373,16 +506,34 @@ disputeEmulatorTests =
       GYAssetClass ->
       GYAssetClass ->
       GYTxMonadClb (GYTxId, GYAssetClass)
-    open ctx wallet attestationAC disputerAC =
+    -- Nothing for the payout: the deposit returns to the opener's change address, which is the only
+    -- sensible default a validator cannot work out for itself.
+    open ctx wallet attestationAC disputerAC = openWith ctx wallet attestationAC disputerAC Nothing
+
+    -- The same thing with both of @handleOpenDispute@'s unchecked parameters free, because both were
+    -- reachable through the ordinary off-chain path: 'openDisputeTX' takes the opener's profile id
+    -- and the payout address from the caller and constrains neither. See 6.8 and 6.9.
+    --
+    -- @od_deposit_to@ is deliberately not constrained off chain either. @Md8@'s rule is "an address
+    -- this transaction spends from", which legitimately includes one outside the disputer's
+    -- 'UserAddresses' — a cold wallet they also spend from here. A guard requiring it to be one of
+    -- @ownAddrs@ would be stricter than the validator and would refuse that.
+    openWith ::
+      (HasCallStack) =>
+      DeployedScriptsContext ->
+      User ->
+      GYAssetClass ->
+      GYAssetClass ->
+      Maybe GYAddress ->
+      GYTxMonadClb (GYTxId, GYAssetClass)
+    openWith ctx wallet attestationAC openerAC mDepositTo =
       disputeInteraction
         ctx
         wallet
         ( OpenDisputeAction
             { od_attestation_id = attestationAC,
-              od_opened_by_profile_id = disputerAC,
-              -- Nothing: the deposit returns to the opener's change address, which is the only
-              -- sensible default a validator cannot work out for itself.
-              od_deposit_to = Nothing,
+              od_opened_by_profile_id = openerAC,
+              od_deposit_to = mDepositTo,
               od_profile_data = disputeStatementData
             }
         )

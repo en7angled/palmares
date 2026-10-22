@@ -588,7 +588,8 @@ openDisputeTX gyTargetAC gyOpenerProfileId depositTo metadata ownAddrs = do
       mpRef = getMintingPolicyRef ctx
 
   -- A dispute against an attestation that does not exist is a deposit locked against nothing, and
-  -- @Md4@ checks only the currency symbol.
+  -- @Md4@ checks only the currency symbol — of the target AND, since the first audit of this
+  -- handler, of the opener.
   _targetDatumAndValue <- getAttestationDatumAndValue gyTargetAC
   let plutusTargetAC = assetClassToPlutus gyTargetAC
   openDisputes <- getOpenDisputesForAttestation plutusTargetAC
@@ -778,7 +779,20 @@ updateOracleTX adminAction = do
   -- Require admin signature (on-chain validator checks txInfoSignatories)
   let requireAdminSig = mustBeSignedBy gyAdminPkh
 
-  return $ mconcat [spendOracle, lockOracle, requireAdminSig]
+  -- A ROTATION NEEDS BOTH SIGNATURES, and the on-chain check (O5) is what makes this mandatory
+  -- rather than polite. The outgoing admin consents by spending; the incoming one consents by
+  -- signing, which is also the only proof the new key exists and somebody holds it. Without it a
+  -- mistyped rotation ends the protocol: O1 then refuses every later update, including the one that
+  -- would undo the mistake, and every open dispute becomes unresolvable because D1 wants that
+  -- signature too.
+  --
+  -- The signing itself is the caller's problem — `admin rotate-admin` has to be run with both keys
+  -- available, which is the right friction for a handover.
+  let requireIncomingAdminSig = case adminAction of
+        RotateAdminAction newAdmin -> mustBeSignedBy newAdmin
+        _ -> mempty
+
+  return $ mconcat [spendOracle, lockOracle, requireAdminSig, requireIncomingAdminSig]
 
 -- | Map off-chain admin action to on-chain OracleAdminAction (for the redeemer).
 adminActionToOracleAdminAction :: AdminActionType -> OracleAdminAction

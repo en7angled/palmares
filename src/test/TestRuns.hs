@@ -26,6 +26,7 @@ module TestRuns
     disputeInteraction,
     protocolInteraction,
     adminInteraction,
+    adminRotateInteraction,
 
     -- * Griefing / dust
     sendDustToValidator,
@@ -42,6 +43,7 @@ module TestRuns
     maliciousIssueAttestation,
     maliciousDoubleAccept,
     maliciousResolveDispute,
+    maliciousResolveTwoDisputes,
   )
 where
 
@@ -867,3 +869,121 @@ maliciousResolveDisputeTX actorPkh gyDisputeAC verdict = do
         isReturningDeposit,
         mustBeSignedBy actorPkh
       ]
+
+-- | MALICIOUS: resolve TWO disputes in one transaction and return ONE deposit — the @D4@ exploit.
+--
+-- Both disputes must name the same payout address, which is the ordinary case rather than a
+-- contrivance: one person contesting two attestations opens both from the same wallet. Each dispute's
+-- script instance then runs its own @D4@ against the same output list, and the single returned
+-- deposit satisfies both. The second deposit leaves the script into the transaction's change, and
+-- since @D1@ requires the oracle admin's signature, the transaction was built by the admin.
+--
+-- Index layout, which is what makes the two instances distinguishable to @D2@ and not to @D4@:
+--
+--   * output 0: dispute A, resolved, less its deposit
+--   * output 1: dispute B, resolved, less its deposit
+--   * output 2: ONE deposit, to the shared payout address
+--
+-- @D6@ is what refuses it. Before @D6@ this built, validated and settled.
+maliciousResolveTwoDisputes ::
+  (GYTxGameMonad m, HasCallStack) =>
+  DeployedScriptsContext ->
+  -- | The oracle admin, who signs: the attack needs @D1@ to pass.
+  User ->
+  GYAssetClass ->
+  GYAssetClass ->
+  DisputeVerdict ->
+  m GYTxId
+maliciousResolveTwoDisputes ctx admin disputeA disputeB verdict = asUser admin $ do
+  skeleton <- runReaderT (maliciousResolveTwoDisputesTX (User.userPkh admin) disputeA disputeB verdict) ctx
+  gyLogInfo' ("MALICIOUS" :: GYLogNamespace) "Attempting to resolve two disputes and return one deposit (D6)..."
+  (gyTxBody, gyTxId) <- sendSkeleton' skeleton
+  logTxBudget gyTxBody
+  return gyTxId
+
+maliciousResolveTwoDisputesTX ::
+  (HasCallStack, GYTxQueryMonad m, MonadReader DeployedScriptsContext m) =>
+  GYPubKeyHash ->
+  GYAssetClass ->
+  GYAssetClass ->
+  DisputeVerdict ->
+  m (GYTxSkeleton 'PlutusV3)
+maliciousResolveTwoDisputesTX adminPkh disputeA disputeB verdict = do
+  dvRef <- asks getDisputesValidatorRef
+  (_oracleParams, oracleRef, _oracleValue) <- queryOracleParams
+  let onchainVerdict = disputeVerdictToOnchainVerdict verdict
+
+  -- Each instance is told its OWN output index, so D2 is satisfied for both. D4 is the only check
+  -- that reads the output list without an index, which is exactly why it was the shareable one.
+  (spendsA, locksA, depositA, gyDepositTo) <- resolveOne dvRef onchainVerdict 0 disputeA
+  (spendsB, locksB, _depositB, _gyDepositToB) <- resolveOne dvRef onchainVerdict 1 disputeB
+
+  -- ONE deposit for two disputes. `depositA` and `depositB` are equal whenever the oracle's price
+  -- did not move between the two openings, and the test arranges that; paying the larger of the two
+  -- would be the general form and buys nothing here.
+  isReturningOneDeposit <- txMustPayValueToAddress gyDepositTo depositA
+
+  return $
+    mconcat
+      [ spendsA,
+        spendsB,
+        mustHaveRefInput oracleRef,
+        locksA, -- output 0
+        locksB, -- output 1
+        isReturningOneDeposit, -- output 2
+        mustBeSignedBy adminPkh
+      ]
+  where
+    resolveOne dvRef onchainVerdict idx ac = do
+      (disputeDatum, plutusDisputeValue) <- getDisputeDatumAndValue ac
+      let dispute = extra disputeDatum
+          resolvedDatum = disputeDatum {extra = OnchainTypes.resolveDispute onchainVerdict dispute}
+          depositValue = valueFromLovelace (OnchainTypes.disputeDeposit dispute)
+          gyRedeemer = redeemerFromPlutusData (DisputesValidator.ResolveDispute onchainVerdict idx)
+      spends <- txMustSpendStateFromRefScriptWithRedeemer dvRef ac gyRedeemer disputesValidatorGY
+      gyDisputeValue <- valueFromPlutus' plutusDisputeValue
+      locks <-
+        txMustLockStateWithInlineDatumAndValue
+          disputesValidatorGY
+          resolvedDatum
+          (gyDisputeValue `valueMinus` depositValue)
+      gyDepositTo <- addressFromPlutus' (OnchainTypes.disputeDepositTo dispute)
+      return (spends, locks, depositValue, gyDepositTo)
+
+-- | Rotate the oracle admin through the production path, signed by BOTH keys — @O5@.
+--
+-- 'adminInteraction' cannot do this. It runs under 'asUser', which signs with exactly one key, and
+-- 'Palmares.TxBuilding.Operations.updateOracleTX' now adds the incoming admin as a required signer
+-- because @O5@ demands it. So a real handover is a two-signature transaction and the harness has to
+-- model that: build the body as the current admin, sign with both payment keys, submit.
+--
+-- The friction is the point. A rotation to a key nobody holds cannot be signed, which is the whole
+-- content of @O5@: before it, a mistyped 'RotateAdminAction' ended the protocol — @O1@ then refused
+-- every later update including the one that would undo it, and every open dispute became
+-- unresolvable because @D1@ wants that signature too.
+adminRotateInteraction ::
+  (GYTxGameMonad m, HasCallStack) =>
+  DeployedScriptsContext ->
+  -- | The current admin, who builds and signs
+  User ->
+  -- | The incoming admin, who must also sign
+  User ->
+  m GYTxId
+adminRotateInteraction txBuildingContext currentAdmin incomingAdmin = asUser currentAdmin $ do
+  let interaction =
+        Interaction
+          { action = AdminAction (RotateAdminAction (User.userPkh incomingAdmin)),
+            userAddresses =
+              UserAddresses
+                (toList $ User.userAddresses currentAdmin)
+                (User.userChangeAddress currentAdmin)
+                Nothing,
+            recipient = Nothing
+          }
+  (skeleton, _) <- runReaderT (interactionToTxSkeleton interaction) txBuildingContext
+  gyTxBody <- buildTxBody skeleton
+  logTxBudget gyTxBody
+  gyLogInfo' ("TESTLOG" :: GYLogNamespace) $
+    yellowColorString ("ADMIN ROTATION, signed by both keys: \n" <> show interaction)
+  submitTxConfirmed $
+    signGYTxBody gyTxBody [User.userPaymentSKey currentAdmin, User.userPaymentSKey incomingAdmin]

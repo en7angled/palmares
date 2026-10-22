@@ -21,6 +21,10 @@
 -- 'Palmares.Onchain.Protocol.Types.checkNoOpenDispute' is the off-chain courtesy that refuses the
 -- duplicate a human would not have meant; it has no trace code here because there is no check.
 --
+-- __@D6@ is a different statement and must not be read as that one.__ It says one dispute may be
+-- RESOLVED per transaction, which is a soundness requirement for @D4@ and not a limit on how many
+-- disputes may exist. Opening is unbounded; resolving is serialised.
+--
 -- Unparameterised, like the Profiles and Attestations validators: its own address comes from the
 -- input being spent, and the one external fact it needs — which reference input is the oracle — comes
 -- from the token recorded in its own datum. A validator hash is never a parameter here.
@@ -137,7 +141,17 @@ disputesLambda (ScriptContext TxInfo {..} (Redeemer bredeemer) scriptInfo) =
                       -- claim would be a registry that discourages contesting one. Paid to the address
                       -- the disputer named when opening, because a validator cannot resolve a
                       -- ProfileId into an address.
+                      --
+                      -- `any` IS A MULTIPLE-SATISFACTION HOLE WITHOUT D6 BELOW, and this is the site
+                      -- that made the rule concrete: two disputes naming the same payout address are
+                      -- the ordinary case — one person contesting two attestations — and resolving
+                      -- both in one transaction let a single returned deposit discharge both checks,
+                      -- with the second deposit landing in the change of whoever built the
+                      -- transaction. D1 means that is the oracle admin. The `any` stays; D6 makes it
+                      -- sound by ensuring there is only ever one obligation per transaction to
+                      -- discharge.
                       && traceIfFalse "D4" (any paysDeposit txInfoOutputs) -- Deposit must return to the disputer (D4)
+                      && traceIfFalse "D6" (Utils.spentExactlyOnceFromAddress ownAddress txInfoInputs) -- One dispute per transaction (D6)
         _ -> traceError "D5" -- Invalid script info (D5)
 
 -------------------------------------------------------------------------------

@@ -40,9 +40,9 @@ tests =
       -- script carries the script PLUS its own inputs, outputs, change and witnesses. 14000 leaves
       -- about 2.4 KB for all of that, which is the margin `deployValidators` actually runs in.
       --
-      -- The MintingPolicy is the one to watch: at 11865 bytes it is 72% of a whole transaction, and
+      -- The MintingPolicy is the one to watch: at 11920 bytes it is 73% of a whole transaction, and
       -- it is the only script that grows when a redeemer case is added. The four spending validators
-      -- sit near 7.5 KB each and have room.
+      -- sit between 7.5 and 8.4 KB and have room.
       testCase "every validator leaves room for the transaction that deploys it" $
         filter ((> 14_000) . snd) measured @?= []
     ]
@@ -70,21 +70,36 @@ measured =
 -- critical fix below, and not re-measured since, because the option to strip them is gone. Traces
 -- cost between 1.8% and 3.4%, which is what made keeping them an easy decision.
 --
--- The minting policy's last two moves, and both times the other four did not budge — which is the
--- useful part of this table, because it bounds a change instead of describing it:
+-- Every move so far, and which validators did NOT move each time — which is the useful part of this
+-- table, because an unchanged number bounds a change instead of describing it:
 --
---   11871 -> 11850  deleting the staking-half disjunct from 'checkCredentialControl' (one comparison
---                   fewer) when the first audit's critical finding was fixed
---   11850 -> 11865  adding the interval-WIDTH check to 'checkDateInRange' when the second audit
---                   found that inherited fix #4 had closed containment and left width open
+--   MintingPolicy 11871 -> 11850  deleting the staking-half disjunct from 'checkCredentialControl'
+--                                 (one comparison fewer) when the first audit's critical finding
+--                                 was fixed. The other four did not budge.
+--   MintingPolicy 11850 -> 11865  adding the interval-WIDTH check to 'checkDateInRange' when the
+--                                 second audit found that inherited fix #4 had closed containment
+--                                 and left width open. The other four did not budge.
 --
--- Both functions are reached only from the minting policy, which is exactly what the four unchanged
--- numbers say.
+-- Both of those functions are reached only from the minting policy, which is exactly what the four
+-- unchanged numbers said.
+--
+-- Then the dispute-family audit fixes, three validators in one commit:
+--
+--   DisputesValidator 8243 -> 8340  @D6@, one dispute resolved per transaction, which is what makes
+--                                   @D4@'s `any` over the outputs sound
+--   OracleValidator   7427 -> 7492  @O5@, a handover must carry the INCOMING admin's signature
+--   MintingPolicy    11865 -> 11920 @Md4@ extended to the dispute opener's currency symbol, and
+--                                   @Md8@, the payout address must be one the tx spends from
+--
+-- ProfilesValidator and AttestationsValidator did not move, and that is the assertion worth having:
+-- the dispute fixes touched the dispute path, the oracle fix touched the oracle, and the shared
+-- helper added to 'Palmares.Onchain.Utils' ('spentExactlyOnceFromAddress') is reached from exactly
+-- one validator rather than linked into all five.
 expected :: [(String, Int)]
 expected =
   [ ("ProfilesValidator", 7879),
     ("AttestationsValidator", 7554),
-    ("DisputesValidator", 8243),
-    ("OracleValidator", 7427),
-    ("MintingPolicy", 11865)
+    ("DisputesValidator", 8340),
+    ("OracleValidator", 7492),
+    ("MintingPolicy", 11920)
   ]

@@ -42,14 +42,20 @@ tests =
       --
       -- The MintingPolicy is the one to watch: at 12241 bytes it is 75% of a whole transaction, and
       -- it is the only script that grows when a redeemer case is added. The four spending validators
-      -- sit between 7.5 and 8.4 KB and have room.
+      -- sit between 7.6 and 8.4 KB and have room.
       testCase "every validator leaves room for the transaction that deploys it" $
         filter ((> 14_000) . snd) measured @?= []
     ]
 
--- | Measured sizes, by name. The minting policy is parameterised, so it is measured against the same
--- placeholder oracle token the blueprint uses — a real deployment's 28-byte currency symbol adds a
--- few bytes to this figure and nothing structural.
+-- | Measured sizes, by name. The minting policy is parameterised, so it is measured against a local
+-- placeholder oracle token — a real deployment's 28-byte currency symbol adds a few bytes to this
+-- figure and nothing structural.
+--
+-- This used to say "the same placeholder oracle token the blueprint uses". It no longer does: the
+-- blueprint stopped shipping a compiled minting policy at all, because applying a placeholder meant
+-- publishing a CIP-57 @hash@ field that matched no deployment. A measurement against a placeholder
+-- is honest; a published hash derived from one is not, which is the whole difference between these
+-- two uses of the same trick.
 measured :: [(String, Int)]
 measured =
   [ ("ProfilesValidator", profilesValidatorSize),
@@ -107,11 +113,30 @@ measured =
 -- a record nobody can remove, so it is worth it — but it is the one line in this table where the
 -- cost is worth looking at again if the policy ever approaches the ceiling. The prefix check is
 -- four bytes of comparison reused at four call sites.
+--
+-- Then the three STATE validators, and the asymmetry is the interesting part:
+--
+--   ProfilesValidator     7879 -> 8381  (+502)  'Utils.isUnbackedDatum' on @Cleanup@, AND @P6@ —
+--                                               which had to add an oracle read this validator did
+--                                               not previously do at all
+--   AttestationsValidator 7554 -> 7604  (+50)   'Utils.isUnbackedDatum' alone. No pause check: an
+--                                               'OnchainAttestation' carries no oracle token, and a
+--                                               token taken from the redeemer would be
+--                                               attacker-chosen and therefore worthless
+--   DisputesValidator     8340 -> 8424  (+84)   'Utils.isUnbackedDatum' and @D7@, which is one
+--                                               boolean because the oracle was already bound in the
+--                                               @ResolveDispute@ arm
+--
+-- +50 against +502 for the same shared helper is the whole cost of REACHING the oracle, measured.
+-- It is also why the Attestations validator's pause is off-chain only: the cheap routes were taken
+-- and the remaining ones change either the deployed datum format or every honest client's
+-- transaction. OracleValidator and MintingPolicy did not move, which says the helper is reached
+-- from exactly the three validators that call it.
 expected :: [(String, Int)]
 expected =
-  [ ("ProfilesValidator", 7879),
-    ("AttestationsValidator", 7554),
-    ("DisputesValidator", 8340),
+  [ ("ProfilesValidator", 8381),
+    ("AttestationsValidator", 7604),
+    ("DisputesValidator", 8424),
     ("OracleValidator", 7492),
     ("MintingPolicy", 12241)
   ]

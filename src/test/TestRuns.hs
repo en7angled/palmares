@@ -42,8 +42,10 @@ module TestRuns
     maliciousMintProfileWithBurn,
     maliciousIssueAttestation,
     maliciousDoubleAccept,
+    maliciousUpdateProfile,
     maliciousResolveDispute,
     maliciousResolveTwoDisputes,
+    maliciousCleanupState,
   )
 where
 
@@ -59,13 +61,14 @@ import GeniusYield.TxBuilder.User qualified as User
 import GeniusYield.Types
 import Palmares.DomainTypes.Core.Actions
 import Palmares.DomainTypes.Core.Types (AttestationType, DisputeVerdict, ProfileType)
-import Palmares.Onchain.CIP68 (CIP68Datum (..), MetadataFields, mkCIP68Datum)
+import Palmares.Onchain.CIP68 (CIP68Datum (..), ImageURI, MetadataFields (..), getMetadataFields, mkCIP68Datum, updateCIP68DatumMetadata)
 import Palmares.Onchain.Protocol.Types (OracleAdminAction, OracleParams (..))
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer (AcceptAttestation))
 import Palmares.Onchain.Validators.DisputesValidator qualified as DisputesValidator (DisputesRedeemer (ResolveDispute))
 import Palmares.Onchain.Validators.MintingPolicy (MintingRedeemer (MintProfile, NewAttestation))
 import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer (OracleUpdate))
+import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (UpdateProfile))
 import Palmares.TxBuilding.Context
 import Palmares.TxBuilding.Conversions
   ( attestationTypeToOnchainAttestationKind,
@@ -73,7 +76,7 @@ import Palmares.TxBuilding.Conversions
     profileTypeToOnchainProfileKind,
   )
 import Palmares.TxBuilding.Interactions
-import Palmares.TxBuilding.Lookups (getAttestationDatumAndValue, getDisputeDatumAndValue, queryOracleParams)
+import Palmares.TxBuilding.Lookups (getAttestationDatumAndValue, getDisputeDatumAndValue, getProfileStateDatumAndValue, queryOracleParams)
 import Palmares.TxBuilding.Operations
   ( adminActionToOracleAdminAction,
     applyAdminAction,
@@ -467,10 +470,11 @@ sendAdaToAddress user addr lovelace = asUser user $ do
 --
 -- Every builder below exists for one reason: the production path cannot produce the transaction
 -- that reaches the on-chain check we want to assert. 'Palmares.TxBuilding.Operations' refuses these
--- off chain — with a 400, a missing required signer, or an unbuildable output — and a @mustFail@ on
--- that refusal says nothing about whether the validator checks anything at all. That is the mistake
--- 'UnitTests.Oracle' documents for @O1@; these are the same remedy for @Mp3@, @Mp2@, @Ml@, @Mf@,
--- @A3@, @D1@ and @D3@.
+-- off chain — with a 400, a missing required signer, an unbuildable output, or an off-chain filter
+-- that never offers the UTxO — and a @mustFail@ on that refusal says nothing about whether the
+-- validator checks anything at all. That is the mistake 'UnitTests.Oracle' documents for @O1@; these
+-- are the same remedy for @Mp3@, @Mp2@, @Ml@, @Mf@, @A3@, @D1@, @D3@, @P6@ and the three @Cleanup@
+-- codes @P0@/@A0@/@D0@.
 
 ------------------------------------------------------------------------------------------------
 
@@ -804,6 +808,113 @@ maliciousAcceptTX gyAttestationAC ownAddrs = do
         oracleRefSkeleton,
         isLockingUpdatedAttestation
       ]
+
+-- | MALICIOUS: update a profile without the off-chain pause guard — the only way to reach @P6@.
+--
+-- 'Palmares.TxBuilding.Operations.updateProfileTX' goes through @getOracleRefInputSkeleton@, which
+-- throws @ProtocolPaused@ at skeleton-BUILD time, so through the API a paused update dies before any
+-- script runs. That refusal is what @UnitTests.Attestation@'s @pauseStopsEverything@ asserts with a
+-- bare 'mustFail', and
+-- it would keep passing with @P6@ deleted — the mistake 'UnitTests.Oracle' documents for @O1@.
+--
+-- __The oracle reference input is still attached__, and that is the whole difference from the
+-- production builder: dropping the pause CHECK while keeping the reference input is what leaves @P6@
+-- as the only thing that can refuse the transaction. Without the reference input the failure would be
+-- @K1@ (no input carries the oracle token) and the test would assert the wrong guard.
+maliciousUpdateProfile ::
+  (GYTxGameMonad m, HasCallStack) =>
+  DeployedScriptsContext ->
+  -- | The profile's owner, who holds its user token. The attack is the pause, not the authority.
+  User ->
+  GYAssetClass ->
+  -- | The new image URI, which is the field an update always rewrites.
+  ImageURI ->
+  m GYTxId
+maliciousUpdateProfile ctx owner profileRefAC newImageURI = asUser owner $ do
+  let ownAddrs = toList $ User.userAddresses owner
+  skeleton <- runReaderT (maliciousUpdateProfileTX profileRefAC newImageURI ownAddrs) ctx
+  gyLogInfo' ("MALICIOUS" :: GYLogNamespace) "Attempting a profile update with no off-chain pause guard (P6)..."
+  (gyTxBody, gyTxId) <- sendSkeleton' skeleton
+  logTxBudget gyTxBody
+  return gyTxId
+
+-- | Byte-identical to 'Palmares.TxBuilding.Operations.updateProfileTX' except that the oracle is
+-- attached as a bare reference input instead of through @getOracleAndValiditySkeleton@, so what
+-- rejects it is @P6@ and nothing else.
+maliciousUpdateProfileTX ::
+  (HasCallStack, GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
+  GYAssetClass ->
+  ImageURI ->
+  [GYAddress] ->
+  m (GYTxSkeleton 'PlutusV3)
+maliciousUpdateProfileTX gyProfileRefAC newImageURI ownAddrs = do
+  pvRef <- asks getProfilesValidatorRef
+  -- MALICIOUS: the reference input without the pause check that comes with it.
+  (_oracleParams, oracleRef, _oracleValue) <- queryOracleParams
+  now <- slotOfCurrentBlock
+  (plutusProfileDatum, plutusProfileValue) <- getProfileStateDatumAndValue gyProfileRefAC
+
+  let profileOutputIdx = 0 :: Integer
+      -- The production merge: name is immutable, description is kept, the image is replaced.
+      mergedFields = (getMetadataFields plutusProfileDatum) {metadataImageURI = newImageURI}
+      gyRedeemer = redeemerFromPlutusData (UpdateProfile mergedFields profileOutputIdx)
+      newCip68Datum = updateCIP68DatumMetadata mergedFields plutusProfileDatum
+
+  spendsProfileRefNFT <- txMustSpendStateFromRefScriptWithRedeemer pvRef gyProfileRefAC gyRedeemer profilesValidatorGY
+  spendsProfileUserNFT <- spendUserNFTForProfile gyProfileRefAC ownAddrs
+  gyProfileValue <- valueFromPlutus' plutusProfileValue
+  isLockingUpdatedProfileState <- txMustLockStateWithInlineDatumAndValue profilesValidatorGY newCip68Datum gyProfileValue
+
+  return $
+    mconcat
+      [ spendsProfileUserNFT,
+        spendsProfileRefNFT,
+        txIsValidForSafeEra now,
+        mustHaveRefInput oracleRef, -- Reference input: oracle UTxO, which P6 reads opPaused from
+        isLockingUpdatedProfileState -- Output 0: Updated profile state
+      ]
+
+-- | MALICIOUS: spend REAL protocol state with the permissionless @Cleanup@ redeemer.
+--
+-- The dust sweep cannot produce this transaction: 'Palmares.TxBuilding.Lookups.getDustUTxOs' selects
+-- only UTxOs carrying no token of the protocol's policy, so a state UTxO is never offered to it. That
+-- off-chain filter is also why the inherited suite's five cleanup cases all passed with @Cleanup@
+-- effectively unchecked — none of them could reach the on-chain arm with real state in front of it.
+--
+-- What it asserts is the dangerous half of the value-backed guard: a datum the UTxO's own NFT backs
+-- is state, and @P0@/@A0@/@D0@ must refuse the sweep. Each validator looks up its own NFT through its
+-- own datum field, and those fields are all 'PlutusLedgerApi.V1.Value.AssetClass' — @disputeTarget@
+-- in place of @disputeId@ type-checks — so the three cases are three different checks, not one
+-- repeated.
+--
+-- The NFT and the min-ADA would land in the actor's change output, which is exactly the theft the
+-- refusal prevents.
+maliciousCleanupState ::
+  (GYTxGameMonad m, HasCallStack) =>
+  DeployedScriptsContext ->
+  -- | Anyone: @Cleanup@ takes no authority, which is the point of asserting what stops it.
+  User ->
+  -- | The validator's deployed reference script, as the context holds it.
+  (DeployedScriptsContext -> GYTxOutRef) ->
+  GYScript 'PlutusV3 ->
+  -- | That validator's own @Cleanup@ redeemer. Three types, three constructors, no shared one.
+  GYRedeemer ->
+  -- | The state NFT identifying the UTxO to sweep.
+  GYAssetClass ->
+  m GYTxId
+maliciousCleanupState ctx actor getRef validatorGY cleanupRedeemer stateAC = asUser actor $ do
+  skeleton <-
+    runReaderT
+      ( do
+          ref <- asks getRef
+          txMustSpendStateFromRefScriptWithRedeemer ref stateAC cleanupRedeemer validatorGY
+      )
+      ctx
+  gyLogInfo' ("MALICIOUS" :: GYLogNamespace) $
+    "Attempting to sweep real protocol state with Cleanup: " <> show stateAC
+  (gyTxBody, gyTxId) <- sendSkeleton' skeleton
+  logTxBudget gyTxBody
+  return gyTxId
 
 -- | MALICIOUS: resolve a dispute as the ACTOR rather than as the oracle admin, and without the
 -- off-chain already-resolved guard.

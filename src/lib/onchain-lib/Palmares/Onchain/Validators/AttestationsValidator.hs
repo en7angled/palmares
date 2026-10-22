@@ -83,12 +83,17 @@ attestationsLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) script
   let !redeemer = unsafeFromBuiltinData @AttestationsRedeemer bredeemer
    in case scriptInfo of
         (SpendingScript spendingTxOutRef mdatum) -> case redeemer of
-          -- Permissionless cleanup: allow spending if datum is absent or unparseable.
+          -- Permissionless cleanup: a UTxO here is dust unless its own VALUE backs its datum's claim
+          -- to be an attestation. Absent or unparseable datum, or a datum no attestation NFT backs,
+          -- is sweepable; a datum the NFT backs is state and nobody may sweep it. The attestation
+          -- path is the one where this matters most: a record is permanent and nothing burns, so a
+          -- parked copy of a real attestation's datum was clutter no sweep could ever reach.
           Cleanup -> case mdatum of
             Nothing -> True
             Just (Datum bd) -> case fromBuiltinData @AttestationsDatum bd of
               Nothing -> True
-              Just _ -> traceError "A0" -- Cannot cleanup valid datum (A0)
+              Just (parkedDatum :: AttestationsDatum) ->
+                traceIfFalse "A0" (Utils.isUnbackedDatum (attestationId (extra parkedDatum)) spendingTxOutRef txInfoInputs) -- Cannot cleanup backed state (A0)
           AcceptAttestation outputIdx -> case mdatum of
             Nothing -> traceError "A0" -- No datum (A0)
             Just (Datum bdatum) -> case fromBuiltinData bdatum of

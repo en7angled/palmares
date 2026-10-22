@@ -121,8 +121,19 @@ mkProtocolParams oracleAC =
       oracleToken = oracleAC
     }
 
--- | Protocol params with a placeholder oracle token, for blueprint generation only.
--- The actual oracle token is determined at deployment time.
+-- | Protocol params with a placeholder oracle token. The real one is fixed at deployment time.
+--
+-- __"For blueprint generation only" is what this used to say, and the blueprint is now the one
+-- caller it does NOT have.__ `Palmares.Onchain.Blueprint` stopped shipping a compiled minting
+-- policy, because applying a placeholder made the document publish a CIP-57 @hash@ field derived
+-- from it — a 28-byte script hash that matched no deployment, which a verifier could not tell from
+-- a substituted script. The minting policy is declared by its parameter instead, and
+-- @UnitTests.Blueprint@ asserts the document is byte-identical for two different oracle tokens.
+--
+-- The remaining consumer is @PropertyTests@, which wants SOME fixed params to pin on-chain rules
+-- against their off-chain mirror and does not care which. @testProtocolParams@ would be the honest
+-- name; renaming is held back only because @admin@ still threads this value into
+-- @contractBlueprint@, which now provably cannot reach the output.
 blueprintProtocolParams :: ProtocolParams
 blueprintProtocolParams = mkProtocolParams (V1.AssetClass (V1.CurrencySymbol "", V1.TokenName ""))
 

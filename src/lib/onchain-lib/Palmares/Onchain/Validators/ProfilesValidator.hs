@@ -28,7 +28,7 @@ where
 
 import GHC.Generics (Generic)
 import Palmares.Onchain.CIP68 (CIP68Datum (CIP68Datum), MetadataFields (..), deriveUserFromRefAC, updateCIP68DatumMetadata, validateMetadataFields)
-import Palmares.Onchain.Protocol (OnchainProfile (..))
+import Palmares.Onchain.Protocol (OnchainProfile (..), OracleParams (opPaused), ProtocolParams (oracleToken), readOracleParams)
 import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Utils qualified as Utils
 import PlutusLedgerApi.V1 qualified as V1
@@ -52,9 +52,10 @@ import Prelude qualified
 data ProfilesRedeemer
   = -- | UpdateProfile newMetadataFields profileOutputIdx
     UpdateProfile MetadataFields Integer
-  | -- | Permissionless dust/griefing cleanup. Anyone can spend a UTxO at the
-    -- validator address if its datum is absent or does not parse as a valid
-    -- protocol datum. Legitimate protocol UTxOs (with valid datums) are rejected.
+  | -- | Permissionless dust/griefing cleanup. Anyone can spend a UTxO at the validator address
+    -- unless it is protocol state, and protocol state is a datum the UTxO's own VALUE backs: the
+    -- profile Ref NFT the datum names must be in it. A datum that merely parses is not enough —
+    -- see 'Utils.isUnbackedDatum' for the permanent clutter that reading bought.
     Cleanup
   deriving stock (Generic, Prelude.Show)
   deriving anyclass (HasBlueprintDefinition)
@@ -75,12 +76,15 @@ profilesLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) scriptInfo
   let redeemer = unsafeFromBuiltinData @ProfilesRedeemer bredeemer
    in case scriptInfo of
         (SpendingScript spendingTxOutRef mdatum) -> case redeemer of
-          -- Permissionless cleanup: allow spending if datum is absent or unparseable.
+          -- Permissionless cleanup: a UTxO here is dust unless its own VALUE backs its datum's claim
+          -- to be a profile. Absent or unparseable datum, or a datum no profile Ref NFT backs, is
+          -- sweepable; a datum the NFT backs is state and nobody may sweep it.
           Cleanup -> case mdatum of
             Nothing -> True
             Just (Datum bd) -> case fromBuiltinData @(CIP68Datum OnchainProfile) bd of
               Nothing -> True
-              Just _ -> traceError "P0" -- Cannot cleanup valid datum (P0)
+              Just (CIP68Datum _metadata _version (profile :: OnchainProfile)) ->
+                traceIfFalse "P0" (Utils.isUnbackedDatum (profileId profile) spendingTxOutRef txInfoInputs) -- Cannot cleanup backed state (P0)
           _ -> case mdatum of
             Nothing -> traceError "P0" -- No datum (P0)
             Just (Datum bdatum) -> case fromBuiltinData bdatum of
@@ -91,9 +95,35 @@ profilesLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) scriptInfo
                     !ownAddress = txOutAddress ownInput
                     !profileRefAssetClass = profileId profile --  as in datum.
                     -- It is important to validate that the value of this UTxO contains an NFT of this asset class.
+                    --
+                    -- Read through the token in this profile's OWN datum, which is where an
+                    -- unparameterised validator gets the one external fact it needs — the same route
+                    -- the Disputes Validator takes through @disputeOracleToken@. The token is part of
+                    -- the 'ProtocolParams' the minting policy baked into this datum at @Mp5@, and
+                    -- @P2@ below is what makes the datum trustworthy: a forged profile UTxO naming an
+                    -- attacker's \"oracle\" has no Ref NFT, so the most a forged oracle can do is let
+                    -- @P6@ pass for a spend @P2@ then refuses. `readOracleParams` traces @K1@ when no
+                    -- reference input carries the token.
+                    oracle = readOracleParams (oracleToken (protocolParams profile)) txInfoReferenceInputs
                  in case redeemer of
                       (UpdateProfile newFields profileOutputIdx) ->
-                        handleUpdateProfile txInfo ownValue ownAddress profileRefAssetClass profileDatum newFields profileOutputIdx
+                        -- A PAUSE STOPS WRITES, NOT READS, and this redeemer is a write. @opPaused@
+                        -- used to be read by the minting policy alone (@M0@), so a paused protocol
+                        -- halted new profiles and attestations while a hand-built transaction could
+                        -- still rewrite an existing profile's metadata — the off-chain builder's
+                        -- @ProtocolPaused@ is a courtesy anyone bypasses by building their own. A
+                        -- lever that stops issuance and not mutation is not an emergency stop.
+                        --
+                        -- Its own code rather than folding into @P2@, for the reason @A3@ and @D3@
+                        -- have theirs: \"paused\" and \"wrong output\" are different mistakes and an
+                        -- operator should be able to tell them apart.
+                        --
+                        -- @Cleanup@ above is deliberately NOT gated. It moves no protocol state —
+                        -- after this commit it provably cannot, since a backed datum refuses the
+                        -- sweep — and making housekeeping pausable would let an admin freeze the dust
+                        -- sweep while the clutter accumulates.
+                        traceIfFalse "P6" (not (opPaused oracle)) -- Protocol is paused (P6)
+                          && handleUpdateProfile txInfo ownValue ownAddress profileRefAssetClass profileDatum newFields profileOutputIdx
         _ -> traceError "P1" -- Invalid purpose (P1)
 
 -------------------------------------------------------------------------------

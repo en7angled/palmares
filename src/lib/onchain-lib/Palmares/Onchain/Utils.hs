@@ -16,6 +16,7 @@ module Palmares.Onchain.Utils
     isTxOutAtIndexWithDatumMinValueAndAddress,
     isGivenInlineDatum,
     unsafeFindOwnInputByTxOutRef,
+    isUnbackedDatum,
 
     -- * Validate and Get
     checkAndGetCurrentStateDatumAndValue,
@@ -275,6 +276,48 @@ unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs =
    in case i of
         Just (TxInInfo _inOutRef inOut) -> inOut
         Nothing -> traceError "U1" -- Cannot find own input by TxOutRef (U1)
+
+-- | Does the UTxO being spent FAIL to back the state NFT its own datum names — is it dust wearing a
+-- datum rather than protocol state?
+--
+-- __This is the whole of the @Cleanup@ guard__ in all three state validators, and it replaces one
+-- that asked a weaker question. The inherited arm allowed the spend when the datum was absent or did
+-- not parse and refused it when the datum parsed, which made \"parses as my state\" mean \"is my
+-- state\". It is not the same thing, and nothing in this protocol burns: anyone could park a min-ADA
+-- UTxO at any of the three state addresses carrying a hand-written datum — a copy of a real one will
+-- do — and nobody could ever sweep it. Cheap, permanent, irreversible clutter in
+-- 'Palmares.TxBuilding.Lookups.getDustUTxOs' and in every address scan the read layer does, which is
+-- exactly what the @Cleanup@ redeemer exists to prevent.
+--
+-- A datum is only protocol state if the VALUE backs it. Every state datum names its own NFT
+-- ('Palmares.Onchain.Protocol.Types.profileId', @attestationId@, @disputeId@), so the question each
+-- validator can actually ask is whether its own input holds that asset — the authentication the
+-- inherited check skipped. The caller sweeps when this is 'True' and refuses with its own trace code
+-- (@P0@, @A0@, @D0@) when it is 'False'.
+--
+-- __This cannot sweep real state__, and the reason is the token flow rather than this function. A
+-- state NFT is minted exactly once into a UTxO whose whole datum the minting policy pinned
+-- (@Mp5@/@Mk@/@Md5@), no redeemer burns, and the only redeemer that can move it requires the own
+-- value to hold it (@P2@/@A1@/@D2@) and re-locks at least that value at the same address with a
+-- datum the validator computed. So a genuine state NFT can only ever sit in a UTxO whose datum
+-- parses and names it, where this returns 'False'.
+--
+-- __What it does newly sweep, said plainly:__ a UTxO holding some OTHER protocol token than the NFT
+-- its datum names — a user token mis-sent to a state address with a hand-written datum on it. That
+-- was already true of a token mis-sent with no datum or a broken one, which the two arms above have
+-- always swept, so this makes the parsing case behave like the unparseable one rather than opening a
+-- new door. Nobody can move a token someone else holds, so the only way into that state is the
+-- holder's own transaction, and the alternative was that the token stayed there forever: @P2@ refuses
+-- an update whose own value lacks the Ref NFT, so such a UTxO had no spending path at all.
+--
+-- __Why @== 0@ and not @\/= 1@__, which differ only at a quantity of two or more: that quantity
+-- cannot exist, because every mint path constrains the WHOLE minted value to one NFT. If it somehow
+-- did, the UTxO would be holding a genuine state NFT, and refusing the sweep is the safe side of
+-- that question — the expensive mistake here is sweeping real state, not leaving a UTxO unswept.
+{-# INLINEABLE isUnbackedDatum #-}
+isUnbackedDatum :: AssetClass -> TxOutRef -> [TxInInfo] -> Bool
+isUnbackedDatum stateNFT spendingTxOutRef txInfoInputs =
+  V1.assetClassValueOf (txOutValue (unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs)) stateNFT == 0
 
 -------------------------------------------------------------------------------
 

@@ -7,6 +7,7 @@ import Test.Tasty
 import UnitTests.Activity qualified as Activity
 import UnitTests.Anchor qualified as Anchor
 import UnitTests.AttestRead (attestReadTests)
+import UnitTests.Blueprint qualified as Blueprint
 import UnitTests.Attestation (attestationTests)
 import UnitTests.ApiHardening (apiHardeningTests)
 import UnitTests.ChainSyncReplay (chainSyncReplayTests)
@@ -22,6 +23,7 @@ import PropertyTests (propertyTests)
 import UnitTests.MetricFixture qualified as MetricFixture
 import UnitTests.ApplySql qualified as ApplySqlTests
 import UnitTests.Cleanup (cleanupTests)
+import UnitTests.Pause (pauseTests)
 import UnitTests.Oracle (oracleTests)
 import UnitTests.ScriptSize qualified as ScriptSize
 import UnitTests.AttestSchema qualified as AttestSchema
@@ -62,6 +64,7 @@ unitTests =
       Claim.tests,
       Satisfaction.tests,
       MintInputs.tests,
+      Blueprint.tests,
       attestReadTests,
       Dispute.tests,
       Fees.tests,
@@ -78,6 +81,7 @@ unitTests =
       -- The emulator groups last: every case in them deploys a protocol into a fresh CLB ledger, so
       -- they are the slow part of the suite and a failure is easier to read at the bottom.
       cleanupTests,
+      pauseTests,
       oracleTests,
       attestationTests,
       profileTests,

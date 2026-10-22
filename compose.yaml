@@ -2,7 +2,12 @@
 # Minimum host: 4 cores, 12 GB RAM, 60 GB free SSD. arm64 and amd64 both work.
 #
 #   docker compose --profile chain up -d        # node + db-sync + postgres
-#   docker compose --profile app   up -d        # + the public query API
+#   docker compose --profile app   up -d        # + the public query API (reads Postgres only)
+#   docker compose --profile write up -d        # + Kupo and the interaction API (the write path)
+#
+# `write` is its own profile because it needs things the read path does not: a UTxO index, the node
+# socket, and `config/config_palmares_validators.json`, which does not exist until
+# `admin deploy-reference-scripts` has run once.
 #
 # TIME UNTIL USEFUL (measured 2026-10-20 on an Apple-silicon laptop, Experiment A):
 #   node, via Mithril          : ~20-40 min  (default; RESTORE_SNAPSHOT=false for a genesis audit run)
@@ -144,6 +149,117 @@ services:
           # limit planned for the cluster, so a local OOM here is a real signal, not a local quirk.
           memory: 6144M
 
+  # THE WRITE PATH'S UTXO INDEX. Atlas's local provider is `socketPath` + `kupoUrl` and there is no
+  # fourth option: every non-hosted Atlas provider needs Kupo, and the remaining one — `ogmiosUrl` +
+  # `kupoUrl` — is unavailable here because node 11.1.2 requires Ogmios v7 and Ogmios v7 breaks
+  # Atlas (changed mempool/nextTransaction JSON, protocol-parameter field naming, tx object shape).
+  # That is the measured reason the Belt System's write path ended up on Maestro. `GYNodeKupo` takes
+  # parameters, slot, submission and gov/stake state from the NODE directly and uses Kupo only for
+  # UTxO query, datum lookup and await-confirmed, so no Ogmios is involved at all.
+  #
+  # KUPO v2.12.0 AGAINST NODE 11.1.2 IS MEASURED, NOT ASSUMED — and the published documents say
+  # otherwise, which is why it was measured. Kupo's own compatibility table tops out at node 10.1.*,
+  # its v2.12.0 release notes declare a 11.0.1 dependency, and the port to the 11.1 stack is an open
+  # pull request. Probed 2026-10-22 against the synced preprod node in experiments/dbsync-preprod:
+  #   kupo_connection_status 1.0
+  #   kupo_most_recent_checkpoint == kupo_most_recent_node_tip == 136947661
+  #   kupo_network_synchronization 1.0
+  # It connects, follows the tip, and stays there. Re-probe after a node bump rather than trusting
+  # this line.
+  kupo:
+    profiles: [write]
+    image: cardanosolutions/kupo:v2.12.0
+    command:
+      - --node-socket
+      - /ipc/node.socket
+      - --node-config
+      - /node-config/config.json
+      - --host
+      - 0.0.0.0
+      - --workdir
+      - /db
+      - --since
+      - "${KUPO_SINCE:-origin}"
+      - --match
+      - "${KUPO_MATCH:-*}"
+    # `--match '*'` BY DEFAULT, and the narrow alternative is deliberately not the default.
+    # `kupoQueryUtxo` resolves whatever address the transaction builder asks about: the admin
+    # wallet's own UTxOs, and the five validator addresses — which are script hashes that change on
+    # every redeploy. A narrow `--match` would therefore have to be edited in lockstep with
+    # `config_palmares_validators.json`, and the failure when it was not is a transaction that
+    # cannot find its own inputs, reported as if the wallet were empty.
+    #
+    # If the index size does become a problem, the narrow form is
+    #   KUPO_MATCH="<admin addr>" plus one `--match` per validator address
+    # and it must be re-derived after each `admin deploy-reference-scripts`.
+    #
+    # `--since origin` is the DEFAULT BECAUSE IT IS RE-SYNCABLE. The fast path is to set
+    # KUPO_SINCE to the current tip ("<slot>.<header hash>", from
+    # `cardano-cli query tip --testnet-magic 1`) and fund the admin key AFTERWARDS, so every UTxO
+    # the deploy needs is created after the start point. The footgun is permanent and worth naming:
+    # a UTxO created BEFORE the start point is invisible to Kupo for ever, so losing the kupo-db
+    # volume after a tip-start means the admin's funding UTxO can no longer be found and the key has
+    # to be re-funded. From origin, a re-sync is just slow.
+    #
+    # NOT MEASURED HERE: how long `--match '*' --since origin` takes on preprod, and how large the
+    # index gets. That is the next number this file should carry.
+    environment:
+      KUPO_SINCE: "${KUPO_SINCE:-origin}"
+    volumes:
+      - node-ipc:/ipc:ro
+      # The same pinned directory the node and db-sync read, so Kupo resolves eras against
+      # byte-identical genesis files.
+      - ./deploy/node-config:/node-config:ro
+      - kupo-db:/db
+    ports: ["${KUPO_PORT:-1442}:1442"]
+    depends_on:
+      cardano-node: {condition: service_healthy}
+    healthcheck:
+      # /health serves Prometheus text, and `kupo_connection_status 1.0` is the one line that
+      # distinguishes "running" from "actually talking to the node".
+      test: ["CMD-SHELL", "wget -qO- http://localhost:1442/health | grep -q 'kupo_connection_status  *1.0'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60m
+    restart: unless-stopped
+
+  # THE WRITE PATH ITSELF, and it runs as a CONTAINER rather than on the host for one reason: the
+  # node socket lives in a named volume because a UNIX socket in a macOS bind mount does not work,
+  # so anything using `socketPath` has to be in this compose network to reach it.
+  #
+  # `operation.prv` is bind-mounted read-only and is gitignored. It is the admin key; the `admin`
+  # CLI reads it from the working directory by that exact name.
+  interaction-api:
+    profiles: [write]
+    image: ghcr.io/${GH_OWNER:-mariusgeorgescu}/palmares-interaction-api:${TAG:-latest}
+    environment:
+      # Inline JSON, not a baked file: `decodeConfigEnvOrFile` reads this env var first and falls
+      # back to config/config_atlas.json. Keeping it here means the image carries no provider
+      # config and no credential, and the socket path is the in-container one.
+      ATLAS_CORE_CONFIG: >-
+        {"coreProvider":{"socketPath":"/ipc/node.socket","kupoUrl":"http://kupo:1442"},
+         "networkId":"${CARDANO_NETWORK:-preprod}",
+         "logging":[{"type":{"tag":"stderr"},"severity":"Info","verbosity":"V2"}]}
+      PORT: "8082"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
+    volumes:
+      - node-ipc:/ipc:ro
+      # Written by `admin deploy-reference-scripts`; absent until the first deploy, which is why
+      # this service is in its own profile rather than in `app`.
+      - ./config:/app/config:ro
+    ports: ["${INTERACTION_API_PORT:-8082}:8082"]
+    depends_on:
+      cardano-node: {condition: service_healthy}
+      kupo: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
   query-api:
     profiles: [app]
     image: ghcr.io/${GH_OWNER:-mariusgeorgescu}/palmares-query-api:${TAG:-latest}
@@ -171,3 +287,4 @@ volumes:
   node-ipc:
   postgres:
   db-sync-state:
+  kupo-db:

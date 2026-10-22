@@ -1,0 +1,115 @@
+# Running the attestation flow smoke test
+
+`scripts/smoke_attest_flow.sh` drives one claim → attest → verify round trip against a live
+deployment and asserts the projection at every step. It is F1 check 11. This page exists for one
+reason: the script needs a **signer**, and that is not obvious from the API.
+
+## Why a signer is configuration
+
+Every write route on the interaction API returns an **unsigned** transaction and nothing else, and
+`/submit-tx` takes `{tx_unsigned, tx_wit}`. There is no route that signs, and no key in any
+service. So the script cannot complete a transaction on its own.
+
+The `admin` CLI does build-and-sign in one step — but only for the commands it has, and it has
+none of the three this flow needs:
+
+| flow step | admin CLI command | over HTTP |
+|---|---|---|
+| claim a profile | **none** | `/claim-profile` |
+| issue an attestation | `issue-attestation` | `/issue-attestation` |
+| accept an attestation | `accept-attestation` | `/accept-attestation` |
+| open a dispute | **none** | `/open-dispute` |
+| resolve a dispute | **none** | `/resolve-dispute` |
+
+So the script goes over HTTP for all six, uniformly, and takes the signature as a command.
+
+`resolve-dispute` being on HTTP is deliberate and not an oversight: the oracle validator requires
+the admin's signature on chain, so the service can only ever return an unsigned transaction, and
+there that transaction **is** the product — a verdict a disputing party asked for. That is the
+documented contrast with `AdminActionType`, every constructor of which is refused in a request
+body. See `DomainTypes/Core/Actions.hs`.
+
+## The signer contract
+
+```
+stdin  : the unsigned transaction's CBOR hex, exactly as the write route returned it
+stdout : a CIP-30 shaped witness SET CBOR hex, e.g. a1008182582064...01
+```
+
+That is what a wallet's `api.signTx` returns and what `tx_wit` parses (Atlas `GYTxWitness` is a
+`AlonzoTxWits ConwayEra` read from hex). It is **not** a `cardano-cli` text envelope, and **not** a
+bare key witness: `cardano-cli transaction witness` emits a single witness with cardano-api's own
+discriminator in front of it, which does not decode as a witness set.
+
+Two signers, because two different keys are required:
+
+- `PALMARES_SIGN_CMD` — the wallet that holds the profile user tokens. Claims, the attestation, the
+  acceptance and the dispute.
+- `PALMARES_ADMIN_SIGN_CMD` — the oracle admin. The resolution only. Defaults to
+  `PALMARES_SIGN_CMD`, which is right when one operator runs both on a preprod box.
+
+The repo ships no signer, on purpose: a wrong one would look like a convenience.
+
+## Two values that are easy to get wrong
+
+**`ATTEST_SMOKE_ADDR` is raw CBOR hex, not bech32.** `GYAddress`'s `FromJSON` goes through
+`FromHttpApiData`, which is `deserialiseFromRawBytesHex`; `addr_test1…` is refused. The generated
+document's `GYAddress` *description* says bech32 and is wrong about it — its `format: cbor hex`,
+its 114-character length and its example are right. `scripts/smoke_interaction_api.sh` uses the hex
+form for the same reason.
+
+**`ATTEST_SMOKE_DREP_ID` must be the DRep credential of the key the signer signs with.** Claiming a
+key credential puts `mustBeSignedBy <that key hash>` into the transaction
+(`TxBuilding/Operations.hs`, `claimProofSkeleton`), so any other DRep id — a golden test vector,
+say — builds a transaction that cannot be signed. It must be the CIP-129 `drep1y…` form: the
+`/profiles/by-credential/` lookup accepts no other, and the script asserts both refusals.
+
+## Running it
+
+```bash
+export PALMARES_INTERACTION_API=https://gov.cardano.vip/api   # default http://localhost:8082
+export PALMARES_QUERY_API=https://gov.cardano.vip/query       # default http://localhost:8083
+export BASIC_USER=… BASIC_PASS=…
+export ATTEST_SMOKE_ADDR=00e1cbb80d…                          # 114 hex characters
+export ATTEST_SMOKE_DREP_ID=drep1y…
+export PALMARES_SIGN_CMD='my-signer --key ./operation.skey'
+# PALMARES_ADMIN_SIGN_CMD defaults to the above
+# PALMARES_ADMIN_CMD defaults to "cabal run -v0 admin --"; in CI, the published image:
+#   PALMARES_ADMIN_CMD='docker run --rm -v "$PWD":/w -w /w ghcr.io/<owner>/palmares-admin:latest'
+./scripts/smoke_attest_flow.sh
+```
+
+`PALMARES_ADMIN_CMD` is used **read-only**, for `query-oracle`, so the dispute deposit the
+projection publishes is compared with the oracle's own parameter rather than with "some positive
+integer". It still needs `operation.prv` and the Atlas config beside it.
+
+Exit codes:
+
+| code | meaning |
+|---|---|
+| 0 | all six steps passed |
+| 1 | the flow completed and an **assertion** failed — the API answered with a wrong value |
+| 2 | the flow could not be driven: preflight refused, a write failed, a projection never appeared |
+
+The distinction is the point: 1 is a defect in the registry, 2 is a defect in — or an absence of —
+the deployment under it.
+
+## When a projection never appears
+
+The read surface is fed by `attest-sync`, asynchronously, so the script polls with a bounded
+timeout (`ATTEST_SMOKE_TIMEOUT`, default 600s) rather than sleeping a guess.
+
+**Neither service reports `attest-sync`'s lag.** `query-api`'s `/ready` and `/status` speak for the
+*governance* index over db-sync (`governance.is_ready`, `governance.lag_seconds`); the three
+`palmares_attest` projection tables have no freshness field anywhere on the read surface. So a
+query-api that passes preflight can still sit in front of a dead projector, and the first poll in
+step 2 is what catches it. That is what its timeout message says to go and check.
+
+## What it leaves behind
+
+Two profiles, one accepted attestation and one upheld dispute, all named `palmares-<tag>-*`, and
+the script prints their URLs. Nothing is cleaned up: an attestation is a permanent historical fact,
+which is also why the admin CLI has no `delete-profile`. Re-running is safe — every name carries a
+fresh run tag — except that a second claim of the same DRep credential makes
+`/profiles/by-credential/` report more than one claimant, which is a real state the API refuses to
+pick a winner for. The script asserts `total >= 1` and membership for that reason, not `total == 1`.

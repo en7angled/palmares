@@ -3,6 +3,16 @@
 -- This module is the machine-readable public face of the on-chain protocol: `admin write-blueprint`
 -- renders it to @docs/generated/@, and third parties build against it. Prose here is a published
 -- interface, not a comment — keep it accurate.
+--
+-- __The document is deployment-independent, and that is an invariant, not a happy accident.__ A
+-- blueprint is what a reader hashes to decide whether the script in front of them is the script this
+-- protocol published. Every byte in it must therefore be true of every deployment. Four of the five
+-- validators are unparameterised, so their @compiledCode@ and @hash@ are literally every
+-- deployment's. The fifth — the minting policy — is parameterised by 'ProtocolParams', which carries
+-- the oracle token, which is not known until the one-shot oracle NFT is minted. For that one, CIP-57
+-- has the right representation already: declare the parameter in @parameters@ and let the consumer
+-- apply it. See 'mintingPolicyValidatorBlueprint' for what happens when a placeholder is baked in
+-- instead. @UnitTests.Blueprint@ pins the invariant.
 module Palmares.Onchain.Blueprint
   ( contractBlueprint,
     myPreamble,
@@ -16,23 +26,31 @@ import Palmares.Onchain.Protocol (AttestationKind, OnchainAttestation, OnchainDi
 import Palmares.Onchain.Protocol.Types (FeeConfig, OracleAdminAction, OracleParams)
 import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer, attestationsCompile)
 import Palmares.Onchain.Validators.DisputesValidator (DisputesRedeemer, disputesCompile)
-import Palmares.Onchain.Validators.MintingPolicy (MintingRedeemer, mintingPolicyCompile)
+-- Deliberately not importing `mintingPolicyCompile`: compiling the policy here would require a
+-- `ProtocolParams` value, and the only one available at document-generation time is a placeholder.
+import Palmares.Onchain.Validators.MintingPolicy (MintingRedeemer)
 import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer, oracleCompile)
 import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer, profilesCompile)
 import PlutusLedgerApi.V3 (serialiseCompiledCode)
 import PlutusTx.Blueprint
 
 -- | Complete contract blueprint for the Palmares attestation protocol.
+--
+-- The 'ProtocolParams' argument is accepted and ignored. It is kept so that the one caller
+-- (@admin write-blueprint@) is unchanged, and because an argument that provably cannot reach the
+-- output is the cheapest possible statement of the module's invariant — @UnitTests.Blueprint@ asserts
+-- that two different arguments render byte-identical documents. It can be dropped whenever the
+-- caller is touched for another reason.
 contractBlueprint :: ProtocolParams -> ContractBlueprint
-contractBlueprint mp =
+contractBlueprint _mp =
   MkContractBlueprint
     { contractId = Just "Palmares",
       contractPreamble = myPreamble,
       contractValidators =
         Set.fromList
-          [ mintingPolicyValidatorBlueprint mp,
-            profilesValidatorBlueprint mp,
-            attestationsValidatorBlueprint mp,
+          [ mintingPolicyValidatorBlueprint,
+            profilesValidatorBlueprint,
+            attestationsValidatorBlueprint,
             disputesValidatorBlueprint,
             oracleValidatorBlueprint
           ],
@@ -81,9 +99,31 @@ myPreamble =
       preambleLicense = Just "Apache-2.0"
     }
 
--- | Minting Policy Blueprint
-mintingPolicyValidatorBlueprint :: ProtocolParams -> ValidatorBlueprint referencedTypes
-mintingPolicyValidatorBlueprint mp =
+-- | Minting Policy Blueprint — the one parameterised script, and the one with no @compiledCode@.
+--
+-- __Why the omission.__ @mintingPolicyCompile@ applies a 'ProtocolParams' with @unsafeApplyCode@, and
+-- 'ProtocolParams' carries the oracle token, which does not exist until the one-shot oracle NFT has
+-- been minted at deployment. Every deployment therefore has a different minting policy and a
+-- different policy hash, and no single hash can be published for it.
+--
+-- This blueprint used to publish one anyway: @admin write-blueprint@ passed @blueprintProtocolParams@
+-- (the real sibling validator hashes plus @AssetClass (CurrencySymbol "", TokenName "")@) and the
+-- policy applied to that placeholder was serialised into @compiledCode@. CIP-57 derives the @hash@
+-- field from @compiledCode@, so the published document carried a 28-byte script hash that belonged to
+-- no deployment and never could. That is worse than publishing nothing: a verifier comparing a
+-- deployed policy against the blueprint gets a mismatch and has no way to tell a placeholder apart
+-- from a substituted script — the one question they opened the blueprint to answer.
+--
+-- __What replaces it.__ Only the @parameters@ declaration below, which CIP-57 already has for exactly
+-- this case: the consumer applies the deployment's 'ProtocolParams' to the policy and hashes the
+-- result. The deployed values are published in @config/config_palmares_validators.json@.
+--
+-- Shipping the /unapplied/ script as @compiledCode@ would be better still, and is the CIP-57 shape
+-- Aiken emits. It is not done here because @Palmares.Onchain.Validators.MintingPolicy@ exports only
+-- the applied @mintingPolicyCompile@; exporting the unapplied @CompiledCode@ beside it is a one-line
+-- change to that module and is the natural follow-up.
+mintingPolicyValidatorBlueprint :: ValidatorBlueprint referencedTypes
+mintingPolicyValidatorBlueprint =
   MkValidatorBlueprint
     { validatorTitle = "Palmares Minting Policy",
       validatorDescription =
@@ -94,14 +134,23 @@ mintingPolicyValidatorBlueprint mp =
           \reference input and is refused while the protocol is paused. Token names are derived \
           \deterministically from a seed TxOutRef, which must be spent in the same transaction, so a \
           \name cannot be replayed. The full minted value is constrained, not just the expected token \
-          \name, which is what closes the other-token-name attack.",
+          \name, which is what closes the other-token-name attack. THIS ENTRY PUBLISHES NO compiledCode \
+          \AND NO hash, and the omission is deliberate: the policy is applied to ProtocolParams at \
+          \deployment, the oracle token inside them does not exist until the one-shot oracle NFT is \
+          \minted, so every deployment has a different policy hash and no single hash is true of all \
+          \of them. Apply the deployment's ProtocolParams (published in the deployed-validators \
+          \config) to the policy and hash the result; a hash printed here could only be a placeholder's.",
       validatorParameters =
         [ MkParameterBlueprint
             { parameterTitle = Just "Protocol Parameters",
               parameterDescription =
                 Just
-                  "Compile-time parameters: the Profiles and Attestations validator script hashes, and \
-                  \the oracle token's AssetClass.",
+                  "Compile-time parameters: the Profiles, Attestations and Disputes validator script \
+                  \hashes, and the oracle token's AssetClass. The three script hashes are the same in \
+                  \every deployment — those validators are unparameterised and their compiledCode is \
+                  \published in this document. The oracle token is not: it is the AssetClass of the \
+                  \one-shot NFT minted when the protocol is deployed, which is why this validator is \
+                  \declared by parameter instead of shipped as code.",
               parameterPurpose = Set.singleton Mint,
               parameterSchema = definitionRef @ProtocolParams
             }
@@ -130,14 +179,15 @@ mintingPolicyValidatorBlueprint mp =
             argumentSchema = definitionRef @MintingRedeemer
           },
       validatorDatum = Nothing, -- Minting policies don't have datums
-      validatorCompiled =
-        Just $
-          compiledValidator PlutusV3 (fromShort $ serialiseCompiledCode $ mintingPolicyCompile mp)
+      -- See the Haddock above. `Nothing` drops both `compiledCode` and `hash` from the rendered
+      -- document, which is the whole point: `compiledValidator` computes the hash from the code, so
+      -- any code here — placeholder included — publishes a hash to be mistaken for a deployment's.
+      validatorCompiled = Nothing
     }
 
 -- | Profiles Validator Blueprint
-profilesValidatorBlueprint :: ProtocolParams -> ValidatorBlueprint referencedTypes
-profilesValidatorBlueprint _mp =
+profilesValidatorBlueprint :: ValidatorBlueprint referencedTypes
+profilesValidatorBlueprint =
   MkValidatorBlueprint
     { validatorTitle = "Palmares Profiles Validator",
       validatorDescription =
@@ -178,8 +228,8 @@ profilesValidatorBlueprint _mp =
     }
 
 -- | Attestations Validator Blueprint
-attestationsValidatorBlueprint :: ProtocolParams -> ValidatorBlueprint referencedTypes
-attestationsValidatorBlueprint _mp =
+attestationsValidatorBlueprint :: ValidatorBlueprint referencedTypes
+attestationsValidatorBlueprint =
   MkValidatorBlueprint
     { validatorTitle = "Palmares Attestations Validator",
       validatorDescription =

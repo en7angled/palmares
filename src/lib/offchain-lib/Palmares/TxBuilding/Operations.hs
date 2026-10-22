@@ -683,9 +683,24 @@ openDisputeTX gyTargetAC gyOpenerProfileId depositTo metadata ownAddrs = do
 -- 'OnchainTypes.opDisputeDeposit' from the oracle: reading the oracle here would let the admin lower
 -- the price, resolve, and keep the difference — or raise it and make an open dispute unresolvable.
 --
--- This path deliberately does __not__ go through 'getOracleRefInputSkeleton', so a paused protocol
--- does not block it: 'updateOracleTX' bypasses the pause for the same reason. The pause is the
--- admin's lever, and a lever that disables the admin is not one.
+-- __A PAUSED PROTOCOL NOW REFUSES THIS ON CHAIN, and this comment used to say the opposite.__ It
+-- read: "This path deliberately does not go through 'getOracleRefInputSkeleton', so a paused
+-- protocol does not block it: 'updateOracleTX' bypasses the pause for the same reason. The pause is
+-- the admin's lever, and a lever that disables the admin is not one."
+--
+-- The last sentence is still true of 'updateOracleTX' and was never true of this function. @opPaused@
+-- used to be read only by the minting policy, so a pause stopped new mints and left acceptance,
+-- profile updates and dispute resolution running — which is not an emergency stop. @D7@ closed that,
+-- and resolution is a protocol write like any other: an admin who needs it available unpauses first.
+-- The admin is not locked out, because 'updateOracleTX' genuinely does bypass the pause, so
+-- pause -> unpause -> resolve works.
+--
+-- __What is still wrong here, and is a real defect rather than a decision:__ this builder does not
+-- consult the oracle, so while paused it hands back a transaction the chain then refuses as a script
+-- failure (@D7@) instead of refusing it at build time with a @503 ProtocolPaused@ the way every other
+-- write path does. Routing it through 'getOracleRefInputSkeleton' is the fix; it is not done here
+-- because that function also attaches the oracle as a reference input, which this skeleton already
+-- does for @D1@, and doing it twice needs a careful look at the resulting input set.
 --
 -- Output index layout:
 --   Output 0: Resolved dispute, less the deposit, back at disputesValidator

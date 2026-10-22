@@ -1,8 +1,10 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
+import Cardano.Mnemonic qualified as Mnemonic
 import Palmares.Constants qualified as Constants
 import Control.Monad.Logger (runNoLoggingT)
 import Control.Monad.Reader (runReaderT)
@@ -29,7 +31,10 @@ import Palmares.Onchain.Blueprint (contractBlueprint)
 import Palmares.Onchain.Protocol.Types (FeeConfig (..), OracleParams (..))
 import Options.Applicative
 import PlutusLedgerApi.V3 hiding (Committee) -- ours is a profile kind; Plutus's is the CIP-1694 committee datum
+import System.Directory (doesFileExist)
+import Web.HttpApiData qualified as Web
 import System.Exit (die)
+import System.Posix.Files (setFileMode)
 import Text.Read qualified as Text
 import Palmares.TxBuilding.Context
 import Palmares.TxBuilding.Interactions
@@ -71,6 +76,8 @@ data Command
   | IssueAttestation IssueAttestationArgs
   | AcceptAttestation AcceptAttestationArgs
   | CleanupDust
+  | NewOperatorKey
+  | OperatorAddress
   deriving (Show)
 
 data SetFeesArgs
@@ -256,11 +263,25 @@ commandParser :: Parser Command
 commandParser =
   hsubparser
     ( command
-        "deploy-reference-scripts"
+        "new-operator-key"
         ( info
-            (pure DeployReferenceScripts)
-            (progDesc "Deploy reference scripts for the protocol (includes oracle deployment)")
+            (pure NewOperatorKey)
+            ( progDesc
+                "Generate a fresh 24-word operator mnemonic into operation.prv and print its address (refuses to overwrite)"
+            )
         )
+        <> command
+          "operator-address"
+          ( info
+              (pure OperatorAddress)
+              (progDesc "Print the address derived from operation.prv — the address to fund before deploying")
+          )
+        <> command
+          "deploy-reference-scripts"
+          ( info
+              (pure DeployReferenceScripts)
+              (progDesc "Deploy reference scripts for the protocol (includes oracle deployment)")
+          )
         <> command
           "write-blueprint"
           ( info
@@ -621,8 +642,15 @@ main = do
       printYellow $ "Writing CIP-57 contract blueprint to " <> outputPath <> " ..."
       B.writeFile outputPath (encodePretty $ contractBlueprint blueprintProtocolParams)
       printGreen $ "Blueprint written successfully to " <> outputPath
-    -- No provider, no signing key, no deployed-validators config — which is exactly what lets CI
-    -- run this command to check the committed doc for drift.
+    -- No provider, no signing key, no deployed-validators config, which is what would let CI run
+    -- this command to check a committed document for drift.
+    --
+    -- THERE IS NO SUCH CHECK AND NO COMMITTED DOCUMENT. `docs/generated/` holds only `.gitkeep`
+    -- and `swagger/`, git has no history for the blueprint path, and no workflow runs
+    -- `write-blueprint`. The sentence above described an intention; this one describes the repo.
+    -- The two Swagger documents ARE gated that way (`cabal run -v0 exe:query-api --
+    -- --write-swagger-only` then `git diff --exit-code`), so the pattern exists and the blueprint
+    -- is simply not in it yet.
     -- Exit codes: 0 clean or explained, 1 unexplained, 2 transport, 3 R10 abort. They are the
     -- command's whole contract with the nightly, so they are the process's exit status and not a
     -- line of output somebody has to grep.
@@ -665,7 +693,84 @@ main = do
         printYellow $ "Writing metric documentation to " <> outputPath <> " ..."
         T.writeFile outputPath (renderMetricsDoc formulas)
         printGreen $ "Metric documentation written successfully to " <> outputPath
+    -- No provider and no deployed-validators config: these two exist to be runnable BEFORE anything
+    -- is deployed, which is the whole point of them. `new-operator-key` does not even read a key.
+    NewOperatorKey -> newOperatorKey
+    OperatorAddress -> operatorAddress
     _ -> executeOnchainCommand cmd
+
+-- | Generate a fresh operator mnemonic into 'mnemonicFilePath' and print the address to fund.
+--
+-- __Why this command exists.__ @readMnemonicFile@ expects a 24-word BIP-39 phrase and nothing in this
+-- repository could produce one, so "use a new dedicated key" was a decision with no way to carry it
+-- out. The alternative was a mnemonic from some external generator plus an address derived by some
+-- other tool — and if those two disagree, the deploy fails with "no UTxOs" at a funded address,
+-- which is the least diagnosable failure available. The derivation here is the SAME code the deploy
+-- will use (@walletKeysFromMnemonic@ via 'readMnemonic'), so the printed address is the address that
+-- will be spent from, by construction rather than by coincidence.
+--
+-- __The entropy is the system CSPRNG__, via @cardano-addresses@' own 'genEntropy', and the phrase is
+-- checksummed by 'entropyToMnemonic'. 256 bits is 24 words. Nothing here hand-rolls BIP-39, and the
+-- generated phrase is read back through 'readMnemonic' before the file is accepted — so a phrase
+-- this command cannot itself load never reaches the disk as the live key.
+--
+-- __It refuses to overwrite.__ An operator key that is silently replaced is an oracle nobody
+-- controls: @O1@ then refuses every update, including the rotation that would fix it. The file is
+-- written 0600, and the phrase is never printed — the file is the only copy, which is also what makes
+-- "disposable" an honest word for it.
+newOperatorKey :: IO ()
+newOperatorKey = do
+  exists <- doesFileExist mnemonicFilePath
+  when exists $
+    die
+      ( mnemonicFilePath
+          <> " already exists and will NOT be overwritten. Move it aside first if you really mean to\n\
+             \replace the operator key; `operator-address` prints the address of the current one."
+      )
+  entropy <- Mnemonic.genEntropy @256
+  let phrase = T.unwords (Mnemonic.mnemonicToText (Mnemonic.entropyToMnemonic entropy))
+  -- Read back through the project's own loader BEFORE writing: a phrase that this binary cannot
+  -- load is not a key, and finding that out at deploy time would be finding it out too late.
+  signKey <- readMnemonic phrase
+  T.writeFile mnemonicFilePath phrase
+  setFileMode mnemonicFilePath 0o600
+  printGreen ("Wrote a new 24-word operator mnemonic to " <> mnemonicFilePath <> " (mode 0600)")
+  printYellow "The phrase is NOT printed. That file is the only copy."
+  printOperatorAddress signKey
+
+-- | Print the address derived from the existing 'mnemonicFilePath'.
+--
+-- The step between generating the key and deploying: this is the address that has to hold funds
+-- before @deploy-reference-scripts@ can pay for five reference-script outputs and the oracle.
+operatorAddress :: IO ()
+operatorAddress = readMnemonicFile mnemonicFilePath >>= printOperatorAddress
+
+-- | Render an operator key's address, on the network the Atlas config names.
+--
+-- __The network comes from the Atlas config, not from a flag.__ An address is network-specific, and
+-- a flag would let someone fund a @preprod@ address while the deploy runs against @mainnet@ — the
+-- same class of mistake as deriving the address with a different tool. One source for the network
+-- means the printed address cannot belong to a different chain than the deploy.
+printOperatorAddress :: GYExtendedPaymentSigningKey -> IO ()
+printOperatorAddress signKey = do
+  atlasConfig <-
+    maybe
+      (die ("Atlas configuration not found — set ATLAS_CORE_CONFIG or create " <> Constants.defaultAtlasCoreConfig))
+      return
+      =<< decodeConfigEnvOrFile "ATLAS_CORE_CONFIG" Constants.defaultAtlasCoreConfig
+  let nid = cfgNetworkId atlasConfig
+      addr = addressFromPaymentKeyHash nid (extendedVerificationKeyHash (getExtendedVerificationKey signKey))
+  printYellow ("Network: " <> show nid)
+  printGreen ("Operator address (bech32): " <> T.unpack (addressToText addr))
+  -- BOTH FORMS, because the two consumers want different ones and neither accepts the other's.
+  -- A human funds the bech32 form from a wallet. Every HTTP request field typed `GYAddress` wants
+  -- RAW CBOR HEX: `FromJSON GYAddress` delegates to `FromHttpApiData`, which is
+  -- `deserialiseFromRawBytesHex`, and bech32 is refused there — `GYAddressBech32` is the bech32
+  -- type and no request field uses it. The generated Swagger's prose for `GYAddress` says
+  -- "Bech32-encoded Cardano address", which is wrong; its own `format: cbor hex` and hex example
+  -- are right. Printing only bech32 here would have handed the smoke script a value it cannot use.
+  -- `Web.toUrlPiece` is the SAME instance the API parses with, so these two can never disagree.
+  printGreen ("Operator address (raw hex, for API request fields): " <> T.unpack (Web.toUrlPiece addr))
 
 -- | Execute commands that require blockchain providers and signing keys
 executeOnchainCommand :: Command -> IO ()

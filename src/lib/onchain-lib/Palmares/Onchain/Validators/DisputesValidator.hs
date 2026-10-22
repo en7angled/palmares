@@ -85,13 +85,19 @@ disputesLambda (ScriptContext TxInfo {..} (Redeemer bredeemer) scriptInfo) =
    in case scriptInfo of
         (SpendingScript spendingTxOutRef mdatum) -> case redeemer of
           -- Permissionless cleanup, the same shape the other two state validators use: a UTxO at this
-          -- address whose datum is absent or does not parse is dust and anyone may sweep it, and one
-          -- that DOES parse is protocol state that nobody may sweep.
+          -- address is dust unless its own VALUE backs its datum's claim to be a dispute, and only a
+          -- datum the dispute NFT backs is protocol state that nobody may sweep. \"Its datum parses\"
+          -- was the old test and is not the same claim — see 'Utils.isUnbackedDatum'.
+          --
+          -- The NFT the datum names, 'disputeId', and never 'disputeTarget': the target is the
+          -- ATTESTATION this dispute contests, which lives at another address entirely, so checking
+          -- it would ask whether a dispute is backed by somebody else's token.
           Cleanup -> case mdatum of
             Nothing -> True
             Just (Datum bd) -> case fromBuiltinData @DisputesDatum bd of
               Nothing -> True
-              Just _ -> traceError "D0" -- Cannot cleanup valid datum (D0)
+              Just (parkedDatum :: DisputesDatum) ->
+                traceIfFalse "D0" (Utils.isUnbackedDatum (disputeId (extra parkedDatum)) spendingTxOutRef txInfoInputs) -- Cannot cleanup backed state (D0)
           ResolveDispute verdict outputIdx -> case mdatum of
             Nothing -> traceError "D0" -- No datum (D0)
             Just (Datum bdatum) -> case fromBuiltinData bdatum of
@@ -114,12 +120,33 @@ disputesLambda (ScriptContext TxInfo {..} (Redeemer bredeemer) scriptInfo) =
                     oracle = readOracleParams (disputeOracleToken dispute) txInfoReferenceInputs
                     paysDeposit TxOut {txOutValue, txOutAddress} =
                       (txOutAddress == disputeDepositTo dispute) && (txOutValue `geq` depositValue)
-                 in -- A verdict is written ONCE. Without this, the admin could rewrite an upheld
-                    -- dispute as rejected — or an attacker who later obtains the key could rewrite
-                    -- history that was already settled. Its own code rather than folded into D2,
-                    -- because "already resolved" and "wrong output" are different mistakes; the same
-                    -- argument as the attestation path's A3.
-                    traceIfFalse "D3" (disputeVerdict dispute == Nothing) -- Already resolved (D3)
+                 in -- A PAUSE STOPS WRITES, NOT READS, and settling a dispute is a write. @opPaused@
+                    -- used to be read by the minting policy alone (@M0@), so a paused protocol
+                    -- refused new disputes while open ones could still be settled — the lever halted
+                    -- the cheap, repeatable action and left the irreversible one running.
+                    --
+                    -- __This does not lock the admin out__, which is the objection to answer: the
+                    -- oracle update path bypasses the pause on purpose, so the admin who paused can
+                    -- unpause and then resolve. What it costs is the ability to settle disputes
+                    -- DURING a pause, deliberately, because a pause that leaves verdicts being
+                    -- written is not a stop.
+                    --
+                    -- __The off-chain builder is now the laxer of the two.__
+                    -- 'Palmares.TxBuilding.Operations.resolveDisputeTX' reads the oracle directly
+                    -- rather than through @getOracleRefInputSkeleton@, so while paused it still
+                    -- BUILDS a resolution and this check is what refuses it — a script failure where
+                    -- a @503 ProtocolPaused@ would read better. Adding that guard off chain is a
+                    -- follow-up in that module; the chain is the authority either way.
+                    --
+                    -- Its own code and not folded into D1, for the reason D3 has its own: \"paused\"
+                    -- and \"not the admin\" are different mistakes.
+                    traceIfFalse "D7" (not (opPaused oracle)) -- Protocol is paused (D7)
+                      -- A verdict is written ONCE. Without this, the admin could rewrite an upheld
+                      -- dispute as rejected — or an attacker who later obtains the key could rewrite
+                      -- history that was already settled. Its own code rather than folded into D2,
+                      -- because "already resolved" and "wrong output" are different mistakes; the same
+                      -- argument as the attestation path's A3.
+                      && traceIfFalse "D3" (disputeVerdict dispute == Nothing) -- Already resolved (D3)
                       && traceIfFalse "D1" (PlutusTx.List.elem (opAdminPkh oracle) txInfoSignatories) -- Oracle admin must sign (D1)
                       && traceIfFalse
                         "D2" -- Dispute must return resolved, less the deposit (D2)

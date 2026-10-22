@@ -322,6 +322,7 @@ executable admin
     , containers
     , directory
     , filepath
+    , http-api-data
     , http-client
     , http-client-tls
     , http-types
@@ -331,11 +332,13 @@ executable admin
     , persistent-postgresql
     , text
     , time
+    , unix
     , vector
 
   --- Cardano specific dependencies
   build-depends:
     , atlas-cardano
+    , cardano-addresses
     , plutus-ledger-api
 
 executable query-api
@@ -497,6 +500,7 @@ test-suite test
     UnitTests.OracleRules
     UnitTests.ApiHardening
     UnitTests.AttestRead
+    UnitTests.Blueprint
     UnitTests.Attestation
     UnitTests.ChainSyncReplay
     UnitTests.Cleanup
@@ -519,6 +523,7 @@ test-suite test
     UnitTests.Dispute
     UnitTests.ScriptSize
     UnitTests.Oracle
+    UnitTests.Pause
     UnitTests.Profile
     UnitTests.StorageRoundtrip
     UnitTests.ThresholdMap

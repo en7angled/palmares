@@ -32,12 +32,16 @@ import GeniusYield.TxBuilder (GYTxQueryMonadIO, GYTxSkeleton)
 import GeniusYield.Types
   ( GYAddress,
     GYAssetClass,
+    GYPaymentKeyHash,
     GYScriptHash,
     GYSimpleScript (RequireSignature),
     GYTxInWitness (..),
     PlutusVersion (PlutusV3),
+    keyHashToRawBytes,
+    paymentKeyHashToPlutus,
   )
 import Palmares.DomainTypes.Core.Actions (ClaimWitness (..), ProfileActionType)
+import Palmares.DomainTypes.Core.Ids (parseCredentialCip129)
 import Palmares.TxBuilding.Conversions
   ( claimCredentialToText,
     claimWitnessToTxInWitness,
@@ -50,6 +54,7 @@ import Palmares.TxBuilding.Exceptions
     txBuildingExceptionToHttpStatus,
   )
 import Palmares.TxBuilding.Skeletons (txMustSpendFromAddress)
+import PlutusLedgerApi.V3 (Credential (PubKeyCredential))
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -76,6 +81,22 @@ drepKeyBech32 = "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg"
 drepScriptBech32 = "drep1ywqn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmuzqx0"
 drepCip105 = "drep1symc604gnd50plqfj393lyljl6u9zvv0r9he3wjq98v2sz3vtkp"
 ccColdBech32 = "cc_cold1z2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qlx580v"
+
+-- | A payment key hash, standing in for what @admin operator-address@ derives from the mnemonic.
+--
+-- 28 bytes, as every Cardano credential hash is — and it is a @GYPaymentKeyHash@ rather than a
+-- literal because that is the type the derivation produces and the type @mustBeSignedBy@ consumes.
+-- A raw 'ByteString' fixture here would prove the codec and skip exactly the conversion under test.
+operatorKeyHash :: GYPaymentKeyHash
+operatorKeyHash = "e1cbb80db89e292269aeb93ec15eb963dda5176b66949fe1c2a6a38d"
+
+-- | The DRep id @admin operator-address@ prints for 'operatorKeyHash'.
+--
+-- Written as the composition the command uses rather than as a literal, because a literal would
+-- pin the ENCODER's current output and go on passing if the composition changed — which is the one
+-- thing these three cases are about.
+operatorDrepId :: Text
+operatorDrepId = claimCredentialToText (PubKeyCredential (paymentKeyHashToPlutus operatorKeyHash))
 
 scriptHashA :: GYScriptHash
 scriptHashA = "cabdd19b58d4299fde05b53c2c0baf978bf9ade734b490fc0cc8b7d0"
@@ -115,6 +136,26 @@ writePathTests =
         (isScriptCredential <$> parseClaimCredential drepScriptBech32) @?= Right True,
       testCase "a CIP-129 key drep id parses to a key credential" $
         (isScriptCredential <$> parseClaimCredential drepKeyBech32) @?= Right False,
+      -- What @admin operator-address@ prints as ATTEST_SMOKE_DREP_ID, pinned at the only place it
+      -- can be: the library composition. A test suite cannot import an executable's modules, so
+      -- these three assertions pin `claimCredentialToText . PubKeyCredential .
+      -- paymentKeyHashToPlutus` and NOT the line in @admin/Main.hs@ that calls it — a change there
+      -- to `drepIdCip105`, say, would still be green here. What they do catch is the identity
+      -- breaking underneath that line, which is the half that is shared with the write path.
+      testCase "the operator key's DRep id parses back to the credential of that same key" $
+        parseClaimCredential operatorDrepId
+          @?= Right (PubKeyCredential (paymentKeyHashToPlutus operatorKeyHash)),
+      -- Not implied by the round-trip above: that one would still hold if the rendering hashed the
+      -- key a second time, as long as the parse undid it. The transaction requires
+      -- `mustBeSignedBy <the key hash>`, so the 28 bytes the id carries must be the key hash's OWN
+      -- bytes — otherwise the printed id names a credential nothing in the wallet can sign for.
+      testCase "the id carries the signing key's own 28 bytes, not a rehash of them" $
+        (snd <$> parseCredentialCip129 operatorDrepId) @?= Just (keyHashToRawBytes operatorKeyHash),
+      -- The consequence, named: `checkCredentialControl`'s key arm is the one that applies, so a
+      -- signature proves control. Were this a script credential the claim would need a UTxO at the
+      -- script's own address, which an operator mnemonic cannot produce.
+      testCase "the operator's own credential is a key, so a signature is proof enough" $
+        (isScriptCredential <$> parseClaimCredential operatorDrepId) @?= Right False,
       -- The judgement the write path makes that the read path does not: a CIP-105 id carries NO
       -- header byte, so it cannot say which kind of credential it names, and @drep@ is the HRP for
       -- both. Defaulting to the key arm would silently mis-claim every script DRep, so it is refused.

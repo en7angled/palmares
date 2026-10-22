@@ -37,6 +37,7 @@ import System.Exit (die)
 import System.Posix.Files (setFileMode)
 import Text.Read qualified as Text
 import Palmares.TxBuilding.Context
+import Palmares.TxBuilding.Conversions (claimCredentialToText)
 import Palmares.TxBuilding.Interactions
 import Palmares.TxBuilding.Lookups (queryOracleParams)
 import Palmares.TxBuilding.Transactions
@@ -275,7 +276,11 @@ commandParser =
           "operator-address"
           ( info
               (pure OperatorAddress)
-              (progDesc "Print the address derived from operation.prv — the address to fund before deploying")
+              ( progDesc
+                  "Print what operation.prv identifies: the address to fund before deploying, in both \
+                  \bech32 and raw-hex form, and the key's CIP-129 DRep id — the value \
+                  \scripts/smoke_attest_flow.sh takes as ATTEST_SMOKE_DREP_ID."
+              )
           )
         <> command
           "sign-tx"
@@ -771,7 +776,7 @@ newOperatorKey = do
 operatorAddress :: IO ()
 operatorAddress = readMnemonicFile mnemonicFilePath >>= printOperatorAddress
 
--- | Render an operator key's address, on the network the Atlas config names.
+-- | Render what an operator key identifies: its address, and its DRep credential.
 --
 -- __The network comes from the Atlas config, not from a flag.__ An address is network-specific, and
 -- a flag would let someone fund a @preprod@ address while the deploy runs against @mainnet@ — the
@@ -785,7 +790,8 @@ printOperatorAddress signKey = do
       return
       =<< decodeConfigEnvOrFile "ATLAS_CORE_CONFIG" Constants.defaultAtlasCoreConfig
   let nid = cfgNetworkId atlasConfig
-      addr = addressFromPaymentKeyHash nid (extendedVerificationKeyHash (getExtendedVerificationKey signKey))
+      pkh = extendedVerificationKeyHash (getExtendedVerificationKey signKey)
+      addr = addressFromPaymentKeyHash nid pkh
   printYellow ("Network: " <> show nid)
   printGreen ("Operator address (bech32): " <> T.unpack (addressToText addr))
   -- BOTH FORMS, because the two consumers want different ones and neither accepts the other's.
@@ -797,6 +803,26 @@ printOperatorAddress signKey = do
   -- are right. Printing only bech32 here would have handed the smoke script a value it cannot use.
   -- `Web.toUrlPiece` is the SAME instance the API parses with, so these two can never disagree.
   printGreen ("Operator address (raw hex, for API request fields): " <> T.unpack (Web.toUrlPiece addr))
+  -- THE THIRD CONSUMER OF THE SAME KEY, and the reason this is printed rather than put behind a
+  -- flag: `scripts/smoke_attest_flow.sh` requires ATTEST_SMOKE_DREP_ID to be the DRep credential of
+  -- the key PALMARES_SIGN_CMD signs with, because claiming a key credential puts
+  -- `mustBeSignedBy <that key hash>` in the transaction (TxBuilding/Operations.hs
+  -- `claimProofSkeleton`). Nothing printed it, so the flow's own configuration could only be
+  -- assembled by slicing the hash out of the address hex — deriving it with a different tool, which
+  -- is the mistake this function's network argument exists to prevent.
+  --
+  -- Rendered with `claimCredentialToText`, which is the SAME function the read path renders a
+  -- claimed credential with, so the id printed here and the id `/profiles/by-credential/…` answers
+  -- to are one encoding and not two.
+  --
+  -- WHAT THIS IS NOT: a claim that this DRep is registered on chain. It is the credential this key
+  -- controls, which is all the registry checks. A production wallet derives its DRep key at CIP-1852
+  -- role 3, so a real DRep's id will NOT equal its payment key hash — this coincides only because the
+  -- operator mnemonic yields a single key and the smoke flow signs with that one key.
+  printGreen
+    ( "Operator DRep id (CIP-129, for ATTEST_SMOKE_DREP_ID): "
+        <> T.unpack (claimCredentialToText (PubKeyCredential (paymentKeyHashToPlutus pkh)))
+    )
 
 -- | Read an unsigned transaction's CBOR hex on stdin; write its witness set's hex on stdout.
 --

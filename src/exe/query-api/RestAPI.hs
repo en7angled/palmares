@@ -1731,7 +1731,10 @@ apiSwagger :: Swagger
 apiSwagger =
   toSwagger proxyPublicAPI
     & info . title .~ "Palmares Query API"
-    & info . Data.Swagger.version .~ "1.0.0"
+    -- 1.1.0: `/status` gained `attest_lag_seconds`. A MINOR bump because the field is optional and
+    -- every 1.0.0 client keeps working — nothing was removed, renamed or made required. Independent
+    -- of the app version by design (see CLAUDE.md): a client pins what it reads, not what we ship.
+    & info . Data.Swagger.version .~ "1.1.0"
     & info . Data.Swagger.description
       ?~ "Read-only queries over the Cardano governance record: DReps, governance actions, votes, \
          \delegations, the constitutional committee and treasury withdrawals. Every row comes from \

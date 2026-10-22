@@ -545,6 +545,23 @@ data StatusResponse = StatusResponse
     -- every question confidently and wrongly.
     statusNetwork :: Text,
     statusGovernance :: SyncStatus,
+    -- | How far behind the tip the ATTESTATION projector is, in seconds.
+    --
+    -- __A separate field and not a field of 'SyncStatus', because they are two indexers.__
+    -- @governance@ is db-sync's own lag, read from @palmares.sync_state@; this is attest-sync's,
+    -- read from @palmares_attest.chain_cursor@. One can be current while the other is dead, and a
+    -- client that could not tell them apart would read a fresh governance lag as evidence that an
+    -- attestation it just wrote is simply absent. 'SyncStatus' is not reused because the projector
+    -- publishes a cursor and nothing else: an epoch and a block time would have to be invented.
+    --
+    -- Seconds from a slot difference, which is exact on this chain — one slot is one second in
+    -- every era this registry runs in — rather than a @slotToTime@ conversion the query API holds
+    -- no slot configuration for.
+    --
+    -- @null@ is its own answer and not a zero: it means there is no @chain_cursor@ row to read,
+    -- so attest-sync has never run against this database. A deployment serving attestation reads
+    -- with @null@ here is answering from projections that nothing is maintaining.
+    statusAttestLagSeconds :: Maybe Int,
     statusEpochParams :: EpochParamsSummary
   }
   deriving stock (Show, Eq, Generic)

@@ -13,13 +13,18 @@
 -- BIP-173 reference implementation in @UnitTests.GovIds@.
 module UnitTests.GovDto (govDtoTests) where
 
-import Data.Aeson (decode, encode, toJSON)
+import Data.Aeson (Value (Null, Number, Object), decode, encode, toJSON)
+import Data.Aeson.KeyMap qualified as KM
 import Data.Text (Text)
 import Data.Time (UTCTime)
 import Data.Aeson (eitherDecode)
 import Network.HTTP.Types.Header (hContentType)
 import Palmares.DomainTypes.Core.Types
-import Palmares.DomainTypes.Transfer.QueryResponses (SyncStatus (..))
+import Palmares.DomainTypes.Transfer.QueryResponses
+  ( EpochParamsSummary (..),
+    StatusResponse (..),
+    SyncStatus (..),
+  )
 import Palmares.WebAPI.Envelope
   ( ApiError (..),
     Cursor (..),
@@ -46,6 +51,19 @@ actionTxHex, actionCip129, actionCanonical :: Text
 actionTxHex = "0ecc74fe26532cec1ab9a299f082afc436afc888ca2dc0fc6acda431c52dc60d"
 actionCip129 = "gov_action1pmx8fl3x2vkwcx4e52vlpq40csm2ljygegkuplr2ekjrr3fdccxsq0jegy9"
 actionCanonical = actionTxHex <> "#0"
+
+-- | A @\/status@ body as a JSON object, with only the attestation projector's lag varying.
+--
+-- The two surrounding records are fixed and arbitrary: nothing asserted about them, they are here
+-- because 'StatusResponse' cannot be encoded without them. The numbers are preprod's, so a reader
+-- who checks them finds them plausible rather than wondering what they encode.
+statusObject :: Maybe Int -> KM.KeyMap Value
+statusObject lag = case toJSON (StatusResponse "preprod" sync lag params) of
+  Object o -> o
+  v -> error ("StatusResponse did not encode as a JSON object: " <> show v)
+  where
+    sync = SyncStatus 320 84233900 (read "2026-10-19 08:14:02 UTC") 42 True "cardano-db-sync"
+    params = EpochParamsSummary 320 6 100000000000 500000000 20 7 146 [] []
 
 govDtoTests :: TestTree
 govDtoTests =
@@ -235,6 +253,17 @@ govDtoTests =
           "{\"epoch\":320,\"slot\":84233900,\"block_time\":\"2026-10-19T08:14:02+00:00\",\
           \\"lag_seconds\":42,\"is_ready\":true,\"source\":\"cardano-db-sync\"}"
           @?= Right (SyncStatus 320 84233900 (read "2026-10-19 08:14:02 UTC") 42 True "cardano-db-sync"),
+      -- `null` AND NOT AN ABSENT KEY. The two mean different things to a client: an absent key is a
+      -- server too old to have the field, `null` is a server that has it and has no `chain_cursor`
+      -- row to fill it from — a governance-only deployment, or a projector that never started. The
+      -- Swagger document cannot express that difference (an optional field covers both), so it is
+      -- pinned here, on the encoder. Inherited from Aeson's `omitNothingFields = False` default,
+      -- which is exactly why it is asserted rather than assumed: a `CustomJSON` modifier added to
+      -- `StatusResponse` later could flip it and break every client that reads presence.
+      testCase "a projector that never ran encodes as attest_lag_seconds: null, not as no key" $
+        KM.lookup "attest_lag_seconds" (statusObject Nothing) @?= Just Null,
+      testCase "a projector's lag encodes as the number itself, under the snake_case name" $
+        KM.lookup "attest_lag_seconds" (statusObject (Just 42)) @?= Just (Number 42),
       -- Each of these is a way the service can be running perfectly and still unable to answer
       -- honestly. Reproducing "db-sync is 301 seconds behind" against a live stack is not
       -- something a test suite can arrange, which is why the verdict is a pure function.

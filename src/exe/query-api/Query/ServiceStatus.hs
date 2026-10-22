@@ -74,6 +74,9 @@ getStatusQuery = do
             StatusResponse
               { statusNetwork = net,
                 statusGovernance = syncStatusOf f (readyVerdict maxLag inputs == Nothing),
+                -- Taken from the SAME 'ReadyInputs' the verdict above is computed from, so a
+                -- @503 IndexerBehind@ and the number that explains it cannot come from two polls.
+                statusAttestLagSeconds = readyAttestLagSeconds inputs,
                 statusEpochParams = params
               }
 

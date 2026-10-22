@@ -1843,6 +1843,11 @@
         "StatusResponse": {
             "description": "Service identity, chain freshness and protocol parameters in one request.",
             "properties": {
+                "attest_lag_seconds": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
                 "epoch_params": {
                     "$ref": "#/definitions/EpochParamsSummary"
                 },
@@ -2207,7 +2212,7 @@
             "name": "Apache-2.0"
         },
         "title": "Palmares Query API",
-        "version": "1.0.0"
+        "version": "1.1.0"
     },
     "paths": {
         "/activity": {

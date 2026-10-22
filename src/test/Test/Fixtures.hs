@@ -140,8 +140,11 @@ disputeStatementData =
 
 -- Max-length metadata (bytes): name 128, description 1024, image URI 256 (Onchain.CIP68).
 -- ASCII so 1 char = 1 byte.
+-- `ipfs://Qm` is NINE characters, and this said 10 until 2026-10-22, so every fixture built from it
+-- sat one byte UNDER the limit it exists to sit on — the one block in this module whose whole job is
+-- to make `Mm`/`Mp4`/`P4` testable at the boundary, missing the boundary it names in its own comment.
 maxLengthImageURI :: Text
-maxLengthImageURI = pack ("ipfs://Qm" ++ replicate 246 'x') -- 10 + 246 = 256 bytes
+maxLengthImageURI = pack ("ipfs://Qm" ++ replicate 247 'x') -- 9 + 247 = 256 bytes
 
 profileDataMaxLengthMetadata :: ProfileData
 profileDataMaxLengthMetadata =

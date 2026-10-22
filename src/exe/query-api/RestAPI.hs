@@ -38,6 +38,8 @@ import Palmares.DomainTypes.Core.Types
   ( ActivityEventType,
     ActivitySource,
     AnchorStatus,
+    AttestationAC,
+    AttestationType,
     DRepId (..),
     drepIdHex,
     DRepStatus (..),
@@ -45,13 +47,21 @@ import Palmares.DomainTypes.Core.Types
     GovActionId (..),
     GovActionState (..),
     GovActionType,
+    ProfileRefAC,
+    ProfileType,
     SearchKind,
     Vote,
     VoterRole (..),
   )
 import Palmares.DomainTypes.Core.Ids (anyVoterIdHex)
 import Palmares.DomainTypes.Transfer.Filters
-  ( DelegationFilter (..),
+  ( AttestProfileFilter (..),
+    AttestationRecordFilter (..),
+    DisputeFilter (..),
+    emptyAttestProfileFilter,
+    emptyAttestationRecordFilter,
+    emptyDisputeFilter,
+    DelegationFilter (..),
     DRepFilter (..),
     drepFilterFromParams,
     emptyDelegationFilter,
@@ -68,10 +78,12 @@ import Palmares.DomainTypes.Transfer.Filters
     VoteFilter (..),
   )
 import Palmares.DomainTypes.Transfer.OrderBy
-  ( DelegationsOrderBy (..),
+  ( AttestationsOrderBy (..),
+    DelegationsOrderBy (..),
     DelegatorsOrderBy (..),
     DRepsOrderBy (..),
     GovActionsOrderBy (..),
+    ProfilesOrderBy (..),
     SortOrder (..),
     SPOsOrderBy (..),
     TreasuryWithdrawalsOrderBy (..),
@@ -79,6 +91,10 @@ import Palmares.DomainTypes.Transfer.OrderBy
   )
 import Palmares.DomainTypes.Transfer.QueryResponses
   ( ActivityRow,
+    AttestProfileRow,
+    AttestationDetailResponse,
+    AttestationRow,
+    DisputeRow,
     CommitteeResponse,
     DashboardPageResponse (..),
     DelegationRecord,
@@ -118,6 +134,16 @@ import Query.Common
     normalizeLimitOffset,
     normalizeQ,
     searchGroupBounds,
+  )
+import Query.Attest
+  ( attestationById,
+    attestationSortSpec,
+    canonicalDrepCredential,
+    listAttestations,
+    listDisputes,
+    listProfiles,
+    profileById,
+    subjectTrackRecordSortSpec,
   )
 import Query.Csv ()
 import Data.Text.Read qualified as TRead
@@ -1339,6 +1365,286 @@ handleGetDashboardPage topLimit closingSoonLimit epochsParam = do
 
 ------------------------------------------------------------------------------------------------
 
+--  The attestation read surface (the palmares_attest projections)
+
+------------------------------------------------------------------------------------------------
+
+-- | @GET \/profiles@ — the registry list.
+--
+-- JSON only, where the governance lists also serve CSV. This is the claim → attest → verify flow's
+-- own surface and nothing exports it: a CSV of it would be a @ToNamedRecord@ and a
+-- @DefaultOrdered@ per DTO for a screen that pages. @\/dreps@ and @\/votes@ are where a bulk
+-- reader already gets a whole result set in one request.
+type ProfilesAPI =
+  Summary "Profiles"
+    :> Description
+         "Every profile the registry has projected from chain: who it says it is, what kind of \
+         \actor it stands for, and the governance credential it CLAIMS. \
+         \\n`credential` is a claim and not a proof -- nothing on chain checks that the claimant \
+         \controls the credential, and the same credential may be claimed by more than one \
+         \profile. `claimed=true` narrows to the profiles that claim one at all, which is the \
+         \subset a verification screen has anything to check. \
+         \\n`credential_is_script` travels beside the string and is DECODED from its CIP-129 \
+         \header byte, never inferred: a key credential and a script credential can share a hash \
+         \and are not the same actor. \
+         \\n`slot` is the only time a projection row carries -- a wall clock stamped at ingest \
+         \would be re-stamped by every rollback replay -- and it is published raw, because this \
+         \service holds no slot configuration and a second slot-to-time conversion that can \
+         \disagree with the chain's is worse than a slot number. \
+         \\n`q` matches name and description, case-insensitively, with any % or _ the user typed \
+         \matched literally. Default ordering is registered_at descending."
+    :> "profiles"
+    :> QueryParam "limit" Int
+    :> QueryParam "offset" Int
+    :> QueryParams "kind" ProfileType
+    :> QueryParam "claimed" Bool
+    :> QueryParam "q" Text
+    :> QueryParam "order_by" ProfilesOrderBy
+    :> QueryParam "sort_order" SortOrder
+    :> Get '[JSON] (Page AttestProfileRow)
+
+type ProfileDetailAPI =
+  Summary "Profile"
+    :> Description
+         "One profile by its asset class, `<policy_id>.<token_name_hex>` -- the form /profiles \
+         \returns and the admin CLI accepts. 404 `profile_not_found` when no projection carries \
+         \that id, which includes an id that exists on chain but has not been projected yet."
+    :> "profiles"
+    :> Capture "profile-id" ProfileRefAC
+    :> Get '[JSON] AttestProfileRow
+
+-- | @GET \/profiles\/by-credential\/{credential}@ — the verify lookup.
+--
+-- Declared BEFORE 'ProfileDetailAPI' in 'CoreFunctionAPI'. Servant prefers a static path segment
+-- over a capture at the same position, so the order is belt and braces rather than the only thing
+-- holding the route apart from @\/profiles\/{profile-id}@ — but a failing @Capture@ is
+-- @FailFatal@, so if that preference ever changed, @by-credential@ would come back as a 400 from
+-- the asset-class parser rather than falling through. One line of ordering is cheaper than
+-- finding that out.
+type ProfilesByCredentialAPI =
+  Summary "Profiles claiming a governance credential"
+    :> Description
+         "The verify direction: given a DRep credential, which profiles claim it. \
+         \\n**CIP-129 ONLY.** `drep1y...` (key) and `drep1yw...` (script) are accepted; the \
+         \CIP-105 form `drep1...` and 56 bare hex characters are REFUSED with 400 \
+         \`invalid_drep_id`, although every other route here accepts all three. The reason is \
+         \that neither of those two carries a header byte and `drep` is the HRP for both \
+         \credential kinds, so neither can say whether the credential is a key or a script -- and \
+         \the projection stores the full CIP-129 string the datum claimed. Accepting one would \
+         \mean choosing a header byte to compare against, and choosing the key byte (which the \
+         \governance routes do, then resolve the row by its 28-byte hash and re-render from \
+         \db-sync's own has_script) would silently report every script DRep as a key DRep and \
+         \find no claim for the script profile that exists. There is no row to ask here, so the \
+         \caller is asked instead. \
+         \\nA non-canonical bech32 spelling of an accepted form still matches: the id is decoded \
+         \and re-encoded before it reaches the query. \
+         \\nPAGED, and `total` is the answer to \"is this contested\": 0 is an unclaimed \
+         \credential, 1 is a single claim, more than 1 means several profiles claim the same \
+         \credential and this API does not pick a winner. Ordered OLDEST CLAIM FIRST, by slot, so \
+         \the first row is deterministically the first claimant rather than whichever row the \
+         \database returned first."
+    :> "profiles"
+    :> "by-credential"
+    :> Capture "credential" Text
+    :> QueryParam "limit" Int
+    :> QueryParam "offset" Int
+    :> Get '[JSON] (Page AttestProfileRow)
+
+type ProfileAttestationsAPI =
+  Summary "A profile's track record"
+    :> Description
+         "The attestations where this profile is the SUBJECT -- what others say about it, not what \
+         \it has issued. `GET /attestations?issuer=<id>` is the other direction. \
+         \\nACCEPTED FIRST, then newest, and there is no `order_by`: an unaccepted attestation is \
+         \a claim the subject has not acknowledged, and sorting those to the top would make a page \
+         \of unacknowledged claims look like a record. `sort_order` flips only the accepted/\
+         \unaccepted grouping; within each group the rows stay newest-first. \
+         \\n404 `profile_not_found` when the profile does not exist, rather than an empty page: \
+         \\"no rows\" for an id that was mistyped reads as \"this profile has no record\"."
+    :> "profiles"
+    :> Capture "profile-id" ProfileRefAC
+    :> "attestations"
+    :> QueryParam "limit" Int
+    :> QueryParam "offset" Int
+    :> QueryParam "sort_order" SortOrder
+    :> Get '[JSON] (Page AttestationRow)
+
+type AttestationsAPI =
+  Summary "Attestations"
+    :> Description
+         "Every attestation one profile has issued about another. One endpoint rather than a route \
+         \per direction: `subject` is a track record, `issuer` is an issuance history, and both \
+         \together is one actor's statements about another. \
+         \\n`date` is the ISSUANCE time and IS bounded by the minting transaction's validity \
+         \interval. `claimed_period` is SELF-REPORTED and never chain-verified, which is why it is \
+         \not a filter and not a sort key -- a range query over it would read as though the chain \
+         \had checked it. Both of its bounds travel or neither. \
+         \\n`accepted` is the subject's acknowledgement. It filters both ways and has no default, \
+         \so the unfiltered list is the whole record including claims nobody has accepted. \
+         \\n`date_from`/`date_to` bound `date`, inclusive; a reversed range is 400 \
+         \`invalid_time_range` rather than an empty page. Default ordering is date descending."
+    :> "attestations"
+    :> QueryParam "limit" Int
+    :> QueryParam "offset" Int
+    :> QueryParam "subject" ProfileRefAC
+    :> QueryParam "issuer" ProfileRefAC
+    :> QueryParams "kind" AttestationType
+    :> QueryParam "accepted" Bool
+    :> QueryParam "date_from" UTCTime
+    :> QueryParam "date_to" UTCTime
+    :> QueryParam "order_by" AttestationsOrderBy
+    :> QueryParam "sort_order" SortOrder
+    :> Get '[JSON] (Page AttestationRow)
+
+type AttestationDetailAPI =
+  Summary "Attestation"
+    :> Description
+         "One attestation with its disputes INLINE. Inline and not a second request for the reason \
+         \/gov-action/{id} inlines its tallies: a client that fetches the challenges separately \
+         \will render the attestation before they arrive, and an undisputed-looking attestation is \
+         \exactly the wrong thing to show for a disputed one. \
+         \\nAn upheld dispute is published BESIDE the attestation and never hides or deletes it, \
+         \so `disputes` being non-empty is the whole signal -- read `verdict` on each, which is \
+         \null while that dispute is open. \
+         \\nAt most 50 disputes are inlined; a dispute costs a deposit, so more than that against \
+         \one attestation is a funded adversary rather than a shape to expect, and an inline list \
+         \has no offset to escape with. `GET /disputes?target=<id>` is the paged view. \
+         \\nThe attestation and its disputes are read in ONE transaction, so they are the same \
+         \snapshot. 404 `attestation_not_found` when the id names nothing."
+    :> "attestations"
+    :> Capture "attestation-id" AttestationAC
+    :> Get '[JSON] AttestationDetailResponse
+
+type DisputesAPI =
+  Summary "Disputes"
+    :> Description
+         "Every dispute opened against an attestation. `resolved` is `verdict IS NOT NULL` and not \
+         \a verdict value, because the column is null while a dispute is open -- so `resolved=\
+         \false` is the open ones and `resolved=true` the decided ones, whichever way they were \
+         \decided. \
+         \\n`deposit` is returned to the opener either way: there is no punitive verdict, so \
+         \losing a dispute costs network fees and nothing else. \
+         \\nOrdered by `opened_at`, newest first. There is no `order_by`: the list has one \
+         \chronology, and a second ordering would be a control with no screen behind it."
+    :> "disputes"
+    :> QueryParam "limit" Int
+    :> QueryParam "offset" Int
+    :> QueryParam "target" AttestationAC
+    :> QueryParam "resolved" Bool
+    :> QueryParam "sort_order" SortOrder
+    :> Get '[JSON] (Page DisputeRow)
+
+handleGetProfiles ::
+  Maybe Int ->
+  Maybe Int ->
+  [ProfileType] ->
+  Maybe Bool ->
+  Maybe Text ->
+  Maybe ProfilesOrderBy ->
+  Maybe SortOrder ->
+  QueryAppMonad (Page AttestProfileRow)
+handleGetProfiles limit offset kinds claimed q orderBy sortOrder = do
+  q' <- either throwApi pure (normalizeQ q)
+  bounds <- either throwApi pure (normalizeLimitOffset jsonBounds limit offset)
+  let filt =
+        emptyAttestProfileFilter
+          { attestProfileFilterKinds = kinds,
+            attestProfileFilterClaimed = claimed,
+            attestProfileFilterQ = q'
+          }
+  runRead
+    ( listProfiles
+        filt
+        (fromMaybe ProfilesOrderByRegisteredAt orderBy, fromMaybe Desc sortOrder)
+        bounds
+    )
+
+handleGetProfile :: ProfileRefAC -> QueryAppMonad AttestProfileRow
+handleGetProfile pid = runRead (profileById pid) >>= maybe (throwApi ProfileNotFound) pure
+
+handleGetProfilesByCredential :: Text -> Maybe Int -> Maybe Int -> QueryAppMonad (Page AttestProfileRow)
+handleGetProfilesByCredential raw limit offset = do
+  -- A 400 and not a 404: a CIP-105 id or a bare hash is a well-formed DRep identifier that this
+  -- route cannot answer about, and answering "no profile claims it" would be a false negative
+  -- dressed as a result. See 'canonicalDrepCredential'.
+  credential <- maybe (throwApi InvalidDrepId) pure (canonicalDrepCredential raw)
+  bounds <- either throwApi pure (normalizeLimitOffset jsonBounds limit offset)
+  runRead
+    ( listProfiles
+        emptyAttestProfileFilter {attestProfileFilterCredential = Just credential}
+        (ProfilesOrderByRegisteredAt, Asc)
+        bounds
+    )
+
+handleGetProfileAttestations ::
+  ProfileRefAC -> Maybe Int -> Maybe Int -> Maybe SortOrder -> QueryAppMonad (Page AttestationRow)
+handleGetProfileAttestations pid limit offset sortOrder = do
+  bounds <- either throwApi pure (normalizeLimitOffset jsonBounds limit offset)
+  -- ONE runRead, for the reason handleGetDRepDetail gives: the existence check and the page are
+  -- one snapshot, so the 404 cannot be decided against a profile that the page then reads as gone.
+  r <- runRead $ do
+    mp <- profileById pid
+    case mp of
+      Nothing -> pure Nothing
+      Just _ ->
+        Just
+          <$> listAttestations
+            emptyAttestationRecordFilter {attestationRecordFilterSubject = Just pid}
+            (subjectTrackRecordSortSpec, fromMaybe Desc sortOrder)
+            bounds
+  maybe (throwApi ProfileNotFound) pure r
+
+handleGetAttestations ::
+  Maybe Int ->
+  Maybe Int ->
+  Maybe ProfileRefAC ->
+  Maybe ProfileRefAC ->
+  [AttestationType] ->
+  Maybe Bool ->
+  Maybe UTCTime ->
+  Maybe UTCTime ->
+  Maybe AttestationsOrderBy ->
+  Maybe SortOrder ->
+  QueryAppMonad (Page AttestationRow)
+handleGetAttestations limit offset subject issuer kinds accepted dateFrom dateTo orderBy sortOrder = do
+  _ <- either throwApi pure (checkRanges dateFrom dateTo Nothing Nothing)
+  bounds <- either throwApi pure (normalizeLimitOffset jsonBounds limit offset)
+  let filt =
+        emptyAttestationRecordFilter
+          { attestationRecordFilterSubject = subject,
+            attestationRecordFilterIssuer = issuer,
+            attestationRecordFilterKinds = kinds,
+            attestationRecordFilterAccepted = accepted,
+            attestationRecordFilterDateFrom = dateFrom,
+            attestationRecordFilterDateTo = dateTo
+          }
+  runRead
+    ( listAttestations
+        filt
+        ( attestationSortSpec (fromMaybe AttestationsOrderByDate orderBy),
+          fromMaybe Desc sortOrder
+        )
+        bounds
+    )
+
+handleGetAttestation :: AttestationAC -> QueryAppMonad AttestationDetailResponse
+handleGetAttestation aid =
+  runRead (attestationById aid) >>= maybe (throwApi AttestationNotFound) pure
+
+handleGetDisputes ::
+  Maybe Int ->
+  Maybe Int ->
+  Maybe AttestationAC ->
+  Maybe Bool ->
+  Maybe SortOrder ->
+  QueryAppMonad (Page DisputeRow)
+handleGetDisputes limit offset target resolved sortOrder = do
+  bounds <- either throwApi pure (normalizeLimitOffset jsonBounds limit offset)
+  let filt = emptyDisputeFilter {disputeFilterTarget = target, disputeFilterResolved = resolved}
+  runRead (listDisputes filt (fromMaybe Desc sortOrder) bounds)
+
+------------------------------------------------------------------------------------------------
+
 --  Core Function API
 
 ------------------------------------------------------------------------------------------------
@@ -1365,6 +1671,15 @@ type CoreFunctionAPI =
     :<|> CommitteeAPI
     :<|> SPOsAPI
     :<|> TreasuryWithdrawalsAPI
+    -- The attestation surface. `by-credential` precedes the `{profile-id}` capture: see
+    -- 'ProfilesByCredentialAPI'.
+    :<|> ProfilesAPI
+    :<|> ProfilesByCredentialAPI
+    :<|> ProfileAttestationsAPI
+    :<|> ProfileDetailAPI
+    :<|> AttestationsAPI
+    :<|> AttestationDetailAPI
+    :<|> DisputesAPI
 
 coreFunctionServer :: ServerT CoreFunctionAPI QueryAppMonad
 -- Spelled out flat rather than grouped into a drepProfileServer: `:<|>` is right-associative,
@@ -1391,6 +1706,13 @@ coreFunctionServer =
     :<|> committeeServer
     :<|> sposServer
     :<|> treasuryWithdrawalsServer
+    :<|> handleGetProfiles
+    :<|> handleGetProfilesByCredential
+    :<|> handleGetProfileAttestations
+    :<|> handleGetProfile
+    :<|> handleGetAttestations
+    :<|> handleGetAttestation
+    :<|> handleGetDisputes
 
 ------------------------------------------------------------------------------------------------
 
@@ -1495,6 +1817,27 @@ apiSwagger =
       ?~ "One epoch of DRep participation. `dreps_voted` counts voters and `votes_cast` counts \
          \votes; they differ by re-votes. The rate is null only when no DRep held power that \
          \epoch -- zero is a real reading and preprod epoch 311 has it."
+    & definitions . at "AttestProfileRow" . mapped . description
+      ?~ "One profile, as the attestation projections hold it. `credential` is the governance \
+         \credential this profile CLAIMS, in its CIP-129 rendering -- a claim, not a proof: \
+         \nothing on chain checks that the claimant controls it, and more than one profile may \
+         \claim the same one. `credential_is_script` is that identifier's header byte decoded, so \
+         \a consumer never has to parse bech32 to tell a key credential from a script one. `slot` \
+         \is the only time a projection row carries, published raw because this service holds no \
+         \slot configuration."
+    & definitions . at "AttestationRow" . mapped . description
+      ?~ "One attestation. `date` is the issuance time and IS bounded by the minting \
+         \transaction's validity interval; `claimed_period` is SELF-REPORTED and never \
+         \chain-verified, with both bounds present or neither. Rendering the two alike claims \
+         \something the chain never said. `accepted` is the subject's acknowledgement."
+    & definitions . at "DisputeRow" . mapped . description
+      ?~ "One dispute against an attestation. `verdict` is null while the dispute is OPEN. An \
+         \upheld dispute is published beside the attestation it contests and never hides or \
+         \deletes it. `deposit` comes back to the opener either way -- there is no punitive \
+         \verdict, so losing one costs network fees and nothing else."
+    & definitions . at "AttestationDetailResponse" . mapped . description
+      ?~ "One attestation with its disputes inline, read in a single transaction so they are the \
+         \same snapshot. At most 50 disputes travel; GET /disputes?target=<id> is the paged view."
 
 swaggerServer :: ServerT (SwaggerSchemaUI "swagger-ui" "swagger-api.json") QueryAppMonad
 swaggerServer = swaggerSchemaUIServerT apiSwagger

@@ -294,3 +294,4 @@ instance ToParamSchema TreasuryWithdrawalsOrderBy where
 
 instance FromHttpApiData TreasuryWithdrawalsOrderBy where
   parseQueryParam = parseJsonEnumParam "invalid_parameter"
+

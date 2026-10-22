@@ -127,6 +127,178 @@
             ],
             "type": "object"
         },
+        "AttestProfileRow": {
+            "description": "One profile, as the attestation projections hold it. `credential` is the governance credential this profile CLAIMS, in its CIP-129 rendering -- a claim, not a proof: nothing on chain checks that the claimant controls it, and more than one profile may claim the same one. `credential_is_script` is that identifier's header byte decoded, so a consumer never has to parse bech32 to tell a key credential from a script one. `slot` is the only time a projection row carries, published raw because this service holds no slot configuration.",
+            "properties": {
+                "block_hash": {
+                    "type": "string"
+                },
+                "credential": {
+                    "type": "string"
+                },
+                "credential_is_script": {
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "image_uri": {
+                    "type": "string"
+                },
+                "kind": {
+                    "$ref": "#/definitions/ProfileType"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slot": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "id",
+                "name",
+                "description",
+                "image_uri",
+                "kind",
+                "slot",
+                "block_hash"
+            ],
+            "type": "object"
+        },
+        "AttestationDetailResponse": {
+            "description": "One attestation with its disputes inline, read in a single transaction so they are the same snapshot. At most 50 disputes travel; GET /disputes?target=<id> is the paged view.",
+            "properties": {
+                "attestation": {
+                    "$ref": "#/definitions/AttestationRow"
+                },
+                "disputes": {
+                    "items": {
+                        "$ref": "#/definitions/DisputeRow"
+                    },
+                    "type": "array"
+                }
+            },
+            "required": [
+                "attestation",
+                "disputes"
+            ],
+            "type": "object"
+        },
+        "AttestationRow": {
+            "description": "One attestation. `date` is the issuance time and IS bounded by the minting transaction's validity interval; `claimed_period` is SELF-REPORTED and never chain-verified, with both bounds present or neither. Rendering the two alike claims something the chain never said. `accepted` is the subject's acknowledgement.",
+            "properties": {
+                "accepted": {
+                    "type": "boolean"
+                },
+                "block_hash": {
+                    "type": "string"
+                },
+                "claimed_period": {
+                    "items": [
+                        {
+                            "description": "This is the posix time in ISO8601 format.",
+                            "example": "1970-01-01T00:00:00Z",
+                            "format": "ISO8601",
+                            "type": "string"
+                        },
+                        {
+                            "description": "This is the posix time in ISO8601 format.",
+                            "example": "1970-01-01T00:00:00Z",
+                            "format": "ISO8601",
+                            "type": "string"
+                        }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                },
+                "date": {
+                    "description": "This is the posix time in ISO8601 format.",
+                    "example": "1970-01-01T00:00:00Z",
+                    "format": "ISO8601",
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "image_uri": {
+                    "type": "string"
+                },
+                "issuer": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "kind": {
+                    "$ref": "#/definitions/AttestationType"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "other_metadata": {
+                    "items": {
+                        "items": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "string"
+                            }
+                        ],
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                    },
+                    "type": "array"
+                },
+                "output_index": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "slot": {
+                    "type": "integer"
+                },
+                "subject": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "tx_hash": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "subject",
+                "issuer",
+                "kind",
+                "date",
+                "accepted",
+                "name",
+                "description",
+                "image_uri",
+                "other_metadata",
+                "slot",
+                "block_hash",
+                "tx_hash",
+                "output_index"
+            ],
+            "type": "object"
+        },
+        "AttestationType": {
+            "enum": [
+                "milestone_delivered",
+                "audit_passed",
+                "affiliation",
+                "role_held",
+                "endorsement"
+            ],
+            "type": "string"
+        },
         "ChainPoint": {
             "properties": {
                 "epoch": {
@@ -898,6 +1070,67 @@
             ],
             "type": "object"
         },
+        "DisputeRow": {
+            "description": "One dispute against an attestation. `verdict` is null while the dispute is OPEN. An upheld dispute is published beside the attestation it contests and never hides or deletes it. `deposit` comes back to the opener either way -- there is no punitive verdict, so losing one costs network fees and nothing else.",
+            "properties": {
+                "block_hash": {
+                    "type": "string"
+                },
+                "deposit": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "image_uri": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "opened_at": {
+                    "description": "This is the posix time in ISO8601 format.",
+                    "example": "1970-01-01T00:00:00Z",
+                    "format": "ISO8601",
+                    "type": "string"
+                },
+                "opened_by": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "slot": {
+                    "type": "integer"
+                },
+                "target": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "verdict": {
+                    "$ref": "#/definitions/DisputeVerdict"
+                }
+            },
+            "required": [
+                "id",
+                "target",
+                "opened_by",
+                "opened_at",
+                "deposit",
+                "name",
+                "description",
+                "image_uri",
+                "slot",
+                "block_hash"
+            ],
+            "type": "object"
+        },
+        "DisputeVerdict": {
+            "enum": [
+                "upheld",
+                "rejected"
+            ],
+            "type": "string"
+        },
         "EpochParamsSummary": {
             "description": "The protocol parameters a client needs to audit a published tally. Threshold lists are (name, value) pairs under db-sync's own column names, so any of them can be looked up in palmares.thresholds. `gov_action_lifetime` is the parameter, not the voting window: the ledger sets expiration = proposed_epoch + lifetime + 1.",
             "properties": {
@@ -1066,6 +1299,11 @@
                 "db_unavailable",
                 "internal_error"
             ],
+            "type": "string"
+        },
+        "GYAssetClass": {
+            "description": "This is an asset class, i.e. either \"lovelace\" or some other token with its minting policy and token name delimited by dot (.).",
+            "example": "ff80aaaf03a273b8f5c558168dc0e2377eea810badbae6eceefc14ef.474f4c44",
             "type": "string"
         },
         "GovActionAnchorContent": {
@@ -1324,7 +1562,7 @@
             "properties": {
                 "items": {
                     "items": {
-                        "$ref": "#/definitions/TreasuryWithdrawalRecord"
+                        "$ref": "#/definitions/DisputeRow"
                     },
                     "type": "array"
                 },
@@ -1388,6 +1626,17 @@
                 "count"
             ],
             "type": "object"
+        },
+        "ProfileType": {
+            "enum": [
+                "person_d_rep",
+                "organization",
+                "committee",
+                "community",
+                "vendor",
+                "auditor"
+            ],
+            "type": "string"
         },
         "ProposerSummary": {
             "properties": {
@@ -2063,6 +2312,173 @@
                 "summary": "Governance activity feed"
             }
         },
+        "/attestations": {
+            "get": {
+                "description": "Every attestation one profile has issued about another. One endpoint rather than a route per direction: `subject` is a track record, `issuer` is an issuance history, and both together is one actor's statements about another. \n`date` is the ISSUANCE time and IS bounded by the minting transaction's validity interval. `claimed_period` is SELF-REPORTED and never chain-verified, which is why it is not a filter and not a sort key -- a range query over it would read as though the chain had checked it. Both of its bounds travel or neither. \n`accepted` is the subject's acknowledgement. It filters both ways and has no default, so the unfiltered list is the whole record including claims nobody has accepted. \n`date_from`/`date_to` bound `date`, inclusive; a reversed range is 400 `invalid_time_range` rather than an empty page. Default ordering is date descending.",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "name": "subject",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "name": "issuer",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "milestone_delivered",
+                                "audit_passed",
+                                "affiliation",
+                                "role_held",
+                                "endorsement"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "kind",
+                        "type": "array"
+                    },
+                    {
+                        "in": "query",
+                        "name": "accepted",
+                        "required": false,
+                        "type": "boolean"
+                    },
+                    {
+                        "format": "yyyy-mm-ddThh:MM:ssZ",
+                        "in": "query",
+                        "name": "date_from",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "format": "yyyy-mm-ddThh:MM:ssZ",
+                        "in": "query",
+                        "name": "date_to",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "id",
+                            "date",
+                            "issued_to",
+                            "issued_by",
+                            "name"
+                        ],
+                        "in": "query",
+                        "name": "order_by",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "Attestations"
+            }
+        },
+        "/attestations/{attestation-id}": {
+            "get": {
+                "description": "One attestation with its disputes INLINE. Inline and not a second request for the reason /gov-action/{id} inlines its tallies: a client that fetches the challenges separately will render the attestation before they arrive, and an undisputed-looking attestation is exactly the wrong thing to show for a disputed one. \nAn upheld dispute is published BESIDE the attestation and never hides or deletes it, so `disputes` being non-empty is the whole signal -- read `verdict` on each, which is null while that dispute is open. \nAt most 50 disputes are inlined; a dispute costs a deposit, so more than that against one attestation is a funded adversary rather than a shape to expect, and an inline list has no offset to escape with. `GET /disputes?target=<id>` is the paged view. \nThe attestation and its disputes are read in ONE transaction, so they are the same snapshot. 404 `attestation_not_found` when the id names nothing.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "attestation-id",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/AttestationDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "Attestation"
+            }
+        },
         "/committee": {
             "get": {
                 "description": "The committee the ledger is currently applying, with its quorum, the governance action that established it, and its seats inline. `epoch` is the epoch of the epoch_state row that names this committee, so a client can see which moment the answer is as of. \nEach seat is identified by its COLD credential, the identity that survives a hot-key rotation, with the signing hot key published beside it -- the same choice /votes makes. preprod shows why at scale: 648,767 hot-key registrations resolve to 43 cold credentials, and `votes_cast` counts distinct governance actions through all of a member's registrations so one record does not split across rotations. \n`status` has two values, active and resigned, not Koios's four: it is derived from committee_de_registration alone, and expiry is published beside it as `expiration_epoch` rather than folded in, because a member whose term ends in a future epoch is serving today.",
@@ -2224,6 +2640,81 @@
                     }
                 },
                 "summary": "Vote delegations"
+            }
+        },
+        "/disputes": {
+            "get": {
+                "description": "Every dispute opened against an attestation. `resolved` is `verdict IS NOT NULL` and not a verdict value, because the column is null while a dispute is open -- so `resolved=false` is the open ones and `resolved=true` the decided ones, whichever way they were decided. \n`deposit` is returned to the opener either way: there is no punitive verdict, so losing a dispute costs network fees and nothing else. \nOrdered by `opened_at`, newest first. There is no `order_by`: the list has one chronology, and a second ordering would be a control with no screen behind it.",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "name": "target",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "name": "resolved",
+                        "required": false,
+                        "type": "boolean"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "Disputes"
             }
         },
         "/drep/{drep-id}": {
@@ -3421,6 +3912,282 @@
                     }
                 },
                 "summary": "Governance action (canonical page path)"
+            }
+        },
+        "/profiles": {
+            "get": {
+                "description": "Every profile the registry has projected from chain: who it says it is, what kind of actor it stands for, and the governance credential it CLAIMS. \n`credential` is a claim and not a proof -- nothing on chain checks that the claimant controls the credential, and the same credential may be claimed by more than one profile. `claimed=true` narrows to the profiles that claim one at all, which is the subset a verification screen has anything to check. \n`credential_is_script` travels beside the string and is DECODED from its CIP-129 header byte, never inferred: a key credential and a script credential can share a hash and are not the same actor. \n`slot` is the only time a projection row carries -- a wall clock stamped at ingest would be re-stamped by every rollback replay -- and it is published raw, because this service holds no slot configuration and a second slot-to-time conversion that can disagree with the chain's is worse than a slot number. \n`q` matches name and description, case-insensitively, with any % or _ the user typed matched literally. Default ordering is registered_at descending.",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "collectionFormat": "multi",
+                        "in": "query",
+                        "items": {
+                            "enum": [
+                                "person_d_rep",
+                                "organization",
+                                "committee",
+                                "community",
+                                "vendor",
+                                "auditor"
+                            ],
+                            "type": "string"
+                        },
+                        "name": "kind",
+                        "type": "array"
+                    },
+                    {
+                        "in": "query",
+                        "name": "claimed",
+                        "required": false,
+                        "type": "boolean"
+                    },
+                    {
+                        "in": "query",
+                        "name": "q",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "id",
+                            "name",
+                            "description",
+                            "type",
+                            "registered_at"
+                        ],
+                        "in": "query",
+                        "name": "order_by",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "Profiles"
+            }
+        },
+        "/profiles/by-credential/{credential}": {
+            "get": {
+                "description": "The verify direction: given a DRep credential, which profiles claim it. \n**CIP-129 ONLY.** `drep1y...` (key) and `drep1yw...` (script) are accepted; the CIP-105 form `drep1...` and 56 bare hex characters are REFUSED with 400 `invalid_drep_id`, although every other route here accepts all three. The reason is that neither of those two carries a header byte and `drep` is the HRP for both credential kinds, so neither can say whether the credential is a key or a script -- and the projection stores the full CIP-129 string the datum claimed. Accepting one would mean choosing a header byte to compare against, and choosing the key byte (which the governance routes do, then resolve the row by its 28-byte hash and re-render from db-sync's own has_script) would silently report every script DRep as a key DRep and find no claim for the script profile that exists. There is no row to ask here, so the caller is asked instead. \nA non-canonical bech32 spelling of an accepted form still matches: the id is decoded and re-encoded before it reaches the query. \nPAGED, and `total` is the answer to \"is this contested\": 0 is an unclaimed credential, 1 is a single claim, more than 1 means several profiles claim the same credential and this API does not pick a winner. Ordered OLDEST CLAIM FIRST, by slot, so the first row is deterministically the first claimant rather than whichever row the database returned first.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "credential",
+                        "required": true,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "Profiles claiming a governance credential"
+            }
+        },
+        "/profiles/{profile-id}": {
+            "get": {
+                "description": "One profile by its asset class, `<policy_id>.<token_name_hex>` -- the form /profiles returns and the admin CLI accepts. 404 `profile_not_found` when no projection carries that id, which includes an id that exists on chain but has not been projected yet.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "profile-id",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/AttestProfileRow"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "Profile"
+            }
+        },
+        "/profiles/{profile-id}/attestations": {
+            "get": {
+                "description": "The attestations where this profile is the SUBJECT -- what others say about it, not what it has issued. `GET /attestations?issuer=<id>` is the other direction. \nACCEPTED FIRST, then newest, and there is no `order_by`: an unaccepted attestation is a claim the subject has not acknowledged, and sorting those to the top would make a page of unacknowledged claims look like a record. `sort_order` flips only the accepted/unaccepted grouping; within each group the rows stay newest-first. \n404 `profile_not_found` when the profile does not exist, rather than an empty page: \"no rows\" for an id that was mistyped reads as \"this profile has no record\".",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "profile-id",
+                        "required": true,
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "limit",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "in": "query",
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "name": "offset",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "in": "query",
+                        "name": "sort_order",
+                        "required": false,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Page"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "A profile's track record"
             }
         },
         "/ready": {

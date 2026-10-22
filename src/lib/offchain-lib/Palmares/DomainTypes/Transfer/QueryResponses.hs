@@ -76,6 +76,10 @@ module Palmares.DomainTypes.Transfer.QueryResponses
     DRepExplorerPageResponse (..),
     EpochParticipationPoint (..),
     DashboardPageResponse (..),
+    AttestProfileRow (..),
+    AttestationRow (..),
+    DisputeRow (..),
+    AttestationDetailResponse (..),
   )
 where
 
@@ -1719,3 +1723,131 @@ instance FromJSON ActivityRow where
       <*> o .: "at"
       <*> o .:? "actor_id"
       <*> o .:? "target_id"
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * The attestation read surface (the @palmares_attest@ projections)
+
+--
+-- Four DTOs, and they are NOT the inherited 'ProfileResponse' \/ 'AttestationResponse' above.
+-- Those are built from 'Core.Profile' and 'Core.Attestation', which carry no credential and no
+-- chain point, so publishing either would mean widening a domain type the write path also uses.
+-- They also carry a @thumbnail_uri@ that is @image_uri@ repeated.
+--
+-- Three rules hold across all four:
+--
+--   1. @slot@ is the ONLY time a projection row has (inherited fix #5: a wall clock stamped at
+--      ingest is re-stamped by every rollback replay). It is published raw rather than converted,
+--      because query-api holds no slot config — it never talks to a provider — and a second,
+--      drifting slot-to-time conversion is worse than an honest slot number.
+--   2. Every asset-class field is a @policy_id.token_name_hex@ string, which is both what the
+--      projection stores and what the admin CLI and @\/interaction@ accept.
+--   3. Nothing here is a verdict this layer computed. @credential_is_script@ is READ OUT of the
+--      stored CIP-129 identifier's header byte, never inferred from anything else.
+
+-- | One row of @palmares_attest.profile_projection@.
+--
+-- @credential@ is the governance credential this profile CLAIMS, in the CIP-129 rendering the
+-- datum carried. A claim is not a proof: nothing on chain checks that the claimant controls the
+-- credential, and the same credential may be claimed by more than one profile — which
+-- @\/profiles\/by-credential\/{credential}@ reports as more than one row rather than picking a
+-- winner.
+--
+-- @credential_is_script@ is the header byte of that identifier, decoded. It travels beside the
+-- string so a consumer never has to parse bech32 to find out whether a claim is a key credential
+-- or a script one — the distinction CIP-105 and bare hex cannot express, and the one a
+-- verification UI must not guess.
+data AttestProfileRow = AttestProfileRow
+  { attestProfileId :: Core.ProfileRefAC,
+    attestProfileName :: Text,
+    attestProfileDescription :: Text,
+    attestProfileImageURI :: Text,
+    attestProfileKind :: Core.ProfileType,
+    attestProfileCredential :: Maybe Text,
+    attestProfileCredentialIsScript :: Maybe Bool,
+    attestProfileSlot :: Integer,
+    attestProfileBlockHash :: Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "attestProfile", CamelToSnake]] AttestProfileRow
+
+instance ToSchema AttestProfileRow where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "attestProfile")
+
+-- | One row of @palmares_attest.attestation_projection@.
+--
+-- @date@ is the issuance time and IS bounded by the minting transaction's validity interval.
+-- @claimed_period@ is self-reported and NEVER chain-verified; both bounds travel or neither, so a
+-- half-open period is not representable. A consumer that renders the two alike is claiming
+-- something the chain never said.
+data AttestationRow = AttestationRow
+  { attestationRowId :: Core.AttestationAC,
+    attestationRowSubject :: Core.ProfileRefAC,
+    attestationRowIssuer :: Core.ProfileRefAC,
+    attestationRowKind :: Core.AttestationType,
+    attestationRowDate :: GYTime,
+    attestationRowClaimedPeriod :: Maybe (GYTime, GYTime),
+    attestationRowAccepted :: Bool,
+    attestationRowName :: Text,
+    attestationRowDescription :: Text,
+    attestationRowImageURI :: Text,
+    attestationRowOtherMetadata :: [(Text, Text)],
+    attestationRowSlot :: Integer,
+    attestationRowBlockHash :: Text,
+    attestationRowTxHash :: Text,
+    attestationRowOutputIndex :: Int
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "attestationRow", CamelToSnake]] AttestationRow
+
+instance ToSchema AttestationRow where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "attestationRow")
+
+-- | One row of @palmares_attest.dispute_projection@.
+--
+-- @verdict@ is NULL while the dispute is OPEN, which is why @\/disputes@ filters on @resolved@
+-- rather than on a verdict value. An upheld dispute is published BESIDE the attestation it
+-- contests and never hides or deletes it (spec §4.3) — so a reader that ignores this list is
+-- reading an attestation without its challenges.
+data DisputeRow = DisputeRow
+  { disputeRowId :: Core.AttestationAC,
+    disputeRowTarget :: Core.AttestationAC,
+    disputeRowOpenedBy :: Core.ProfileRefAC,
+    disputeRowOpenedAt :: GYTime,
+    -- | Lovelace, returned to the opener whichever way the dispute goes: there is no punitive
+    -- verdict, so losing one costs network fees and nothing else.
+    disputeRowDeposit :: Integer,
+    disputeRowVerdict :: Maybe Core.DisputeVerdict,
+    disputeRowName :: Text,
+    disputeRowDescription :: Text,
+    disputeRowImageURI :: Text,
+    disputeRowSlot :: Integer,
+    disputeRowBlockHash :: Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "disputeRow", CamelToSnake]] DisputeRow
+
+instance ToSchema DisputeRow where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "disputeRow")
+
+-- | @GET \/attestations\/{attestation-id}@: one attestation with its disputes inlined.
+--
+-- The disputes are INLINE and not a second request, for the reason 'GovActionDetailResponse'
+-- inlines its tallies: a client that has to fetch the challenges separately is a client that will
+-- render the attestation before they arrive, and an undisputed-looking attestation is exactly the
+-- wrong thing to show for a disputed one.
+data AttestationDetailResponse = AttestationDetailResponse
+  { attestationDetailAttestation :: AttestationRow,
+    attestationDetailDisputes :: [DisputeRow]
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON
+          '[FieldLabelModifier '[StripPrefix "attestationDetail", CamelToSnake]]
+          AttestationDetailResponse
+
+instance ToSchema AttestationDetailResponse where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "attestationDetail")

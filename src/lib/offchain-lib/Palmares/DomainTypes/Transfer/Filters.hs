@@ -21,6 +21,12 @@ module Palmares.DomainTypes.Transfer.Filters
     emptySPOFilter,
     TreasuryWithdrawalFilter (..),
     emptyTreasuryWithdrawalFilter,
+    AttestProfileFilter (..),
+    emptyAttestProfileFilter,
+    AttestationRecordFilter (..),
+    emptyAttestationRecordFilter,
+    DisputeFilter (..),
+    emptyDisputeFilter,
   )
 where
 
@@ -401,3 +407,89 @@ data GovActivityFilter = GovActivityFilter
 -- | The filter with nothing set: the whole feed, newest first.
 emptyGovActivityFilter :: GovActivityFilter
 emptyGovActivityFilter = GovActivityFilter [] [] []
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * Attestation filters (the @palmares_attest@ projections)
+
+--
+-- Three NEW records rather than the inherited 'ProfileFilter' \/ 'AttestationFilter' above: those
+-- two are shaped for the Belt System's esqueleto handlers (@Maybe [a]@ for \"no filter\", a
+-- single-valued type, two unused name\/description fields) and are still referenced by the
+-- comment-prefixed @Query.Projected@. These follow the governance convention instead — a plain
+-- list, where EMPTY means no filter rather than \"match nothing\", values OR within a parameter
+-- and AND across parameters — so the attestation handlers read like the governance ones.
+
+-- | Every filter @GET \/profiles@ and @GET \/profiles\/by-credential\/{credential}@ accept.
+data AttestProfileFilter = AttestProfileFilter
+  { attestProfileFilterKinds :: [Core.ProfileType],
+    -- | Whether the profile claims a governance credential at all: @profile_credential IS NOT
+    -- NULL@. Separate from 'attestProfileFilterCredential' because \"claims something\" and
+    -- \"claims this\" are different questions, and the first one is what a list facet asks.
+    attestProfileFilterClaimed :: Maybe Bool,
+    -- | One credential, as the CANONICAL CIP-129 string the projection stores. The handler
+    -- produces it with 'Query.Attest.canonicalDrepCredential' and never from request text
+    -- directly, so a non-canonical bech32 spelling of the same credential still matches.
+    attestProfileFilterCredential :: Maybe Text,
+    -- | Free text against the profile's name and description.
+    attestProfileFilterQ :: Maybe Text
+  }
+  deriving stock (Show, Eq)
+
+-- | The filter with nothing set: every profile.
+emptyAttestProfileFilter :: AttestProfileFilter
+emptyAttestProfileFilter =
+  AttestProfileFilter
+    { attestProfileFilterKinds = [],
+      attestProfileFilterClaimed = Nothing,
+      attestProfileFilterCredential = Nothing,
+      attestProfileFilterQ = Nothing
+    }
+
+-- | Every filter @GET \/attestations@ and @GET \/profiles\/{id}\/attestations@ accept.
+--
+-- @subject@ and @issuer@ are single-valued where @kind@ is repeatable, which is what the two
+-- questions are: a track record is about ONE subject, while \"which kinds\" is a facet.
+-- @\/profiles\/{id}\/attestations@ is this filter with @subject@ pinned to the captured id, so the
+-- track record and the global list are one query and cannot disagree.
+--
+-- The date bounds are 'UTCTime' and not @GYTime@, like every governance range in this module:
+-- @attestation_date@ is a @timestamptz@ column, both types bind to it as the same
+-- @PersistUTCTime@, and keeping it 'UTCTime' is what lets query-api declare the parameter without
+-- depending on Atlas.
+data AttestationRecordFilter = AttestationRecordFilter
+  { attestationRecordFilterSubject :: Maybe Core.ProfileRefAC,
+    attestationRecordFilterIssuer :: Maybe Core.ProfileRefAC,
+    attestationRecordFilterKinds :: [Core.AttestationType],
+    attestationRecordFilterAccepted :: Maybe Bool,
+    attestationRecordFilterDateFrom :: Maybe UTCTime,
+    attestationRecordFilterDateTo :: Maybe UTCTime
+  }
+  deriving stock (Show, Eq)
+
+-- | The filter with nothing set: every attestation.
+emptyAttestationRecordFilter :: AttestationRecordFilter
+emptyAttestationRecordFilter =
+  AttestationRecordFilter
+    { attestationRecordFilterSubject = Nothing,
+      attestationRecordFilterIssuer = Nothing,
+      attestationRecordFilterKinds = [],
+      attestationRecordFilterAccepted = Nothing,
+      attestationRecordFilterDateFrom = Nothing,
+      attestationRecordFilterDateTo = Nothing
+    }
+
+-- | Every filter @GET \/disputes@ accepts.
+--
+-- @resolved@ is @verdict IS NOT NULL@ and not a verdict filter: a dispute's verdict is NULL while
+-- it is open, so \"is it decided\" is a question about presence. Asking for a particular verdict
+-- is a @kind@-style facet that F1 has no screen for.
+data DisputeFilter = DisputeFilter
+  { disputeFilterTarget :: Maybe Core.AttestationAC,
+    disputeFilterResolved :: Maybe Bool
+  }
+  deriving stock (Show, Eq)
+
+-- | The filter with nothing set: every dispute, newest first.
+emptyDisputeFilter :: DisputeFilter
+emptyDisputeFilter = DisputeFilter Nothing Nothing

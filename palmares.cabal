@@ -350,6 +350,7 @@ executable query-api
   other-modules:
   --   Metrics.Catalog
   --   Query.Aggregates
+    Query.Attest
     Query.Common
     Query.Csv
     Query.Gov
@@ -477,6 +478,7 @@ test-suite test
   other-modules:
     PropertyTests
     Test.Fixtures
+    Query.Attest
     Query.Common
     Query.Gov
     Query.Refresh
@@ -494,6 +496,7 @@ test-suite test
     UnitTests.Fees
     UnitTests.OracleRules
     UnitTests.ApiHardening
+    UnitTests.AttestRead
     UnitTests.Attestation
     UnitTests.ChainSyncReplay
     UnitTests.Cleanup

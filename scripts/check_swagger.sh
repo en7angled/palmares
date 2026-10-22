@@ -38,12 +38,19 @@ check "license is Apache-2.0" '.info.license.name == "Apache-2.0"'
 check "host is not baked in" '.host == null'
 
 echo "== the path set"
-# 22 documented paths: the 18 governance routes + /health /ready /status /metrics/formulas. The two
-# /pages/… aliases are paths of their own; /swagger-api.json and /swagger-ui are the UI, not
-# CoreFunctionAPI.
-check "22 paths" '[.paths | keys[]] | length == 22'
+# 29 documented paths: the 18 governance routes + /health /ready /status /metrics/formulas + the 7
+# attestation read routes T-ATTEST-9 landed. The two /pages/… aliases are paths of their own;
+# /swagger-api.json and /swagger-ui are the UI, not CoreFunctionAPI.
+#
+# The COUNT and the names are both checked, because they catch different mistakes. A route that
+# disappears fails the count even if nobody thought to name it below, and a route that is renamed
+# fails its own line while the count still passes. Updating this number is a deliberate act: it is
+# how a route added or removed shows up as a reviewed diff rather than as nothing at all.
+check "29 paths" '[.paths | keys[]] | length == 29'
 for p in /health /ready /status /metrics/formulas /dreps /gov-actions /votes /activity /search \
-  /delegations /committee /spos /treasury-withdrawals /pages/drep-explorer /pages/dashboard; do
+  /delegations /committee /spos /treasury-withdrawals /pages/drep-explorer /pages/dashboard \
+  /profiles /profiles/by-credential/{credential} /profiles/{profile-id} \
+  /profiles/{profile-id}/attestations /attestations /attestations/{attestation-id} /disputes; do
   check "$p is documented" ".paths | has(\"$p\")"
 done
 
@@ -80,6 +87,33 @@ for p in /dreps /gov-actions /votes /delegations /spos /treasury-withdrawals; do
   check "$p offers JSON and CSV" \
     ".paths[\"$p\"].get.produces | (index(\"application/json;charset=utf-8\") != null) and (index(\"text/csv;charset=utf-8\") != null)"
 done
+
+echo "== the attestation read surface"
+# JSON ONLY on all seven, and that is a DECISION rather than an omission: every governance list
+# serves CSV, these do not. A claim->attest->verify flow pages and does not export, and the orphan
+# `ToNamedRecord`/`DefaultOrdered` instances CSV needs would be ~150 lines of header-order
+# boilerplate in `Query/Csv.hs`. Pinned so that adding CSV later is a reviewed diff here too.
+for p in /profiles /profiles/{profile-id} /profiles/by-credential/{credential} \
+  /profiles/{profile-id}/attestations /attestations /attestations/{attestation-id} /disputes; do
+  check "$p serves JSON only" \
+    ".paths[\"$p\"].get.produces == [\"application/json;charset=utf-8\"]"
+done
+
+# `credential_is_script` is the field that makes the strict CIP-129 codec visible to a client. The
+# lookup refuses CIP-105 and bare hex because neither carries a header byte and `drep` is the HRP
+# for both kinds; this field is that byte READ BACK, never guessed. A client that cannot see it
+# would have to re-derive the key/script distinction from an id it was not given.
+check "AttestProfileRow publishes credential_is_script" \
+  '.definitions.AttestProfileRow.properties | has("credential_is_script")'
+check "the credential lookup takes a path parameter named credential" \
+  '[.paths["/profiles/by-credential/{credential}"].get.parameters[] | select(.in == "path") | .name] == ["credential"]'
+
+# The five attestation kinds, as wire spellings. Same check as ActivityEventType below and for the
+# same reason: a client switches on these, so a sixth kind added without a published enum entry is
+# a client that cannot handle it.
+check "AttestationType has all five kinds" '.definitions.AttestationType.enum | length == 5'
+check "AttestationType is the wire spelling" \
+  '.definitions.AttestationType.enum | index("milestone_delivered") != null'
 
 echo "== enums a client switches on"
 check "VoterRole is the wire spelling" \

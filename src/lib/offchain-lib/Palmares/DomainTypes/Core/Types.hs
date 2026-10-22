@@ -161,6 +161,18 @@ data AttestationType
 instance ToSchema AttestationType where
   declareNamedSchema _ = pure (NamedSchema (Just "AttestationType") (jsonEnumSchema (Proxy :: Proxy AttestationType)))
 
+-- | @kind@ on @GET \/attestations@ and @GET \/profiles@, as a repeatable query parameter.
+--
+-- Both read out of the type's own 'Data.Aeson.ToJSON' rather than from a second table, for the
+-- reason every other enum in this module does: the wire strings live in ONE place, so the documented
+-- @enum@ and the accepted values are the same list, and a sixth attestation kind becomes parseable
+-- and documented the moment it is constructible. 'ProfileType' above carries the identical pair.
+instance ToParamSchema AttestationType where
+  toParamSchema = jsonEnumParamSchema
+
+instance FromHttpApiData AttestationType where
+  parseQueryParam = parseJsonEnumParam "invalid_parameter"
+
 derivePersistFieldJSON "AttestationType"
 
 -- | Parse an 'AttestationType' from its wire spelling.

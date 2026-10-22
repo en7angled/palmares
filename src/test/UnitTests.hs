@@ -6,6 +6,7 @@ import GHC.Stack
 import Test.Tasty
 import UnitTests.Activity qualified as Activity
 import UnitTests.Anchor qualified as Anchor
+import UnitTests.AttestRead (attestReadTests)
 import UnitTests.Attestation (attestationTests)
 import UnitTests.ApiHardening (apiHardeningTests)
 import UnitTests.ChainSyncReplay (chainSyncReplayTests)
@@ -61,6 +62,7 @@ unitTests =
       Claim.tests,
       Satisfaction.tests,
       MintInputs.tests,
+      attestReadTests,
       Dispute.tests,
       Fees.tests,
       OracleRules.tests,

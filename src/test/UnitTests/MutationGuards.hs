@@ -30,12 +30,19 @@
 -- assertion and the check. The emulator groups remain the authority on whether an honest client can
 -- build the transaction at all.
 --
--- __What is NOT here.__ One case per conjunct and no more: @A3@, @P6@, @Mp2@-@Mp6@, @Md*@ and the
--- Disputes Validator are out of scope. Nothing here replaces @UnitTests.ScriptSize@ either — a
--- deletion that this module catches should also move the recorded script size, and the two
--- assertions disagreeing is information.
+-- __What is NOT here.__ One case per conjunct and no more: @A3@, @P6@, @Mp2@-@Mp6@ and the rest of
+-- @Md*@ are out of scope. Nothing here replaces @UnitTests.ScriptSize@ either — a deletion that this
+-- module catches should also move the recorded script size, and the two assertions disagreeing is
+-- information.
+--
+-- __What the later waves added, and the one sentence that changed.__ The header above said the
+-- Disputes Validator was out of scope; 'd6Tests' now reaches into it, because @D6@ is the one
+-- Disputes conjunct whose statement is about the shape of the INPUT LIST and so the one a hand-built
+-- context can make while every other conjunct still passes. The groups below close @Mp1@, @Mh@ and
+-- @Md1@ (the seed check on all three mint paths), @K1@ (the oracle read itself) and @D6@.
 module UnitTests.MutationGuards (tests) where
 
+import Control.Exception (SomeException, evaluate, try)
 import Data.ByteString qualified as BS
 import Data.Word (Word8)
 import Palmares.Onchain.CIP68
@@ -49,18 +56,25 @@ import Palmares.Onchain.CIP68
 import Palmares.Onchain.Protocol.Types
   ( AttestationKind (MilestoneDelivered),
     OnchainAttestation (..),
+    OnchainDispute (..),
     OnchainProfile (..),
     OnchainProfileKind (Community),
     OracleParams (..),
     ProtocolParams (..),
+    Verdict (VerdictUpheld),
+    resolveDispute,
   )
 import Palmares.Onchain.Utils (nameFromTxOutRef)
 import Palmares.Onchain.Validators.AttestationsValidator
   ( AttestationsRedeemer (AcceptAttestation),
     attestationsLambda,
   )
+import Palmares.Onchain.Validators.DisputesValidator
+  ( DisputesRedeemer (ResolveDispute),
+    disputesLambda,
+  )
 import Palmares.Onchain.Validators.MintingPolicy
-  ( MintingRedeemer (MintProfile),
+  ( MintingRedeemer (MintProfile, NewAttestation, OpenDispute),
     mintingPolicyLambda,
   )
 import Palmares.Onchain.Validators.ProfilesValidator
@@ -100,7 +114,10 @@ tests =
     "mutation guards"
     [ m0Tests,
       a1Tests,
-      p3Tests
+      p3Tests,
+      seedTests,
+      k1Tests,
+      d6Tests
     ]
 
 -------------------------------------------------------------------------------
@@ -533,3 +550,421 @@ b28 w = toBuiltin (BS.replicate 28 w)
 
 b32 :: Word8 -> BuiltinByteString
 b32 w = toBuiltin (BS.replicate 32 w)
+
+-------------------------------------------------------------------------------
+
+-- * Mp1, Mh, Md1 — the seed every id is derived from must actually be spent
+
+-------------------------------------------------------------------------------
+
+-- | The same conjunct in all three mint handlers:
+-- @traceIfFalse _ (Utils.inputsSpendTxOutRef seedTxOutRef txInfoInputs)@ — @Mp1@ in
+-- @handleMintProfile@, @Mh@ in @handleNewAttestation@, @Md1@ in @handleOpenDispute@.
+--
+-- __What it guards, which is not \"uniqueness\" in the abstract.__ Every id here is
+-- @generateRefAndUserTN (nameFromTxOutRef seed)@ — a hash of a 'TxOutRef' the REDEEMER names, which
+-- is attacker data. Requiring the transaction to spend that ref borrows the ledger's own
+-- no-double-spend rule: a 'TxOutRef' is consumable exactly once in the chain's history, so the name
+-- derived from it is mintable exactly once. Delete the conjunct and the seed is a nonce the minter
+-- picks freely, so the same name is re-derivable at will — and because nothing in this protocol
+-- burns, nothing then bounds how many UTxOs carry one id.
+--
+-- __And the mint checks do not cover it__, which is the reason these three cases are not redundant
+-- with @Mp2@/@Mj@/@Md2@: those compare the minted value against the name derived from the seed, so
+-- they are satisfied by construction whatever seed is claimed. They say the mint matches the claim;
+-- only the seed check says the claim was available to make.
+--
+-- __Why re-pointing the input is the one field that moves.__ The derived token names, the expected
+-- datum and the expected output value all come from the redeemer's seed, which 'withInputRefs'
+-- leaves alone — it rewrites only the input's 'TxOutRef' and keeps the resolved 'TxOut'. On all
+-- three paths the seed check is the sole reader of an input's ref; every other conjunct reads values
+-- (@Mf@, @Md3@), the mint, the outputs, the validity range or an input's ADDRESS (@Md8@), and all of
+-- those survive the rewrite untouched.
+seedTests :: TestTree
+seedTests =
+  testGroup
+    "Mp1/Mh/Md1: an id is unique only because its seed was spent"
+    [ testCase "Test Case 8.6: a profile mint must spend the seed its redeemer names (Mp1)" $
+        ( mintingPolicyLambda params (mintProfileCtx False),
+          mintingPolicyLambda params (withInputRefs notTheSeedRef (mintProfileCtx False))
+        )
+          @?= (True, False),
+      testCase "Test Case 8.7: an attestation issue must spend the seed its redeemer names (Mh)" $
+        ( mintingPolicyLambda params issueAttestationCtx,
+          mintingPolicyLambda params (withInputRefs notTheSeedRef issueAttestationCtx)
+        )
+          @?= (True, False),
+      testCase "Test Case 8.8: a dispute opening must spend the seed its redeemer names (Md1)" $
+        ( mintingPolicyLambda params openDisputeCtx,
+          mintingPolicyLambda params (withInputRefs notTheSeedRef openDisputeCtx)
+        )
+          @?= (True, False)
+    ]
+
+-- | Re-point every input of a context at one 'TxOutRef', leaving the resolved 'TxOut's alone.
+--
+-- Each context below has exactly one input, so this is \"spend a different UTxO of the same shape\":
+-- the transaction still spends the same lovelace, the same tokens, from the same address, and only
+-- the identity of the UTxO consumed changes. That is the smallest edit that can break a seed check
+-- and it cannot reach any other conjunct.
+withInputRefs :: TxOutRef -> ScriptContext -> ScriptContext
+withInputRefs ref ctx =
+  ctx {scriptContextTxInfo = info {txInfoInputs = [TxInInfo ref out | TxInInfo _ out <- txInfoInputs info]}}
+  where
+    info = scriptContextTxInfo ctx
+
+-- | A UTxO that is not the seed of anything. One constant serves all three cases, because what each
+-- broken half needs is only that the input's ref differ from the one its redeemer names.
+notTheSeedRef :: TxOutRef
+notTheSeedRef = TxOutRef (TxId (b32 0xdd)) 0
+
+-- | A narrow finite validity window, and every dated context below must override 'mkTxInfo' with it.
+--
+-- 'Palmares.Onchain.Utils.checkDateInRange' matches only on two 'V1.Finite' bounds and then bounds
+-- the WIDTH, so 'always' — which is what 'mkTxInfo' fills in, correctly, for the three undated
+-- lambdas this module started with — fails @Ml@ and @Md6@ outright. Without the override the
+-- positive control would be 'False' and neither @Mh@ nor @Md1@ would ever be reached.
+datedRange :: V1.POSIXTimeRange
+datedRange = V1.interval (POSIXTime 1_699_999_000_000) (POSIXTime 1_700_001_000_000)
+
+-- | The instant the dated contexts claim, inside 'datedRange'. The same instant 'attestation'
+-- carries, so the two halves of this module date their records alike.
+datedAt :: POSIXTime
+datedAt = POSIXTime 1_700_000_000_000
+
+-------------------------------------------------------------------------------
+
+-- | An attestation issue the policy accepts, used only as the subject of Test Case 8.7.
+--
+-- Its own fixtures rather than @A1@'s: 'attestationAC' is an attestation already on chain, and both
+-- its seed and its metadata live in @where@ bindings that a mint redeemer cannot name — and @Mk@
+-- compares the whole datum, so a redeemer that cannot reproduce the metadata cannot satisfy it.
+--
+-- One input does all three jobs the honest transaction gives it: it IS the seed (@Mh@), it holds the
+-- issuer's user NFT (@Mf@), and it pays the fee. The metadata is 'profileFields', the one
+-- 'MetadataFields' in this module already shown to satisfy @validateMetadataFields@ — Test Case 8.1
+-- passes @Mp4@, which is the same function @Mm@ calls — so @Mm@ cannot be what refuses these
+-- contexts; @otherMetadata@ is empty, which is what @Mn@ accepts. @Mg@ holds because both ids are
+-- 'V1.AssetClass'es of 'protocolCS' with the CIP-67 reference prefix 'generateRefAndUserTN' puts
+-- there.
+issueAttestationCtx :: ScriptContext
+issueAttestationCtx =
+  ScriptContext
+    (mkTxInfo [seedInput] [oracleRefInput False] [issuedOut] issueMint) {txInfoValidRange = datedRange}
+    (Redeemer (toBuiltinData redeemer))
+    (MintingScript protocolCS)
+  where
+    redeemer =
+      NewAttestation issueSeedRef profileFields [] profileRefAC issuerRefAC MilestoneDelivered datedAt Nothing 0
+    seedInput =
+      TxInInfo issueSeedRef (plainOut walletAddr (V1.assetClassValue issuerUserAC 1 <> lv 10_000_000))
+    issuedOut =
+      inlineOut attestationsAddr (V1.assetClassValue issuedAC 1 <> lv minLovelace) (toBuiltinData issuedDatum)
+
+issueSeedRef :: TxOutRef
+issueSeedRef = TxOutRef (TxId (b32 0xb3)) 0
+
+issuedRefTN :: V1.TokenName
+issuedRefTN = fst (generateRefAndUserTN (nameFromTxOutRef issueSeedRef))
+
+issuedAC :: V1.AssetClass
+issuedAC = V1.AssetClass (protocolCS, issuedRefTN)
+
+-- | @Mf@'s token: the user half of the issuer's id, derived the way the handler derives it.
+issuerUserAC :: V1.AssetClass
+issuerUserAC = deriveUserFromRefAC issuerRefAC
+
+-- | The datum @Mk@ requires at the index the redeemer names, built from the redeemer's own arguments
+-- with the protocol's own 'mkCIP68Datum' so the fixture cannot disagree with @handleNewAttestation@.
+issuedDatum :: CIP68Datum OnchainAttestation
+issuedDatum = mkCIP68Datum issued profileFields []
+  where
+    issued =
+      OnchainAttestation
+        { attestationId = issuedAC,
+          attestationIssuer = issuerRefAC,
+          attestationSubject = profileRefAC,
+          attestationKind = MilestoneDelivered,
+          attestationDate = datedAt,
+          attestationPeriod = Nothing,
+          attestationIsAccepted = False
+        }
+
+-- | @Mj@: just the attestation's ref NFT, and no user token — the attestation path mints one token.
+issueMint :: MintValue
+issueMint = UnsafeMintValue (AssocMap.singleton protocolCS (AssocMap.singleton issuedRefTN 1))
+
+-------------------------------------------------------------------------------
+
+-- | A dispute opening the policy accepts, used as the subject of Test Case 8.8 and as the dispute
+-- Test Case 8.10 then resolves — the same object seen at both ends of its life, so the two sections
+-- cannot drift apart about what a dispute's datum and value are.
+--
+-- The one input again carries everything: it IS the seed (@Md1@), it holds the opener's user NFT
+-- (@Md3@), and it sits at 'walletAddr', which is the address the redeemer names as @depositTo@ and
+-- so what satisfies @Md8@. 'attestationAC' is the target and 'profileRefAC' the opener, both
+-- reference-prefixed tokens of 'protocolCS' as @Md4@ requires of each. The date is 'datedAt' in both
+-- the redeemer and the expected datum, which is what keeps @Md5@ satisfied while @Md6@ passes.
+openDisputeCtx :: ScriptContext
+openDisputeCtx =
+  ScriptContext
+    (mkTxInfo [seedInput] [oracleRefInput False] [openedOut] openMint) {txInfoValidRange = datedRange}
+    (Redeemer (toBuiltinData redeemer))
+    (MintingScript protocolCS)
+  where
+    redeemer = OpenDispute openSeedRef attestationAC profileRefAC walletAddr profileFields datedAt 0
+    seedInput =
+      TxInInfo openSeedRef (plainOut walletAddr (V1.assetClassValue profileUserAC 1 <> lv 10_000_000))
+    openedOut = inlineOut disputesAddr (disputeValueOf openedAC) (toBuiltinData openedDatum)
+
+openSeedRef :: TxOutRef
+openSeedRef = TxOutRef (TxId (b32 0xd0)) 0
+
+openedRefTN :: V1.TokenName
+openedRefTN = fst (generateRefAndUserTN (nameFromTxOutRef openSeedRef))
+
+openedAC :: V1.AssetClass
+openedAC = V1.AssetClass (protocolCS, openedRefTN)
+
+-- | The dispute @handleOpenDispute@ writes: no verdict yet, the deposit it actually paid recorded in
+-- its own datum, and the oracle token it will be read through recorded beside it.
+openedDispute :: OnchainDispute
+openedDispute =
+  OnchainDispute
+    { disputeId = openedAC,
+      disputeTarget = attestationAC,
+      disputeOpenedBy = profileRefAC,
+      disputeOpenedAt = datedAt,
+      disputeDeposit = depositLovelace,
+      disputeDepositTo = walletAddr,
+      disputeOracleToken = oracleAC,
+      disputeVerdict = Nothing
+    }
+
+openedDatum :: CIP68Datum OnchainDispute
+openedDatum = mkCIP68Datum openedDispute profileFields []
+
+-- | @Md2@: just the dispute's ref NFT. No user token, because there is nothing a dispute's holder
+-- may do — resolution is the oracle admin's.
+openMint :: MintValue
+openMint = UnsafeMintValue (AssocMap.singleton protocolCS (AssocMap.singleton openedRefTN 1))
+
+-------------------------------------------------------------------------------
+
+-- * K1 — the oracle read every gated path begins with
+
+-------------------------------------------------------------------------------
+
+-- | @K1@: the three @traceError \"K1\"@ arms of
+-- 'Palmares.Onchain.Protocol.Lookup.readOracleParams', reached here by the UTxO-not-found one — no
+-- reference input carries the oracle token at all. The other two (a datum that is not inline, and one
+-- that does not decode) need an oracle-shaped UTxO to be present and malformed, which is a different
+-- fixture and the same assertion.
+--
+-- __Why this case is an exception and not a 'False'.__ @PlutusTx.Prelude.traceError@ is
+-- @error (trace str ())@, and @PlutusTx.Builtins.Internal.error@ is GHC's @error@, so in plain GHC a
+-- traced failure throws. A case asserting 'False' here would never see a 'False': it would die on
+-- the exception and report an error rather than a failure, which is a worse diagnostic for the same
+-- bug. So the pair is @(Just True, Nothing)@ on the same shape as every other case in this module.
+--
+-- __This case cannot assert the CODE, only the failure__, and that is a property of @error@ rather
+-- than a weakness of the fixture: @error@ ignores its argument, so @trace \"K1\"@ is never forced and
+-- the exception carries the generic @\"PlutusTx.Builtins.Internal.error\"@. It does not need to here.
+-- With no reference inputs there is exactly one failure the context can reach: @M1@ needs a
+-- non-'MintingScript' purpose, @U0@-@U3@ are not on this path, and the oracle read happens before
+-- any conjunct — @minLv@ is a bang pattern over it. So a throw from THIS context is @K1@ and nothing
+-- else.
+--
+-- __What deletion means for an arm that cannot be deleted.__ A @traceError@ arm of a @case@ cannot be
+-- removed and leave compiling code; the realistic mutation is replacing it with a benign default — an
+-- unpaused, unpriced 'OracleParams' — and that is exactly what this case catches, because the broken
+-- half would then become @Just True@ and the mint would validate with no oracle in the transaction.
+k1Tests :: TestTree
+k1Tests =
+  testGroup
+    "K1: a transaction that does not show the oracle validates nothing"
+    [ testCase "Test Case 8.9: a mint carrying no oracle reference input cannot be validated (K1)" $ do
+        valid <- runMint (mintProfileCtx False)
+        broken <- runMint noOracleMintCtx
+        (valid, broken) @?= (Just True, Nothing)
+    ]
+
+-- | Run the minting policy, reporting 'Nothing' for a context it could not evaluate at all.
+runMint :: ScriptContext -> IO (Maybe Bool)
+runMint ctx = either (const Nothing) Just <$> try @SomeException (evaluate (mintingPolicyLambda params ctx))
+
+-- | Test Case 8.1's accepted mint with the oracle reference input taken away and nothing else moved.
+noOracleMintCtx :: ScriptContext
+noOracleMintCtx = ctx {scriptContextTxInfo = (scriptContextTxInfo ctx) {txInfoReferenceInputs = []}}
+  where
+    ctx = mintProfileCtx False
+
+-------------------------------------------------------------------------------
+
+-- * D6 — one dispute resolved per transaction
+
+-------------------------------------------------------------------------------
+
+-- | @D6@: @traceIfFalse \"D6\" (Utils.spentExactlyOnceFromAddress ownAddress txInfoInputs)@ in
+-- 'disputesLambda' — the conjunct that makes @D4@'s @any@ sound rather than exploitable.
+--
+-- __The attack, built here rather than described.__ Two open disputes naming the same payout address
+-- is the ordinary case — one person contesting two attestations — and resolving both in ONE
+-- transaction runs the validator twice against the SAME output list. One returned deposit then
+-- satisfies @D4@ for both instances, and the second deposit leaves the script into the transaction's
+-- change. @D1@ requires the oracle admin's signature, so the transaction was built by the admin and
+-- the change is theirs: one output, two obligations discharged, one deposit stolen.
+--
+-- __What these two cases add over what already exists.__ @UnitTests.Satisfaction@ pins
+-- 'Palmares.Onchain.Utils.spentExactlyOnceFromAddress' as a pure function of an input list, and
+-- @UnitTests.Dispute@'s Test Case 6.10 drives the real attack through the emulator with
+-- @mustFailWith (failedWithTrace \"D6\")@ — which does pin the code, since deleting @D6@ would let
+-- that transaction succeed. Neither can say what these two say: that in the attack transaction every
+-- OTHER conjunct passes, for BOTH instances. 6.10 observes one failure somewhere in a transaction;
+-- these name the instance, the index it returned at, and the single deposit output that both
+-- instances read.
+--
+-- __Why both instances and not just one.__ Running only the first proves the batch is refused;
+-- running the second is what proves the batch was an attack rather than a malformed transaction,
+-- because the second instance's @D2@ is satisfied at its own output index and its @D4@ is satisfied
+-- by an output it did not pay for. 'batchedInputs' and 'batchedOutputs' are shared by both contexts,
+-- so the two cases are provably the same transaction seen from its two script instances.
+--
+-- The honest halves are the cost @D6@ charges, and it is real: resolutions cannot be batched at all,
+-- not even honestly with both deposits returned. 'Palmares.Onchain.Utils.spentExactlyOnceFromAddress'
+-- argues that trade; these cases only pin which side of it the validator is on.
+d6Tests :: TestTree
+d6Tests =
+  testGroup
+    "D6: one dispute per transaction, which is what makes D4's `any` sound"
+    [ testCase "Test Case 8.10: a second dispute input makes the batched resolution refusable (D6)" $
+        (disputesLambda resolveAAlone, disputesLambda batchedA) @?= (True, False),
+      testCase "Test Case 8.11: the second dispute's own D4 is discharged by the SAME deposit (D6)" $
+        (disputesLambda resolveBAlone, disputesLambda batchedB) @?= (True, False)
+    ]
+
+-- | The honest resolution of the dispute Test Case 8.8 opened: one dispute input, one deposit back.
+resolveAAlone :: ScriptContext
+resolveAAlone =
+  resolveCtx
+    disputeAOwnRef
+    openedDatum
+    0
+    [disputeInputAt disputeAOwnRef openedDatum]
+    [resolvedOutputFor openedDatum, returnedDeposit]
+
+-- | The honest resolution of the second dispute, which is the positive control Test Case 8.11 needs:
+-- without it, that case's 'False' could be the fixture rather than @D6@.
+resolveBAlone :: ScriptContext
+resolveBAlone =
+  resolveCtx
+    disputeBOwnRef
+    disputeBDatum
+    0
+    [disputeInputAt disputeBOwnRef disputeBDatum]
+    [resolvedOutputFor disputeBDatum, returnedDeposit]
+
+-- | Both disputes spent, both returned resolved at their own index — and ONE deposit output between
+-- them, which is the whole of the attack.
+batchedInputs :: [TxInInfo]
+batchedInputs = [disputeInputAt disputeAOwnRef openedDatum, disputeInputAt disputeBOwnRef disputeBDatum]
+
+batchedOutputs :: [TxOut]
+batchedOutputs = [resolvedOutputFor openedDatum, resolvedOutputFor disputeBDatum, returnedDeposit]
+
+-- | The attack as the first dispute's instance sees it: its own return is output 0.
+batchedA :: ScriptContext
+batchedA = resolveCtx disputeAOwnRef openedDatum 0 batchedInputs batchedOutputs
+
+-- | The attack as the second dispute's instance sees it: its own return is output 1, and the deposit
+-- output it reads for @D4@ is the one the first instance already read.
+batchedB :: ScriptContext
+batchedB = resolveCtx disputeBOwnRef disputeBDatum 1 batchedInputs batchedOutputs
+
+-- | A resolution, parameterised by the input being spent, its datum, the output index the redeemer
+-- names, and the transaction's inputs and outputs.
+--
+-- Everything else is fixed and valid: the unpaused oracle as a reference input, found through the
+-- token the dispute's own datum records, so @D7@ passes; the admin's signature, so @D1@ passes; and
+-- 'VerdictUpheld' throughout, because @D4@ returns the deposit on either verdict and the choice
+-- cannot be what refuses anything here. The validity range stays the 'always' that 'mkTxInfo' fills
+-- in, on purpose: nothing on the resolve path is a date check, so this section needs no 'datedRange'.
+resolveCtx :: TxOutRef -> CIP68Datum OnchainDispute -> Integer -> [TxInInfo] -> [TxOut] -> ScriptContext
+resolveCtx ownRef ownDatum outputIdx ins outs =
+  ScriptContext
+    (mkTxInfo ins [oracleRefInput False] outs emptyMintValue) {txInfoSignatories = [adminPkh]}
+    (Redeemer (toBuiltinData (ResolveDispute VerdictUpheld outputIdx)))
+    (SpendingScript ownRef (Just (Datum (toBuiltinData ownDatum))))
+
+-- | The second dispute, differing from the first in its ID ALONE — and that is as different as
+-- resolution can see. The @ResolveDispute@ arm reads 'disputeId', 'disputeDeposit',
+-- 'disputeDepositTo', 'disputeOracleToken' and 'disputeVerdict' and nothing else; 'disputeTarget' is
+-- the attestation contested, which lives at another address and which this validator never touches.
+-- Sharing 'disputeDepositTo' is not a shortcut, it IS the attack's precondition: the same disputer
+-- contesting two attestations is what makes one output satisfy both @D4@s.
+disputeB :: OnchainDispute
+disputeB = openedDispute {disputeId = disputeBAC}
+
+disputeBAC :: V1.AssetClass
+disputeBAC = V1.AssetClass (protocolCS, fst (generateRefAndUserTN (nameFromTxOutRef disputeBSeedRef)))
+
+disputeBSeedRef :: TxOutRef
+disputeBSeedRef = TxOutRef (TxId (b32 0xd3)) 0
+
+disputeBDatum :: CIP68Datum OnchainDispute
+disputeBDatum = openedDatum {extra = disputeB}
+
+-- | The two dispute UTxOs being spent. Distinct refs, because @D6@ counts inputs at an address and
+-- 'Palmares.Onchain.Utils.unsafeFindOwnInputByTxOutRef' has to tell the two instances apart.
+disputeAOwnRef :: TxOutRef
+disputeAOwnRef = TxOutRef (TxId (b32 0xd2)) 0
+
+disputeBOwnRef :: TxOutRef
+disputeBOwnRef = TxOutRef (TxId (b32 0xd4)) 0
+
+-- | A dispute UTxO at the dispute address, holding what @Md5@ locked into it.
+disputeInputAt :: TxOutRef -> CIP68Datum OnchainDispute -> TxInInfo
+disputeInputAt ref d =
+  TxInInfo ref (inlineOut disputesAddr (disputeValueOf (disputeId (extra d))) (toBuiltinData d))
+
+-- | The dispute coming back resolved, which is @D2@'s first element.
+resolvedOutputFor :: CIP68Datum OnchainDispute -> TxOut
+resolvedOutputFor d =
+  inlineOut disputesAddr (resolvedValueOf (disputeId (extra d))) (toBuiltinData (resolvedDatumOf d))
+
+-- | The datum @D2@ computes, written with the protocol's own 'resolveDispute' so a change to it
+-- shows up here rather than being papered over.
+resolvedDatumOf :: CIP68Datum OnchainDispute -> CIP68Datum OnchainDispute
+resolvedDatumOf d = d {extra = resolveDispute VerdictUpheld (extra d)}
+
+-- | The ONE returned deposit. Paid to 'walletAddr', which is both disputes' 'disputeDepositTo' and —
+-- since 'adminPkh' is the key 'walletAddr' wraps — also the admin's own address, which is exactly
+-- the threat model: the builder of the transaction keeps what the second dispute did not get back.
+returnedDeposit :: TxOut
+returnedDeposit = plainOut walletAddr (lv depositLovelace)
+
+-- | What a dispute UTxO holds: its NFT, its min-UTxO and its deposit, the deposit being part of the
+-- locked value rather than a payment to anyone.
+disputeValueOf :: V1.AssetClass -> Value
+disputeValueOf ac = V1.assetClassValue ac 1 <> lv (minLovelace + depositLovelace)
+
+-- | What @D2@ requires back at the script: the NFT and the min-UTxO, the deposit having left. Stated
+-- as an amount rather than as @disputeValueOf ac - lv depositLovelace@, so the test asserts a number
+-- instead of agreeing with the validator's arithmetic by construction.
+resolvedValueOf :: V1.AssetClass -> Value
+resolvedValueOf ac = V1.assetClassValue ac 1 <> lv minLovelace
+
+-- | Read off 'oracleParamsWith' rather than restated, so a reprice of the fixture cannot leave the
+-- dispute datums claiming a deposit the oracle no longer names.
+depositLovelace :: Integer
+depositLovelace = opDisputeDeposit (oracleParamsWith False)
+
+-- | Likewise the admin @D1@ asks to sign: the key 'oracleParamsWith' names, not a copy of it.
+adminPkh :: PubKeyHash
+adminPkh = opAdminPkh (oracleParamsWith False)
+
+-- | Built with the ledger's own derivation, which is also what the minting policy and the Disputes
+-- Validator call, so the expected address in @Md5@ and in @D2@ cannot drift from the one these
+-- fixtures build.
+disputesAddr :: Address
+disputesAddr = V1.scriptHashAddress disputesSH

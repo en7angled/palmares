@@ -36,9 +36,22 @@ jobs:
           # The GHCR namespace is `images.yml`'s `GHCR_OWNER` — spelled out here because this is the
           # one reference outside it, and plumbing a workflow-level env through a step env for a single
           # string buys nothing. There is NO `docker login` in this job on purpose: it pulls, and a
-          # public package needs no credential. A package's FIRST push lands private, so after the
-          # first `images.yml` run the four packages have to be switched to public once, or this job
-          # fails on `pull access denied` rather than on a real divergence.
+          # public package needs no credential.
+          #
+          # This used to say the four packages had to be switched to public by hand after the first
+          # `images.yml` run, because a package's first push lands private. That is what GitHub's
+          # own documentation says, and it was wrong for THIS repository: measured on run
+          # 39697594482, `docker pull ghcr.io/mariusgeorgescu/palmares-admin:latest` succeeded with
+          # no `docker login` in the job, and an anonymous registry token resolves `latest` for all
+          # four services. The documented default describes a package pushed with a PAT from a
+          # workstation, which is not linked to a repository and therefore inherits nothing. A
+          # package published BY A WORKFLOW with `GITHUB_TOKEN` is linked to the repository it ran
+          # in and comes out with that repository's visibility — so the move out of the `en7angled`
+          # organisation into a personal namespace with a public repo is what removed the manual
+          # step, as a side effect of a decision taken for other reasons.
+          #
+          # Worth keeping in mind rather than relying on: if this ever regresses to `pull access
+          # denied`, the fix is one visibility flip in the package settings UI, not a credential.
           PALMARES_ADMIN_CMD: >-
             docker run --rm -e PALMARES_API -e KOIOS_API -e KOIOS_API_TOKEN
             -v ${{ github.workspace }}:/w -w /w

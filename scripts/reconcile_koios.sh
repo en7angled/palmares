@@ -18,6 +18,11 @@ set -euo pipefail
 export KOIOS_API
 
 mkdir -p out
+# Deleted FIRST, so the `-f` guard below means "this run wrote a report" and not "a report exists".
+# The exe writes it last, and exits 2 or 3 before reaching that line — so without this, an aborted
+# run prints the previous run's table under this run's verdict. Measured locally: a run that failed
+# to connect printed a table from the day before.
+rm -f out/divergences.json
 rc=0
 ${PALMARES_ADMIN_CMD} reconcile-koios --out out/divergences.json "$@" || rc=$?
 

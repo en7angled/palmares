@@ -47,7 +47,8 @@ import Data.Text qualified as T
 import Data.Time (getCurrentTime)
 import Data.Vector qualified as V
 import Network.HTTP.Client
-  ( Manager,
+  ( HttpException (..),
+    Manager,
     Request (..),
     RequestBody (RequestBodyLBS),
     Response (..),
@@ -119,12 +120,32 @@ data Side = Side
     sideToken :: Maybe String
   }
 
+-- | Why an 'HttpException' happened, without the 'Request' it carries.
+--
+-- @show@ on an 'HttpExceptionRequest' renders the whole request record — every header, the body
+-- settings, the proxy settings — and the part that says what went wrong is the content. The
+-- caller prefixes the URL, which is the only field of that record anybody reads.
+httpWhy :: HttpException -> String
+httpWhy (HttpExceptionRequest _ content) = show content
+httpWhy (InvalidUrlException url why) = url <> ": " <> why
+
 -- | GET one path, as a 'Value'.
 --
 -- __@Retry-After@ is honoured and a 429 or 5xx is retried three times__, because the alternative
 -- is a nightly that aborts whenever Koios is briefly busy — and an abort that is really a rate
 -- limit teaches a reader to ignore aborts. A 4xx that is not 429 is NOT retried: it will say the
 -- same thing again.
+--
+-- __The handler catches 'HttpException' and the first version caught 'IOError'__, which is the one
+-- exception @httpLbs@ never throws. Everything that fails before a response exists — DNS, a
+-- refused connection, a timeout, a rejected certificate — is an 'HttpException', so the handler
+-- named \"the only path to exit 2\" caught every transport failure except a failing transport.
+-- Measured, on reconcile run 39697594482: the nightly hit @NameMismatch \"gov.cardano.vip\"@ on
+-- our own @\/status@, the exception escaped both this @try@ and the one in 'runReconcileKoios',
+-- the process died with GHC's uncaught-exception code 1, and the wrapper read that 1 as
+-- @UNEXPLAINED DIVERGENCES@ — pointing at a report file the run had died before writing. An
+-- unreachable deployment reported itself as a parity finding, which is the exact confusion the
+-- four exit codes exist to prevent.
 getValue :: Side -> String -> IO Value
 getValue side path = go (3 :: Int)
   where
@@ -133,7 +154,7 @@ getValue side path = go (3 :: Int)
       req0 <- parseRequest (sideBase side <> path)
       r <- try (httpLbs req0 {requestHeaders = authHeader side} (sideManager side))
       case r of
-        Left (e :: IOError) -> retryOr attemptsLeft (show e)
+        Left (e :: HttpException) -> retryOr attemptsLeft (sideBase side <> path <> ": " <> httpWhy e)
         Right resp -> do
           let code = statusCode (responseStatus resp)
           if code == 200
@@ -169,7 +190,7 @@ postValue side path body = do
           }
   r <- try (httpLbs req (sideManager side))
   case r of
-    Left (e :: IOError) -> throwIO (TransportError (sideBase side <> path <> ": " <> show e))
+    Left (e :: HttpException) -> throwIO (TransportError (sideBase side <> path <> ": " <> httpWhy e))
     Right resp
       | statusCode (responseStatus resp) == 200 ->
           decodeBody (sideBase side <> path) (responseBody resp)

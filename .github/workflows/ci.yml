@@ -127,6 +127,26 @@ jobs:
           cabal run -v0 exe:admin -- write-metrics-doc
           git diff --exit-code docs/metrics.md
 
+      # `reconcile-koios` promises four exit codes and the nightly's whole value is that 2 ("nobody
+      # answered") and 1 ("the two answers differ") are different events. That promise was broken for
+      # as long as it existed: the fetch caught `IOError`, which `httpLbs` never throws, so a refused
+      # connection escaped to the top and GHC's uncaught-exception code 1 read as a parity finding.
+      # Reconcile run 39697594482 is the measurement.
+      #
+      # Port 1 is reserved and nothing listens on it, so this needs no service, no network and no
+      # deployment — it fails in milliseconds, which is the only reason a live exit-code assertion
+      # belongs in this job at all. The message is asserted too: `loadSample` failing would also
+      # exit 2, and a check that cannot tell those apart would pass with the fetch still broken.
+      - name: an unreachable API exits 2, not 1
+        run: |
+          set -uo pipefail
+          out=$(PALMARES_API=http://127.0.0.1:1/api cabal run -v0 exe:admin -- \
+                  reconcile-koios --out out/ci-exit-code.json 2>&1) && rc=0 || rc=$?
+          echo "$out"
+          [ "$rc" = 2 ] || { echo "expected exit 2, got $rc"; exit 1; }
+          grep -q '127.0.0.1:1/api/status' <<<"$out" \
+            || { echo "exit 2 for the wrong reason: the message does not name the fetch"; exit 1; }
+
 #           git diff --exit-code docs/metrics.md
 # in the existing `haskell` job (keep one blank line between the two steps).
 

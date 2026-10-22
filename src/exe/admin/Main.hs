@@ -784,13 +784,40 @@ operatorAddress = readMnemonicFile mnemonicFilePath >>= printOperatorAddress
 -- means the printed address cannot belong to a different chain than the deploy.
 printOperatorAddress :: GYExtendedPaymentSigningKey -> IO ()
 printOperatorAddress signKey = do
+  let pkh = extendedVerificationKeyHash (getExtendedVerificationKey signKey)
+  -- THE THIRD CONSUMER OF THE SAME KEY, and the reason it is printed rather than put behind a flag:
+  -- `scripts/smoke_attest_flow.sh` requires ATTEST_SMOKE_DREP_ID to be the DRep credential of the
+  -- key PALMARES_SIGN_CMD signs with, because claiming a key credential puts
+  -- `mustBeSignedBy <that key hash>` in the transaction (TxBuilding/Operations.hs
+  -- `claimProofSkeleton`). Nothing printed it, so the flow's configuration could only be assembled
+  -- by slicing the hash out of the address hex — deriving it with a second tool, which is the
+  -- mistake this function's network argument exists to prevent.
+  --
+  -- Rendered with `claimCredentialToText`, the SAME function the read path renders a claimed
+  -- credential with, so this id and the one `/profiles/by-credential/…` answers to are one
+  -- encoding rather than two.
+  --
+  -- PRINTED BEFORE THE CONFIG IS LOADED, because a CIP-129 credential carries no network byte and
+  -- this value does not depend on one. The Atlas config is this project's currently BLOCKED item,
+  -- and the DRep id is the one thing a reader needs from this command while blocked on it — so
+  -- printing it after the `die` below put it out of reach of exactly the people who needed it. The
+  -- order reads correctly on its own terms too: network-independent first, then the network, then
+  -- the two forms that depend on it.
+  --
+  -- WHAT THIS IS NOT: a claim that this DRep is registered on chain. It is the credential this key
+  -- controls, which is all the registry checks. A production wallet derives its DRep key at CIP-1852
+  -- role 3, so a real DRep's id will NOT equal its payment key hash — these coincide only because
+  -- the operator mnemonic yields one key and the smoke flow signs with that one.
+  printGreen
+    ( "Operator DRep id (CIP-129, for ATTEST_SMOKE_DREP_ID): "
+        <> T.unpack (claimCredentialToText (PubKeyCredential (paymentKeyHashToPlutus pkh)))
+    )
   atlasConfig <-
     maybe
       (die ("Atlas configuration not found — set ATLAS_CORE_CONFIG or create " <> Constants.defaultAtlasCoreConfig))
       return
       =<< decodeConfigEnvOrFile "ATLAS_CORE_CONFIG" Constants.defaultAtlasCoreConfig
   let nid = cfgNetworkId atlasConfig
-      pkh = extendedVerificationKeyHash (getExtendedVerificationKey signKey)
       addr = addressFromPaymentKeyHash nid pkh
   printYellow ("Network: " <> show nid)
   printGreen ("Operator address (bech32): " <> T.unpack (addressToText addr))
@@ -803,26 +830,6 @@ printOperatorAddress signKey = do
   -- are right. Printing only bech32 here would have handed the smoke script a value it cannot use.
   -- `Web.toUrlPiece` is the SAME instance the API parses with, so these two can never disagree.
   printGreen ("Operator address (raw hex, for API request fields): " <> T.unpack (Web.toUrlPiece addr))
-  -- THE THIRD CONSUMER OF THE SAME KEY, and the reason this is printed rather than put behind a
-  -- flag: `scripts/smoke_attest_flow.sh` requires ATTEST_SMOKE_DREP_ID to be the DRep credential of
-  -- the key PALMARES_SIGN_CMD signs with, because claiming a key credential puts
-  -- `mustBeSignedBy <that key hash>` in the transaction (TxBuilding/Operations.hs
-  -- `claimProofSkeleton`). Nothing printed it, so the flow's own configuration could only be
-  -- assembled by slicing the hash out of the address hex — deriving it with a different tool, which
-  -- is the mistake this function's network argument exists to prevent.
-  --
-  -- Rendered with `claimCredentialToText`, which is the SAME function the read path renders a
-  -- claimed credential with, so the id printed here and the id `/profiles/by-credential/…` answers
-  -- to are one encoding and not two.
-  --
-  -- WHAT THIS IS NOT: a claim that this DRep is registered on chain. It is the credential this key
-  -- controls, which is all the registry checks. A production wallet derives its DRep key at CIP-1852
-  -- role 3, so a real DRep's id will NOT equal its payment key hash — this coincides only because the
-  -- operator mnemonic yields a single key and the smoke flow signs with that one key.
-  printGreen
-    ( "Operator DRep id (CIP-129, for ATTEST_SMOKE_DREP_ID): "
-        <> T.unpack (claimCredentialToText (PubKeyCredential (paymentKeyHashToPlutus pkh)))
-    )
 
 -- | Read an unsigned transaction's CBOR hex on stdin; write its witness set's hex on stdout.
 --

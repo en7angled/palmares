@@ -74,8 +74,13 @@ getStatusQuery = do
             StatusResponse
               { statusNetwork = net,
                 statusGovernance = syncStatusOf f (readyVerdict maxLag inputs == Nothing),
-                -- Taken from the SAME 'ReadyInputs' the verdict above is computed from, so a
-                -- @503 IndexerBehind@ and the number that explains it cannot come from two polls.
+                -- The same 'ReadyInputs' the verdict above is computed from, so a @503
+                -- IndexerBehind@ and the number a reader diagnoses it with cannot come from two
+                -- different polls. Published AS MEASURED — the projector's distance from db-sync's
+                -- cursor — while 'readyVerdict' tests that plus @governance.lag_seconds@, because
+                -- the ceiling bounds absolute staleness. So this field is an INPUT to the verdict
+                -- and not the quantity compared against the ceiling; both numbers are on this
+                -- response, and their sum is what the probe judged.
                 statusAttestLagSeconds = readyAttestLagSeconds inputs,
                 statusEpochParams = params
               }

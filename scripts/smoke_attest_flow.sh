@@ -207,13 +207,23 @@ step 1 "preflight — both services reachable, and honest about it"
 probe() { curl -fsS -H 'Accept: application/json' "$1$2" | jq -c "$3"; }
 
 # Checked here rather than left to the 400 at step 2, because step 2 is two minted profiles later.
-# `drep1y` is the bech32 of a CIP-129 header byte (0x22 key, 0x23 script — the first five bits are
-# the same, so this does not distinguish the two kinds and is not trying to). What it does catch is
-# the mistake the note above warns about: a CIP-105 id or a bare hex hash, neither of which carries
-# a header byte at all, and both of which `parseClaimCredential` refuses as CredentialMalformed.
+#
+# LENGTH is the discriminator, not the `drep1y` prefix. A prefix check was the first thing written
+# here and it is wrong about 1 id in 32: the header byte's top five bits are what bech32's first
+# character encodes, and they are `00100` for ANY first byte in 0x20..0x27 — so a CIP-105 id whose
+# hash happens to start in that range also renders as `drep1y`. The byte count cannot collide:
+# CIP-129 carries 29 bytes and bech32s to 58 characters, CIP-105 carries 28 and gives 56, and a bare
+# 28-byte hex hash is 56 characters too. Verified against all three vectors in UnitTests.WritePath.
+#
+# The prefix is still required, because 58 characters of anything else is not an id either. Neither
+# check distinguishes a key credential from a script one (0x22 and 0x23 share those five bits), and
+# neither needs to: `parseClaimCredential` reads the whole byte and the registry branches on it.
 case "$ATTEST_SMOKE_DREP_ID" in
-  drep1y*) ;;
-  *) die "ATTEST_SMOKE_DREP_ID=$ATTEST_SMOKE_DREP_ID is not a CIP-129 drep1y… id — \
+  drep1*) [ ${#ATTEST_SMOKE_DREP_ID} -eq 58 ] ||
+    die "ATTEST_SMOKE_DREP_ID is ${#ATTEST_SMOKE_DREP_ID} characters; a CIP-129 drep id is 58. \
+A 56-character value is CIP-105 or a bare hex hash — neither carries the header byte that says key \
+or script, so parseClaimCredential refuses it. Run '$PALMARES_ADMIN_CMD operator-address'" ;;
+  *) die "ATTEST_SMOKE_DREP_ID=$ATTEST_SMOKE_DREP_ID does not start with drep1 — \
 run '$PALMARES_ADMIN_CMD operator-address' and use the DRep id it prints" ;;
 esac
 
@@ -256,15 +266,25 @@ echo "  ok   /status: network=$(printf '%s' "$QSTATUS" | jq -r '.network') gover
 # never coming, and then reported a timeout — exit 2 for "could not be driven", which is correct but
 # arrives ten minutes late and does not say which indexer was at fault.
 #
-# `null` is fatal HERE and not elsewhere: it means there is no cursor row, so attest-sync has never
-# run against this database. That is a legitimate state for a governance-only deployment, which is
-# why /ready passes it, and an impossible one for this flow, which reads nothing but projections.
+# `null` is fatal HERE and not elsewhere, because it means "no evidence of a projector" and this
+# flow reads nothing but projections — while /ready passes it, correctly, since a governance-only
+# deployment runs no projector and is not broken.
+#
+# THE MESSAGE NAMES THREE CAUSES BECAUSE THERE ARE THREE. The first draft of this said "attest-sync
+# has never run", which is one of them and was asserted as the only one — and `attestCursorSlot`'s
+# own Haddock says it collapses two states on purpose, while the poll adds a third. Blaming
+# attest-sync for a missing GRANT sends whoever reads the nightly to the wrong service, and the
+# third cause clears by itself, so the message has to say "retry" rather than "it is dead".
 ATTEST_LAG=$(printf '%s' "$QSTATUS" | jq -r '.attest_lag_seconds')
 case "$ATTEST_LAG" in
   null | "")
-    die "the query API reports attest_lag_seconds=null — attest-sync has never run against this \
-database, so every projection this flow waits for would time out" ;;
-  *) echo "  ok   /status: attest-sync lag=${ATTEST_LAG}s (the projector every assertion below reads)" ;;
+    die "the query API reports attest_lag_seconds=null — no projector cursor is VISIBLE, which is \
+three things and not one: attest-sync has never run against this database; or query-api's role \
+cannot SELECT palmares_attest.chain_cursor, which reads as absence because information_schema.tables \
+shows only what the role may see (check sql/050_roles.sql ran AFTER attest-sync created the table); \
+or the first poll since boot raised, which clears on the next one — retry before blaming anything. \
+Either way this flow reads nothing but projections, so every wait below would time out" ;;
+  *) echo "  ok   /status: attest-sync trails db-sync's cursor by ${ATTEST_LAG}s (add governance lag for absolute staleness)" ;;
 esac
 
 # ---------------------------------------------------------------------------------------------

@@ -545,7 +545,7 @@ data StatusResponse = StatusResponse
     -- every question confidently and wrongly.
     statusNetwork :: Text,
     statusGovernance :: SyncStatus,
-    -- | How far behind the tip the ATTESTATION projector is, in seconds.
+    -- | How far the ATTESTATION projector trails __db-sync's last indexed block__, in seconds.
     --
     -- __A separate field and not a field of 'SyncStatus', because they are two indexers.__
     -- @governance@ is db-sync's own lag, read from @palmares.sync_state@; this is attest-sync's,
@@ -554,13 +554,30 @@ data StatusResponse = StatusResponse
     -- attestation it just wrote is simply absent. 'SyncStatus' is not reused because the projector
     -- publishes a cursor and nothing else: an epoch and a block time would have to be invented.
     --
-    -- Seconds from a slot difference, which is exact on this chain — one slot is one second in
-    -- every era this registry runs in — rather than a @slotToTime@ conversion the query API holds
-    -- no slot configuration for.
+    -- __NOT measured against the chain tip, and the difference is not academic.__ The reference is
+    -- @palmares.sync_state.slot_no@, which is @public.block@'s newest row — db-sync's own cursor.
+    -- The query API holds no slot configuration and no tip source, so that cursor is the newest
+    -- point it can name at all. __Absolute staleness is therefore this plus
+    -- @governance.lag_seconds@__, and both numbers are on this same response so a reader can add
+    -- them.
     --
-    -- @null@ is its own answer and not a zero: it means there is no @chain_cursor@ row to read,
-    -- so attest-sync has never run against this database. A deployment serving attestation reads
-    -- with @null@ here is answering from projections that nothing is maintaining.
+    -- @\/ready@ compares that SUM to its ceiling, not this field alone. Comparing this field alone
+    -- is what it did when the field was introduced, and it gave the projector an allowance of
+    -- @maxLag + dbSyncLag@: with db-sync 250 s behind inside a 300 s ceiling, a projector 500 s
+    -- behind the real tip published @250@ and stayed in rotation. So this field is an input to the
+    -- verdict rather than the quantity the verdict tests.
+    --
+    -- @0@ therefore means \"at or ahead of db-sync's cursor\", not \"perfectly current\": the
+    -- difference is clamped at zero, and attest-sync being AHEAD is the normal case rather than an
+    -- anomaly, because it follows a narrow Kupo match while db-sync indexes every block.
+    --
+    -- @null@ is \"no evidence\", which is three states and not one — the same three
+    -- 'Palmares.Storage.attestCursorSlot' deliberately collapses: no @chain_cursor@ row (attest-sync
+    -- has never run here), or the reading role cannot see the table (@information_schema.tables@
+    -- lists only what the current role holds a privilege on, so a missing @GRANT@ reads as absence),
+    -- or the very first poll raised and left the cache unwritten — that one clears on the next poll.
+    -- It is NOT \"behind\": a probe that failed on absence would take a governance-only deployment
+    -- permanently out of rotation. It is also not a zero, which would read as maximally healthy.
     statusAttestLagSeconds :: Maybe Int,
     statusEpochParams :: EpochParamsSummary
   }

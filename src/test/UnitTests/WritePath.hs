@@ -39,6 +39,8 @@ import GeniusYield.Types
     PlutusVersion (PlutusV3),
     keyHashToRawBytes,
     paymentKeyHashToPlutus,
+    pubKeyHashFromPlutus,
+    toPubKeyHash,
   )
 import Palmares.DomainTypes.Core.Actions (ClaimWitness (..), ProfileActionType)
 import Palmares.DomainTypes.Core.Ids (parseCredentialCip129)
@@ -136,26 +138,37 @@ writePathTests =
         (isScriptCredential <$> parseClaimCredential drepScriptBech32) @?= Right True,
       testCase "a CIP-129 key drep id parses to a key credential" $
         (isScriptCredential <$> parseClaimCredential drepKeyBech32) @?= Right False,
-      -- What @admin operator-address@ prints as ATTEST_SMOKE_DREP_ID, pinned at the only place it
-      -- can be: the library composition. A test suite cannot import an executable's modules, so
-      -- these three assertions pin `claimCredentialToText . PubKeyCredential .
-      -- paymentKeyHashToPlutus` and NOT the line in @admin/Main.hs@ that calls it — a change there
-      -- to `drepIdCip105`, say, would still be green here. What they do catch is the identity
-      -- breaking underneath that line, which is the half that is shared with the write path.
-      testCase "the operator key's DRep id parses back to the credential of that same key" $
-        parseClaimCredential operatorDrepId
-          @?= Right (PubKeyCredential (paymentKeyHashToPlutus operatorKeyHash)),
-      -- Not implied by the round-trip above: that one would still hold if the rendering hashed the
-      -- key a second time, as long as the parse undid it. The transaction requires
-      -- `mustBeSignedBy <the key hash>`, so the 28 bytes the id carries must be the key hash's OWN
-      -- bytes — otherwise the printed id names a credential nothing in the wallet can sign for.
+      -- What @admin operator-address@ prints as ATTEST_SMOKE_DREP_ID. A test suite cannot import an
+      -- executable's modules, so these pin the library composition and NOT the line in
+      -- @admin/Main.hs@ that calls it: a change there to `drepIdCip105` would still be green here.
+      --
+      -- A THIRD CASE STOOD HERE AND WAS DELETED, because it could not fail on its own:
+      -- @parseClaimCredential operatorDrepId == Right (PubKeyCredential (paymentKeyHashToPlutus
+      -- operatorKeyHash))@ has `paymentKeyHashToPlutus operatorKeyHash` on both sides — the
+      -- right-hand side IS how `operatorDrepId` is built — so it cancels and reduces to
+      -- @parseClaimCredential . claimCredentialToText == Right@ on one value. That is codec
+      -- self-consistency, which the golden-vector round-trip above already pins more strongly: a
+      -- self-consistent but WRONG codec passes the cancelled version and fails the golden one. A
+      -- fourth, @isScriptCredential … == Right False@, was deleted for being implied by the first
+      -- (a `Right (PubKeyCredential _)` is not a script by definition) and already pinned on a
+      -- vector above.
+      --
+      -- The 28 bytes the id carries must be the key hash's OWN bytes, because the transaction
+      -- requires `mustBeSignedBy <that hash>`. A round-trip cannot see this: it would still hold if
+      -- the rendering hashed the key a second time, as long as the parse undid it.
       testCase "the id carries the signing key's own 28 bytes, not a rehash of them" $
         (snd <$> parseCredentialCip129 operatorDrepId) @?= Just (keyHashToRawBytes operatorKeyHash),
-      -- The consequence, named: `checkCredentialControl`'s key arm is the one that applies, so a
-      -- signature proves control. Were this a script credential the claim would need a UTxO at the
-      -- script's own address, which an operator mnemonic cannot produce.
-      testCase "the operator's own credential is a key, so a signature is proof enough" $
-        (isScriptCredential <$> parseClaimCredential operatorDrepId) @?= Right False,
+      -- The loop closed along the PRODUCTION path, which is what the deleted case was reaching for
+      -- and missing. `claimProofSkeleton`'s key arm does `pubKeyHashFromPlutus'` on the parsed
+      -- credential and feeds the result to `mustBeSignedBy`; this runs that same conversion and
+      -- compares against the key the wallet actually holds. So: printed id -> what the API parses
+      -- -> what the builder requires a signature from -> the operator's own key.
+      testCase "the printed id resolves, by the builder's own conversion, to the key that signs" $
+        ( case parseClaimCredential operatorDrepId of
+            Right (PubKeyCredential pkh) -> either (const Nothing) Just (pubKeyHashFromPlutus pkh)
+            _ -> Nothing
+        )
+          @?= Just (toPubKeyHash operatorKeyHash),
       -- The judgement the write path makes that the read path does not: a CIP-105 id carries NO
       -- header byte, so it cannot say which kind of credential it names, and @drep@ is the HRP for
       -- both. Defaulting to the key arm would silently mis-claim every script DRep, so it is refused.

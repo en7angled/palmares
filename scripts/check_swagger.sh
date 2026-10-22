@@ -121,13 +121,20 @@ check "AttestationType is the wire spelling" \
 # the same conflation `scripts/smoke_attest_flow.sh` works around by polling for the projection.
 check "/status publishes the attestation projector's lag separately" \
   '.definitions.StatusResponse.properties | has("attest_lag_seconds")'
-# NOT required, because `null` is an answer rather than a gap: it means there is no `chain_cursor`
-# row, so attest-sync has never run against this database. Requiring the field would force a zero,
-# which reads as "perfectly current" — the exact opposite of what it means.
+# NOT required, because the service answers `null` when it has no evidence of a projector rather
+# than a zero, and a zero would read as "perfectly current".
+#
+# OPTIONAL IS NOT NULLABLE, and this check asserts only the first. In Swagger 2.0, absence from
+# `required` permits the key to be OMITTED; it does not sanction a `null` value, and expressing that
+# needs `x-nullable`. The generated document has no `x-nullable` anywhere — every `Maybe` field in
+# it has this same shape (`DRepSummary.given_name`, `active_until_epoch`) — so this is a
+# document-wide gap and not one this field introduced. Adding the key here alone would make the
+# document inconsistent with itself, so what pins the real wire contract is the encoder test in
+# `UnitTests.GovDto`: the key is always PRESENT, with value `null`.
 #
 # Asserted as the WHOLE required set rather than as `index(…) == null`, which would also pass if the
 # `required` array disappeared entirely: `null | index("x")` is null in jq, and null == null is true.
-check "attest_lag_seconds is optional, because null is its own answer" \
+check "attest_lag_seconds is not in required (optional; nullability is pinned by the encoder test)" \
   '.definitions.StatusResponse.required == ["network","governance","epoch_params"]'
 
 echo "== enums a client switches on"

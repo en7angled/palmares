@@ -339,14 +339,25 @@ data ReadyInputs = ReadyInputs
 --     index, and a service perfectly current on all of them can still be serving attestation
 --     routes off a projection that stopped advancing. @Nothing@ is NO EVIDENCE and passes, which is
 --     the one asymmetry here: a governance-only deployment runs no projector, and a probe that
---     failed on absence would take it out of rotation for doing nothing wrong.
+--     failed on absence would take it out of rotation for doing nothing wrong. This check reads the
+--     SUM of the two lags, because the projector's own number is measured against db-sync's cursor
+--     rather than the tip; see the guard itself.
 readyVerdict :: Int -> ReadyInputs -> Maybe ErrorCode
 readyVerdict maxLag ReadyInputs {..}
   | not readyDbOk = Just DbUnavailable
   | readyLagSeconds > maxLag = Just IndexerBehind
   | readyDrepDistrEpoch < readyEpochNo - 1 = Just IndexerBehind
   | readyNetworkName /= readyExpectedNetwork = Just NotReady
-  | Just lag <- readyAttestLagSeconds, lag > maxLag = Just IndexerBehind
+  -- SUMMED, because the two lags have different reference points. `readyLagSeconds` is seconds
+  -- between db-sync's newest block and now; `readyAttestLagSeconds` is the projector's distance
+  -- from THAT block, not from the tip (`startFreshnessPoll` passes `freshSlot f` as the reference,
+  -- and `palmares.sync_state.slot_no` is `public.block`'s newest row). Comparing the second to an
+  -- absolute ceiling made the projector's real allowance `maxLag + dbSyncLag`: db-sync 250 s behind
+  -- inside a 300 s ceiling let a projector 500 s behind the tip pass. The sum is the projector's
+  -- absolute staleness, which is what the ceiling is supposed to bound. Reaching this guard already
+  -- implies `readyLagSeconds <= maxLag`, so this is strictly stronger than the check it replaces
+  -- and can only ever turn a PASS into a 503 — never the reverse.
+  | Just lag <- readyAttestLagSeconds, readyLagSeconds + lag > maxLag = Just IndexerBehind
   | otherwise = Nothing
 
 -- | The lag at which @\/ready@ turns red: 300 s, about thirteen preprod blocks.

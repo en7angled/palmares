@@ -295,6 +295,21 @@ govDtoTests =
             ReadyInputs True 42 320 320 "preprod" "preprod" Nothing
           ]
           @?= [Nothing, Just IndexerBehind, Nothing],
+      -- THE CASE THE FIRST FORM OF THAT CHECK LET THROUGH, and the reason the guard now sums the
+      -- two lags. The projector's number is its distance from db-sync's CURSOR, not from the tip
+      -- (`startFreshnessPoll` passes `freshSlot f` as the reference), so comparing it alone to the
+      -- ceiling handed the projector an allowance of `maxLag + dbSyncLag`. Below, db-sync is 250 s
+      -- behind — inside the 300 s ceiling, so the governance check passes — and the projector is a
+      -- further 100 s behind that, which is 350 s of real staleness. Compared alone, 100 <= 300 and
+      -- the service stayed in rotation serving attestation reads nearly six minutes old.
+      --
+      -- The second element is the contrast that keeps this honest: same db-sync lag, projector 40 s
+      -- behind it, 290 s total, still ready. So this pins the boundary and not merely "it fails now".
+      testCase "a projector inside the ceiling but stale once db-sync's own lag is added is a 503" $
+        ( readyVerdict 300 (ReadyInputs True 250 320 320 "preprod" "preprod" (Just 100)),
+          readyVerdict 300 (ReadyInputs True 250 320 320 "preprod" "preprod" (Just 40))
+        )
+          @?= (Just IndexerBehind, Nothing),
       -- PALMARES_READY_MAX_LAG_SECONDS has to be able to change the verdict, or it is decorative.
       -- It governs the projector's ceiling too, which is deliberate: one knob, because an operator
       -- who widens the tolerance for a slow database means the whole read surface, not half of it.

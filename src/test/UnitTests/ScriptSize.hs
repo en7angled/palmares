@@ -162,11 +162,65 @@ measured =
 -- 55 bytes each, and both are the same shape of bug: a @geq@ whose direction nobody re-read. Worth
 -- the pattern: every size in this table that was NOT a feature was an inequality that permitted
 -- more than its sentence claimed.
+--
+-- __THE SIZE AUDIT OF 2026-10-22, with the five items DECLINED and why.__ Recorded here rather than
+-- left in a report, because a declined item that nobody wrote down gets re-proposed. The calibration
+-- the audit worked from is this table's own history: a recursion is ~45-50 bytes, a comparison
+-- ~10-20, and reaching the oracle ~450.
+--
+-- Applied: @validateOtherMetadata@ from six recursions to three (see 'validateOtherMetadata' for
+-- the argument, and @UnitTests.MintInputs@ lines 92-122 for the nine cases that already pinned it).
+-- Estimated at ~135 bytes from the calibration above. __MEASURED AT 20__, 12296 -> 12276, and the
+-- gap is the more useful result.
+--
+-- Part of it is that one of the four removed traversals never left: @elem@ is still compiled into
+-- this policy through 'Palmares.Onchain.Utils.checkCredentialControl', which is @INLINEABLE@ and
+-- reached from the claim path, and @any@ with it. Worth recording how that was nearly got wrong —
+-- grepping @MintingPolicy.hs@ for @elem@ finds nothing, because __the compiled script is the
+-- inlined whole and not one file__. @all@, @map@ and the list @<>@ were genuinely unique to
+-- 'validateOtherMetadata', so the net removal is about two fixpoints, which the ~45-each
+-- calibration predicts at ~90 and which measured 20.
+--
+-- The calibration therefore over-predicts by about four even after that correction, and the honest
+-- reading is that it was derived from INTRODUCING traversals into a script that lacked them and
+-- does not invert. Treat every estimate below as an upper bound.
+--
+-- Keep the change for the ExUnits, which is where the real return is: three traversals instead of
+-- six, no intermediate @map fst@ list built, and 168 key comparisons instead of 171.
+--
+-- Declined, in descending order of how tempting they are:
+--
+--   * @checkDateInRange@ without the @Interval@ library, ~150 bytes. The three new cases in
+--     @UnitTests.OracleRules@ make this SAFE to do — they pin the exclusive-upper-bound semantics
+--     the ledger actually delivers — but there is no reason to do it. This is the only function
+--     that dates a permanent record, and ~1700 bytes of headroom is not a reason to hand-roll
+--     library semantics.
+--   * @and [...]@ to @&&@ in ProfilesValidator and OracleValidator, ~90 bytes. Those lists hold the
+--     @traceIfFalse@ calls, and a strict list forces all of them, so a failing transaction logs
+--     EVERY failing code; @&&@ logs the first. That is a diagnostic trade, and this project already
+--     took the opposite decision explicitly when it chose @preserve-logging@ over @remove-trace@ in
+--     the cabal file. The AttestationsValidator and DisputesValidator sites are different — their
+--     @and@ sits inside a single @traceIfFalse@, so converting them changes no diagnostics — but
+--     ~90 bytes on scripts with 8 KB of headroom is not worth a diff.
+--   * @valueSpent@ to a shared @inputsSpendExactlyOne@. Measured at ~0 on the minting policy: it
+--     removes one @foldMap@ recursion and adds the helper's own, and does not remove @unionWith (+)@
+--     because the policy sums @Value@s anyway. This project's +50-against-+502 lesson, in reverse.
+--   * @checkFee@ computing @feeFor@ once, 0-20 bytes. All three call sites pass a known constructor,
+--     so it very likely constant-folds already. It also needs parentheses rather than @$@ to
+--     compile, since @$@ is @infixr 0@ against @||@'s @infixr 2@.
+--   * @MintingContext@ removal, 0 bytes. The record is built once and field-selected in the same
+--     compilation unit, so case-of-known-constructor eliminates it before UPLC is emitted. Removing
+--     it could make the policy LARGER, because passing three arguments to three handlers is more
+--     binders than one record.
+--
+-- Still declined from the earlier round, unchanged: @unsafeFromBuiltinData@ on the oracle read
+-- (450-850 bytes across three scripts). It trades @K1@ — the only diagnostic on the only path that
+-- reads external state — for bytes. It is the first lever if the policy ever approaches 14000.
 expected :: [(String, Int)]
 expected =
   [ ("ProfilesValidator", 8414),
     ("AttestationsValidator", 7637),
     ("DisputesValidator", 8457),
     ("OracleValidator", 7547),
-    ("MintingPolicy", 12296)
+    ("MintingPolicy", 12276)
   ]

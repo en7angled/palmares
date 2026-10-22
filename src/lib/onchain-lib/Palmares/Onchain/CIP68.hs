@@ -142,32 +142,52 @@ maxOtherMetadataValueLength = 256
 --
 -- __The count is checked FIRST and that ordering is load-bearing.__ The duplicate-key check is
 -- quadratic, and a quadratic scan over a list the attacker sizes is a budget-exhaustion vector of
--- its own. Sixteen entries plus the three reserved keys is 19, so at most 171 key comparisons — not
--- the 120 this said, which forgot the three keys the same function prepends. Bounding the count before
+-- its own. Sixteen caller entries, each compared against the three reserved keys and against every
+-- entry after it, is @3*16 + C(16,2)@ = at most 168 key comparisons. Bounding the count before
 -- scanning turns an unbounded cost into a constant one.
+--
+-- That figure has been wrong twice and both ways are instructive. It said 120, which forgot the
+-- reserved keys entirely. It then said 171 — @C(19,2)@ — which was right while the three reserved
+-- keys were PREPENDED to the key list and every pair in the combined list was compared. They are
+-- compared per entry now, which drops the three comparisons between the literals themselves.
 {-# INLINEABLE validateOtherMetadata #-}
 validateOtherMetadata :: [(BuiltinByteString, BuiltinByteString)] -> Bool
 validateOtherMetadata entries =
-  countAtMost maxOtherMetadataEntries entries
-    && all sizesOk entries
-    && keysAreUnique (reservedKeys <> map fst entries)
+  countAtMost maxOtherMetadataEntries entries && entriesAreWellFormed entries
   where
-    sizesOk (k, v) =
-      lengthOfByteString k <= maxOtherMetadataKeyLength
-        && lengthOfByteString v <= maxOtherMetadataValueLength
-
-    -- The three keys 'mkCIP68Datum' writes itself. Prepended rather than compared separately, so a
-    -- caller key equal to one of them is caught by the same comparison as any other duplicate.
-    reservedKeys = [encodeUtf8 "name", encodeUtf8 "description", encodeUtf8 "image"]
-
     -- `length` would walk the whole list before comparing, which is the cost this is here to bound.
+    -- Still FIRST and still its own traversal, which is the part not to "optimise": folding the
+    -- count into the walk below would let `keyElem` scan the whole tail once per element, so an
+    -- attacker-sized 10,000-entry list would be walked sixteen times before the count refused it.
     countAtMost n xs = case xs of
       [] -> True
       (_ : rest) -> n > 0 && countAtMost (n - 1) rest
 
-    keysAreUnique ks = case ks of
+    -- ONE traversal for the sizes, the reserved keys and the duplicates. This was four separate
+    -- list functions — `all`, `map`, `<>` and `keysAreUnique`, whose `elem` is `any . (==)` and so
+    -- a fifth — and PLUTUSTX CANNOT SHARE A RECURSION: each is its own fixpoint in the compiled
+    -- policy, at a measured ~45 bytes apiece. Three here against six before, same verdict on every
+    -- input.
+    --
+    -- The three keys 'mkCIP68Datum' writes itself are compared per entry rather than prepended to
+    -- the key list. Prepending let one `elem` catch a reserved collision and a caller-side
+    -- duplicate with the same comparison, at the price of building the list; the three literals are
+    -- pairwise distinct, so comparing every caller key against all three is the same test minus
+    -- three conjuncts that were constantly true.
+    entriesAreWellFormed xs = case xs of
       [] -> True
-      (k : rest) -> not (k `elem` rest) && keysAreUnique rest
+      ((k, v) : rest) ->
+        lengthOfByteString k <= maxOtherMetadataKeyLength
+          && lengthOfByteString v <= maxOtherMetadataValueLength
+          && k /= encodeUtf8 "name"
+          && k /= encodeUtf8 "description"
+          && k /= encodeUtf8 "image"
+          && not (keyElem k rest)
+          && entriesAreWellFormed rest
+
+    keyElem k xs = case xs of
+      [] -> False
+      ((k', _) : rest) -> k == k' || keyElem k rest
 
 -- | Is this token name a CIP-67 __reference__ token name?
 --

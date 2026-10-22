@@ -78,6 +78,7 @@ data Command
   | CleanupDust
   | NewOperatorKey
   | OperatorAddress
+  | SignTx
   deriving (Show)
 
 data SetFeesArgs
@@ -275,6 +276,17 @@ commandParser =
           ( info
               (pure OperatorAddress)
               (progDesc "Print the address derived from operation.prv — the address to fund before deploying")
+          )
+        <> command
+          "sign-tx"
+          ( info
+              (pure SignTx)
+              ( progDesc
+                  "Reads an unsigned transaction's CBOR hex on STDIN and writes the CIP-30 witness set CBOR hex \
+                  \to STDOUT, signed with operation.prv. Nothing else goes to STDOUT. No provider and no \
+                  \deployed-validators config: this is the signer scripts/smoke_attest_flow.sh takes as \
+                  \PALMARES_SIGN_CMD."
+              )
           )
         <> command
           "deploy-reference-scripts"
@@ -622,10 +634,18 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
     (txId, _) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen $ "Dust cleanup successful! TxId: " <> show txId
 
+-- | The startup banner.
+--
+-- It goes to stdout, and @sign-tx@'s stdout __is__ its product — the smoke script captures that
+-- stream whole (@wit=$(… | $signer)@), so one decorative line there is a witness set that does not
+-- parse. That is why the banner is printed after the parse rather than as @main@'s first act: before
+-- the parse there is no command to exempt.
+banner :: Command -> IO ()
+banner SignTx = pure ()
+banner _ = printGreen "Palmares - Cardano governance track record"
+
 main :: IO ()
 main = do
-  printGreen "Palmares - Cardano governance track record"
-
   -- Parse command line arguments
   cmd <-
     execParser $
@@ -635,6 +655,8 @@ main = do
             <> progDesc "A command-line tool for the Palmares attestation protocol on Cardano. Deploys reference scripts, writes the CIP-57 blueprint, administers the oracle, and issues or accepts attestations."
             <> header "Palmares - Cardano governance track record"
         )
+
+  banner cmd
 
   -- Handle commands that don't require blockchain providers
   case cmd of
@@ -697,6 +719,10 @@ main = do
     -- is deployed, which is the whole point of them. `new-operator-key` does not even read a key.
     NewOperatorKey -> newOperatorKey
     OperatorAddress -> operatorAddress
+    -- Same family: signing is a function of the transaction and the key, so no provider, no
+    -- validator config and no network. That is what lets the smoke script invoke this once per
+    -- write with nothing but `operation.prv` beside it.
+    SignTx -> signTxWitness
     _ -> executeOnchainCommand cmd
 
 -- | Generate a fresh operator mnemonic into 'mnemonicFilePath' and print the address to fund.
@@ -771,6 +797,29 @@ printOperatorAddress signKey = do
   -- are right. Printing only bech32 here would have handed the smoke script a value it cannot use.
   -- `Web.toUrlPiece` is the SAME instance the API parses with, so these two can never disagree.
   printGreen ("Operator address (raw hex, for API request fields): " <> T.unpack (Web.toUrlPiece addr))
+
+-- | Read an unsigned transaction's CBOR hex on stdin; write its witness set's hex on stdout.
+--
+-- The body is recovered with the SAME 'getTxBody' the interaction API applies to @tx_unsigned@, from
+-- the same bytes, so the body signed here and the body the witness is attached to there cannot
+-- differ. Whether the key is one the transaction actually requires is not checked and cannot be: a
+-- claim names its own credential and the node is what refuses a transaction that lacks a signature.
+signTxWitness :: IO ()
+signTxWitness = do
+  -- NOT 'readMnemonicFile': that announces the path on stdout, and stdout is this command's product.
+  -- Same file and the same derivation — 'readMnemonic' is what @new-operator-key@ validates with.
+  signKey <- readMnemonic =<< T.readFile mnemonicFilePath
+  -- Stripped because a human will pipe `echo`'s newline in; the smoke script uses `printf '%s'`.
+  input <- T.unpack . T.strip <$> T.getContents
+  tx <-
+    maybe
+      ( die
+          "sign-tx: stdin is not a transaction's CBOR hex. It wants exactly what a write route\n\
+          \returned — the contents of that JSON string, unquoted, with no envelope around it."
+      )
+      return
+      (txFromHex input)
+  T.putStrLn . txWitToHex . keyWitnessesOf $ signGYTxBody (getTxBody tx) [signKey]
 
 -- | Execute commands that require blockchain providers and signing keys
 executeOnchainCommand :: Command -> IO ()

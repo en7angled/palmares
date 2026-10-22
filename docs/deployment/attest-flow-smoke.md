@@ -48,7 +48,42 @@ Two signers, because two different keys are required:
 - `PALMARES_ADMIN_SIGN_CMD` — the oracle admin. The resolution only. Defaults to
   `PALMARES_SIGN_CMD`, which is right when one operator runs both on a preprod box.
 
-The repo ships no signer, on purpose: a wrong one would look like a convenience.
+## The signer the repo ships
+
+`admin sign-tx`. It reads the unsigned transaction's CBOR hex on stdin, signs with `operation.prv`,
+and writes the witness set's hex on stdout — the contract above, and nothing else on stdout.
+
+```bash
+export PALMARES_SIGN_CMD='cabal run -v0 admin -- sign-tx'
+# or, with the published image:
+# PALMARES_SIGN_CMD='docker run --rm -i -v "$PWD":/w -w /w ghcr.io/<owner>/palmares-admin:latest sign-tx'
+```
+
+For a long time the repo shipped **no** signer, on purpose, because a wrong one would have looked
+like a convenience. What changed is not that the risk went away but that there is now one signer
+whose encoding cannot be a guess: the witness set comes out of the same `GYTxWitness` that
+`makeSignedTransaction` consumes, through the ledger's own CBOR and the ledger's own hex, and the
+body is recovered with the same `getTxBody` the API applies to `tx_unsigned`. Both halves of the
+round trip are the code `/submit-tx` runs. `UnitTests.SignTx` pins it.
+
+It needs **no provider, no `config_atlas.json` and no network** — a signature is a function of the
+transaction and the key — so it is dispatched beside `operator-address`, before any provider loads.
+`operation.prv` is the only thing it reads besides stdin.
+
+`PALMARES_ADMIN_SIGN_CMD` can stay at its default here: `sign-tx` signs with whatever key
+`operation.prv` holds, so one checkout signs as one identity. Two identities means two working
+directories, each with its own `operation.prv`, and the second one named in
+`PALMARES_ADMIN_SIGN_CMD`.
+
+**It cannot tell you whether the key is the right one.** `sign-tx` signs; the node is what refuses a
+transaction whose required signature is missing. So the other two values have to agree with
+`operation.prv`:
+
+- `ATTEST_SMOKE_ADDR` — `admin operator-address` prints it, in the raw hex form the request fields
+  want. Take it from there rather than from a wallet, and the address and the signature cannot
+  belong to different keys.
+- `ATTEST_SMOKE_DREP_ID` — must be the DRep credential of that same key (see below), and **nothing
+  in the repo prints it**. `operator-address` gives the payment address, not the DRep one.
 
 ## Two values that are easy to get wrong
 
@@ -72,7 +107,7 @@ export PALMARES_QUERY_API=https://gov.cardano.vip/query       # default http://l
 export BASIC_USER=… BASIC_PASS=…
 export ATTEST_SMOKE_ADDR=00e1cbb80d…                          # 114 hex characters
 export ATTEST_SMOKE_DREP_ID=drep1y…
-export PALMARES_SIGN_CMD='my-signer --key ./operation.skey'
+export PALMARES_SIGN_CMD='cabal run -v0 admin -- sign-tx'
 # PALMARES_ADMIN_SIGN_CMD defaults to the above
 # PALMARES_ADMIN_CMD defaults to "cabal run -v0 admin --"; in CI, the published image:
 #   PALMARES_ADMIN_CMD='docker run --rm -v "$PWD":/w -w /w ghcr.io/<owner>/palmares-admin:latest'
@@ -81,7 +116,8 @@ export PALMARES_SIGN_CMD='my-signer --key ./operation.skey'
 
 `PALMARES_ADMIN_CMD` is used **read-only**, for `query-oracle`, so the dispute deposit the
 projection publishes is compared with the oracle's own parameter rather than with "some positive
-integer". It still needs `operation.prv` and the Atlas config beside it.
+integer". It still needs `operation.prv` and the Atlas config beside it — unlike the `sign-tx`
+invocation above, which is the same binary but needs neither the config nor a provider.
 
 Exit codes:
 

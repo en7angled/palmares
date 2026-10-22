@@ -3,8 +3,13 @@
 {-# HLINT ignore "Redundant $" #-}
 module Palmares.TxBuilding.Transactions where
 
+import Cardano.Api.Ledger qualified as Ledger
+import Cardano.Api.Shelley qualified as Api
+import Control.Lens ((.~))
 import Control.Monad (when)
 import Control.Monad.Reader
+import Data.Function ((&))
+import Data.Set qualified as Set
 import Data.Text
 import GeniusYield.TxBuilder
 import GeniusYield.Types
@@ -17,6 +22,47 @@ import Palmares.TxBuilding.Skeletons
 import Palmares.TxBuilding.Utils
 import Palmares.TxBuilding.Validators
 import Palmares.Utils
+
+------------------------------------------------------------------------------------------------
+
+-- * Witnesses
+
+------------------------------------------------------------------------------------------------
+
+-- | The vkey witnesses of a signed transaction, as the witness SET the API's @tx_wit@ field takes.
+--
+-- 'makeSignedTransaction' read backwards, and the same expression cardano-api's own
+-- @makeSignedTransaction@ uses to build that set — copied from it rather than invented.
+--
+-- __Only the vkey witnesses.__ A signed transaction's witness set also carries scripts, datums and
+-- redeemers, and every one of those is reconstructed from @tx_unsigned@ on the far side and ignored
+-- here. Carrying them would change nothing on chain and would make a signer's output visibly unlike
+-- a wallet's, which is the failure the @admin sign-tx@ command exists to avoid: an operator who
+-- compares the two and concludes the signer is broken.
+--
+-- __This lives in the library and not in @admin@ so that a test can reach it.__ A cabal test-suite
+-- cannot import an executable's modules, so while this sat in @admin/Main.hs@ the only test
+-- available was one that pinned a COPY of the expression — which passes forever while the command
+-- rots. Three lines of move buy a test that fails when the command breaks.
+keyWitnessesOf :: GYTx -> GYTxWitness
+keyWitnessesOf signed =
+  txWitFromLedger $
+    Ledger.mkBasicTxWits
+      & Ledger.addrTxWitsL
+        .~ Set.fromList [w | Api.ShelleyKeyWitness _ w <- Api.getTxWitnesses (txToApi signed)]
+
+-- | Hex-encoded CBOR of a witness set — the inverse of the @txWitFromHex@ that parses @tx_wit@.
+--
+-- __Atlas ships the decoder for this shape and no encoder__, which is why this exists at all:
+-- @GeniusYield.Types.Tx@ exports @txWitFromHexBS@, @txWitFromHex@, @txWitFromLedger@,
+-- @txWitToLedger@ and @txWitToKeyWitnessApi@, and nothing that goes the other way.
+--
+-- __No protocol version to get wrong, and no base16 of our own.__ @AlonzoTxWits@ is a @MemoBytes@,
+-- so its plain @ToCBOR@ emits the very bytes the ledger produced for that value rather than
+-- re-encoding it, and @serializeAsHexText@ is the ledger's own hex codec over them. Atlas's decoder
+-- reads at @eraProtVerHigh \@ConwayEra@; there is nothing here for that choice to disagree with.
+txWitToHex :: GYTxWitness -> Text
+txWitToHex = Ledger.serializeAsHexText . txWitToLedger
 
 ------------------------------------------------------------------------------------------------
 

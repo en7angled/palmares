@@ -89,6 +89,39 @@ isTxOutAtIndexWithDatumValueAndAddress datum value address TxOut {txOutValue, tx
 
 -- | Check that the output at a specific index has the expected datum and address, and that its value is >= minValue.
 -- Use this in the minting policy where the exact output value depends on datum size (min-ADA); we only require value >= (minLv + NFT).
+--
+-- __THE ADDRESS COMPARISON IS THE WHOLE ADDRESS, STAKING CREDENTIAL INCLUDED.__ Plutus's 'Address'
+-- is a payment credential and an @addressStakingCredential@, and @==@ compares both. Every protocol
+-- address is built with @Nothing@ for the staking part, so a state output carrying ANY staking
+-- credential is refused — by @Mk@, @Mp5@ and @Md5@ at the mint, and by @O2@, @P2@ and @D2@ on the
+-- spend. That is deliberate, and this is the record of it, because `onchain-lib/CLAUDE.md` rules 13
+-- and 14 ask for exactly this paragraph and it was the one protocol-wide tradeoff here with no
+-- comment anywhere.
+--
+-- __Why no staking credential.__ These UTxOs hold min-ADA plus deposits that come back; the ADA is
+-- the cost of a record, not a position someone is holding. Delegating it would raise a question no
+-- product requirement asks: rewards accrue to the stake address and not to the UTxO, so a staked
+-- script address would accumulate a balance movable only by a withdrawal certificate signed by the
+-- stake credential — a second key, with no owner named anywhere in this protocol, guarding funds
+-- whose claimant is genuinely ambiguous between the registry and the depositors.
+--
+-- __And why the check stays whole-address rather than payment-part-only.__ Relaxing it is the
+-- obvious way to permit a staking credential, and it is strictly weaker: two addresses sharing a
+-- payment credential and differing in their staking part are DIFFERENT addresses that the protocol
+-- would then both treat as its own, which makes that set unbounded and gives an attacker a family of
+-- addresses to land state at. The strict comparison is one equality and buys the opposite.
+--
+-- __The locked value, which is rule 14's half of this.__ Per state UTxO: min-ADA, set by the
+-- oracle's @opMinUTxOValue@, locked for the life of the record — and that is PERMANENT, because
+-- nothing in this protocol burns, so no record is ever removed and no min-ADA ever returns. It is
+-- the price of a record that cannot be retracted, which is the property the registry exists to
+-- offer. Per open dispute: @opDisputeDeposit@, which returns on either verdict (see @D4@) and is
+-- therefore not locked value at all, only posted collateral.
+--
+-- __This must be decided before the first deployment and is now decided.__ Changing it afterwards
+-- is not a redeploy but a registry migration: the protocol's addresses are derived from the
+-- validator hashes, so a different address means a different minting policy and therefore a
+-- different currency symbol — every existing id becomes an id under a dead policy.
 {-# INLINEABLE checkTxOutAtIndexWithDatumMinValueAndAddress #-}
 checkTxOutAtIndexWithDatumMinValueAndAddress :: (ToData a) => Integer -> a -> Value -> Address -> [TxOut] -> Bool
 checkTxOutAtIndexWithDatumMinValueAndAddress idx datum minValue address outputs =
@@ -180,13 +213,32 @@ spentExactlyOnceFromAddress address inputs = go inputs 0
 -- retroactively make every back-dated record valid, which is the attack the bound exists to stop.
 -- Promoting it later is a one-field change if the window is ever genuinely wrong.
 --
--- The value is four times the off-chain builder's @safeEraTime@ (25920s, ~7h), so an honest
--- transaction built with that window has a wide margin, and a date more than about a day from chain
--- time is refused. A claim about an earlier event is self-reported and belongs in the claimed period
--- or in metadata, labelled as such — which is what those fields are for.
+-- __Why TWICE the honest window and not four times, which is what this said until 2026-10-22.__ The
+-- refuted sentence was "four times the off-chain builder's @safeEraTime@, so an honest transaction
+-- built with that window has a wide margin". There is nothing for a margin to absorb: this bound
+-- limits the interval's WIDTH, and
+-- 'Palmares.TxBuilding.Skeletons.txIsValidForSafeEra' builds exactly @[tip, tip + safeEraTime]@, so
+-- the honest width is a deterministic 1x and never varies. The surplus was therefore entirely the
+-- attacker's, and it is the whole of their budget: the back-dating reach of a forged interval is
+-- exactly @maxDateWindow@, because the ledger only requires the current slot to lie inside it, so
+-- @[now - maxDateWindow, now]@ is always available. Four times bought 28.8h of back-dating on a
+-- permanent record; twice buys 14.4h.
+--
+-- Not 1x, which would be the tightest honest value, because at 1x the honest width EQUALS the bound
+-- and passes only by the @<=@. Anything that widens the builder's interval — a wallet that pads it,
+-- a later @safeEraTime@ bump, a co-signing flow that needs longer to collect signatures — would then
+-- be refused by the validator rather than by a reviewed decision. 2x leaves a full honest window of
+-- room and still halves the attacker's reach.
+--
+-- A claim about an earlier event is self-reported and belongs in the claimed period or in metadata,
+-- labelled as such — which is what those fields are for.
+--
+-- The read layer can narrow this further at no on-chain cost, by comparing @attestationDate@ against
+-- the block time of the transaction that carried it; the chain cannot, because the only clock a
+-- validator has is the interval it is being asked to trust.
 {-# INLINEABLE maxDateWindow #-}
 maxDateWindow :: POSIXTime
-maxDateWindow = POSIXTime 103680000 -- 4 * safeEraTime, in milliseconds
+maxDateWindow = POSIXTime 51840000 -- 2 * safeEraTime, in milliseconds
 
 {-# INLINEABLE checkDateInRange #-}
 checkDateInRange :: POSIXTime -> V1.POSIXTimeRange -> Bool

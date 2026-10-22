@@ -16,7 +16,8 @@ import Palmares.Onchain.Protocol.Types
     applyOracleAdminAction,
   )
 import Palmares.Onchain.Utils (checkDateInRange, maxDateWindow)
-import PlutusLedgerApi.V1.Interval (from, interval, to)
+import Palmares.TxBuilding.Skeletons (safeEraTime)
+import PlutusLedgerApi.V1.Interval (Interval (..), from, interval, lowerBound, strictLowerBound, strictUpperBound, to)
 import PlutusLedgerApi.V3 (POSIXTime (..), PubKeyHash (..), always)
 import PlutusTx (Data (..), builtinDataToData, toBuiltinData)
 import Test.Tasty
@@ -94,9 +95,41 @@ tests =
       -- The boundary, both sides, so the bound is a decision and not an accident.
       testCase "an interval exactly maxDateWindow wide is still accepted" $
         checkDateInRange (t 1) (interval (t 1) (1 + maxDateWindow)) @?= True,
-      -- And the honest builder keeps working: ~7h is well inside the bound.
-      testCase "the off-chain builder's ~7h window is comfortably inside the bound" $
-        checkDateInRange (t 1000) (interval (t 1000) (t 1000 + 25_920_000)) @?= True
+      -- And the honest builder keeps working. The width comes from the off-chain constant rather
+      -- than a copy of its value, which makes this a CROSS-LAYER invariant: if anyone changes
+      -- `safeEraTime`, this goes red and the on-chain bound becomes a decision again instead of a
+      -- coincidence. `txIsValidForSafeEra` builds exactly `[tip, tip + safeEraTime]`, so the honest
+      -- width is a deterministic 1x and never varies.
+      testCase "an interval of exactly the off-chain builder's width is accepted" $
+        checkDateInRange (t 1000) (interval (t 1000) (t 1000 + honestWidth)) @?= True,
+      -- The ratio itself, because it is the whole argument for the bound's value. 2x and not 4x
+      -- (the surplus was purely the attacker's back-dating reach, 28.8h of it), and not 1x, where
+      -- the honest width would equal the bound and pass only by the `<=`.
+      testCase "the bound is exactly twice the width the off-chain builder produces" $
+        maxDateWindow @?= 2 * honestWidth,
+      -- ---------------------------------------------------------------------------------------
+      -- THE PRODUCTION SHAPE, which nothing above tests. `cardano-ledger-alonzo`'s
+      -- `transValidityInterval` translates a two-sided validity interval as
+      -- @Interval (lowerBound t1) (strictUpperBound t2)@ — closed below, OPEN above — so every real
+      -- transaction reaches a validator with an EXCLUSIVE upper bound, while every case above uses
+      -- `interval`, which is closed at both ends. Read out of
+      -- cardano-ledger-alonzo-1.13.0.0's own source, not recalled.
+      --
+      -- These three pass on the current code, and that is the point: they pin the semantics BEFORE
+      -- anyone rewrites `checkDateInRange` to avoid the `Interval` library for script bytes. The
+      -- obvious rewrite, @lo <= date && date <= hi@, accepts a date exactly equal to `hi` that
+      -- `member` rejects — a one-millisecond shift on the only path that dates a permanent record,
+      -- and the whole suite would have stayed green through it.
+      --
+      -- The WIDTH check deliberately ignores the closures and compares the raw @hi - lo@. That
+      -- over-counts an open-bounded interval's real width by at most 1 ms, which is the safe
+      -- direction: it can only refuse, never admit.
+      testCase "an exclusive upper bound excludes its own instant, as Interval does" $
+        checkDateInRange (t 110) (Interval (lowerBound (t 90)) (strictUpperBound (t 110))) @?= False,
+      testCase "one millisecond inside an exclusive upper bound is accepted" $
+        checkDateInRange (t 109) (Interval (lowerBound (t 90)) (strictUpperBound (t 110))) @?= True,
+      testCase "an exclusive lower bound excludes its own instant" $
+        checkDateInRange (t 90) (Interval (strictLowerBound (t 90)) (strictUpperBound (t 110))) @?= False
     ]
   where
     pkhA = PubKeyHash "\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1"
@@ -119,6 +152,11 @@ tests =
         }
 
     t = POSIXTime
+
+    -- The validity-interval width `Palmares.TxBuilding.Skeletons.txIsValidForSafeEra` produces, in
+    -- milliseconds. `safeEraTime` is in SLOTS, and a slot is one second on preprod and mainnet.
+    honestWidth :: POSIXTime
+    honestWidth = POSIXTime (safeEraTime * 1000)
 
     -- Read the constructor index straight out of the encoding, which is what a deployed validator
     -- sees — rather than trusting the makeIsDataSchemaIndexed call to say what it means.

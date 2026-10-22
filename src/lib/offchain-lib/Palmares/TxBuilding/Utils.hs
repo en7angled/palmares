@@ -9,7 +9,7 @@ import GeniusYield.TxBuilder.Class (enclosingSlotFromTime', slotToBeginTime)
 import GeniusYield.Types.SlotConfig (GYSlotConfig, enclosingSlotFromTimePure, slotToBeginTimePure)
 import GeniusYield.TxBuilder.Errors (GYTxMonadException (GYApplicationException))
 import GeniusYield.TxBuilder.Query.Class (GYTxQueryMonad)
-import GeniusYield.Types (GYAddress, GYAssetClass (..), GYDatum, GYExtendedPaymentSigningKey, GYMintingPolicyId, GYNetworkId (..), GYOutDatum (..), GYPaymentKeyHash, GYSlot, GYTokenName, slotToInteger, unsafeSlotFromInteger, GYTxOutRef, GYUTxO, GYValue, mintingPolicyIdFromCurrencySymbol, paymentKeyHash, tokenNameFromPlutus, txOutRefToPlutus, utxoOutDatum, utxoValue, valueAssetClass, valueToPlutus)
+import GeniusYield.Types (GYAddress, GYAssetClass (..), GYDatum, GYExtendedPaymentSigningKey, GYMintingPolicyId, GYNetworkId (..), GYOutDatum (..), GYPaymentKeyHash, GYSlot, GYTokenName, slotToInteger, unsafeSlotFromInteger, GYTxOutRef, GYUTxO, GYValue, mintingPolicyIdFromCurrencySymbol, paymentKeyHash, tokenNameFromPlutus, tokenNameToPlutus, txOutRefToPlutus, utxoOutDatum, utxoValue, valueAssetClass, valueToPlutus)
 import GeniusYield.Types.Address (addressFromPaymentKeyHash)
 import GeniusYield.Types.Datum (datumToPlutus')
 import GeniusYield.Types.Key (extendedPaymentSigningKeyToApi, paymentVerificationKeyFromApi)
@@ -17,7 +17,7 @@ import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import GeniusYield.Types.Time (timeFromPOSIX, timeFromPlutus, timeToPOSIX, timeToPlutus)
 import GeniusYield.Types.Wallet
-import Palmares.Onchain.CIP68 (CIP68Datum)
+import Palmares.Onchain.CIP68 (CIP68Datum, isRefTokenName)
 import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Protocol.Types (OnchainAttestation, OnchainDispute, OracleParams)
 import PlutusLedgerApi.V1.Tx qualified as V1
@@ -55,14 +55,51 @@ extractNFTAssetClass v =
         _ -> Nothing
     _ -> Nothing
 
--- | A protocol state UTxO is authentic iff its value carries exactly one of the NFT named by
--- (or derived from) its own datum, under OUR minting policy. Address + parseable datum is not
--- enough: anyone can pay a forged datum to a script address, and 2 ADA plus a hand-crafted
--- inline datum poisoned the projections for free (inherited fix #3).
+-- | A protocol state UTxO is authentic iff its value carries exactly one of the CIP-67 __reference__
+-- token its own datum names, under OUR minting policy.
+--
+-- Address plus a parseable datum is not enough: anyone can pay a forged datum to a script address,
+-- and 2 ADA plus a hand-crafted inline datum poisoned the projections for free (inherited fix #3).
+--
+-- __THE REFERENCE-PREFIX CONJUNCT IS THE WHOLE SECOND HALF, and it was missing.__ This function used
+-- to read @pid == ourPolicy && valueAssetClass v ac == 1@ — which is 'hasCurrencySymbol' with a
+-- quantity check bolted on, and a profile's own USER token satisfies it. User tokens are supposed to
+-- reach a wallet; that is what CIP-68 is for. So the attack was:
+--
+--   1. mint a profile, permissionlessly, and keep its user token @U@;
+--   2. pay a SCRIPTLESS output to the Attestations validator's address carrying 1 × @U@, min-ADA,
+--      and a hand-written @OnchainAttestation@ whose @attestationId@ is @U@, whose subject is the
+--      victim's real profile id, whose issuer is any reputable profile's real id, and whose
+--      @attestationIsAccepted@ is @True@.
+--
+-- No validator runs — paying TO a script address needs no witness. Kupo indexes every asset name
+-- under the policy, the datum parses, and this was the only gate. The registry then served a forged,
+-- ACCEPTED attestation from a reputable issuer on the victim's own "attestations about me" query,
+-- for about 1.3 ADA, with no cooperation from anybody, and nothing in this protocol burns so it
+-- could never be removed. The same output shape at the Profiles address forges a profile that claims
+-- a victim's governance credential with no @Mp3@ proof.
+--
+-- __Why the prefix closes it completely.__ A reference token provably cannot reach a wallet:
+-- @Mp5@/@Mk@/@Md5@ force the single minted ref NFT into a script output carrying the datum the
+-- policy itself computed, @P5@/@A1@/@D2@ each re-lock at least that value at the same address, and
+-- every @Cleanup@ refuses a UTxO whose value holds the NFT its datum names. An attacker therefore
+-- never holds one to park. A token of a FOREIGN policy named with the ref prefix fails the first
+-- conjunct, so both halves are needed and neither is redundant.
+--
+-- __It is the same predicate @Mg@ and @Md4@ were upgraded over__, on the same day, for the same
+-- reason — a user token makes 'deriveUserFromRefTN' the identity. Those two guard the ids the mint
+-- path READS; this one guards the id the protocol TRUSTS AS STATE, which is the site where a forged
+-- datum becomes a record. It was left on the old version.
+--
+-- 'Palmares.Onchain.CIP68.isRefTokenName' rather than a second definition here, so there is one place that says
+-- what a reference token name is.
 authenticateStateUTxO :: GYMintingPolicyId -> GYAssetClass -> GYValue -> Bool
 authenticateStateUTxO ourPolicy ac v =
   case ac of
-    GYToken pid _ -> pid == ourPolicy && valueAssetClass v ac == 1
+    GYToken pid tn ->
+      pid == ourPolicy
+        && isRefTokenName (tokenNameToPlutus tn)
+        && valueAssetClass v ac == 1
     GYLovelace -> False
 
 -- | Chain time for a stored @created_at_slot@. Pure, so a handler maps a whole page with one

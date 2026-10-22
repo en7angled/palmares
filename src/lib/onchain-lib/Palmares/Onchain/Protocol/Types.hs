@@ -146,6 +146,35 @@ applyOracleAdminAction (OracleSetMinUTxOValue lovelace) params = params {opMinUT
 applyOracleAdminAction (OracleSetAdmin newAdmin) params = params {opAdminPkh = newAdmin}
 applyOracleAdminAction (OracleSetDisputeDeposit lovelace) params = params {opDisputeDeposit = lovelace}
 
+-- | Are these oracle params usable at all?
+--
+-- __A NEGATIVE LOVELACE PARAMETER MAKES EVERY MIN-VALUE CHECK IN THE PROTOCOL VACUOUS__, and that
+-- is a property of @geq@ rather than of any check here. 'PlutusLedgerApi.V1.Value.geq' is
+-- @checkBinRel (>=)@, whose arms are @This a -> a >= 0@, @That b -> 0 >= b@ and
+-- @These a b -> a >= b@ — so a required amount below zero is satisfied by anything, including
+-- nothing. Verified against plutus-ledger-api 1.43.1.0, not assumed.
+--
+-- The concrete drain, which is why this is a check and not a comment. Set @opMinUTxOValue@ to
+-- @-5_000_000@ with one @OracleSetMinUTxOValue@: a dispute's expected value becomes
+-- @disputeNFT + (-5 ADA) + 5 ADA@, whose lovelace component is zero, so @Md5@ accepts a dispute
+-- UTxO holding only the ledger's own minimum while its datum still records a 5 ADA deposit. At
+-- resolution @ownValue - depositValue@ is negative, so @D2@ is vacuous too — and @D4@ still demands
+-- 5 ADA at @disputeDepositTo@, funded by whoever builds the transaction, which @D1@ says is the
+-- admin. About 3.8 ADA out of the admin's pocket per dispute, repeatable by anyone who opens one.
+--
+-- So it is a foot-gun to set and an attack once set, which is the combination worth one check. It
+-- is checked on the RESULT rather than per action, so it covers all six actions and every future
+-- one by construction — the same reason @O2@ compares the output datum against this function's
+-- result instead of re-deriving each field.
+--
+-- Zero is permitted for both: a zero @opDisputeDeposit@ is a deliberate configuration (disputes
+-- free to open), and a zero @opMinUTxOValue@ simply defers to the ledger's own minimum, which is
+-- the real floor at every configured value anyway.
+{-# INLINEABLE oracleParamsAreWellFormed #-}
+oracleParamsAreWellFormed :: OracleParams -> Bool
+oracleParamsAreWellFormed params =
+  opMinUTxOValue params >= 0 && opDisputeDeposit params >= 0
+
 -------------------------------------------------------------------------------
 
 -- * Type Aliases
@@ -176,13 +205,14 @@ type DisputeId = AssetClass
 --
 -- __The enum is closed.__ A seventh kind is a redeploy, which is the right price for changing what
 -- this registry recognises. @Organization@ keeps index 1, the one index that survives the rename.
+
 -- | Which minting action a transaction is performing.
 --
 -- __This exists so that a fee is never selected by passing a function.__ The inherited design had
 -- @checkFee :: OracleParams -> (FeeConfig -> Integer) -> [TxOut] -> Bool@, and that selector-passing
 -- shape is exactly how the Belt System's interval fee ended up charging the wrong field: the caller
 -- names the field, so every call site is a place the wrong name can be written. With an action, the
--- only place a @FeeConfig@ field is ever named is 'Palmares.Onchain.Protocol.Lookup.feeFor' — one
+-- only place a @FeeConfig@ fee AMOUNT is selected is 'Palmares.Onchain.Protocol.Lookup.feeFor' — one
 -- function, one naming site, no selectors. Inherited fix #1.
 --
 -- One constructor per minting redeemer, and the correspondence is the point: adding a redeemer without
@@ -379,8 +409,11 @@ instance Eq Verdict where
 --     themselves as admin. Only the token, not the whole 'ProtocolParams': it is all this validator
 --     needs, and a datum is paid for in min-ADA.
 --   * __'disputeDepositTo'__ — the deposit has to go back to the disputer, and a validator cannot
---     resolve a 'ProfileId' into an address. The disputer names the address when opening; pointing
---     it somewhere useless only costs them.
+--     resolve a 'ProfileId' into an address. The disputer names the address when opening, and @Md8@
+--     requires it to be one the opening transaction spends from. Not "pointing it somewhere useless
+--     only costs them", which is what this said and is false: @D4@ pays with
+--     @txOutAddress == disputeDepositTo@, so an unpayable address made the dispute permanently
+--     unresolvable against the SUBJECT's record.
 --   * __'disputeDeposit'__ — the amount actually paid, recorded at open time. See 'opDisputeDeposit'
 --     for why reading the oracle at resolution time instead would be a hole.
 data OnchainDispute = OnchainDispute

@@ -63,7 +63,7 @@ import Prelude qualified
 
 -------------------------------------------------------------------------------
 
--- Opening a dispute is the minting policy's business (@OpenDispute@, codes @Md1@-@Md5@), exactly as
+-- Opening a dispute is the minting policy's business (@OpenDispute@, codes @Md1@-@Md8@), exactly as
 -- issuing an attestation is. This validator owns only what happens to a dispute that already exists.
 data DisputesRedeemer
   = -- | ResolveDispute verdict disputeOutputIdx

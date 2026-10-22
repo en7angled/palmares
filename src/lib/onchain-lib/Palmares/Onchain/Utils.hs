@@ -13,6 +13,7 @@ module Palmares.Onchain.Utils
     checkTxOutAtIndexWithDatumValueAndAddress,
     isTxOutAtIndexWithDatumValueAndAddress,
     checkTxOutAtIndexWithDatumMinValueAndAddress,
+    valueAtOutputIdx,
     isTxOutAtIndexWithDatumMinValueAndAddress,
     isGivenInlineDatum,
     unsafeFindOwnInputByTxOutRef,
@@ -39,6 +40,7 @@ module Palmares.Onchain.Utils
   )
 where
 
+import Palmares.Onchain.CIP68 (isRefTokenName)
 import PlutusLedgerApi.V1 qualified as V1
 import PlutusLedgerApi.V1.Value
 import PlutusLedgerApi.V3
@@ -314,10 +316,42 @@ unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs =
 -- cannot exist, because every mint path constrains the WHOLE minted value to one NFT. If it somehow
 -- did, the UTxO would be holding a genuine state NFT, and refusing the sweep is the safe side of
 -- that question — the expensive mistake here is sweeping real state, not leaving a UTxO unswept.
+-- __AND THE NAME MUST BE A CIP-67 REFERENCE NAME, which is the half this function shipped without.__
+-- "A protocol NFT backs this datum" and "the NFT this datum names is a protocol STATE NFT" are
+-- different statements, and only the first was checked. The gap is the same one @Mg@ and @Md4@ were
+-- upgraded over on the same day, at the site that decides whether a UTxO is state rather than at the
+-- sites that read an id out of a redeemer.
+--
+-- The plant it let stand: mint a profile legitimately — nothing constrains where @Mp2@'s USER token
+-- goes, by CIP-68 design — and pay that user token, plus a hand-written datum naming it as a
+-- @profileId@ \/ @attestationId@ \/ @disputeId@, to a state address. No script runs; paying TO a
+-- script address needs no witness. The datum parses, the value holds exactly 1 of the token it
+-- names, so this returned @False@ and every @Cleanup@ was refused — permanently, because nothing
+-- burns. The read layer's own gate had the identical gap, which is how the plant became a forged
+-- ACCEPTED attestation attributed to a victim; see
+-- 'Palmares.TxBuilding.Utils.authenticateStateUTxO'.
+--
+-- The prefix is checkable here and the currency symbol is not: these three validators are
+-- unparameterised on purpose, so they cannot know the policy that minted a token, but a CIP-67
+-- prefix is four bytes of the name and policy-independent. So this closes the USER-token plant
+-- completely, and narrows — does not close — a plant naming a ref-prefixed token of the attacker's
+-- OWN policy. That residue is permanent clutter at min-ADA plus a self-mint, with no forgery
+-- attached, and closing it needs a parameter these validators deliberately do not take.
+-- | The value of the output at this index, or a script failure if the index names none.
+--
+-- @PlutusTx.List.!!@ traces on a negative index and past the end, so an out-of-range index fails
+-- the script rather than returning something. Used where a check is about what an output does NOT
+-- contain, which 'checkTxOutAtIndexWithDatumMinValueAndAddress' cannot express: its `geq` says
+-- "at least this", so it positively permits extra tokens.
+{-# INLINEABLE valueAtOutputIdx #-}
+valueAtOutputIdx :: Integer -> [TxOut] -> Value
+valueAtOutputIdx idx outputs = txOutValue (outputs PlutusTx.List.!! idx)
+
 {-# INLINEABLE isUnbackedDatum #-}
 isUnbackedDatum :: AssetClass -> TxOutRef -> [TxInInfo] -> Bool
-isUnbackedDatum stateNFT spendingTxOutRef txInfoInputs =
-  V1.assetClassValueOf (txOutValue (unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs)) stateNFT == 0
+isUnbackedDatum stateNFT@(AssetClass (_, tn)) spendingTxOutRef txInfoInputs =
+  not (isRefTokenName tn)
+    || V1.assetClassValueOf (txOutValue (unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs)) stateNFT == 0
 
 -------------------------------------------------------------------------------
 

@@ -132,11 +132,41 @@ measured =
 -- and the remaining ones change either the deployed datum format or every honest client's
 -- transaction. OracleValidator and MintingPolicy did not move, which says the helper is reached
 -- from exactly the three validators that call it.
+--
+-- Then the adversarial audit of 2026-10-22, and every number below is a check that was missing:
+--
+--   ProfilesValidator     8381 -> 8414  (+33)
+--   AttestationsValidator 7604 -> 7637  (+33)
+--   DisputesValidator     8424 -> 8457  (+33)
+--
+-- The same +33 three times, because 'Utils.isUnbackedDatum' grew the half it was written without:
+-- it asked whether the datum's named NFT is in the input's value, but not whether that NFT is a
+-- CIP-67 *reference* token. A planted datum naming a USER token answered "no NFT here" and was
+-- therefore classified as backed state, which made it permanently unsweepable — free, irreversible
+-- address clutter. Identical cost at all three sites because PlutusTx shares nothing between
+-- scripts; each compiles its own copy of the four-byte prefix comparison.
+--
+--   OracleValidator       7492 -> 7547  (+55)  @O6@ ('oracleParamsAreWellFormed'). `geq` is
+--                                              VACUOUSLY TRUE on a negative required amount — the
+--                                              `These a b -> a >= b` arm is satisfied by anything
+--                                              when b is below zero — so a negative
+--                                              @opMinUTxOValue@ made every min-value check in the
+--                                              protocol vacuous and drained ~3.8 ADA per dispute
+--                                              from the admin's own wallet
+--   MintingPolicy        12241 -> 12296  (+55)  @Mp6@ and 'Utils.valueAtOutputIdx'. @Mp5@'s `geq`
+--                                              POSITIVELY PERMITTED the profile's user token inside
+--                                              the state output; locked there, @P3@ was satisfied by
+--                                              the profile's own input and any stranger could
+--                                              rewrite that profile forever
+--
+-- 55 bytes each, and both are the same shape of bug: a @geq@ whose direction nobody re-read. Worth
+-- the pattern: every size in this table that was NOT a feature was an inequality that permitted
+-- more than its sentence claimed.
 expected :: [(String, Int)]
 expected =
-  [ ("ProfilesValidator", 8381),
-    ("AttestationsValidator", 7604),
-    ("DisputesValidator", 8424),
-    ("OracleValidator", 7492),
-    ("MintingPolicy", 12241)
+  [ ("ProfilesValidator", 8414),
+    ("AttestationsValidator", 7637),
+    ("DisputesValidator", 8457),
+    ("OracleValidator", 7547),
+    ("MintingPolicy", 12296)
   ]

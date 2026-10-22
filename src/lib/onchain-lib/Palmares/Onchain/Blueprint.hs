@@ -161,7 +161,9 @@ mintingPolicyValidatorBlueprint =
             argumentDescription =
               Just
                 "NewAttestation seedTxOutRef metadata otherMetadata subject issuer kind date \
-                \claimedPeriod outputIdx — mints a pending attestation CIP-68 token pair locked at \
+                \claimedPeriod outputIdx — mints a pending attestation CIP-68 REFERENCE token (no user \
+                \token exists for an attestation, which is why a lineage attestation can never \
+                \satisfy A1) locked at \
                 \the Attestations Validator. Requires the issuer's user token to be spent, validates \
                 \the DATE against the transaction validity range, and pays the attestation fee when \
                 \the oracle configures one. The CLAIMED PERIOD is carried through unchecked and is \
@@ -205,8 +207,9 @@ profilesValidatorBlueprint =
               Just
                 "UpdateProfile newMetadataFields outputIdx — updates the mutable metadata fields with \
                 \size validation, requiring the profile's user token. Cleanup — permissionless \
-                \removal of a UTxO at this address whose datum is absent or does not parse; it fails \
-                \if the datum is a valid protocol datum, so legitimate state cannot be swept.",
+                \removal of a UTxO at this address whose datum is absent, does not parse, or is not \
+                \backed by the state NFT it names; it fails only when the UTxO's own value holds \
+                \that NFT, so legitimate state cannot be swept.",
             argumentPurpose = Set.fromList [Spend],
             argumentSchema = definitionRef @ProfilesRedeemer
           },
@@ -247,7 +250,8 @@ attestationsValidatorBlueprint =
               Just
                 "AcceptAttestation outputIdx — the subject accepts, flipping the acceptance flag and \
                 \returning the token to this validator. Cleanup — permissionless dust removal for \
-                \UTxOs whose datum does not parse as protocol state.",
+                \UTxOs whose datum is absent, does not parse, or names a state NFT the UTxO's own \
+                \value does not hold.",
             argumentPurpose = Set.fromList [Spend],
             argumentSchema = definitionRef @AttestationsRedeemer
           },
@@ -307,7 +311,8 @@ disputesValidatorBlueprint =
                 \VerdictRejected, the dispute returns to this address with the verdict written and \
                 \its deposit released, and the deposit is paid to the address in the datum. \
                 \Cleanup — permissionless dust removal for UTxOs whose datum does not parse as \
-                \protocol state; it fails if the datum IS valid dispute state.",
+                \protocol state, or names a dispute NFT the UTxO's own value does not hold; it fails \
+                \only when that NFT is actually there.",
             argumentPurpose = Set.fromList [Spend],
             argumentSchema = definitionRef @DisputesRedeemer
           },

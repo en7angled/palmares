@@ -142,7 +142,8 @@ maxOtherMetadataValueLength = 256
 --
 -- __The count is checked FIRST and that ordering is load-bearing.__ The duplicate-key check is
 -- quadratic, and a quadratic scan over a list the attacker sizes is a budget-exhaustion vector of
--- its own. Sixteen entries is at most 120 key comparisons, which is why bounding the count before
+-- its own. Sixteen entries plus the three reserved keys is 19, so at most 171 key comparisons — not
+-- the 120 this said, which forgot the three keys the same function prepends. Bounding the count before
 -- scanning turns an unbounded cost into a constant one.
 {-# INLINEABLE validateOtherMetadata #-}
 validateOtherMetadata :: [(BuiltinByteString, BuiltinByteString)] -> Bool

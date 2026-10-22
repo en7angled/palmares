@@ -7,7 +7,8 @@
 -- | Oracle validator for the Palmares attestation protocol.
 -- Holds mutable operational parameters ('OracleParams') in its datum.
 -- Only the current admin (from the datum) can update the oracle.
--- The oracle UTxO must be returned to the same address with the same value,
+-- The oracle UTxO must be returned to the same address with AT LEAST the same value (`geq`, so the
+-- balancer may add min-ADA),
 -- ensuring the NFT remains locked and the oracle remains available.
 module Palmares.Onchain.Validators.OracleValidator
   ( -- * Redeemer
@@ -22,7 +23,12 @@ module Palmares.Onchain.Validators.OracleValidator
 where
 
 import GHC.Generics (Generic)
-import Palmares.Onchain.Protocol.Types (OracleAdminAction (OracleSetAdmin), OracleParams (..), applyOracleAdminAction)
+import Palmares.Onchain.Protocol.Types
+  ( OracleAdminAction (OracleSetAdmin),
+    OracleParams (..),
+    applyOracleAdminAction,
+    oracleParamsAreWellFormed,
+  )
 import Palmares.Onchain.Utils qualified as Utils
 import PlutusLedgerApi.V3
 import PlutusTx
@@ -53,8 +59,12 @@ makeIsDataSchemaIndexed ''OracleRedeemer [('OracleUpdate, 0)]
 
 -- | Oracle validator logic.
 -- Validates that:
---   1. The current admin (from datum) signs the transaction
---   2. The oracle UTxO is returned at the given output index with the datum produced by applying the redeemer action to current params (same value and address)
+--   1. The current admin (from datum) signs the transaction (@O1@)
+--   2. The oracle UTxO is returned at the given output index with the datum produced by applying the
+--      redeemer action to current params, at LEAST the same value (the balancer may add min-ADA) and
+--      the same address (@O2@)
+--   3. A handover (@OracleSetAdmin@) is also signed by the INCOMING admin (@O5@)
+--   4. The resulting params are well-formed — no negative lovelace parameter (@O6@)
 {-# INLINEABLE oracleLambda #-}
 oracleLambda :: ScriptContext -> Bool
 oracleLambda (ScriptContext TxInfo {..} (Redeemer bredeemer) scriptInfo) =
@@ -73,7 +83,13 @@ oracleLambda (ScriptContext TxInfo {..} (Redeemer bredeemer) scriptInfo) =
                in and
                     [ traceIfFalse "O1" $ elem (opAdminPkh currentParams) txInfoSignatories, -- Must be signed by admin (O1)
                       traceIfFalse "O2" $ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress oracleOutputIdx newParams ownValue ownAddr txInfoOutputs, -- Must return oracle UTxO at index (O2); >= ownValue (balancer may add min-ADA)
-                      traceIfFalse "O5" $ incomingAdminSigned action -- Handover must be signed by the INCOMING admin too (O5)
+                      traceIfFalse "O5" $ incomingAdminSigned action, -- Handover must be signed by the INCOMING admin too (O5)
+                      -- A NEGATIVE LOVELACE PARAMETER WOULD MAKE EVERY MIN-VALUE CHECK IN THE
+                      -- PROTOCOL VACUOUS, because `geq`'s `These a b -> a >= b` arm is satisfied by
+                      -- anything when `b` is below zero. See 'oracleParamsAreWellFormed' for the
+                      -- concrete drain it opens on the admin's own wallet. Checked on the RESULT, so
+                      -- it covers all six actions and every future one.
+                      traceIfFalse "O6" $ oracleParamsAreWellFormed newParams -- Params must be well-formed (O6)
                     ]
     _ -> traceError "O3" -- Invalid script purpose (O3)
   where

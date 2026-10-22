@@ -21,7 +21,9 @@ PlutusTx on-chain code. No off-chain imports (no Aeson, Servant, Swagger). Plutu
 
 - **Types**: New types in `Protocol/Types.hs`. Use `makeIsDataSchemaIndexed` with **stable** indices. Never
   reorder constructors. Add `HasBlueprintDefinition` for CIP-57.
-- **ID derivation**: All deterministic token names in `Protocol/Id.hs`. `blake2b_224` for 28-byte names.
+- **ID derivation**: `Utils.nameFromTxOutRef` (`blake2b_224` of the seed `TxOutRef`) prefixed by
+  `CIP68.generateRefAndUserTN`. NOT `Protocol/Id.hs` — that module has zero callers and this line sent
+  readers to write derivations nothing would call.
   CIP-68 ref/user tokens via `generateRefAndUserTN`.
 - **Datum optimization**: Derive IDs from datum fields, don't store derivable IDs. Reduces datum size and min-ADA.
 - **ProtocolParams**: Carried in datums for unparameterized validators. Only MintingPolicy is parameterized.
@@ -49,13 +51,15 @@ PlutusTx on-chain code. No off-chain imports (no Aeson, Servant, Swagger). Plutu
 - **CurrencySymbol**: In the minting policy, pattern-match on `MintingScript mintingPolicyCurrencySymbol`
   and pass to handlers.
 - **Fee check**: `feeFor :: MintAction -> FeeConfig -> Integer` in `Palmares.Onchain.Protocol.Lookup` is the
-  only place a `FeeConfig` field is ever named, on or off chain; `checkFee :: OracleParams -> MintAction -> [TxOut] -> Bool`
+  only place a `FeeConfig` fee AMOUNT is selected (`checkFee` names `fcFeeAddress`, and the admin CLI
+  names all three — `scripts/check_vocabulary.sh` enforces exactly that boundary); `checkFee :: OracleParams -> MintAction -> [TxOut] -> Bool`
   takes the action, never a selector. The Belt System's selector-passing signature is exactly how its
   interval fee ended up charging the wrong field — one function, one naming site, no selectors.
 
 ### Validators
 
-- **Cleanup redeemer**: All state validators have it. Anyone can spend if datum absent/unparseable; must
+- **Cleanup redeemer**: All state validators have it. Anyone can spend if the datum is absent, unparseable,
+  OR names a state NFT the UTxO's own value does not hold (`Utils.isUnbackedDatum`); must
   fail if datum valid.
 - **Business logic**: In `Protocol.Types` helpers and the per-validator helper functions. Validators call
   these; no complex logic in the validator lambda.
@@ -73,7 +77,8 @@ PlutusTx on-chain code. No off-chain imports (no Aeson, Servant, Swagger). Plutu
 - **Time**: any date carried in a datum is validated against the transaction's validity interval — never
   trusted as supplied (inherited fix #4).
 - **Lookups**: Use `Palmares.Onchain.Protocol.Lookup` for reading state: `readOracleParams`,
-  `unsafeGetProfile`, `unsafeGetAttestation`.
+  `readOracleParams` is the live one. (The `unsafeGet*` profile helpers are currently UNCALLED, and there
+  is no `unsafeGetAttestation` — this line named a function that has never existed.)
 
 ### Deployment
 

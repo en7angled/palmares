@@ -81,6 +81,7 @@ import Palmares.Onchain.Utils qualified as Utils
     inputsSpendTxOutRef,
     mkUntypedLambda,
     nameFromTxOutRef,
+    valueAtOutputIdx,
   )
 import PlutusCore.Builtin.Debug (plcVersion110)
 import PlutusLedgerApi.V1 qualified as V1
@@ -115,8 +116,13 @@ data MintingRedeemer
   | -- | OpenDispute seedTxOutRef target openedBy depositTo metadata openedAt disputeOutputIdx
     --
     -- @depositTo@ is where the deposit returns on either verdict, named by the disputer here because
-    -- the Disputes Validator cannot resolve a 'ProfileId' into an address. Pointing it somewhere
-    -- useless costs only the disputer.
+    -- the Disputes Validator cannot resolve a 'ProfileId' into an address. It must be an address
+    -- this transaction spends from (@Md8@).
+    --
+    -- This used to end "pointing it somewhere useless costs only the disputer", and that was wrong:
+    -- resolution pays with @txOutAddress == disputeDepositTo@, so an address no real output can
+    -- carry made @D4@ UNSATISFIABLE and the dispute permanently unresolvable — a five-ADA
+    -- permanent accusation on the SUBJECT's record, which is whose cost it was.
     OpenDispute TxOutRef AttestationId ProfileId Address MetadataFields POSIXTime Integer
   deriving stock (Generic, Prelude.Show)
   deriving anyclass (HasBlueprintDefinition)
@@ -277,6 +283,30 @@ handleMintProfile TxInfo {..} mintingPolicyCurrencySymbol protocolParams ctx see
         && traceIfFalse "Mp3" (checkClaim claimedCredential) -- Claimed credential is not controlled by this tx (Mp3)
         && traceIfFalse "Mp4" (validateMetadataFields metadata) -- Metadata fields validation failed (Mp4)
         && traceIfFalse "Mp5" (Utils.checkTxOutAtIndexWithDatumMinValueAndAddress profileOutputIdx profileDatum profileValue profilesValidatorAddress txInfoOutputs) -- Lock profile at ProfilesValidator address (Mp5)
+        -- THE USER TOKEN MUST NOT END UP IN THE STATE OUTPUT, and @Mp5@ positively permits it
+        -- because it uses `geq`: a value of ref + user + minLv satisfies `geq (ref + minLv)` and
+        -- the datum is byte-identical, so the whole mint validated with the authority token locked
+        -- beside the state it authorises.
+        --
+        -- What that bought an attacker: @P3@ asks for quantity 1 of the profile's user token in
+        -- `valueSpent`, so the profile's OWN input satisfied it. Every stranger then passed
+        -- @P2@/@P3@/@P4@/@P5@/@P6@ and could rewrite that profile's description and image for ever,
+        -- and by spending it in the same transaction satisfied @Mf@ and issued attestations AS that
+        -- profile. A permanently world-writable identity.
+        --
+        -- The invariant existed only in off-chain prose — @Operations.hs@: "The user token is not
+        -- paid anywhere explicitly, so it lands in the balancer's change output — in the claimant's
+        -- wallet, which is where authority belongs." That is a statement about the builder, and a
+        -- hand-built transaction is not the builder.
+        --
+        -- This is the cheap half. It does NOT bind the user token to the claimed credential's
+        -- holder, so a transaction the victim co-signs for an unrelated reason can still mint a
+        -- profile claiming the victim's credential while the attacker keeps the authority token —
+        -- @Mp3@ proves the credential consented to THIS TRANSACTION, never to where the authority
+        -- lands. Closing that needs the user token paid to an address the claimed credential
+        -- controls, which a validator cannot resolve for a script credential, so it is a design
+        -- decision and not a check to add here.
+        && traceIfFalse "Mp6" (V1.assetClassValueOf (Utils.valueAtOutputIdx profileOutputIdx txInfoOutputs) profileUserAssetClass == 0) -- User token must not be locked with the state (Mp6)
   where
     -- A profile that claims nothing has nothing to prove. That is not a hole: a Community or an
     -- Auditor need not correspond to any on-chain credential, and the read layer presents such a

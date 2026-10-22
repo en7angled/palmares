@@ -69,6 +69,13 @@ valueConversionTests =
 -- protocol state only when its value carries exactly one of the NFT its own datum names,
 -- under our minting policy. These cases are the guard itself; wiring it into
 -- 'projectChainEvent's branches lands with the Ingestion rewrite.
+--
+-- AND THE NFT MUST BE A CIP-67 *REFERENCE* TOKEN, which is the half the first version missed and
+-- the reason these fixtures carry prefixes now. "Under our policy" was satisfied by a profile's
+-- USER token — legitimately minted, freely transferable, and held by whoever bought the profile.
+-- Pairing one with a hand-written datum at a validator address bought a forged attestation,
+-- attributed to a victim, served on the victim's own "attestations about me" query, with nothing in
+-- this protocol able to burn it. Both halves are pinned below, so deleting either one goes red.
 ------------------------------------------------------------------------------------------------
 
 ac :: Text -> GYAssetClass
@@ -78,16 +85,18 @@ ac t = either (error "bad fixture") id (toGYAssetClass t)
 ourPolicy :: GYMintingPolicyId
 ourPolicy = "c0ffee00000000000000000000000000000000000000000000000001"
 
-acX, acY, acForeign :: GYAssetClass
-acX = ac "c0ffee00000000000000000000000000000000000000000000000001.5801" -- id X under our policy
-acY = ac "c0ffee00000000000000000000000000000000000000000000000001.5902" -- id Y under our policy
-acForeign = ac "deadbeef000000000000000000000000000000000000000000000002.5801" -- someone else's policy
+-- Token names carry their CIP-67 prefix: `000643b0` is the reference NFT, `000de140` the user token.
+acX, acY, acForeign, acUserX :: GYAssetClass
+acX = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b05801" -- ref id X, our policy
+acY = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b05902" -- ref id Y, our policy
+acForeign = ac "deadbeef000000000000000000000000000000000000000000000002.000643b05801" -- someone else's policy
+acUserX = ac "c0ffee00000000000000000000000000000000000000000000000001.000de1405801" -- the USER half of X
 
 authenticationTests :: TestTree
 authenticationTests =
   testGroup
     "state-UTxO authentication (inherited fix #3)"
-    [ testCase "a datum's own NFT, under our policy, authenticates" $
+    [ testCase "a datum's own reference NFT, under our policy, authenticates" $
         authenticateStateUTxO ourPolicy acX (valueSingleton acX 1 <> valueFromLovelace 2_000_000) @?= True,
       testCase "no NFT in the value is not authentic (the free-dust forgery)" $
         authenticateStateUTxO ourPolicy acX (valueFromLovelace 2_000_000) @?= False,
@@ -98,8 +107,19 @@ authenticationTests =
       testCase "two copies of the NFT is not authentic" $
         authenticateStateUTxO ourPolicy acX (valueSingleton acX 2) @?= False,
       testCase "GYLovelace as the claimed id is never authentic" $
-        authenticateStateUTxO ourPolicy GYLovelace (valueFromLovelace 2_000_000) @?= False
+        authenticateStateUTxO ourPolicy GYLovelace (valueFromLovelace 2_000_000) @?= False,
+      -- The forgery vector itself. Our policy, exactly one token, the datum names the id it holds —
+      -- every clause of the original guard satisfied. Only the CIP-67 prefix refuses it.
+      testCase "a profile's USER token does not authenticate a datum (the forgery vector)" $
+        authenticateStateUTxO ourPolicy acUserX (valueSingleton acUserX 1 <> valueFromLovelace 2_000_000) @?= False,
+      -- A name SHORTER than the four-byte prefix must not slip through on a truncated comparison.
+      testCase "a two-byte token name is not a reference token" $
+        authenticateStateUTxO ourPolicy acShort (valueSingleton acShort 1) @?= False
     ]
+
+-- | A token name too short to carry a CIP-67 prefix at all.
+acShort :: GYAssetClass
+acShort = ac "c0ffee00000000000000000000000000000000000000000000000001.0006"
 
 ------------------------------------------------------------------------------------------------
 -- Inherited fix #5: 'rollbackTo' wipes and replays the projections, so a stored wall clock was

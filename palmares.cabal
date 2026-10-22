@@ -72,11 +72,15 @@ common plinth-ghc-options
   -- in the emulator and on preprod alike, so `mustFail` could not tell which check rejected a
   -- transaction and neither could an operator looking at a failed one.
   --
-  -- Owner decision, taken once the cost was measured: traces add 1.8%-3.4% to a script (the minting
-  -- policy, the largest, 11482 -> 11871 bytes of a 16384-byte transaction) and cost no ExUnits on
-  -- the success path, because a `traceIfFalse` only emits when its predicate is false. A registry
-  -- you cannot debug in production is one you cannot support, and the byte saving buys nothing at
-  -- 45% occupancy. `Test.Helpers.failedWithTrace` and `UnitTests.ScriptSize`'s pinned table both
+  -- Owner decision, taken once the cost was measured: traces add 1.8%-3.4% to a script (measured
+  -- 2026-10-21 on the minting policy, the largest: 11482 bytes without them against 12241 with, of
+  -- a 16384-byte transaction) and cost no ExUnits on the success path, because a `traceIfFalse` only
+  -- emits when its predicate is false. A registry you cannot debug in production is one you cannot
+  -- support, and the byte saving buys nothing at ~75% occupancy (the figure here said 45%, which was
+  -- wrong under any reading, and the 11871 was three recorded size moves stale). The pair above is a
+  -- dated measurement and is not re-run on every change; `UnitTests.ScriptSize` is the authority on
+  -- the current size and says 12296.
+  -- `Test.Helpers.failedWithTrace` and `UnitTests.ScriptSize`'s pinned table both
   -- depend on this line; swap it for `remove-trace` and they fail loudly rather than vacuously,
   -- which is the right way round.
   --

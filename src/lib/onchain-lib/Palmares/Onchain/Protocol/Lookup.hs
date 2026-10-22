@@ -77,8 +77,14 @@ readOracleParams oracleAC refInputs =
     hasOracleNFT (TxInInfo _ TxOut {txOutValue}) =
       V1.assetClassValueOf txOutValue oracleAC == 1
 
--- | The fee a 'MintAction' costs — __the only place in this codebase, on chain or off, where a
--- 'FeeConfig' field is named.__
+-- | The fee a 'MintAction' costs — __the only place a fee AMOUNT is selected__, which is the
+-- claim that holds. This said "the only place in this codebase, on chain or off, where a
+-- 'FeeConfig' field is named", and that is false: 'checkFee' below names @fcFeeAddress@,
+-- @TxBuilding.Operations@ names it too, and @admin/Main.hs@ names all three to construct and
+-- print a 'FeeConfig'. @scripts/check_vocabulary.sh@ states the real invariant — a 'FeeConfig'
+-- field is named in exactly TWO places — and enforces that boundary, excluding the CLI and the
+-- tests. The reason the rule exists is unchanged: inherited fix #1 was a selector shape that
+-- let one call site name the wrong field, and one SELECTION site is what prevents it.
 --
 -- That is the whole of inherited fix #1. The inherited 'checkFee' took a @(FeeConfig -> Integer)@
 -- selector, so every call site named a field, and one of them named the wrong one: the Belt System's

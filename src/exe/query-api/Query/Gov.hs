@@ -154,7 +154,7 @@ import Control.Concurrent (ThreadId, forkIO, threadDelay)
 import Control.Concurrent.STM (TVar, atomically, newTVarIO, readTVarIO, writeTVar)
 import Control.Exception (SomeException, try)
 import Control.Monad (forever)
-import Data.Aeson (FromJSON, eitherDecodeStrict)
+import Data.Aeson (eitherDecodeStrict)
 import Data.ByteString.Char8 qualified as BS8
 import Data.Char (isDigit, isHexDigit)
 import Data.Maybe (fromMaybe, isJust)
@@ -526,12 +526,17 @@ startFreshnessPoll pool pollMs = do
         Left (e :: SomeException) ->
           hPutStrLn stderr ("[freshness] poll failed, keeping the previous value: " <> show e)
 
-    -- Only ever called with a tip slot in hand, so the lag is always against a known tip.
-    pollAttest av tipSlot = do
+    -- Called with DB-SYNC'S OWN CURSOR in hand, not the chain tip: the caller passes `freshSlot f`,
+    -- which is `palmares.sync_state.slot_no`, the last block db-sync indexed. So this lag is
+    -- relative to that, and absolute staleness is this plus governance's own lag — which is why
+    -- `readyVerdict` compares the SUM to its ceiling. The parameter was named `tipSlot`, which
+    -- shadowed the top-level `tipSlot` that really is the tip (`max(slot_no) FROM public.block`),
+    -- and the two differ by exactly the quantity this function is measuring.
+    pollAttest av dbSyncSlot = do
       r <- try (runGovRead pool attestCursorSlot)
       case r of
         Right (Just cursor) ->
-          atomically (writeTVar av (Just (fromIntegral (max 0 (tipSlot - cursor)))))
+          atomically (writeTVar av (Just (fromIntegral (max 0 (dbSyncSlot - cursor)))))
         Right Nothing -> atomically (writeTVar av Nothing)
         Left (e :: SomeException) ->
           hPutStrLn stderr ("[freshness] attestation cursor unreadable, reporting unknown: " <> show e)

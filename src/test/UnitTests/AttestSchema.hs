@@ -38,7 +38,7 @@ import Palmares.Storage
   )
 import UnitTests.Conversions (sampleAttestation)
 import Test.Pg (runPg, withScratchDb)
-import Test.Tasty
+import Test.Tasty hiding (after) -- see UnitTests.Projections: `after` here is a snapshot, not tasty's
 import Test.Tasty.HUnit
 
 tests :: TestTree

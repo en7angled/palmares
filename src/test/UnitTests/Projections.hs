@@ -35,7 +35,7 @@ import Palmares.ChainSync.KupoAtlas (AtlasMatch (..), toGYAssetClass)
 import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..))
 import Palmares.DomainTypes.Core.Types (Profile (..))
 import Palmares.Ingestion
-import Palmares.Onchain.CIP68 (CIP68Datum, MetadataFields (..), mkCIP68Datum)
+import Palmares.Onchain.CIP68 (MetadataFields (..), mkCIP68Datum)
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import Palmares.Storage
 import Palmares.TxBuilding.Conversions (claimCredentialToText)
@@ -51,7 +51,10 @@ import Palmares.TxBuilding.Validators
 import PlutusLedgerApi.V1.Value (AssetClass (..), CurrencySymbol (..), TokenName (..))
 import PlutusLedgerApi.V3 (Address (..), BuiltinByteString, Credential (PubKeyCredential), POSIXTime (..), PubKeyHash (..))
 import Test.Pg (runPg, withScratchDb)
-import Test.Tasty
+-- `after` is tasty's dependency-ordering combinator and nothing here uses it, while four tests
+-- below bind a snapshot called `after` beside a `before`. Hidden rather than renamed, which is the
+-- same choice `query-api/RestAPI.hs` makes for `Control.Lens`.
+import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
 
 ------------------------------------------------------------------------------------------------

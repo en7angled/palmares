@@ -27,7 +27,6 @@ module UnitTests.Dispute (tests, disputeEmulatorTests) where
 import Control.Monad (void)
 import Data.Text (Text)
 import Data.Text qualified as T
-import GHC.Stack (HasCallStack)
 import GeniusYield.Test.Clb
 import GeniusYield.Test.FakeCoin (FakeCoin (..))
 import GeniusYield.Test.Utils

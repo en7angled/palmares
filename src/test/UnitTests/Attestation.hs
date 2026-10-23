@@ -52,7 +52,7 @@ import Test.Fixtures
     orgProfileData,
   )
 import Test.Helpers (assert, failedWithTrace)
-import Test.Tasty
+import Test.Tasty hiding (after) -- see UnitTests.Projections: `after` here is a snapshot, not tasty's
 import TestRuns
   ( adminInteraction,
     deployValidators,

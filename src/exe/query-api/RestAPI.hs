@@ -22,13 +22,11 @@
 module RestAPI where
 
 import Control.Lens hiding (Context)
-import Data.Proxy (Proxy (..))
 -- `hiding (Header)`: Data.Swagger has its own Header type and servant's is the one a route
 -- means. The alternative is a qualified import of every lens used in apiSwagger.
 import Data.Swagger hiding (Header)
 import Data.Swagger.Declare (execDeclare)
 import Data.Text (Text)
-import Network.Wai (Application)
 import Network.Wai.Middleware.Servant.Options (provideOptions)
 import Data.Either (partitionEithers)
 import Data.Int (Int64)
@@ -105,16 +103,13 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     DRepSummary,
     DRepUpdateRow,
     EpochPowerPoint,
-    GovActionAnchorContent,
     GovActionDetailResponse (..),
     GovActionSummary,
     ParamChangeRow (..),
-    ProposerSummary,
     SearchResults,
     SPOSummary,
     StatusResponse (..),
     TreasuryWithdrawalRecord,
-    TreasuryWithdrawalRow,
     VoteRecord,
     VoteTally (..),
   )
@@ -122,7 +117,7 @@ import Palmares.Metrics.Catalog (MetricFormula, resolvedMetricCatalog, retention
 import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.CSV (CSV)
 import Data.Text qualified as T
-import Palmares.WebAPI.Envelope (ApiError, ErrorCode (..), Page (..), errorCodeFromText, errorCodeToHttpStatus)
+import Palmares.WebAPI.Envelope (ApiError, ErrorCode (..), Page (..), errorCodeToHttpStatus)
 import Palmares.WebAPI.Errors (errorCodeFromParserMessage, mkServantErr)
 import Query.Common
   ( PageBounds (..),
@@ -188,7 +183,7 @@ import Query.Gov
     registeredDRepStatuses,
   )
 import Palmares.WebAPI.CORS (CorsConfig, mkCorsMiddleware)
-import Palmares.WebAPI.ServiceProbe (ServiceProbe, ServiceProbeStatus)
+import Palmares.WebAPI.ServiceProbe (ServiceProbe)
 import Query.Gov (Freshness (..), freshnessMiddleware)
 import Query.ServiceStatus (getHealthProbe, getReadyProbe, getStatusQuery)
 import QueryAppMonad (QueryAppContext (..), QueryAppMonad, runAppMonad, runRead, throwApi)
@@ -503,10 +498,10 @@ handleGetDRepPower did limit fromEpoch toEpoch sortOrder = do
   (kind, dhid) <- resolveDRepTarget did
   _ <- either throwApi pure (checkRanges Nothing Nothing fromEpoch toEpoch)
   (lim, off) <- either throwApi pure (normalizeLimitOffset epochSeriesBounds limit Nothing)
-  items <- runRead (listEpochPower kind dhid fromEpoch toEpoch (fromMaybe Asc sortOrder) lim)
+  points <- runRead (listEpochPower kind dhid fromEpoch toEpoch (fromMaybe Asc sortOrder) lim)
   -- total = the number of points returned: the series is at most 200 rows and a second COUNT
   -- query over it would cost as much as the page.
-  pure (Page items (Just (length items)) lim off Nothing)
+  pure (Page points (Just (length points)) lim off Nothing)
 
 handleGetDRepDelegators ::
   DRepId ->
@@ -651,9 +646,9 @@ type GovActionPageAPI =
 
 handleGetGovActionDetail :: GovActionId -> QueryAppMonad GovActionDetailResponse
 handleGetGovActionDetail (GovActionId gid) = do
-  (txHex, ix) <- maybe (throwApi InvalidGovActionId) pure (splitActionId gid)
+  (txHex, actionIx) <- maybe (throwApi InvalidGovActionId) pure (splitActionId gid)
   r <- runRead $ do
-    mid <- resolveGovAction txHex ix
+    mid <- resolveGovAction txHex actionIx
     case mid of
       Nothing -> pure Nothing
       Just gaid -> do
@@ -765,9 +760,9 @@ handleGetVotes ::
   Maybe VotesOrderBy ->
   Maybe SortOrder ->
   QueryAppMonad (Page VoteRecord)
-handleGetVotes accept limit offset roles voterIds gaIds verdicts gaTypes anchorStatus from to fromEpoch toEpoch q orderBy sortOrder = do
+handleGetVotes accept limit offset roles voterIds gaIds verdicts gaTypes anchorStatus fromTime toTime fromEpoch toEpoch q orderBy sortOrder = do
   q' <- either throwApi pure (normalizeQ q)
-  _ <- either throwApi pure (checkRanges from to fromEpoch toEpoch)
+  _ <- either throwApi pure (checkRanges fromTime toTime fromEpoch toEpoch)
   bounds <- either throwApi pure (normalizeLimitOffset (boundsFor accept) limit offset)
   -- Every voter_id must decode, and a bad one is a 400 rather than an empty page: a client that
   -- mistyped an identifier should be told, not shown "this voter never voted".
@@ -780,8 +775,8 @@ handleGetVotes accept limit offset roles voterIds gaIds verdicts gaTypes anchorS
             voteFilterVerdicts = verdicts,
             voteFilterGovActionTypes = gaTypes,
             voteFilterAnchorStatus = anchorStatus,
-            voteFilterFrom = from,
-            voteFilterTo = to,
+            voteFilterFrom = fromTime,
+            voteFilterTo = toTime,
             voteFilterFromEpoch = fromEpoch,
             voteFilterToEpoch = toEpoch,
             voteFilterQ = q'
@@ -983,8 +978,8 @@ handleGetDelegations ::
   Maybe DelegationsOrderBy ->
   Maybe SortOrder ->
   QueryAppMonad (Page DelegationRecord)
-handleGetDelegations accept limit offset drepIds stakeAddrs isCurrent from to minLovelace orderBy sortOrder = do
-  _ <- either throwApi pure (checkRanges from to Nothing Nothing)
+handleGetDelegations accept limit offset drepIds stakeAddrs isCurrent fromTime toTime minLovelace orderBy sortOrder = do
+  _ <- either throwApi pure (checkRanges fromTime toTime Nothing Nothing)
   bounds <- either throwApi pure (normalizeLimitOffset (boundsFor accept) limit offset)
   let filt =
         emptyDelegationFilter
@@ -992,8 +987,8 @@ handleGetDelegations accept limit offset drepIds stakeAddrs isCurrent from to mi
             delegationFilterReservedTargets = reserved,
             delegationFilterStakeAddresses = stakeAddrs,
             delegationFilterIsCurrent = fromMaybe True isCurrent,
-            delegationFilterFrom = from,
-            delegationFilterTo = to,
+            delegationFilterFrom = fromTime,
+            delegationFilterTo = toTime,
             delegationFilterMinLovelace = minLovelace
           }
   runRead (listDelegations filt (fromMaybe DelegationsOrderByAt orderBy, fromMaybe Desc sortOrder) bounds)

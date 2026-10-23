@@ -10,11 +10,11 @@ import GeniusYield.TxBuilder
 import GeniusYield.Types
 import GeniusYield.Types.Script.ScriptHash (scriptHashFromPlutus)
 import Palmares.Onchain.CIP68 (CIP68Datum (..), ImageURI, MetadataFields (..), extra, getMetadataFields, mkCIP68Datum, updateCIP68DatumMetadata)
-import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetAdmin, OracleSetDisputeDeposit, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
+import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetAdmin, OracleSetDisputeDeposit, OracleSetDisputeTimeout, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
 import Palmares.Onchain.Protocol.Lookup qualified as Lookup
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer (..))
-import Palmares.Onchain.Validators.DisputesValidator qualified as DisputesValidator (DisputesRedeemer (Cleanup, ResolveDispute))
+import Palmares.Onchain.Validators.DisputesValidator qualified as DisputesValidator (DisputesRedeemer (Cleanup, ExpireDispute, ResolveDispute))
 import Palmares.Onchain.Validators.MintingPolicy
 import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer (OracleUpdate))
 import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (UpdateProfile))
@@ -389,6 +389,7 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId kind metadata otherMetad
     otherMetadata
   mpGY <- asks getMintingPolicyFromCtx
   mpRef <- asks getMintingPolicyRef
+  attestationProtocolParams <- asks getProtocolParamsFromCtx
   (oracleRefSkeleton, oracleParams, feeSkeleton, isInvalidBeforeNow) <- getOracleFeeAndValiditySkeleton OnchainTypes.MintActionAttestation
   let minLv = OnchainTypes.opMinUTxOValue oracleParams
 
@@ -455,7 +456,11 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId kind metadata otherMetad
             OnchainTypes.attestationKind = kind,
             OnchainTypes.attestationDate = attestationDate,
             OnchainTypes.attestationPeriod = claimedPeriod,
-            OnchainTypes.attestationIsAccepted = False
+            OnchainTypes.attestationIsAccepted = False,
+            -- The same line 'openDisputeTX' writes for `disputeOracleToken`, and it has to agree
+            -- with the policy's compile-time parameter exactly: `Mk` compares this whole datum
+            -- against the output, so a wrong token here is a mint that does not validate.
+            OnchainTypes.attestationOracleToken = OnchainTypes.oracleToken attestationProtocolParams
           }
   let attestationDatum = mkCIP68Datum attestationInfo metadata otherMetadata
 
@@ -643,6 +648,10 @@ openDisputeTX gyTargetAC gyOpenerProfileId depositTo metadata ownAddrs = do
             OnchainTypes.disputeTarget = plutusTargetAC,
             OnchainTypes.disputeOpenedBy = assetClassToPlutus gyOpenerProfileId,
             OnchainTypes.disputeOpenedAt = openedAt,
+            -- Computed here and recorded, never read from the oracle at closing time: see
+            -- 'OnchainTypes.disputeStaleAfter'. `Md*` compares this whole datum against the output,
+            -- so this has to be the same arithmetic the minting policy does.
+            OnchainTypes.disputeStaleAfter = openedAt + POSIXTime (OnchainTypes.opDisputeTimeoutMs oracleParams),
             OnchainTypes.disputeDeposit = deposit,
             OnchainTypes.disputeDepositTo = plutusDepositTo,
             -- The token, not the whole params: it is all the Disputes validator needs to tell which
@@ -761,6 +770,71 @@ resolveDisputeTX gyDisputeAC verdict = do
         mustBeSignedBy gyAdminPkh -- Required signer (no output index)
       ]
 
+-- | Close an undecided dispute whose deadline has passed — D-A, and the only write in this protocol
+-- that needs no authority at all.
+--
+-- __No oracle reference input and no required signer__, because @ExpireDispute@ reads neither. That
+-- is the whole design: an escape hatch the admin can gate — by pausing, or by simply holding the
+-- only key — is not an escape hatch, and an admin who does not act is the failure this exit exists
+-- to bound. What the transaction does carry is a validity range, which is what the chain compares
+-- against the dispute's own @disputeStaleAfter@.
+--
+-- Two 400s before the chain sees it, for the two things @D3@ and @D9@ also refuse. Without them the
+-- build succeeds and the submission dies as a script error, which reads like a protocol bug rather
+-- than a bad request.
+expireDisputeTX ::
+  (HasCallStack, GYTxQueryMonad m, MonadReader DeployedScriptsContext m) =>
+  -- | Dispute NFT AC
+  GYAssetClass ->
+  m (GYTxSkeleton 'PlutusV3)
+expireDisputeTX gyDisputeAC = do
+  dvRef <- asks getDisputesValidatorRef
+
+  (disputeDatum, plutusDisputeValue) <- getDisputeDatumAndValue gyDisputeAC
+  let dispute = extra disputeDatum
+  when (isJust (OnchainTypes.disputeVerdict dispute)) $
+    throwError (GYApplicationException DisputeAlreadyResolved)
+
+  now <- slotOfCurrentBlock
+  nowT <- pPOSIXTimeFromGYSlot now
+  -- `<=` and not `<`: the chain's @D9@ asks for the whole validity range to sit at or after the
+  -- deadline, and the range this builds STARTS at `now`, so a transaction built exactly at the
+  -- deadline is valid. Refusing one built before it is the 400.
+  when (nowT < OnchainTypes.disputeStaleAfter dispute) $
+    throwError (GYApplicationException DisputeNotStaleYet)
+
+  -- ============================================================
+  -- Output index tracking (order must match skeleton mconcat order)
+  -- ============================================================
+  -- Output 0: Expired dispute
+  -- Output 1: Returned deposit
+  let disputeOutputIdx = 0 :: Integer
+      gyRedeemer = redeemerFromPlutusData (DisputesValidator.ExpireDispute disputeOutputIdx)
+  spendsDispute <- txMustSpendStateFromRefScriptWithRedeemer dvRef gyDisputeAC gyRedeemer disputesValidatorGY
+
+  gyDisputeValue <- valueFromPlutus' plutusDisputeValue
+  gyDepositTo <- addressFromPlutus' (OnchainTypes.disputeDepositTo dispute)
+  let depositValue = valueFromLovelace (OnchainTypes.disputeDeposit dispute)
+      -- The same function the validator computes its expected output datum with, so the two cannot
+      -- disagree about what closing a dispute does — including that it changes nothing else.
+      expiredDatum = disputeDatum {extra = OnchainTypes.resolveDispute OnchainTypes.VerdictExpired dispute}
+
+  isLockingExpiredDispute <-
+    txMustLockStateWithInlineDatumAndValue
+      disputesValidatorGY
+      expiredDatum
+      (gyDisputeValue `valueMinus` depositValue)
+
+  isReturningDeposit <- txMustPayValueToAddress gyDepositTo depositValue
+
+  return $
+    mconcat
+      [ spendsDispute, -- Input (no output index)
+        txIsValidForSafeEra now, -- D9 compares this range against disputeStaleAfter
+        isLockingExpiredDispute, -- Output 0: Expired dispute
+        isReturningDeposit -- Output 1: Returned deposit
+      ]
+
 ------------------------------------------------------------------------------------------------
 
 -- * Oracle Management Operations
@@ -818,6 +892,7 @@ adminActionToOracleAdminAction (SetFeesAction mFeeConfig) = OracleSetFees mFeeCo
 adminActionToOracleAdminAction (SetMinUTxOValueAction lovelace) = OracleSetMinUTxOValue lovelace
 adminActionToOracleAdminAction (RotateAdminAction newAdmin) = OracleSetAdmin (pubKeyHashToPlutus newAdmin)
 adminActionToOracleAdminAction (SetDisputeDepositAction lovelace) = OracleSetDisputeDeposit lovelace
+adminActionToOracleAdminAction (SetDisputeTimeoutAction ms) = OracleSetDisputeTimeout ms
 
 -- | Apply an admin action delta to current oracle params to produce new params.
 -- Must stay in sync with on-chain 'Onchain.Protocol.Types.applyOracleAdminAction'.
@@ -828,6 +903,7 @@ applyAdminAction (SetFeesAction mFeeConfig) params = params {OnchainTypes.opFeeC
 applyAdminAction (SetMinUTxOValueAction lovelace) params = params {OnchainTypes.opMinUTxOValue = lovelace}
 applyAdminAction (RotateAdminAction newAdmin) params = params {OnchainTypes.opAdminPkh = pubKeyHashToPlutus newAdmin}
 applyAdminAction (SetDisputeDepositAction lovelace) params = params {OnchainTypes.opDisputeDeposit = lovelace}
+applyAdminAction (SetDisputeTimeoutAction ms) params = params {OnchainTypes.opDisputeTimeoutMs = ms}
 
 ------------------------------------------------------------------------------------------------
 

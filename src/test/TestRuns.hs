@@ -41,6 +41,7 @@ module TestRuns
     maliciousMintProfileWithExtraToken,
     maliciousMintProfileWithBurn,
     maliciousIssueAttestation,
+    maliciousAcceptWhilePaused,
     maliciousDoubleAccept,
     maliciousUpdateProfile,
     maliciousResolveDispute,
@@ -80,7 +81,6 @@ import Palmares.TxBuilding.Lookups (getAttestationDatumAndValue, getDisputeDatum
 import Palmares.TxBuilding.Operations
   ( adminActionToOracleAdminAction,
     applyAdminAction,
-    getOracleAndValiditySkeleton,
     getOracleFeeAndValiditySkeleton,
     spendUserNFTForProfile,
   )
@@ -180,7 +180,8 @@ initialOracleParamsFor w =
       opPaused = False,
       opFeeConfig = Nothing,
       opMinUTxOValue = 1_000_000,
-      opDisputeDeposit = 5_000_000
+      opDisputeDeposit = 5_000_000,
+      opDisputeTimeoutMs = 2_592_000_000
     }
 
 -- | Mint the oracle NFT in the test environment and lock initial OracleParams at the oracle validator.
@@ -695,6 +696,9 @@ maliciousIssueAttestationTX ::
 maliciousIssueAttestationTX subjectId issuerId kind metadata backdateMs spendProfileId ownAddrs = do
   mpGY <- asks getMintingPolicyFromCtx
   mpRef <- asks getMintingPolicyRef
+  -- The REAL oracle token, deliberately: this builder is malicious only in the ways each test
+  -- names, and a fake token here would fail every one of them at `Mk` for the wrong reason.
+  attestationProtocolParams <- asks getProtocolParamsFromCtx
   (oracleRefSkeleton, oracleParams, feeSkeleton, isValidForSafeEra) <-
     getOracleFeeAndValiditySkeleton OnchainTypes.MintActionAttestation
   let minLv = OnchainTypes.opMinUTxOValue oracleParams
@@ -738,7 +742,8 @@ maliciousIssueAttestationTX subjectId issuerId kind metadata backdateMs spendPro
             OnchainTypes.attestationKind = onchainKind,
             OnchainTypes.attestationDate = attestationDate,
             OnchainTypes.attestationPeriod = Nothing,
-            OnchainTypes.attestationIsAccepted = False
+            OnchainTypes.attestationIsAccepted = False,
+            OnchainTypes.attestationOracleToken = OnchainTypes.oracleToken attestationProtocolParams
           }
   let attestationDatum = mkCIP68Datum attestationInfo metadata []
   isLockingAttestation <-
@@ -776,6 +781,29 @@ maliciousDoubleAccept ctx subject attestationAC = asUser subject $ do
   logTxBudget gyTxBody
   return gyTxId
 
+-- | MALICIOUS: accept an attestation while the protocol is paused — the only way to reach @A7@.
+--
+-- The same builder as 'maliciousDoubleAccept'; a separate wrapper only so the log names the rule
+-- under test, which is how an operator reading a failed emulator run tells the two apart.
+maliciousAcceptWhilePaused ::
+  (GYTxGameMonad m, HasCallStack) => DeployedScriptsContext -> User -> GYAssetClass -> m GYTxId
+maliciousAcceptWhilePaused ctx subject attestationAC = asUser subject $ do
+  let ownAddrs = toList $ User.userAddresses subject
+  skeleton <- runReaderT (maliciousAcceptTX attestationAC ownAddrs) ctx
+  gyLogInfo' ("MALICIOUS" :: GYLogNamespace) "Attempting an acceptance with no off-chain pause guard (A7)..."
+  (gyTxBody, gyTxId) <- sendSkeleton' skeleton
+  logTxBudget gyTxBody
+  return gyTxId
+
+-- | Byte-identical to 'Palmares.TxBuilding.Operations.acceptAttestationTX' except for two guards it
+-- drops, both of which are off-chain only.
+--
+-- __The oracle reference input is still attached__, by hand, exactly as 'maliciousUpdateProfileTX'
+-- does it and for the same reason: dropping the pause CHECK while keeping the reference input is
+-- what leaves @A7@ as the only thing that can refuse a paused acceptance. Without it the failure
+-- would be @readOracleParams@ raising because no input carries the oracle token, and the test would
+-- assert the wrong guard — which is also the fail-closed property @A7@ relies on, since an attacker
+-- cannot reach the acceptance path by simply leaving the oracle out.
 maliciousAcceptTX ::
   (HasCallStack, GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
   GYAssetClass ->
@@ -783,7 +811,11 @@ maliciousAcceptTX ::
   m (GYTxSkeleton 'PlutusV3)
 maliciousAcceptTX gyAttestationAC ownAddrs = do
   avRef <- asks getAttestationsValidatorRef
-  (oracleRefSkeleton, isValidForSafeEra) <- getOracleAndValiditySkeleton
+  -- MALICIOUS: the reference input without the pause check that comes with it.
+  (_oracleParams, oracleRef, _oracleValue) <- queryOracleParams
+  now <- slotOfCurrentBlock
+  let oracleRefSkeleton = mustHaveRefInput oracleRef
+      isValidForSafeEra = txIsValidForSafeEra now
   (attestationDatum, attestationValue) <- getAttestationDatumAndValue gyAttestationAC
 
   gySubjectProfileRefAC <- assetClassFromPlutus' (OnchainTypes.attestationSubject (extra attestationDatum))

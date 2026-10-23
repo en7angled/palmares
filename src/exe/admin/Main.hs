@@ -71,6 +71,7 @@ data Command
   | SetFees SetFeesArgs
   | SetMinUTxOValue Integer
   | SetDisputeDeposit Integer
+  | SetDisputeTimeout Integer
   | RotateAdmin GYPubKeyHash
   | QueryOracle
   | UpdateProfile UpdateProfileArgs
@@ -431,6 +432,20 @@ commandParser =
               (SetDisputeDeposit <$> option auto (long "lovelace" <> short 'n' <> metavar "LOVELACE" <> help "Lovelace a new dispute must deposit (oracle opDisputeDeposit)"))
               (progDesc "Set the deposit (lovelace) a NEW dispute must lock; disputes already open keep the price in their own datum")
           )
+        <> command
+          "set-dispute-timeout"
+          ( info
+              ( SetDisputeTimeout
+                  <$> option
+                    auto
+                    ( long "milliseconds"
+                        <> short 'm'
+                        <> metavar "MS"
+                        <> help "How long a NEW dispute may sit undecided before ANYONE may close it (oracle opDisputeTimeoutMs). 2592000000 = 30 days"
+                    )
+              )
+              (progDesc "Set the stale-dispute clock for NEW disputes; disputes already open keep their own deadline in their datum")
+          )
         -- Inherited fix #2. No HTTP equivalent, on purpose: AdminActionType's FromJSON rejects it, so
         -- an action that changes who controls the protocol can only come from here, where the key
         -- that has to sign it already lives.
@@ -589,6 +604,11 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
     printYellow $ "Setting dispute deposit to " <> show n <> " lovelace..."
     (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (SetDisputeDepositAction n)) Nothing
     printGreen $ "Dispute deposit updated successfully! TxId: " <> show txId
+  SetDisputeTimeout ms -> do
+    printYellow $ "Setting the stale-dispute clock to " <> show ms <> " ms (" <> show (ms `div` 86_400_000) <> " days)..."
+    printYellow "Disputes already open keep their own deadline: it is recorded in each dispute's datum at open time."
+    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (SetDisputeTimeoutAction ms)) Nothing
+    printGreen $ "Dispute timeout updated successfully! TxId: " <> show txId
   -- Inherited fix #2. Signed by the CURRENT admin, which is what the oracle validator's O1 requires,
   -- so this command is also the only proof that the key in `operation.prv` is still the live one.
   RotateAdmin newAdmin -> do

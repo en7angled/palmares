@@ -162,6 +162,7 @@ tests =
           disputeDeposit = 5_000_000,
           disputeDepositTo = depositAddr,
           disputeOracleToken = acOf "oracle",
+          disputeStaleAfter = POSIXTime (1_700_000_000_000 + 2_592_000_000),
           disputeVerdict = Nothing
         }
 
@@ -181,7 +182,8 @@ tests =
           opPaused = False,
           opFeeConfig = Nothing,
           opMinUTxOValue = 2_000_000,
-          opDisputeDeposit = 5_000_000
+          opDisputeDeposit = 5_000_000,
+          opDisputeTimeoutMs = 2_592_000_000
         }
 
     -- Read the constructor index straight out of the encoding, which is what a deployed validator

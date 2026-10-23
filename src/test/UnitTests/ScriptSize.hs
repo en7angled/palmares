@@ -232,11 +232,63 @@ measured =
 -- Still declined from the earlier round, unchanged: @unsafeFromBuiltinData@ on the oracle read
 -- (450-850 bytes across three scripts). It trades @K1@ — the only diagnostic on the only path that
 -- reads external state — for bytes. It is the first lever if the policy ever approaches 14000.
+--
+-- __D-C: the pause reaching the acceptance.__ This table had already priced it, two rounds before
+-- the decision — "+50 against +502 for the same shared helper is the whole cost of REACHING the
+-- oracle, measured" — and that sentence is why the entry above said the attestation pause was
+-- off-chain only.
+--
+--   AttestationsValidator 7640 -> 8134  (+494)  @A7@, and with it this validator's FIRST oracle
+--                                               read: `readOracleParams` through the new
+--                                               'Palmares.Onchain.Protocol.Types.attestationOracleToken'.
+--                                               The pause check itself is one boolean; the 494 is
+--                                               the read.
+--   MintingPolicy        12276 -> 12310  (+34)  writing that field into the attestation datum from
+--                                               @ctxOracleToken@
+--
+-- +494 here against the ProfilesValidator's +502 for the same thing, on a different validator and
+-- two rounds apart: the one line in this table that PREDICTED a later measurement instead of
+-- describing an earlier one. DisputesValidator and OracleValidator did not budge, which says the
+-- oracle read is reached from exactly the three validators that call it.
+--
+-- __The datum field is not free beyond the script, and this is the part that is not in bytes of
+-- code.__ An 'AssetClass' is a 28-byte currency symbol plus a token name, so every attestation's
+-- inline datum grows by roughly 45-70 bytes of CBOR, and the LEDGER's min-ADA floor for that UTxO
+-- rises with it: at @coinsPerUTxOByte@ = 4310 that is about 0.2-0.3 ADA per record, paid once, by
+-- whoever issues the attestation. Whether a given @opMinUTxOValue@ still clears the new floor is a
+-- deployment question and not a property of this table — the oracle's value is a configured
+-- minimum, and the ledger's is the real one.
+-- __D-A: the dispute exit that needs no key.__ The first change in this table to move all FIVE
+-- scripts, and the two numbers nobody would have predicted are the interesting ones.
+--
+--   DisputesValidator  8457 -> 9401  (+944)  the whole @ExpireDispute@ arm: @D3@, @D9@
+--                                            ('Utils.checkDateHasPassed') and its own copy of
+--                                            @D2@/@D4@/@D6@. Factoring those three into
+--                                            'disputeClosesWith' buys SOURCE-level agreement
+--                                            between the two ways a dispute closes, not bytes —
+--                                            PlutusTx inlines it at both call sites, so the arm
+--                                            pays for its own copy either way. That was the trade,
+--                                            made deliberately: the alternative was three
+--                                            invariants kept equal by hand on a path that moves
+--                                            money.
+--   OracleValidator    7547 -> 7688  (+141)  one more field in 'OracleParams'. @O2@ compares the
+--                                            whole record and @O6@ checks it, so a field costs here
+--                                            twice over.
+--   MintingPolicy     12310 -> 12393  (+83)  @ctxDisputeTimeoutMs@, the @disputeStaleAfter@
+--                                            arithmetic, and the wider 'OracleParams' decode.
+--   ProfilesValidator  8414 -> 8444  (+30)   NOTHING in this change touches the profiles path.
+--   AttestationsValidator 8134 -> 8163 (+29) Nor the attestations path.
+--
+-- Those last two are the measurement worth keeping: both validators DECODE 'OracleParams' — @P6@
+-- and @A7@ read @opPaused@ — so adding a sixth field to that record costs ~30 bytes in every script
+-- that parses it, whether or not it reads the new field. A record on the oracle is not free to
+-- extend; it is ~30 bytes times the number of validators that look at the oracle at all, which is
+-- now four. The 2026-10-22 audit's calibration had no line for this.
 expected :: [(String, Int)]
 expected =
-  [ ("ProfilesValidator", 8414),
-    ("AttestationsValidator", 7640),
-    ("DisputesValidator", 8457),
-    ("OracleValidator", 7547),
-    ("MintingPolicy", 12276)
+  [ ("ProfilesValidator", 8444),
+    ("AttestationsValidator", 8163),
+    ("DisputesValidator", 9401),
+    ("OracleValidator", 7688),
+    ("MintingPolicy", 12393)
   ]

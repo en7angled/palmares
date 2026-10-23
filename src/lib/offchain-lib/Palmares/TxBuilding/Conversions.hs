@@ -150,11 +150,13 @@ claimWitnessToTxInWitness (WitnessPlutusScript sc r) = GYTxInWitnessScript (GYIn
 disputeVerdictToOnchainVerdict :: DisputeVerdict -> OnchainTypes.Verdict
 disputeVerdictToOnchainVerdict VerdictUpheld = OnchainTypes.VerdictUpheld
 disputeVerdictToOnchainVerdict VerdictRejected = OnchainTypes.VerdictRejected
+disputeVerdictToOnchainVerdict VerdictExpired = OnchainTypes.VerdictExpired
 
 -- | Map an on-chain verdict to the domain one.
 onchainVerdictToDisputeVerdict :: OnchainTypes.Verdict -> DisputeVerdict
 onchainVerdictToDisputeVerdict OnchainTypes.VerdictUpheld = VerdictUpheld
 onchainVerdictToDisputeVerdict OnchainTypes.VerdictRejected = VerdictRejected
+onchainVerdictToDisputeVerdict OnchainTypes.VerdictExpired = VerdictExpired
 
 -- | Extract 'ProfileData' from a CIP-68 profile datum's metadata fields.
 profileDatumToProfileData :: CIP68Datum Onchain.OnchainProfile -> ProfileData

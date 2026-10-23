@@ -28,7 +28,12 @@ check() {
 }
 
 echo "== swagger metadata"
-check "version is 1.1.0" '.info.version == "1.1.0"'
+check "version is 1.2.0" '.info.version == "1.2.0"'
+# D-A. A client that SWITCHES on the verdict gains a case here, and one that renders `expired` as a
+# finding is wrong — which is the whole reason the value is in the published enum rather than left
+# to a null and a comment.
+check "DisputeVerdict publishes expired beside the two findings" \
+  '(.definitions.DisputeVerdict.enum | sort) == ["expired","rejected","upheld"]'
 # DEVIATION from the plan, which pinned "Cardano Governance Registry Query API". The project is
 # named palmares and the title is what a reader sees first; the plan's title predates the name.
 check "title is the product's name" '.info.title == "Palmares Query API"'

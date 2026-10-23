@@ -1845,6 +1845,11 @@ instance ToSchema AttestationRow where
 -- rather than on a verdict value. An upheld dispute is published BESIDE the attestation it
 -- contests and never hides or deletes it (spec §4.3) — so a reader that ignores this list is
 -- reading an attestation without its challenges.
+--
+-- __Three non-null values, not two.__ @upheld@ and @rejected@ are the oracle admin's findings;
+-- @expired@ means the deadline in this dispute's own datum passed with no verdict, at which point
+-- anyone could close it (D-A). So @resolved=true@ means CLOSED, not decided, and @expired@ must
+-- not be rendered the way a finding is.
 data DisputeRow = DisputeRow
   { disputeRowId :: Core.AttestationAC,
     disputeRowTarget :: Core.AttestationAC,

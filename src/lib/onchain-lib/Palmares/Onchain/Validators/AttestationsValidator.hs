@@ -105,18 +105,32 @@ attestationsLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) script
                     ownAddress = txOutAddress ownInput
                     updatedAttestationDatum = attestationDatum {extra = attestation {attestationIsAccepted = True}}
                     subjectUserAC = deriveUserFromRefAC (attestationSubject attestation)
-                 in -- The attestation must not ALREADY be accepted. Its absence was the open half of
-                    -- inherited fix #4: the off-chain path refuses a second accept
-                    -- (AttestationAlreadyAccepted) but anyone building their own transaction bypasses
-                    -- that, and a second accept rewrites an identical datum and passes — leaving a
-                    -- permanent record whose acceptance is whatever the last accepter chose. Its own
-                    -- trace code rather than folding into A1, because "already accepted" and "wrong
-                    -- output" are different mistakes and an operator should be able to tell them apart.
+                    -- Decided as D-C. Strict, and that is the point: `readOracleParams` raises when
+                    -- no reference input carries this token, so an acceptance built without the
+                    -- oracle fails CLOSED rather than skipping the check. The token comes from the
+                    -- datum the minting policy wrote from its own parameter, so it cannot be aimed
+                    -- at a forged oracle naming its author as unpaused.
+                    oracle = readOracleParams (attestationOracleToken attestation) txInfoReferenceInputs
+                 in -- The pause, first, because it is a gate and not a property of this attestation
+                    -- — the same position and the same meaning as `M0` on the minting policy.
                     --
-                    -- One boolean read of a datum already parsed, so this is NOT the
-                    -- non-exploitable-defence case the repo rejects: the off-chain guard is bypassable
-                    -- and the consequence is permanent.
-                    traceIfFalse "A3" (not (attestationIsAccepted attestation)) -- Already accepted (A3)
+                    -- Until D-C this validator had no pause check at all, which left acceptance as
+                    -- the only write the pause did not reach, on the protocol's only IRREVERSIBLE
+                    -- write. `UnitTests.Pause`'s header recorded that gap and named the two routes
+                    -- out of it; this is the datum-field one.
+                    traceIfFalse "A7" (not (opPaused oracle)) -- Protocol is paused (A7)
+                      -- The attestation must not ALREADY be accepted. Its absence was the open half of
+                      -- inherited fix #4: the off-chain path refuses a second accept
+                      -- (AttestationAlreadyAccepted) but anyone building their own transaction bypasses
+                      -- that, and a second accept rewrites an identical datum and passes — leaving a
+                      -- permanent record whose acceptance is whatever the last accepter chose. Its own
+                      -- trace code rather than folding into A1, because "already accepted" and "wrong
+                      -- output" are different mistakes and an operator should be able to tell them apart.
+                      --
+                      -- One boolean read of a datum already parsed, so this is NOT the
+                      -- non-exploitable-defence case the repo rejects: the off-chain guard is bypassable
+                      -- and the consequence is permanent.
+                      && traceIfFalse "A3" (not (attestationIsAccepted attestation)) -- Already accepted (A3)
                       -- THREE STATEMENTS, THREE CODES, and they were one until 2026-10-22. The
                       -- argument is A3's own, four lines up: \"'already accepted' and 'wrong output'
                       -- are different mistakes and an operator should be able to tell them apart.\"

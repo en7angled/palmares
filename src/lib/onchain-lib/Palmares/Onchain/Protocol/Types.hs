@@ -90,7 +90,21 @@ data OracleParams = OracleParams
     -- resolution time. Reading it here would let the admin lower this value, resolve, and keep the
     -- difference — or raise it and make an open dispute unresolvable. The oracle sets the price for
     -- NEW disputes; an open dispute's price is history.
-    opDisputeDeposit :: Integer
+    opDisputeDeposit :: Integer,
+    -- | How long, in MILLISECONDS, a dispute may sit undecided before anyone may close it as
+    -- 'VerdictExpired'. Decided as D-A.
+    --
+    -- __On the oracle so that tuning it costs a command rather than a redeploy__ — the same reason
+    -- 'opMinUTxOValue' and 'opDisputeDeposit' live here. And __recorded into each dispute's own
+    -- datum at open time__ for the same reason the DEPOSIT is: read from here at closing time
+    -- instead, an admin could raise it and push every open dispute's deadline out indefinitely,
+    -- which is precisely the inaction this parameter exists to bound. The oracle sets the clock for
+    -- NEW disputes; an open one's clock is history. See 'disputeStaleAfter'.
+    --
+    -- Zero is permitted and means "closable immediately", which is a configuration and not a brick:
+    -- the admin can still resolve a dispute the moment it opens, and the deposit comes back either
+    -- way. A very LARGE value is the dangerous direction, and it is the one the operator sees.
+    opDisputeTimeoutMs :: Integer
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
@@ -122,6 +136,12 @@ data OracleAdminAction
     -- to avoid. It cannot affect a dispute already open — that deposit is recorded in the dispute's
     -- own datum, see 'opDisputeDeposit'.
     OracleSetDisputeDeposit Integer
+  | -- | Retime the stale-dispute clock for NEW disputes — D-A.
+    --
+    -- Here rather than baked into the validator for the reason 'OracleSetDisputeDeposit' is, and it
+    -- cannot move a dispute already open: that clock is in the dispute's own datum. Appended at
+    -- index 6.
+    OracleSetDisputeTimeout Integer
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
 
@@ -132,7 +152,8 @@ makeIsDataSchemaIndexed
     ('OracleSetFees, 2),
     ('OracleSetMinUTxOValue, 3),
     ('OracleSetAdmin, 4),
-    ('OracleSetDisputeDeposit, 5)
+    ('OracleSetDisputeDeposit, 5),
+    ('OracleSetDisputeTimeout, 6)
   ]
 
 -- | Apply an admin action to current oracle params to obtain the new params.
@@ -145,6 +166,7 @@ applyOracleAdminAction (OracleSetFees mFeeConfig) params = params {opFeeConfig =
 applyOracleAdminAction (OracleSetMinUTxOValue lovelace) params = params {opMinUTxOValue = lovelace}
 applyOracleAdminAction (OracleSetAdmin newAdmin) params = params {opAdminPkh = newAdmin}
 applyOracleAdminAction (OracleSetDisputeDeposit lovelace) params = params {opDisputeDeposit = lovelace}
+applyOracleAdminAction (OracleSetDisputeTimeout ms) params = params {opDisputeTimeoutMs = ms}
 
 -- | Are these oracle params usable at all?
 --
@@ -173,7 +195,12 @@ applyOracleAdminAction (OracleSetDisputeDeposit lovelace) params = params {opDis
 {-# INLINEABLE oracleParamsAreWellFormed #-}
 oracleParamsAreWellFormed :: OracleParams -> Bool
 oracleParamsAreWellFormed params =
-  opMinUTxOValue params >= 0 && opDisputeDeposit params >= 0
+  opMinUTxOValue params >= 0
+    && opDisputeDeposit params >= 0
+    -- A NEGATIVE timeout would put every new dispute's `disputeStaleAfter` in the past, so it would
+    -- be closable by anyone the instant it opened. Not a drain like the two above, but it voids the
+    -- dispute mechanism with one keystroke and reads as a smaller number, not a wrong one.
+    && opDisputeTimeoutMs params >= 0
 
 -------------------------------------------------------------------------------
 
@@ -355,7 +382,24 @@ data OnchainAttestation = OnchainAttestation
     -- The read layer must present this as claimed, never as verified — @claimed_period@ beside
     -- @issued_at@ — and must not sort or filter the record as though the chain had checked it.
     attestationPeriod :: Maybe (POSIXTime, POSIXTime),
-    attestationIsAccepted :: Bool
+    attestationIsAccepted :: Bool,
+    -- | Which oracle UTxO governs this record, so that @AcceptAttestation@ can find it.
+    --
+    -- __The same field as 'disputeOracleToken', for the same reason, and decided as D-C.__ An
+    -- unparameterised validator cannot tell which reference input IS the oracle without the token
+    -- that identifies it — and acceptance is the protocol's only irreversible write AND was the only
+    -- write the pause did not reach, precisely because this datum offered no route to @opPaused@.
+    -- Pausing a protocol and watching acceptances keep landing permanently is the one failure the
+    -- pause exists to prevent.
+    --
+    -- Written by the minting policy from its own compile-time parameter (@ctxOracleToken@), never by
+    -- the client: @Mk@ compares this whole datum against the output, so a forged oracle here is a
+    -- mint that does not validate.
+    --
+    -- Only the token, not the whole 'ProtocolParams': it is all the validator needs, and a datum is
+    -- paid for in min-ADA. Appended last because everything above it is what the read layer renders;
+    -- this is plumbing, and the projection drops it exactly as it drops 'disputeOracleToken'.
+    attestationOracleToken :: AssetClass
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
@@ -370,8 +414,10 @@ makeIsDataSchemaIndexed ''OnchainAttestation [('OnchainAttestation, 0)]
 
 -- | How a dispute was decided.
 --
--- Two outcomes and no third, because the deposit comes back either way: there is no "frivolous"
--- verdict to punish, and adding one would turn the deposit into a fine the admin levies. The
+-- Two FINDINGS and no third, because the deposit comes back either way: there is no "frivolous"
+-- verdict to punish, and adding one would turn the deposit into a fine the admin levies.
+-- 'VerdictExpired' below is a third constructor and not a third finding — nobody decided it, which
+-- is exactly what it says, and the deposit comes back there too. The
 -- consequence of a verdict is entirely a read-layer one — an upheld dispute is shown beside the
 -- attestation it contests, and __the attestation is never hidden or deleted__ (spec §4.3). The
 -- record of a claim and the record of its being contested are both facts; suppressing the first
@@ -379,10 +425,26 @@ makeIsDataSchemaIndexed ''OnchainAttestation [('OnchainAttestation, 0)]
 data Verdict
   = VerdictUpheld
   | VerdictRejected
+  | -- | The clock ran out: nobody decided this, and that is what it records.
+    --
+    -- __Decided as D-A, and it is not a verdict on the merits.__ A dispute used to have one exit and
+    -- one key — @ResolveDispute@, signed by the oracle admin — so an admin who simply did not act
+    -- produced the same state as a lost key, and a pause on top of a lost key froze every open
+    -- dispute forever. The one who paid for that inaction was the TARGET: a permanent accusation on
+    -- a stranger's record with no on-chain move available to anyone.
+    --
+    -- So after @disputeStaleAfter@ __anyone__ may close it with @ExpireDispute@, which is why the
+    -- name is not "withdrawn": no one retracted anything. The deposit still returns to the address
+    -- the opener named, so there is nothing for a stranger to gain, and the read layer must show
+    -- this as unresolved-and-closed rather than as a finding either way.
+    --
+    -- Appended at index 2, never inserted: the two indices above are a deployed-data contract from
+    -- the first deployment onward — the same rule 'OracleSetAdmin' follows.
+    VerdictExpired
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
 
-makeIsDataSchemaIndexed ''Verdict [('VerdictUpheld, 0), ('VerdictRejected, 1)]
+makeIsDataSchemaIndexed ''Verdict [('VerdictUpheld, 0), ('VerdictRejected, 1), ('VerdictExpired, 2)]
 
 -- PlutusTx's 'Eq', not the stock one above: under @NoImplicitPrelude@ the @==@ a validator compiles
 -- is this class, and the derived @Prelude.Eq@ is invisible to it. Written out rather than derived
@@ -391,6 +453,7 @@ instance Eq Verdict where
   {-# INLINEABLE (==) #-}
   VerdictUpheld == VerdictUpheld = True
   VerdictRejected == VerdictRejected = True
+  VerdictExpired == VerdictExpired = True
   _ == _ = False
 
 -- | A dispute: one profile contesting one attestation, with a deposit behind it.
@@ -416,6 +479,13 @@ instance Eq Verdict where
 --     unresolvable against the SUBJECT's record.
 --   * __'disputeDeposit'__ — the amount actually paid, recorded at open time. See 'opDisputeDeposit'
 --     for why reading the oracle at resolution time instead would be a hole.
+--
+-- And a fourth, added with D-A for exactly the third one's reason:
+--
+--   * __'disputeStaleAfter'__ — when anyone may close this dispute as 'VerdictExpired'. Computed at
+--     open time from the oracle's 'opDisputeTimeoutMs' and then fixed, because reading the oracle
+--     at closing time would let an admin postpone the deadline forever — and an admin who does not
+--     act is the whole failure the deadline exists to bound.
 data OnchainDispute = OnchainDispute
   { disputeId :: DisputeId,
     -- | The attestation being contested. Never modified by the dispute.
@@ -428,7 +498,15 @@ data OnchainDispute = OnchainDispute
     disputeDeposit :: Integer,
     disputeDepositTo :: Address,
     disputeOracleToken :: AssetClass,
-    -- | 'Nothing' while open. Set once, by the oracle admin, and never unset.
+    -- | After this moment, @ExpireDispute@ lets ANYONE close this dispute as 'VerdictExpired'.
+    --
+    -- Absolute, not a duration, so the check is one comparison against the transaction's validity
+    -- range and no arithmetic on a datum an attacker supplies. @disputeOpenedAt +
+    -- opDisputeTimeoutMs@ at open time, written by the minting policy from the oracle it is already
+    -- reading there.
+    disputeStaleAfter :: POSIXTime,
+    -- | 'Nothing' while open. Set once — by the oracle admin as a finding, or by anyone as
+    -- 'VerdictExpired' once 'disputeStaleAfter' has passed — and never unset.
     disputeVerdict :: Maybe Verdict
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)

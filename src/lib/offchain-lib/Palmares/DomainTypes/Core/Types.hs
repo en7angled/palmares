@@ -267,14 +267,21 @@ instance ToSchema Attestation where
             { AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "attestation"
             }
 
--- | How a dispute was decided — the off-chain mirror of
--- 'Palmares.Onchain.Protocol.Types.Verdict', the same two constructors in the same order.
+-- | How a dispute ended — the off-chain mirror of
+-- 'Palmares.Onchain.Protocol.Types.Verdict', the same three constructors in the same order.
 --
--- Two outcomes and no third, because __the deposit comes back either way__: there is no punitive
+-- Two FINDINGS and no third, because __the deposit comes back either way__: there is no punitive
 -- verdict for the admin to levy, so losing a dispute costs network fees and nothing else. An upheld
 -- dispute is published beside the attestation it contests and the attestation is never hidden or
 -- deleted (spec §4.3).
-data DisputeVerdict = VerdictUpheld | VerdictRejected
+--
+-- @expired@ is the third constructor and NOT a third finding: nobody decided it. After the
+-- dispute's own deadline anyone may close an undecided dispute, which is the exit D-A added for the
+-- case where the admin simply does not act — see
+-- 'Palmares.Onchain.Protocol.Types.VerdictExpired'. __The read layer must not render it as a
+-- finding against either side__, and in particular must not show an expired dispute the way it
+-- shows an upheld one.
+data DisputeVerdict = VerdictUpheld | VerdictRejected | VerdictExpired
   deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
   deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "Verdict", CamelToSnake]] DisputeVerdict
 

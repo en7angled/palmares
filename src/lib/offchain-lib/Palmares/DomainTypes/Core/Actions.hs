@@ -316,6 +316,19 @@ data DisputeActionType
       { rd_dispute_id :: GYAssetClass,
         rd_verdict :: DisputeVerdict
       }
+  | -- | Close an undecided dispute whose deadline has passed — D-A.
+    --
+    -- __Permissionless, and that is the point.__ It takes no verdict and no authority: after the
+    -- dispute's own @disputeStaleAfter@ the chain lets anyone close it as @expired@, because an
+    -- escape hatch the admin could gate — by pausing, or by holding the only key — is not an escape
+    -- hatch. The deposit returns to the address the opener named, so a stranger who builds this
+    -- transaction pays the fee and keeps nothing.
+    --
+    -- Reachable over HTTP for the same reason @ResolveDisputeAction@ is, and more so: there is no
+    -- signature to wait for, so the service can build it for whoever asks.
+    ExpireDisputeAction
+      { ed_dispute_id :: GYAssetClass
+      }
   deriving (Show, Generic, FromJSON, ToJSON)
 
 -- | Tagged, not constructor-keyed — see 'taggedSumSchema' for the defect this fixes.
@@ -377,6 +390,12 @@ data AdminActionType
     --
     -- It cannot touch a dispute already open — that deposit is recorded in the dispute's own datum.
     SetDisputeDepositAction Integer
+  | -- | Milliseconds a NEW dispute may sit undecided before anyone may close it (oracle
+    -- @opDisputeTimeoutMs@) — D-A.
+    --
+    -- Like the deposit above, it cannot touch a dispute already open: that deadline is recorded in
+    -- the dispute's own datum at open time, precisely so that an admin cannot postpone it.
+    SetDisputeTimeoutAction Integer
   deriving (Show, Generic)
 
 instance ToJSON AdminActionType where
@@ -388,6 +407,7 @@ instance ToJSON AdminActionType where
   -- echoing an action back, and a rotation's log line has no business carrying the key.
   toJSON (RotateAdminAction _) = object ["tag" .= ("RotateAdminAction" :: Text)]
   toJSON (SetDisputeDepositAction n) = object ["tag" .= ("SetDisputeDepositAction" :: Text), "lovelace" .= n]
+  toJSON (SetDisputeTimeoutAction ms) = object ["tag" .= ("SetDisputeTimeoutAction" :: Text), "milliseconds" .= ms]
 
 -- | Always fails — see the type's Haddock. The message is a 400 body a client reads, so it says
 -- where the action belongs rather than only that it was refused.

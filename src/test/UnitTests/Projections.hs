@@ -82,6 +82,9 @@ acAttestation = ac "c0ffee00000000000000000000000000000000000000000000000001.000
 acDispute = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0e5"
 acForeign = ac "deadbeef000000000000000000000000000000000000000000000002.000643b0f6"
 
+acOracle :: GYAssetClass
+acOracle = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0f7"
+
 -- | The credential two of the profiles below both claim — Review Focus item 2.
 testCredential :: Credential
 testCredential = PubKeyCredential (PubKeyHash "0123456789abcdef0123456789ab")
@@ -133,7 +136,10 @@ attestationDatum claimedId =
             OnchainTypes.attestationKind = OnchainTypes.Endorsement,
             OnchainTypes.attestationDate = POSIXTime 1700000000000,
             OnchainTypes.attestationPeriod = Nothing,
-            OnchainTypes.attestationIsAccepted = True
+            OnchainTypes.attestationIsAccepted = True,
+            -- Any value: the projection drops this field, which is the point of asserting the
+            -- projected shape below rather than the datum's.
+            OnchainTypes.attestationOracleToken = assetClassToPlutus acOracle
           }
         fixtureMetadata
         []
@@ -151,6 +157,7 @@ disputeDatum claimedId =
             OnchainTypes.disputeDeposit = 5_000_000,
             OnchainTypes.disputeDepositTo = Address (PubKeyCredential (PubKeyHash "")) Nothing,
             OnchainTypes.disputeOracleToken = fakeAC "oracle",
+            OnchainTypes.disputeStaleAfter = POSIXTime (1700000001000 + 2592000000),
             OnchainTypes.disputeVerdict = Nothing
           }
         fixtureMetadata

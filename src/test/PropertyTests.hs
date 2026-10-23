@@ -200,7 +200,8 @@ paramsNoFees =
       opPaused = False,
       opFeeConfig = Nothing,
       opMinUTxOValue = 1_000_000,
-      opDisputeDeposit = 5_000_000
+      opDisputeDeposit = 5_000_000,
+      opDisputeTimeoutMs = 2_592_000_000
     }
 
 paramsWithFees :: OracleParams
@@ -227,7 +228,8 @@ attestationNoPeriod =
       attestationKind = minBound,
       attestationDate = POSIXTime 1_700_000_000_000,
       attestationPeriod = Nothing,
-      attestationIsAccepted = False
+      attestationIsAccepted = False,
+      attestationOracleToken = fakeAC "oracle"
     }
 
 -- A period that STARTS BEFORE the issuance date, which is the case the field exists for.

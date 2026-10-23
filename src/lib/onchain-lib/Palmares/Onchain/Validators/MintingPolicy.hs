@@ -44,6 +44,7 @@ import Palmares.Onchain.Protocol.Types
         attestationId,
         attestationIsAccepted,
         attestationKind,
+        attestationOracleToken,
         attestationPeriod
       ),
     OnchainProfile
@@ -61,11 +62,12 @@ import Palmares.Onchain.Protocol.Types
         disputeOpenedAt,
         disputeOpenedBy,
         disputeOracleToken,
+        disputeStaleAfter,
         disputeTarget,
         disputeVerdict
       ),
     OnchainProfileKind,
-    OracleParams (opDisputeDeposit, opMinUTxOValue, opPaused),
+    OracleParams (opDisputeDeposit, opDisputeTimeoutMs, opMinUTxOValue, opPaused),
     ProfileId,
     ProtocolParams
       ( attestationsValidatorScriptHash,
@@ -142,7 +144,15 @@ data MintingContext = MintingContext
     ctxDisputesAddress :: Address,
     -- | The deposit a NEW dispute must lock, read from the oracle at open time and then recorded in
     -- the dispute's own datum. After that the oracle's current price is irrelevant to it.
-    ctxDisputeDeposit :: Integer
+    ctxDisputeDeposit :: Integer,
+    -- | The oracle's own token, copied from this policy's compile-time parameter into every
+    -- attestation datum so that @AcceptAttestation@ can find the oracle. See
+    -- 'Palmares.Onchain.Protocol.Types.attestationOracleToken'.
+    ctxOracleToken :: V1.AssetClass,
+    -- | How long a NEW dispute may sit undecided, read from the oracle at open time and then
+    -- recorded in the dispute's own datum as an absolute moment. See
+    -- 'Palmares.Onchain.Protocol.Types.disputeStaleAfter'.
+    ctxDisputeTimeoutMs :: Integer
   }
 
 -------------------------------------------------------------------------------
@@ -168,7 +178,9 @@ mintingPolicyLambda protocolParams (ScriptContext txInfo@TxInfo {..} (Redeemer b
                     ctxProfilesAddress = profilesValidatorAddress,
                     ctxAttestationsAddress = attestationsValidatorAddress,
                     ctxDisputesAddress = disputesValidatorAddress,
-                    ctxDisputeDeposit = opDisputeDeposit oracle
+                    ctxDisputeDeposit = opDisputeDeposit oracle,
+                    ctxOracleToken = oracleToken protocolParams,
+                    ctxDisputeTimeoutMs = opDisputeTimeoutMs oracle
                   }
            in -- Global gate: protocol must not be paused (M0).
               traceIfFalse "M0" (not (opPaused oracle)) -- Protocol is paused (M0)
@@ -230,7 +242,10 @@ handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOu
             -- subject would have to accept about itself, which is the trade this repo rejects by
             -- standing rule; `issueAttestationTX` refuses it as a 400 instead.
             attestationPeriod = claimedPeriod,
-            attestationIsAccepted = False
+            attestationIsAccepted = False,
+            -- The parameter, not anything the client chose — the same line 'handleOpenDispute'
+            -- writes for `disputeOracleToken`, and the reason a datum cannot name a forged oracle.
+            attestationOracleToken = ctxOracleToken ctx
           }
 
       attestationDatum = mkCIP68Datum attestationInfo metadata otherMetadataEncoded
@@ -394,6 +409,10 @@ handleOpenDispute txInfo@TxInfo {..} mintingPolicyCurrencySymbol protocolParams 
             disputeDeposit = deposit,
             disputeDepositTo = depositTo,
             disputeOracleToken = oracleToken protocolParams,
+            -- Recorded, not referenced, for the same reason the deposit above is: read from the
+            -- oracle at CLOSING time, an admin could raise the timeout and postpone every open
+            -- dispute's deadline — and an admin who does not act is the failure D-A bounds.
+            disputeStaleAfter = openedAt + POSIXTime (ctxDisputeTimeoutMs ctx),
             disputeVerdict = Nothing
           }
       disputeDatum = mkCIP68Datum disputeInfo metadata []

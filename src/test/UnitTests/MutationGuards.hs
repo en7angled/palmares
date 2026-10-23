@@ -230,18 +230,41 @@ a1Tests =
           attestationsLambda
             (acceptCtx (lv minLovelace) [subjectConsentInput] (acceptedStateOutOf (lv minLovelace)))
         )
+          @?= (True, False),
+      -- D-C. One bit differs between the two halves — `opPaused` in the oracle datum the validator
+      -- reads through `attestationOracleToken` — so this is the narrowest possible statement of what
+      -- @A7@ does. The pair is what makes it mean something: acceptance must still WORK unpaused, or
+      -- `traceIfFalse "A7" False` would pass the negative half on its own.
+      --
+      -- The emulator case (@UnitTests.Pause@ 7.4) proves the same rule end to end, including that an
+      -- attacker's hand-built transaction cannot route around it. This one proves it in a context
+      -- where nothing else can be the cause.
+      testCase "Test Case 8.17: a paused protocol refuses an acceptance (A7)" $
+        ( attestationsLambda (acceptCtx attestationOwnValue [subjectConsentInput] acceptedStateOut),
+          attestationsLambda (acceptCtxPaused attestationOwnValue [subjectConsentInput] acceptedStateOut)
+        )
           @?= (True, False)
     ]
 
 -- | An acceptance with its three moving parts supplied: the value the attestation UTxO holds, the
 -- inputs beside it, and the output that re-locks it. Everything else is fixed and valid.
 --
--- No reference inputs: 'attestationsLambda' reads no oracle, which is the documented reason the pause
--- does not cover acceptance (see @UnitTests.Pause@'s header).
+-- __The oracle IS a reference input now__, and it has to be: since D-C, @A7@ reads @opPaused@
+-- through 'Palmares.Onchain.Protocol.Types.attestationOracleToken', and `readOracleParams` traces
+-- @K1@ when no reference input carries that token. This used to say "no reference inputs:
+-- 'attestationsLambda' reads no oracle", which was the documented reason the pause did not cover
+-- acceptance.
 acceptCtx :: Value -> [TxInInfo] -> TxOut -> ScriptContext
-acceptCtx ownValue extraInputs stateOut =
+acceptCtx = acceptCtxWith (oracleRefInput False)
+
+-- | The same acceptance under a PAUSED oracle, which is the one bit @A7@ reads.
+acceptCtxPaused :: Value -> [TxInInfo] -> TxOut -> ScriptContext
+acceptCtxPaused = acceptCtxWith (oracleRefInput True)
+
+acceptCtxWith :: TxInInfo -> Value -> [TxInInfo] -> TxOut -> ScriptContext
+acceptCtxWith oracleIn ownValue extraInputs stateOut =
   ScriptContext
-    (mkTxInfo (ownInput : extraInputs) [] [stateOut] emptyMintValue)
+    (mkTxInfo (ownInput : extraInputs) [oracleIn] [stateOut] emptyMintValue)
     (Redeemer (toBuiltinData (AcceptAttestation 0)))
     (SpendingScript attestationOwnRef (Just (Datum (toBuiltinData pendingAttestationDatum))))
   where
@@ -364,7 +387,8 @@ oracleParamsWith paused =
       opPaused = paused,
       opFeeConfig = Nothing,
       opMinUTxOValue = minLovelace,
-      opDisputeDeposit = 5_000_000
+      opDisputeDeposit = 5_000_000,
+      opDisputeTimeoutMs = 2_592_000_000
     }
 
 -- | The ids, derived with the protocol's own generator from the same seed the redeemer names, so the
@@ -436,7 +460,8 @@ attestation =
       attestationKind = MilestoneDelivered,
       attestationDate = POSIXTime 1_700_000_000_000,
       attestationPeriod = Nothing,
-      attestationIsAccepted = False
+      attestationIsAccepted = False,
+      attestationOracleToken = oracleAC
     }
 
 pendingAttestationDatum :: CIP68Datum OnchainAttestation
@@ -700,7 +725,8 @@ issuedDatum = mkCIP68Datum issued profileFields []
           attestationKind = MilestoneDelivered,
           attestationDate = datedAt,
           attestationPeriod = Nothing,
-          attestationIsAccepted = False
+          attestationIsAccepted = False,
+          attestationOracleToken = oracleAC
         }
 
 -- | @Mj@: just the attestation's ref NFT, and no user token — the attestation path mints one token.
@@ -751,6 +777,9 @@ openedDispute =
       disputeDeposit = depositLovelace,
       disputeDepositTo = walletAddr,
       disputeOracleToken = oracleAC,
+      -- The same arithmetic `handleOpenDispute` does, from the same 30 days this module's
+      -- `oracleParamsWith` configures: `Md*` compares this whole datum against the output.
+      disputeStaleAfter = datedAt + POSIXTime 2_592_000_000,
       disputeVerdict = Nothing
     }
 

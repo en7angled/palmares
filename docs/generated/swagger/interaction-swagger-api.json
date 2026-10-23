@@ -118,8 +118,11 @@
             "type": "object"
         },
         "DisputeActionType": {
-            "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: OpenDisputeAction: od_attestation_id, od_opened_by_profile_id, od_deposit_to, od_profile_data; ResolveDisputeAction: rd_dispute_id, rd_verdict.",
+            "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: OpenDisputeAction: od_attestation_id, od_opened_by_profile_id, od_deposit_to, od_profile_data; ResolveDisputeAction: rd_dispute_id, rd_verdict; ExpireDisputeAction: ed_dispute_id.",
             "properties": {
+                "ed_dispute_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
                 "od_attestation_id": {
                     "$ref": "#/definitions/GYAssetClass"
                 },
@@ -142,7 +145,8 @@
                     "description": "Which arm of the union this object is.",
                     "enum": [
                         "OpenDisputeAction",
-                        "ResolveDisputeAction"
+                        "ResolveDisputeAction",
+                        "ExpireDisputeAction"
                     ],
                     "type": "string"
                 }
@@ -155,7 +159,8 @@
         "DisputeVerdict": {
             "enum": [
                 "upheld",
-                "rejected"
+                "rejected",
+                "expired"
             ],
             "type": "string"
         },
@@ -598,7 +603,7 @@
             "name": "GPL-3.0 license"
         },
         "title": "Palmares Interaction API",
-        "version": "3.0.0"
+        "version": "3.1.0"
     },
     "paths": {
         "/accept-attestation": {

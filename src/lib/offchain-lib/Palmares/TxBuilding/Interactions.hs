@@ -139,6 +139,11 @@ interactionToTxSkeleton Interaction {..} = do
       ResolveDisputeAction disputeId verdict -> do
         skeleton <- resolveDisputeTX disputeId (disputeVerdictToOnchainVerdict verdict)
         return (skeleton, Just disputeId)
+      -- No verdict argument and no signer: the caller does not choose the outcome here, the clock
+      -- does. See 'Palmares.TxBuilding.Operations.expireDisputeTX'.
+      ExpireDisputeAction disputeId -> do
+        skeleton <- expireDisputeTX disputeId
+        return (skeleton, Just disputeId)
     ProtocolAction protocolActionType -> case protocolActionType of
       CleanupDustAction -> do
         (skeleton, _dustCount) <- cleanupDustTX

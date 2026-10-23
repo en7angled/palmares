@@ -1515,8 +1515,10 @@ type DisputesAPI =
     :> Description
          "Every dispute opened against an attestation. `resolved` is `verdict IS NOT NULL` and not \
          \a verdict value, because the column is null while a dispute is open -- so `resolved=\
-         \false` is the open ones and `resolved=true` the decided ones, whichever way they were \
-         \decided. \
+         \false` is the open ones and `resolved=true` the CLOSED ones, which is three values and \
+         \not two: `upheld` and `rejected` are the oracle admin's findings, and `expired` means \
+         \nobody decided it and its deadline passed, so anyone was free to close it. A client that \
+         \wants findings only must read the verdict value, not this flag. \
          \\n`deposit` is returned to the opener either way: there is no punitive verdict, so \
          \losing a dispute costs network fees and nothing else. \
          \\nOrdered by `opened_at`, newest first. There is no `order_by`: the list has one \
@@ -1729,7 +1731,11 @@ apiSwagger =
     -- 1.1.0: `/status` gained `attest_lag_seconds`. A MINOR bump because the field is optional and
     -- every 1.0.0 client keeps working — nothing was removed, renamed or made required. Independent
     -- of the app version by design (see CLAUDE.md): a client pins what it reads, not what we ship.
-    & info . Data.Swagger.version .~ "1.1.0"
+    -- 1.2.0, MINOR: `DisputeVerdict` gained `expired` (D-A). Additive for a reader — a client that
+    -- knows the two findings still parses every document — but a client that SWITCHES on the value
+    -- gains a case, and one that renders it as a finding is now wrong. A new enum value in a
+    -- response is exactly the shape MINOR is for.
+    & info . Data.Swagger.version .~ "1.2.0"
     & info . Data.Swagger.description
       ?~ "Read-only queries over the Cardano governance record: DReps, governance actions, votes, \
          \delegations, the constitutional committee and treasury withdrawals. Every row comes from \
@@ -1831,8 +1837,12 @@ apiSwagger =
     & definitions . at "DisputeRow" . mapped . description
       ?~ "One dispute against an attestation. `verdict` is null while the dispute is OPEN. An \
          \upheld dispute is published beside the attestation it contests and never hides or \
-         \deletes it. `deposit` comes back to the opener either way -- there is no punitive \
-         \verdict, so losing one costs network fees and nothing else."
+         \deletes it. `deposit` comes back to the opener on every outcome -- there is no punitive \
+         \verdict, so losing one costs network fees and nothing else. \
+         \\n`expired` is NOT a finding: it means the dispute's deadline passed with no verdict, at \
+         \which point anyone may close it, and it must not be rendered the way `upheld` is. The \
+         \deadline is per-dispute and fixed when it was opened, so repricing the protocol's \
+         \timeout never moves it."
     & definitions . at "AttestationDetailResponse" . mapped . description
       ?~ "One attestation with its disputes inline, read in a single transaction so they are the \
          \same snapshot. At most 50 disputes travel; GET /disputes?target=<id> is the paged view."

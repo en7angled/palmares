@@ -65,6 +65,12 @@ data TxBuildingException
     DisputeAlreadyOpen
   | -- | The dispute already carries a verdict. @D3@ refuses it on chain as well.
     DisputeAlreadyResolved
+  | -- | The dispute's deadline has not passed, so there is nothing to expire yet. @D9@ refuses it on
+    -- chain as well.
+    --
+    -- A 400 and not a 403: nobody lacks permission here — @ExpireDispute@ needs none — the request
+    -- is simply early. The deadline is in the dispute's own datum, so a client can read it and wait.
+    DisputeNotStaleYet
   | -- \* Oracle Errors
     OracleNotFound
   | OracleDatumInvalid
@@ -109,6 +115,7 @@ instance Exception TxBuildingException where
     "A dispute is already open against this attestation. Wait for it to be resolved before opening \
     \another; this is an off-chain courtesy, not a protocol rule."
   displayException DisputeAlreadyResolved = "Dispute already carries a verdict and cannot be resolved twice"
+  displayException DisputeNotStaleYet = "Dispute cannot be expired yet: its deadline has not passed"
   displayException OracleNotFound = "Oracle UTxO not found"
   displayException OracleDatumInvalid = "Oracle datum invalid or unparseable"
   displayException ProtocolPaused = "Protocol is paused"

@@ -225,7 +225,8 @@ oracleParams =
       opPaused = False,
       opFeeConfig = Nothing,
       opMinUTxOValue = 2000000,
-      opDisputeDeposit = 5000000
+      opDisputeDeposit = 5000000,
+      opDisputeTimeoutMs = 2592000000
     }
 
 minLv :: V1.Value
@@ -338,7 +339,8 @@ attestationMint fields outAddr =
             attestationKind = Endorsement,
             attestationDate = recordedAt,
             attestationPeriod = Nothing,
-            attestationIsAccepted = False
+            attestationIsAccepted = False,
+            attestationOracleToken = oracleAC
           }
         fields
         []
@@ -415,6 +417,7 @@ disputeOpen fields outAddr =
             disputeDeposit = deposit,
             disputeDepositTo = walletAddr,
             disputeOracleToken = oracleAC,
+            disputeStaleAfter = recordedAt + POSIXTime 2592000000,
             disputeVerdict = Nothing
           }
         fields

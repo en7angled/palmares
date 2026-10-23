@@ -1071,7 +1071,7 @@
             "type": "object"
         },
         "DisputeRow": {
-            "description": "One dispute against an attestation. `verdict` is null while the dispute is OPEN. An upheld dispute is published beside the attestation it contests and never hides or deletes it. `deposit` comes back to the opener either way -- there is no punitive verdict, so losing one costs network fees and nothing else.",
+            "description": "One dispute against an attestation. `verdict` is null while the dispute is OPEN. An upheld dispute is published beside the attestation it contests and never hides or deletes it. `deposit` comes back to the opener on every outcome -- there is no punitive verdict, so losing one costs network fees and nothing else. \n`expired` is NOT a finding: it means the dispute's deadline passed with no verdict, at which point anyone may close it, and it must not be rendered the way `upheld` is. The deadline is per-dispute and fixed when it was opened, so repricing the protocol's timeout never moves it.",
             "properties": {
                 "block_hash": {
                     "type": "string"
@@ -1127,7 +1127,8 @@
         "DisputeVerdict": {
             "enum": [
                 "upheld",
-                "rejected"
+                "rejected",
+                "expired"
             ],
             "type": "string"
         },
@@ -2212,7 +2213,7 @@
             "name": "Apache-2.0"
         },
         "title": "Palmares Query API",
-        "version": "1.1.0"
+        "version": "1.2.0"
     },
     "paths": {
         "/activity": {
@@ -2649,7 +2650,7 @@
         },
         "/disputes": {
             "get": {
-                "description": "Every dispute opened against an attestation. `resolved` is `verdict IS NOT NULL` and not a verdict value, because the column is null while a dispute is open -- so `resolved=false` is the open ones and `resolved=true` the decided ones, whichever way they were decided. \n`deposit` is returned to the opener either way: there is no punitive verdict, so losing a dispute costs network fees and nothing else. \nOrdered by `opened_at`, newest first. There is no `order_by`: the list has one chronology, and a second ordering would be a control with no screen behind it.",
+                "description": "Every dispute opened against an attestation. `resolved` is `verdict IS NOT NULL` and not a verdict value, because the column is null while a dispute is open -- so `resolved=false` is the open ones and `resolved=true` the CLOSED ones, which is three values and not two: `upheld` and `rejected` are the oracle admin's findings, and `expired` means nobody decided it and its deadline passed, so anyone was free to close it. A client that wants findings only must read the verdict value, not this flag. \n`deposit` is returned to the opener either way: there is no punitive verdict, so losing a dispute costs network fees and nothing else. \nOrdered by `opened_at`, newest first. There is no `order_by`: the list has one chronology, and a second ordering would be a control with no screen behind it.",
                 "parameters": [
                     {
                         "in": "query",

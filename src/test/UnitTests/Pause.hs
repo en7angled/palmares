@@ -21,15 +21,13 @@
 -- 'Palmares.Onchain.Utils.isUnbackedDatum' — so gating it would hand an admin the power to freeze the
 -- dust sweep while the clutter accumulates. Test Case 7.3 pins that it still runs.
 --
--- __What is NOT here: the attestation acceptance.__ 'Palmares.Onchain.Validators.AttestationsValidator'
--- gained no pause check, because an attestation datum carries no route to the oracle: the Profiles
--- Validator reads the token out of its profile's @protocolParams@ and the Disputes Validator out of
--- @disputeOracleToken@, while 'Palmares.Onchain.Protocol.Types.OnchainAttestation' has neither. The
--- routes that exist are a new datum field (which changes the minting policy and the deployed datum
--- format) or requiring the subject's profile as a second reference input on every acceptance (which
--- changes the transaction every honest client builds). Both are protocol changes rather than a fix,
--- and acceptance stays off-chain-only-paused until one is decided. @pauseStopsEverything@ still
--- covers that half.
+-- __The acceptance is here now, and it was the one that mattered.__ This module used to record its
+-- absence: 'Palmares.Onchain.Protocol.Types.OnchainAttestation' carried no route to the oracle, so
+-- the validator could not read @opPaused@ at all, and acceptance — the protocol's only irreversible
+-- write — was the only write the pause did not reach. Of the two routes named here, the owner took
+-- the datum field (D-C), which is the one that leaves the transaction every honest client builds
+-- unchanged; 'Palmares.Onchain.Protocol.Types.attestationOracleToken' is the field and @A7@ is the
+-- check. Test Case 7.4 asserts it ON CHAIN, which is the half @pauseStopsEverything@ cannot reach.
 module UnitTests.Pause
   ( pauseTests,
   )
@@ -52,6 +50,7 @@ import TestRuns
   ( adminInteraction,
     deployValidators,
     disputeInteraction,
+    maliciousAcceptWhilePaused,
     maliciousUpdateProfile,
     profileInteraction,
     protocolInteraction,
@@ -64,7 +63,8 @@ pauseTests =
     "Pause Tests"
     [ mkTestFor "Test Case 7.1: a paused protocol refuses a profile update ON CHAIN (P6)" pausedUpdateRefused,
       mkTestFor "Test Case 7.2: a paused protocol refuses a dispute resolution ON CHAIN (D7)" pausedResolutionRefused,
-      mkTestFor "Test Case 7.3: the dust sweep still runs while paused" pausedSweepStillRuns
+      mkTestFor "Test Case 7.3: the dust sweep still runs while paused" pausedSweepStillRuns,
+      mkTestFor "Test Case 7.4: a paused protocol refuses an attestation acceptance ON CHAIN (A7)" pausedAcceptanceRefused
     ]
   where
     -- Test Case 7.1. Two transactions from the SAME builder, and the first one is the half that makes
@@ -106,7 +106,7 @@ pauseTests =
     -- the opening and left the settling running had the two exactly the wrong way round.
     pausedResolutionRefused :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     pausedResolutionRefused info@TestInfo {..} = do
-      (ctx, disputeAC) <- deployWithOpenDispute info
+      (ctx, _attestationAC, disputeAC) <- deployWithOpenDispute info
 
       _ <- adminInteraction ctx (w1 testWallets) PauseProtocolAction
       waitNSlots_ 1
@@ -141,12 +141,38 @@ pauseTests =
 
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "The dust sweep ran while the protocol was paused."
 
+    -- Test Case 7.4 — D-C, and the reason it was taken before the first deploy rather than after:
+    -- acceptance is the protocol's only IRREVERSIBLE write and was the only one the pause did not
+    -- reach, so a pause during an incident still let acceptances land for good.
+    --
+    -- The order is pause-then-unpause, not 7.1's unpause-then-pause, and it has to be: the positive
+    -- control is the SAME transaction succeeding, and an acceptance cannot be repeated — the second
+    -- one would die on @A3@ and prove nothing about @A7@. Run the other way round this test would
+    -- pass with @traceIfFalse \"A7\" False@ in the validator.
+    pausedAcceptanceRefused :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    pausedAcceptanceRefused info@TestInfo {..} = do
+      (ctx, attestationAC, _disputeAC) <- deployWithOpenDispute info
+
+      _ <- adminInteraction ctx (w1 testWallets) PauseProtocolAction
+      waitNSlots_ 1
+
+      -- w2 is the subject, so @A5@ is satisfied and the pause is the only thing left to refuse it.
+      mustFailWith (failedWithTrace "A7") $
+        void $
+          maliciousAcceptWhilePaused ctx (w2 testWallets) attestationAC
+
+      _ <- adminInteraction ctx (w1 testWallets) UnpauseProtocolAction
+      waitNSlots_ 1
+      _txId <- maliciousAcceptWhilePaused ctx (w2 testWallets) attestationAC
+      waitNSlots_ 1
+
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A paused protocol refused an attestation acceptance (A7), and allowed it once unpaused."
+
     -- Deploy, give w1 an organisation and w2 a DRep person, issue an attestation about w2 and have w2
-    -- open a dispute against it. The attestation is deliberately NOT accepted: acceptance is the one
-    -- write this commit leaves unpaused on chain (see the module header), so making the fixture depend
-    -- on it would couple this module to the half that did not change.
+    -- open a dispute against it. The attestation is deliberately left UNACCEPTED, which is what Test
+    -- Case 7.4 needs: it is the write that 7.4 then tries to make while paused.
     deployWithOpenDispute ::
-      (HasCallStack) => TestInfo -> GYTxMonadClb (DeployedScriptsContext, GYAssetClass)
+      (HasCallStack) => TestInfo -> GYTxMonadClb (DeployedScriptsContext, GYAssetClass, GYAssetClass)
     deployWithOpenDispute TestInfo {..} = do
       waitNSlots_ 1000
       ctx <- deployValidators (w1 testWallets)
@@ -192,7 +218,7 @@ pauseTests =
               }
           )
       waitNSlots_ 1
-      return (ctx, disputeAC)
+      return (ctx, attestationAC, disputeAC)
 
     utxoCountAt :: (GYTxQueryMonad m) => GYScript 'PlutusV3 -> m Int
     utxoCountAt validator = do

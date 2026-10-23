@@ -215,7 +215,9 @@ apiSwagger :: Swagger
 apiSwagger =
   toSwagger proxyPublicAPI
     & info . title .~ "Palmares Interaction API"
-    & info . Data.Swagger.version .~ "3.0.0"
+    -- 3.1.0, MINOR: `DisputeActionType` gained `ExpireDisputeAction` and `DisputeVerdict` gained
+    -- `expired` (D-A). Both additive: every request body that parsed before still parses.
+    & info . Data.Swagger.version .~ "3.1.0"
     & info . Data.Swagger.description ?~ "This is the Palmares Interaction API — transaction building, submission, and the dedicated per-action service endpoints."
     & info . license ?~ "GPL-3.0 license"
     & host .~ Nothing

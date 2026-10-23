@@ -8,6 +8,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -18,7 +19,8 @@
 -- | Persistent storage layer for chain-sync projections, cursor management, and rollback.
 module Palmares.Storage where
 
-import Control.Monad (forM_, void)
+import Control.Exception (SomeException, try)
+import Control.Monad (foldM, forM_, void)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Int (Int64)
@@ -112,6 +114,28 @@ OnchainMatchEvent
     createdOutputIndex Int
     kupoMatch          KupoMatch
     UniqueKupoMatch createdSlot createdHeader createdTxId createdOutputIndex
+    deriving Show
+
+-- A match the projector could not apply, kept instead of lost — the second half of `CS-01`.
+--
+-- The first half put a guard at `onchainAttestationToAttestation`, the single boundary every datum
+-- crosses, so the one unbounded datum value could no longer reach a `timestamptz`. This table is
+-- about the shape of the failure rather than any one cause: a window used to be applied in ONE
+-- transaction, so any single row Postgres refused aborted the batch, the cursor never advanced, and
+-- the projector stopped for ever. Skipping the row silently would trade a halt for a hole; this
+-- records what was skipped and why, so an operator can see it and re-drive it.
+--
+-- `lastError` is the exception's text and nothing structured on purpose: the useful failures are the
+-- ones nobody predicted, and a constructor per predicted cause would not have had one for the
+-- `POSIXTime 10^20` that started this.
+AttestDeadLetter
+    createdSlot        Integer
+    createdHeader      Text
+    createdTxId        Text
+    createdOutputIndex Int
+    kupoMatch          KupoMatch
+    lastError          Text
+    UniqueDeadLetter createdSlot createdHeader createdTxId createdOutputIndex
     deriving Show
 
 -- Projection-specific flattened tables (domain fields + created_at).
@@ -277,7 +301,11 @@ runMigrations = do
 -- value derived from the attestation stream. Both changes mean an existing projection is wrong
 -- rather than merely incomplete, so this bump is what forces the re-sync that rebuilds it.
 currentSchemaVersion :: Int
-currentSchemaVersion = 4
+-- 5: `attest_dead_letter` (CS-01 second half). A bump still wipes — see ADR 0007, which keeps a
+-- POLICY change from wiping and deliberately leaves a SCHEMA change wiping, because these tables
+-- would otherwise need an in-place ALTER Postgres rejects. Harmless here: the only deployment this
+-- precedes is a fresh one, where `needWipe` is False because there is no probe to compare against.
+currentSchemaVersion = 5
 
 -- | Upsert a record by its unique key: insert if absent, replace if present.
 upsertByUnique ::
@@ -298,6 +326,90 @@ getCursorValue = fmap entityVal <$> getBy (UniqueCursor True)
 -- Upsert the singleton cursor
 putCursor :: (MonadIO m) => ChainCursor -> SqlPersistT m ()
 putCursor = upsertByUnique (const (UniqueCursor True))
+
+-- | Record a match the projector could not apply, with the error that stopped it.
+--
+-- Upserted on the same key the match event uses, so re-driving a window that still fails replaces
+-- the row rather than growing the table once per tick.
+putDeadLetter :: (MonadIO m) => KupoMatch -> Text -> SqlPersistT m ()
+putDeadLetter km err =
+  upsertByUnique
+    (\d -> UniqueDeadLetter (attestDeadLetterCreatedSlot d) (attestDeadLetterCreatedHeader d) (attestDeadLetterCreatedTxId d) (attestDeadLetterCreatedOutputIndex d))
+    ( AttestDeadLetter
+        (slot_no (created_at km))
+        (header_hash (created_at km))
+        (transaction_id km)
+        (output_index km)
+        km
+        err
+    )
+
+-- | Apply a window of matches, and do not let one row stop the projector — the second half of
+-- @CS-01@.
+--
+-- __In the library and not in @attest-sync@__, where it used to live. It needs a pool, a policy, a
+-- network id and this module, all of which are library-level — and the executable's modules are not
+-- on the test suite's @hs-source-dirs@, so a policy about what happens when a write fails was in
+-- the one place a test could not reach it. Moving it is the smaller change than widening those
+-- source dirs, and it is also where it belongs: this is projection-path behaviour.
+--
+-- __What it used to be, and why it was a halt rather than a hiccup.__ One @runAttest@ around the
+-- whole window. Any single row Postgres refused aborted the transaction, so NOTHING in the window
+-- landed; the cursor is persisted only after a range completes, so it never advanced; and the loop
+-- above retries only Kupo client errors, so it did not even retry. One hand-built attestation, for
+-- about 1.3 ADA, stopped the read layer for ever. The first half of @CS-01@ removed the one value
+-- that could do it; this removes the SHAPE that let any value do it.
+--
+-- __Fast path unchanged.__ The window is still applied in one transaction, because that is one
+-- round trip for ten thousand rows and the failure it guards against is rare. Only when that
+-- transaction aborts does this fall back to one transaction per match, which is the slow,
+-- diagnostic path and is paid for exactly once per bad window.
+--
+-- __Per-match and not per-row-inside-the-transaction__, because a @catch@ inside an aborted
+-- Postgres transaction has nothing left to save: the transaction is already dead and every later
+-- statement in it fails too. Isolation has to be a transaction boundary.
+--
+-- __The bad row is recorded, not dropped.__ Skipping it silently would trade a halt for a hole in
+-- the registry, which is the worse of the two for something whose product IS the record.
+-- 'putDeadLetter' keeps the match and the error so an operator can see what was skipped and
+-- re-drive it after a fix.
+applyMatches :: GYNetworkId -> GYMintingPolicyId -> ConnectionPool -> [KupoMatch] -> IO ()
+applyMatches _networkId _ourPolicy _pool [] = return ()
+applyMatches networkId ourPolicy pool matches = do
+  putStrLn ("-----------------------------------------> Applying matches: " <> show (length matches))
+  batch <- try (runAttest pool (forM_ matches (putMatchAndProjections networkId ourPolicy)))
+  case batch of
+    Right () -> return ()
+    Left (batchErr :: SomeException) -> do
+      putStrLn
+        ( "BATCH ABORTED ("
+            <> show (length matches)
+            <> " matches): "
+            <> show batchErr
+            <> " — retrying one at a time to isolate the bad row(s)."
+        )
+      bad <- foldM (isolate) (0 :: Int) matches
+      putStrLn
+        ( "Isolation done: "
+            <> show (length matches - bad)
+            <> " applied, "
+            <> show bad
+            <> " dead-lettered. The cursor advances either way."
+        )
+  where
+    isolate deadSoFar km = do
+      one <- try (runAttest pool (putMatchAndProjections networkId ourPolicy km))
+      case one of
+        Right () -> return deadSoFar
+        Left (e :: SomeException) -> do
+          putStrLn ("DEAD-LETTERED " <> show (transaction_id km) <> "#" <> show (output_index km) <> ": " <> show e)
+          -- Its own transaction: the one that just failed is unusable, and this write must land.
+          recorded <- try (runAttest pool (putDeadLetter km (Text.pack (show e))))
+          case recorded of
+            Right () -> return ()
+            Left (e2 :: SomeException) ->
+              putStrLn ("COULD NOT EVEN DEAD-LETTER IT: " <> show e2 <> " — the raw match is still in Kupo.")
+          return (deadSoFar + 1)
 
 -- | Upsert the singleton config row with a POLICY HISTORY and the current schema version.
 --
@@ -327,7 +439,8 @@ parsePolicyHistory = filter (not . Text.null) . map Text.strip . Text.splitOn ",
 -- When adding a new entity to this block, add its table name here so wipeChainSyncTablesRaw drops it.
 chainSyncTableNames :: [Text]
 chainSyncTableNames =
-  [ "attestation_projection",
+  [ "attest_dead_letter",
+    "attestation_projection",
     "chain_cursor",
     "chain_sync_config",
     "dispute_projection",
@@ -383,8 +496,13 @@ putMatchAndProjections networkId ourPolicy km = do
   projectAndStore networkId ourPolicy km
 
 -- | Derive and store the projections for a raw match (does NOT re-store the raw match). Reused by
--- 'rollbackTo' to replay the surviving log. Conversion/projection failures are logged and skipped.
--- TODO(stream ?): dead-letter table for replayable failed projections.
+-- 'rollbackTo' to replay the surviving log.
+--
+-- A CONVERSION failure is logged and skipped here, and that is deliberate: the raw match is already
+-- stored, so the replay source stays complete and a conversion that starts working after a fix
+-- picks it up. A failure Postgres raises is a different animal — it aborts the transaction, so it
+-- cannot be caught here at all, and `applyMatches` is where it is isolated into
+-- 'putDeadLetter'. The TODO that stood here asked for exactly that table.
 projectAndStore :: (MonadIO m) => GYNetworkId -> GYMintingPolicyId -> KupoMatch -> SqlPersistT m ()
 projectAndStore networkId ourPolicy km =
   case kupoMatchToAtlasMatch km of

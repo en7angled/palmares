@@ -199,7 +199,21 @@ tests =
             12
             (length disputeCols)
 
-          assertEqual "currentSchemaVersion is the version this column set belongs to" 4 currentSchemaVersion,
+          -- v5 did not change any of the three column sets above: it ADDED a table,
+          -- `attest_dead_letter` (CS-01 second half). The three counts therefore stand unchanged and
+          -- the version moved, which is the one combination this tripwire has to allow — it pins
+          -- "columns and version describe the same schema", not "the version only moves with a
+          -- column".
+          deadCols <- columnsIn pool attestSchema "attest_dead_letter"
+          let shownDead = show deadCols
+          assertBool ("last_error missing: " <> shownDead) ("last_error" `elem` deadCols)
+          assertBool ("kupo_match missing: " <> shownDead) ("kupo_match" `elem` deadCols)
+          assertEqual
+            ("attest_dead_letter column count changed — bump currentSchemaVersion with it: " <> shownDead)
+            7
+            (length deadCols)
+
+          assertEqual "currentSchemaVersion is the version this column set belongs to" 5 currentSchemaVersion,
       -- The index that must NOT be unique. A credential may be claimed by two profiles (Review
       -- Focus item 2) and the read layer reports that as `contested`; a unique index here would
       -- make ingestion drop the second claim instead, which is the opposite behaviour and would

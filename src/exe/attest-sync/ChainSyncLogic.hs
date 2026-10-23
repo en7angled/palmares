@@ -14,14 +14,13 @@ where
 import ChainsyncAPI (ChainSyncState (..), SyncMetrics (..))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar (MVar, modifyMVar_)
-import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
 import Data.Text qualified as T
 import Data.Time (getCurrentTime)
 import Database.Persist.Sql (ConnectionPool)
 import GeniusYield.Types (GYMintingPolicyId, GYNetworkId, mintingPolicyIdToText)
-import Palmares.ChainSync.KupoClient (KupoCheckpoint (..), KupoMatch (..), runKupoCheckpointsList, runKupoMatches)
-import Palmares.Storage (ChainCursor (..), getCursorValue, putCursor, putMatchAndProjections, runAttest)
+import Palmares.ChainSync.KupoClient (KupoCheckpoint (..), runKupoCheckpointsList, runKupoMatches)
+import Palmares.Storage (ChainCursor (..), applyMatches, getCursorValue, putCursor, runAttest)
 
 -- | Slot gap beyond which the local tip is considered "way behind" the chain
 -- (drives the 'Behind' flag that selects bulk vs incremental fetching).
@@ -117,11 +116,3 @@ fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool start e
           now <- getCurrentTime
           modifyMVar_ metricsVar $ \m -> pure m {smLocalTip = endInterval, smLastSyncTime = now}
           fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool endInterval end batchSize
-
-applyMatches :: GYNetworkId -> GYMintingPolicyId -> ConnectionPool -> [KupoMatch] -> IO ()
-applyMatches _networkId _ourPolicy _pool [] = return ()
-applyMatches networkId ourPolicy pool matches = do
-  liftIO $ putStrLn ("-----------------------------------------> Applying matches: " <> show (length matches))
-  runAttest
-    pool
-    (forM_ matches (putMatchAndProjections networkId ourPolicy))

@@ -29,7 +29,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Database.Persist (Entity (..), Filter, SelectOpt (Asc), getBy, selectList, (==.))
-import Database.Persist.Sql (ConnectionPool)
+import Database.Persist.Sql (ConnectionPool, rawExecute)
 import GeniusYield.Types
 import Palmares.ChainSync.KupoAtlas (AtlasMatch (..), toGYAssetClass)
 import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..))
@@ -345,7 +345,8 @@ tests =
   testGroup
     "projections"
     [ testGroup "authentication at the projection (inherited fix #3)" authenticationTests,
-      testGroup "rollback replays projections, not only raw rows" replayTests
+      testGroup "rollback replays projections, not only raw rows" replayTests,
+      cs01IsolationTests
     ]
 
 authenticationTests :: [TestTree]
@@ -511,3 +512,63 @@ replayTests =
             )
         map (profileProjectionProfileId . entityVal) claimants @?= [acProfileA, acProfileB]
   ]
+
+-------------------------------------------------------------------------------------------------
+
+-- * CS-01, second half — one bad row must not stop the projector
+
+-------------------------------------------------------------------------------------------------
+
+-- | The isolation `applyMatches` does when a window's single transaction aborts.
+--
+-- __What this is about.__ A window used to be applied in ONE transaction, so any row Postgres
+-- refused aborted the batch: nothing landed, the persisted cursor never advanced, and the fetch loop
+-- retries only Kupo client errors. One hand-built attestation for about 1.3 ADA stopped the read
+-- layer permanently. The first half of `CS-01` removed the one datum value that could do it; this is
+-- about the shape that let any value do it.
+--
+-- __The poison is infrastructural on purpose.__ Contriving a datum that still defeats every guard
+-- would mean re-finding what the first half closed. Dropping `profile_projection` is a real,
+-- deterministic failure of the same CLASS — a write Postgres refuses, mid-window — and it exercises
+-- exactly the code path: batch aborts, isolation runs per match, each failure is dead-lettered, and
+-- the function RETURNS instead of throwing, which is what lets the cursor advance.
+cs01IsolationTests :: TestTree
+cs01IsolationTests =
+  testGroup
+    "CS-01 second half — a window survives a row Postgres refuses"
+    [ testCase "the batch aborts, every match is dead-lettered, and applyMatches does NOT throw" $
+        withScratchDb $ \pool -> do
+          runPg pool ensureAttestSchema
+          runAttest pool runMigrations
+          -- The poison: the table the profile projections need is gone, the dead-letter table stays.
+          runAttest pool $ rawExecute "DROP TABLE profile_projection" []
+          -- No exception escapes. That is the whole point: the caller advances the cursor.
+          applyMatches testNetworkId ourPolicy pool fixtureMatches
+          dead <- runAttest pool (selectList ([] :: [Filter AttestDeadLetter]) [])
+          assertBool "at least the profile matches were dead-lettered" (not (null dead))
+          -- Every dead-letter row carries the error that stopped it, so an operator can see why.
+          assertBool
+            "each row records a non-empty error"
+            (all (not . T.null . attestDeadLetterLastError . entityVal) dead),
+      -- Re-driving a window that still fails must not grow the table once per tick, so the write is
+      -- an upsert on the match's own key.
+      testCase "re-driving the same bad window replaces its dead-letter rows rather than adding" $
+        withScratchDb $ \pool -> do
+          runPg pool ensureAttestSchema
+          runAttest pool runMigrations
+          runAttest pool $ rawExecute "DROP TABLE profile_projection" []
+          applyMatches testNetworkId ourPolicy pool fixtureMatches
+          first <- runAttest pool (selectList ([] :: [Filter AttestDeadLetter]) [])
+          applyMatches testNetworkId ourPolicy pool fixtureMatches
+          second <- runAttest pool (selectList ([] :: [Filter AttestDeadLetter]) [])
+          length second @?= length first,
+      -- And the converse, which keeps the first two honest: with the table present, a clean window
+      -- leaves the dead-letter table EMPTY. Without this, "dead-lettered" could mean "always".
+      testCase "a window with nothing wrong dead-letters nothing" $
+        withScratchDb $ \pool -> do
+          runPg pool ensureAttestSchema
+          runAttest pool runMigrations
+          applyMatches testNetworkId ourPolicy pool fixtureMatches
+          dead <- runAttest pool (selectList ([] :: [Filter AttestDeadLetter]) [])
+          assertEqual "nothing was dead-lettered" 0 (length dead)
+    ]

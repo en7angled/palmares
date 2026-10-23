@@ -240,6 +240,7 @@ Open questions the reviewers could not settle offline (each is marked VERIFY in 
 | [`04-governance-read-path.md`](04-governance-read-path.md) | 662 | SQL views, metrics, query-api, Koios parity; per-view semantics table |
 | [`05-tests-ci-and-delivery.md`](05-tests-ci-and-delivery.md) | 709 | trace-code coverage map, CI, images, compose, scripts, secrets |
 | [`06-docs-spec-and-product-gaps.md`](06-docs-spec-and-product-gaps.md) | 425 | claim-by-claim doc check, read-layer obligations, product gaps, ADR hygiene, licensing |
+| [`07-reconciliation-2026-10-23.md`](07-reconciliation-2026-10-23.md) | 1032 | every finding re-judged against `2bf5bde`, with a toolchain, a database and web access the original pass did not have |
 
 Architecture documentation written alongside these reports: [`../architecture/README.md`](../architecture/README.md).
 
@@ -271,3 +272,121 @@ these files keep their substance unless the table below says otherwise, but thei
 
 Four of the eight commits land on items this audit also raised (OC-11, OF-19, DC-14, the grant half of CS-03).
 Treat the overlap as corroboration of those items, not as evidence that the rest of the list has been read.
+
+## 10. Reconciliation against `2bf5bde` (2026-10-23)
+
+`main` advanced another six commits past §9's table, to `2bf5bde`. Every finding in all six reports has
+been re-judged against the code as it stands; the per-finding verdicts, with evidence from `2bf5bde`
+rather than from the snapshot, are in [`07-reconciliation-2026-10-23.md`](07-reconciliation-2026-10-23.md).
+
+**The audit held.** Of 189 rows judged, **163 are still open**, 17 are partly closed, **3 are fixed** and
+**4 were wrong when written**. The fourteen commits since the snapshot were on-chain design decisions, a
+warning sweep and tests — `.dockerignore`, `compose.yaml`, the `Dockerfile.*` files, `README.md`,
+`.env.example`, `NOTICE`, both ADRs and both deployment documents are **byte-identical to `4eb9117`**, so
+those findings keep their line numbers exactly as published.
+
+### What is closed
+
+| Finding | By | Evidence |
+|---|---|---|
+| `OC-02` un-pausable acceptance | `26d53f7` (decision D-C) | `attestationOracleToken` at `Protocol/Types.hs:445`; `A7` as the **first** conjunct at `AttestationsValidator.hs:139` — the fix this report prescribed, taken as prescribed. Its cost estimate was out by 5×: "~100 script bytes" against a measured **+494**, because `A7` brought this validator's first oracle read |
+| `OC-06` (1) deposits depend on admin liveness | `26d53f7` (decision D-A) | `ExpireDispute` at `DisputesValidator.hs:195-201`, `D9`, `disputeStaleAfter` at `Types.hs:556`. Anyone may close a stale dispute after the deadline, with no key and no oracle read. The owner chose "anyone" over "the opener"; the shapes (2)(3)(4) that lose the deposit are untouched |
+| `OC-11` a, b, and most of c | `3654f57` | `Protocol/Id.hs`, `unsafeGetProfile*`, `K3` and four dead helpers are gone |
+
+`CS-03`'s grant half (`5d50895`) and `CS-07`/`GV-23`'s wire half (`9a8d79b`, `5978d28`) were already
+recorded in §9 and are confirmed. **`OC-01`'s severity argument loses one clause**: key loss no longer
+locks every open deposit forever, because `ExpireDispute` needs no key. The finding stands on pause,
+fees, verdicts and rotation.
+
+### What was wrong
+
+Four findings, all in report 04, all ledger-semantics questions the reviewers marked **VERIFY** and
+then wrote up as findings anyway:
+
+- **`GV-08`** — `ratified_epoch` is the epoch db-sync *determined* ratification in, not the epoch whose
+  votes counted. Arm 7's placement is correct and the proposed fix would move it a full epoch late.
+- **`GV-13`** — `is_valid IS NULL` means the body is **not valid JSON at all**, not "not checked", so
+  `invalid_schema` is defensible. The repository's own comment is the error, not the mapping.
+- **`GV-19`** — `spendable_epoch` and `enacted_epoch` are written from one value, two lines apart in one
+  loop; the `earned_epoch = spendable_epoch - 1` the finding reasons from is a generated column db-sync
+  never writes.
+- **`GV-25`**, one bullet of three — `checks/030_votes.sql:95,98,104-112` does cover `palmares.thresholds`.
+
+Three further items are not wrong but **unusable as written**, and a reader should not apply them
+verbatim: `OC-03` and `OC-07` prescribe trace codes `P8`/`P9`, which ADR 0003 burnt; `OC-05` prescribes
+`subject /= issuer` globally, where `Mc1` now requires the opposite for two of the seven kinds; `OF-16`
+prescribes deriving the credential's role from `profileKind`, which is unreachable now that the
+credential lives on an attestation and an attestation has no kind of profile. `TD-08`'s arithmetic is
+wrong in its own terms (three of six images are digest-pinned, not five of seven) and `TD-10` lists
+`ci.yml` for pins that live in `images.yml`.
+
+### The VERIFY list is closed
+
+All eight ledger-semantics questions in §6 are settled with citations (report 04 §VERIFY), four of the
+five Atlas questions are settled against the pinned 0.14.1 source (report 02): a 0-lovelace fee output
+**is** raised to min-ADA by `adjustTxOut`, so `OF-04`'s hidden fee is real; `GYAwaitTxException` **is** a
+standalone newtype, so `OF-05`'s gap is real; coin selection **does** exclude reference-script UTxOs, so
+`OF-08` holds only in the shape the report hedged. `GV-03`/`DC-01` is settled with exact arithmetic: the
+matview counts `count(*)` after a `LEFT JOIN` to every vote **row**, so the served participation rate is
+`V/(E+X)` where the published SQL says `V/E`, and the repository's own check file measures `X ≥ 69`
+today. The one question still open is the pinned `plutus-ledger-api` 1.43.1.0 source, which is not on
+this machine — CHaP carries only the index entry. The behaviour is pinned empirically by the mint tests
+instead, which is better evidence than reading the library.
+
+### Thirty-nine new findings, and where they came from
+
+The reconciliation raised 39 findings the audit does not contain. They split in two, and the split is
+the useful part:
+
+- **Introduced by the six commits since §9** — most of them by ADR 0003, which changed four datums, two
+  redeemers and the HTTP surface while `Blueprint.hs` took a **zero-byte diff**. Two smoke scripts were
+  left asserting a world that no longer exists (`smoke_interaction_api.sh` on version `3.0.0` and 12
+  paths; `smoke_attest_flow.sh` still POSTing `credential` and `witness` to `/claim-profile`), the
+  published blueprint described two of three mint redeemers and omitted `ExpireDispute` entirely, and
+  `attestation_credential` was stored and served nowhere. The sharpest is **`NEW-CS-1`**: the derived
+  `profile_credential` column was order-dependent in a way a replay breaks, and `currentSchemaVersion`
+  3 → 4 makes that replay the upgrade path for every existing database.
+- **Missed by the original pass** — `NEW-OC-5`/`NEW-TD-1` (the `Lookup.hs:7` Haddock asserts a call that
+  does not exist, so `U2`/`U3` sit in unreachable code), `NEW-TD-2` (`O6`'s predicate had no test at any
+  level), `NEW-OF-5` and `NEW-DC-*` for several stale sentences that pre-date the snapshot, and
+  `NEW-GV-1`/`NEW-GV-6`, which are the findings `GV-03` and `GV-08` were reaching for.
+
+### What was fixed in response
+
+Seven of the new findings were closed in the same pass, chosen because they are defects in the last
+day's own commits and because three of them move script hashes, which is free only while nothing is
+deployed:
+
+- `NEW-OC-1` — `oracleParamsAreWellFormed` admitted `opDisputeTimeoutMs = 0`, the exact value the
+  comment beside it argues against: a dispute expirable the block after it opens. Now `> 0`, with `O6`'s
+  first tests of any kind.
+- `NEW-CS-1` — `profile_credential` is now a fold over the credential records
+  (`Storage.deriveProfileCredential`) instead of two incremental writes, so neither the profile row nor
+  the claim depends on arriving first. Two tests in the replay order that no existing test had.
+- `OC-12` — `mintOracleNFTAndLockDatum` now asserts `oracleParamsAreWellFormed` before submitting, which
+  is the one place `O6` never runs.
+- `NEW-OF-3` — `/issue-attestation` refused a credential kind off chain instead of building a
+  transaction `Mc2` rejects.
+- `NEW-CS-2`/`NEW-GV-4` — `AttestationRow` publishes `credential`; query Swagger `1.2.0` → `1.3.0`.
+- `NEW-DC-1`..`4` — both smoke scripts corrected to the two-transaction credential flow.
+- `NEW-OC-2`..`4`, `NEW-DC-6`..`15`, `NEW-TD-3`, `NEW-TD-4`, `NEW-DC-16`..`22` — the blueprint prose, the
+  `/claim-profile` description, the shared `AttestationType` description and the stale `Mp3` references.
+
+### One number this pass had to arbitrate
+
+Three passes counted the on-chain trace codes and got 63, 69 and 70. **70 is right**: a
+`traceIfFalse`/`traceError` census that reads one line misses every code written on the next line
+(`A1` at `AttestationsValidator.hs:163`, `D2` at `DisputesValidator.hs:231`, `Md2`, `Mj`, `Mp2`, `N2`)
+and also misses `U0`, which is passed to `parseData` at `Utils.hs:60`. `P8` and `P9` appear only in the
+comment that records their burning and are correctly excluded. `K3` and `Mp3` no longer exist. Any
+future document publishing a count should derive it from short string literals on non-comment lines, not
+from the call shape.
+
+### §3's do-first list, as it stands
+
+One of the 22 rows is done (row 6, `OC-02`), two are half done (row 11's grant, row 21's wire), and
+rows 4, 7, 8 need their fix text rewritten before anyone applies them. Row 17 (`TD-04`) is now **21 of
+70** codes untested rather than 22 of 63 — the drop is `K3`'s deletion and nothing else, and all seven
+codes added since the snapshot arrived with validator-level tests. `Mp6` and `O6`, the two security
+fixes of 2026-10-22 that the report singled out as untested, are the two that still matter: `O6` gained
+tests in this pass, `Mp6` has none.

@@ -1,5 +1,7 @@
 # Audit 03 — Chain-sync and projections (Kupo → attest-sync → `palmares_attest` → query-api)
 
+> **Reconciled 2026-10-23 against `main` @ `2bf5bde`.** Every finding below has been re-judged; the per-finding verdicts, with current `path:line`, are in [`07-reconciliation-2026-10-23.md`](07-reconciliation-2026-10-23.md). Line references in this file are as of `4eb9117` and several have moved.
+
 - Repository: `mariusgeorgescu/palmares`, branch `main`, HEAD `4eb9117` (2026-10-22). Static review only — no
   build, no test run, no containers. External facts were checked against the Kupo v2.12.0 OpenAPI spec
   (`docs/api/v2.12.0.yaml` in the Kupo repo) and the Atlas sources at the tag pinned in `cabal.project:28`.

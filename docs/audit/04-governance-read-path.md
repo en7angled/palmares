@@ -1,5 +1,7 @@
 # Audit 04 — Governance read path (SQL views, metrics, query API, Koios reconciliation)
 
+> **Reconciled 2026-10-23 against `main` @ `2bf5bde`.** Every finding below has been re-judged; the per-finding verdicts, with current `path:line`, are in [`07-reconciliation-2026-10-23.md`](07-reconciliation-2026-10-23.md). Line references in this file are as of `4eb9117` and several have moved.
+
 Repo: `mariusgeorgescu/palmares`, branch `main`, HEAD `4eb9117` (2026-10-22). Static review only — no
 toolchain, no database, no network. Every claim below is tied to a `path:line`; where correctness
 depends on ledger or db-sync behaviour that cannot be checked offline it is marked

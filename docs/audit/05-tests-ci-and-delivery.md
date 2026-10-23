@@ -1,5 +1,7 @@
 # 05 — Tests, CI/CD, build reproducibility, containers and operational scripts
 
+> **Reconciled 2026-10-23 against `main` @ `2bf5bde`.** Every finding below has been re-judged; the per-finding verdicts, with current `path:line`, are in [`07-reconciliation-2026-10-23.md`](07-reconciliation-2026-10-23.md). Line references in this file are as of `4eb9117` and several have moved.
+
 Audit of `mariusgeorgescu/palmares` at `4eb9117` (main, 2026-10-22). Static reading only: no
 Haskell toolchain, no Docker and no network were used, so every "runs/passes" statement below is
 what the files say, not what was executed. 94 commits, first on 2026-10-20; no tags exist.

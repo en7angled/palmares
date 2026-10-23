@@ -251,8 +251,9 @@ checkDateInRange date range = case range of
 --
 -- __No window bound here, deliberately, and that is the opposite of 'checkDateInRange'.__ There the
 -- interval's WIDTH is the attack — a wide range lets a date be claimed freely — so it is capped.
--- Here a wider range can only make the check HARDER, because the whole of it has to sit after the
--- deadline: a transaction submitted one second early cannot buy itself validity by widening.
+-- Here widening can never make the check EASIER: only the lower bound is compared, so widening
+-- upwards is neutral and widening downwards fails, and a transaction submitted one second early
+-- cannot buy itself validity by widening at all.
 --
 -- @contains (from date)@ and not a hand-rolled bound comparison, for the reason the size audit gave
 -- for leaving 'checkDateInRange' on the @Interval@ library: these are the ledger's own

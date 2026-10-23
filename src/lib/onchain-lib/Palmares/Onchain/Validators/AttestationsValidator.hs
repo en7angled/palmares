@@ -105,19 +105,37 @@ attestationsLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) script
                     ownAddress = txOutAddress ownInput
                     updatedAttestationDatum = attestationDatum {extra = attestation {attestationIsAccepted = True}}
                     subjectUserAC = deriveUserFromRefAC (attestationSubject attestation)
-                    -- Decided as D-C. Strict, and that is the point: `readOracleParams` raises when
-                    -- no reference input carries this token, so an acceptance built without the
-                    -- oracle fails CLOSED rather than skipping the check. The token comes from the
-                    -- datum the minting policy wrote from its own parameter, so it cannot be aimed
-                    -- at a forged oracle naming its author as unpaused.
+                    -- Decided as D-C. An acceptance built without the oracle fails CLOSED:
+                    -- `readOracleParams` traces @K1@ when no reference input carries this token.
+                    --
+                    -- __What forces it is the CHAIN, not a bang.__ This binding is non-strict, and
+                    -- the first draft of this comment said "strict, and that is the point" — wrong,
+                    -- and wrong in the direction that licenses a future edit. What makes the read
+                    -- unskippable is that @A7@ is the first, unconditional conjunct of the chain
+                    -- below, so the thunk is always forced on this redeemer. Reorder it behind a
+                    -- condition and the oracle read becomes optional again.
+                    --
+                    -- The token comes from the datum the minting policy wrote from its own compile
+                    -- -time parameter, so a PROTOCOL attestation cannot aim it at a forged oracle.
+                    -- That is the whole claim: this validator is unparameterised and cannot
+                    -- establish it for a datum the policy did not write, so a UTxO planted here
+                    -- with a hand-written datum names whatever oracle its author likes — which is
+                    -- the pre-existing residue 'Utils.isUnbackedDatum' documents and
+                    -- `authenticateStateUTxO` filters out of the read layer. @A5@ and @A6@ read the
+                    -- same planted datum and fall the same way; nothing about @A7@ is weaker than
+                    -- its neighbours.
                     oracle = readOracleParams (attestationOracleToken attestation) txInfoReferenceInputs
                  in -- The pause, first, because it is a gate and not a property of this attestation
-                    -- — the same position and the same meaning as `M0` on the minting policy.
+                    -- — the same position and the same meaning as `M0` on the minting policy. That
+                    -- position is load-bearing, see the binding above.
                     --
                     -- Until D-C this validator had no pause check at all, which left acceptance as
-                    -- the only write the pause did not reach, on the protocol's only IRREVERSIBLE
-                    -- write. `UnitTests.Pause`'s header recorded that gap and named the two routes
-                    -- out of it; this is the datum-field one.
+                    -- __the only write the pause did not reach__ — the claim that matters, and the
+                    -- one that is exactly true. It is not the protocol's only irreversible write,
+                    -- which three sentences in this repository have said: a verdict is written once
+                    -- (@D3@) and nothing here burns, so every mint is permanent too. What made
+                    -- acceptance the urgent one is the conjunction: irreversible AND unreachable by
+                    -- the lever.
                     traceIfFalse "A7" (not (opPaused oracle)) -- Protocol is paused (A7)
                       -- The attestation must not ALREADY be accepted. Its absence was the open half of
                       -- inherited fix #4: the off-chain path refuses a second accept

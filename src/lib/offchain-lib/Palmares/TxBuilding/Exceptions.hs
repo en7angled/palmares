@@ -65,6 +65,12 @@ data TxBuildingException
     DisputeAlreadyOpen
   | -- | The dispute already carries a verdict. @D3@ refuses it on chain as well.
     DisputeAlreadyResolved
+  | -- | A resolution named @expired@, which is not a finding. @Da@ refuses it on chain as well.
+    --
+    -- Only the clock writes @expired@, through @ExpireDispute@ and only after the dispute's own
+    -- deadline. An admin who wants a dispute closed without a finding waits for that deadline like
+    -- anybody else — which is the whole guarantee D-A adds.
+    DisputeVerdictNotAFinding
   | -- | The profile claims no credential, so there is nothing to revoke. @P8@ refuses it on chain as
     -- well.
     --
@@ -123,6 +129,7 @@ instance Exception TxBuildingException where
   displayException DisputeAlreadyResolved = "Dispute already carries a verdict and cannot be resolved twice"
   displayException DisputeNotStaleYet = "Dispute cannot be expired yet: its deadline has not passed"
   displayException ProfileClaimsNoCredential = "Profile claims no credential, so there is nothing to revoke"
+  displayException DisputeVerdictNotAFinding = "A resolution must be a finding: only a passed deadline writes 'expired'"
   displayException OracleNotFound = "Oracle UTxO not found"
   displayException OracleDatumInvalid = "Oracle datum invalid or unparseable"
   displayException ProtocolPaused = "Protocol is paused"

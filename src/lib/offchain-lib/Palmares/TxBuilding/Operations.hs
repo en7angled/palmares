@@ -730,6 +730,11 @@ resolveDisputeTX gyDisputeAC verdict = do
   -- as a script error, which reads like a protocol bug rather than a bad request.
   when (isJust (OnchainTypes.disputeVerdict dispute)) $
     throwError (GYApplicationException DisputeAlreadyResolved)
+  -- The 400 the chain's @Da@ also refuses. `DisputeVerdict` has three constructors and only two of
+  -- them are findings; `expired` is written by the clock, through `expireDisputeTX`, and never by an
+  -- admin asserting it.
+  when (verdict == OnchainTypes.VerdictExpired) $
+    throwError (GYApplicationException DisputeVerdictNotAFinding)
 
   (oracleParams, oracleRef, _oracleValue) <- queryOracleParams
   gyAdminPkh <- pubKeyHashFromPlutus' (OnchainTypes.opAdminPkh oracleParams)

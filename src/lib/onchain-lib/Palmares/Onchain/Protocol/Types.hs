@@ -101,9 +101,16 @@ data OracleParams = OracleParams
     -- which is precisely the inaction this parameter exists to bound. The oracle sets the clock for
     -- NEW disputes; an open one's clock is history. See 'disputeStaleAfter'.
     --
-    -- Zero is permitted and means "closable immediately", which is a configuration and not a brick:
-    -- the admin can still resolve a dispute the moment it opens, and the deposit comes back either
-    -- way. A very LARGE value is the dangerous direction, and it is the one the operator sees.
+    -- __Both directions are dangerous, and only one of them looks it.__ A very LARGE value is the
+    -- obvious one. But ZERO is permitted and makes every new dispute closable the instant it opens,
+    -- which hands the TARGET of every dispute an immediate dismissal and needs no admin action at
+    -- all — the opposite of a brick and still a way to void the mechanism. A generous value is the
+    -- safe default; 'Palmares.TxBuilding.Transactions' deploys 30 days.
+    --
+    -- One sharp edge for a SHORT timeout: @disputeStaleAfter@ is @openedAt + this@, and @openedAt@
+    -- is redeemer data bounded only by @Md6@'s window — 'Palmares.Onchain.Utils.maxDateWindow',
+    -- 14.4 hours — so an opener can shift their own deadline by up to that much. Immaterial against
+    -- 30 days; it matters if anyone ever configures a timeout measured in hours.
     opDisputeTimeoutMs :: Integer
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
@@ -313,8 +320,10 @@ makeIsDataSchemaIndexed ''OnchainProfile [('OnchainProfile, 0)]
 -- The same shape as 'resolveDispute' and 'applyOracleAdminAction', and for the same reason: the
 -- validator computes the expected output datum on chain with this function and compares it to the
 -- actual output, so off-chain and on-chain cannot disagree about what a revocation does. Everything
--- this function preserves — the id, the kind, the metadata, the baked 'ProtocolParams' — is a field
--- a revocation provably cannot touch.
+-- this function preserves — the id, the kind, the baked 'ProtocolParams' — is a field a revocation
+-- provably cannot touch. Those three are all 'OnchainProfile' has besides the claim; the CIP-68
+-- @metadata@ and @version@ sit on the WRAPPER and are preserved by the caller's record update, which
+-- @P5@'s whole-datum comparison then pins.
 --
 -- __Why a revocation has to exist.__ @Mp3@ proves the credential consented to the TRANSACTION that
 -- minted the profile, not that it agreed to hand its authority to whoever holds the resulting
@@ -461,6 +470,12 @@ data Verdict
     -- name is not "withdrawn": no one retracted anything. The deposit still returns to the address
     -- the opener named, so there is nothing for a stranger to gain, and the read layer must show
     -- this as unresolved-and-closed rather than as a finding either way.
+    --
+    -- __Only the clock writes it, and that took a second check.__ @ResolveDispute@ takes a 'Verdict'
+    -- as an unconstrained redeemer argument, so appending this constructor handed the oracle admin
+    -- the power to assert an expiry with no clock — found by an independent audit of D-A and refused
+    -- by @Da@. Without that guard the sentence above would be false of the chain while the read
+    -- layer was told to believe it.
     --
     -- Appended at index 2, never inserted: the two indices above are a deployed-data contract from
     -- the first deployment onward — the same rule 'OracleSetAdmin' follows.

@@ -23,11 +23,15 @@
 --
 -- __The acceptance is here now, and it was the one that mattered.__ This module used to record its
 -- absence: 'Palmares.Onchain.Protocol.Types.OnchainAttestation' carried no route to the oracle, so
--- the validator could not read @opPaused@ at all, and acceptance — the protocol's only irreversible
--- write — was the only write the pause did not reach. Of the two routes named here, the owner took
--- the datum field (D-C), which is the one that leaves the transaction every honest client builds
--- unchanged; 'Palmares.Onchain.Protocol.Types.attestationOracleToken' is the field and @A7@ is the
--- check. Test Case 7.4 asserts it ON CHAIN, which is the half @pauseStopsEverything@ cannot reach.
+-- the validator could not read @opPaused@ at all, and acceptance was __the only write the pause did
+-- not reach__ — while also being irreversible, which is the conjunction that made it urgent. (Not
+-- the protocol's ONLY irreversible write: a verdict is written once and nothing here burns.)
+--
+-- Two routes out of it existed and this header used to name them: a new datum field, or requiring
+-- the subject's profile as a second reference input on every acceptance. The owner took the datum
+-- field (D-C), the one that leaves the transaction every honest client builds unchanged;
+-- 'Palmares.Onchain.Protocol.Types.attestationOracleToken' is the field and @A7@ is the check. Test
+-- Case 7.4 asserts it ON CHAIN, which is the half @pauseStopsEverything@ cannot reach.
 module UnitTests.Pause
   ( pauseTests,
   )
@@ -142,13 +146,22 @@ pauseTests =
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "The dust sweep ran while the protocol was paused."
 
     -- Test Case 7.4 — D-C, and the reason it was taken before the first deploy rather than after:
-    -- acceptance is the protocol's only IRREVERSIBLE write and was the only one the pause did not
-    -- reach, so a pause during an incident still let acceptances land for good.
+    -- acceptance is irreversible AND was the only write the pause did not reach, so a pause during
+    -- an incident still let acceptances land for good.
     --
-    -- The order is pause-then-unpause, not 7.1's unpause-then-pause, and it has to be: the positive
-    -- control is the SAME transaction succeeding, and an acceptance cannot be repeated — the second
-    -- one would die on @A3@ and prove nothing about @A7@. Run the other way round this test would
-    -- pass with @traceIfFalse \"A7\" False@ in the validator.
+    -- The order is pause-then-unpause, not 7.1's unpause-then-pause, and the reason is that an
+    -- acceptance cannot be repeated: there is one of them, so it has to serve as the negative half
+    -- first and the positive control after. Run the other way round, the negative half would be a
+    -- SECOND acceptance of an already-accepted attestation, which @A3@ refuses whether or not @A7@
+    -- exists — so it could distinguish nothing.
+    --
+    -- Two earlier claims in this comment were wrong and are worth leaving corrected. "The second
+    -- one would die on @A3@" describes the old code: @A7@ now precedes @A3@ in the chain and
+    -- PlutusTx's @&&@ is lazy, so a paused re-acceptance dies on @A7@ and @A3@ is never reached.
+    -- And "the other way round this test would pass with @traceIfFalse \"A7\" False@" is backwards
+    -- — in that order the unpaused acceptance comes FIRST and unguarded, so an always-false @A7@
+    -- would make it throw and the test would fail. The mutation guard is 7.1's positive control,
+    -- not the ordering.
     pausedAcceptanceRefused :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     pausedAcceptanceRefused info@TestInfo {..} = do
       (ctx, attestationAC, _disputeAC) <- deployWithOpenDispute info

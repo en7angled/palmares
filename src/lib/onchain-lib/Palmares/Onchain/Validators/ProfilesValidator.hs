@@ -179,13 +179,14 @@ handleUpdateProfile txInfo@TxInfo {..} ownValue ownAddress profileRefAssetClass 
 
 -- | D-E: clear a credential claim, proven by the credential being cleared.
 --
--- Three statements, and the two new codes are both about things that have no analogue on the update
--- path:
+-- Four statements, two of them the update path's own and two with no analogue there:
 --
 --   * @P9@ — the claimed credential controls this transaction. 'Utils.checkCredentialControl' is the
 --     same rule @Mp3@ used to accept the claim, so revoking needs exactly what claiming needed and
---     no more. Its documented limit carries over: a script credential that never votes or withdraws
---     proves control by spending a UTxO at its own address, which is the same free workaround.
+--     no more. Its documented limit carries over verbatim, and it is about scripts that __only ever
+--     vote or withdraw__: such a script holds no UTxO at its own address, so it cannot prove control
+--     in the same transaction and has to send itself one first. An ordinary spending script proves
+--     control directly, because an input at its own payment credential is the proof.
 --   * @P8@ — there has to BE a claim, and this __changes no verdict__: a profile claiming 'Nothing'
 --     fails @P9@ too, since there is no credential to consent. It is a DIAGNOSTIC split, the same
 --     trade the @A1@ -> @A1@\/@A5@\/@A6@ split made and for the same reason — "this profile claims
@@ -195,8 +196,16 @@ handleUpdateProfile txInfo@TxInfo {..} ownValue ownAddress profileRefAssetClass 
 --     it does not.
 --
 -- @P2@ and @P5@ are the update path's own statements, unchanged: the UTxO must hold the Ref NFT its
--- datum names, and the profile must come back at the named index with the same value at the same
--- address. The value is untouched — a revocation moves no ADA and no tokens, it clears one field.
+-- datum names, and the profile must come back at the named index at the same address carrying
+-- __AT LEAST__ the value it had.
+--
+-- At least, not exactly — 'Utils.checkTxOutAtIndexWithDatumMinValueAndAddress' is a @geq@, the same
+-- one the update path calls and annotates as @>= ownValue@ because the balancer may add min-ADA. So
+-- a revocation does not have to move value and the honest builder moves none, but the rule PERMITS
+-- an output carrying more, including this profile's own user token. That is the shape @Mp6@ closes
+-- on the mint path and it is unchanged here, inherited from the update path rather than introduced:
+-- both are written against the same helper. Recorded because the first draft of this sentence said
+-- "the value is untouched", which is what the builder does and not what the rule requires.
 {-# INLINEABLE handleRevokeCredential #-}
 handleRevokeCredential ::
   TxInfo ->
@@ -221,7 +230,6 @@ handleRevokeCredential TxInfo {..} ownValue ownAddress profileRefAssetClass prof
             Just credential -> Utils.checkCredentialControl credential txInfoSignatories txInfoInputs,
           traceIfFalse "P5" $ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress profileOutputIdx revokedDatum ownValue ownAddress txInfoOutputs -- Lock revoked profile (P5)
         ]
-
 
 -------------------------------------------------------------------------------
 

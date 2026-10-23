@@ -1519,7 +1519,7 @@ type DisputesAPI =
          \not two: `upheld` and `rejected` are the oracle admin's findings, and `expired` means \
          \nobody decided it and its deadline passed, so anyone was free to close it. A client that \
          \wants findings only must read the verdict value, not this flag. \
-         \\n`deposit` is returned to the opener either way: there is no punitive verdict, so \
+         \\n`deposit` is returned to the opener on EVERY outcome: there is no punitive verdict, so \
          \losing a dispute costs network fees and nothing else. \
          \\nOrdered by `opened_at`, newest first. There is no `order_by`: the list has one \
          \chronology, and a second ordering would be a control with no screen behind it."

@@ -247,9 +247,16 @@ measured =
 --                                               @ctxOracleToken@
 --
 -- +494 here against the ProfilesValidator's +502 for the same thing, on a different validator and
--- two rounds apart: the one line in this table that PREDICTED a later measurement instead of
--- describing an earlier one. DisputesValidator and OracleValidator did not budge, which says the
--- oracle read is reached from exactly the three validators that call it.
+-- two rounds apart: the closest this table has come to predicting a later measurement instead of
+-- describing an earlier one. (It is a description from which ~452 is inferable, not a prediction
+-- anyone wrote down in advance — an audit called that out and it is fair.)
+--
+-- ProfilesValidator and OracleValidator did not budge, which is the useful half: neither reaches
+-- this attestation path. The first draft of this sentence named DisputesValidator and
+-- OracleValidator and claimed their stillness showed "the oracle read is reached from exactly the
+-- three validators that call it" — but DisputesValidator IS one of those callers, so its stillness
+-- shows nothing about the caller set, and the MintingPolicy, also a caller, moved in this very
+-- round. The sentence this copied got it right by naming two NON-callers.
 --
 -- __The datum field is not free beyond the script, and this is the part that is not in bytes of
 -- code.__ An 'AssetClass' is a 28-byte currency symbol plus a token name, so every attestation's
@@ -261,16 +268,30 @@ measured =
 -- __D-A: the dispute exit that needs no key.__ The first change in this table to move all FIVE
 -- scripts, and the two numbers nobody would have predicted are the interesting ones.
 --
---   DisputesValidator  8457 -> 9401  (+944)  the whole @ExpireDispute@ arm: @D3@, @D9@
---                                            ('Utils.checkDateHasPassed') and its own copy of
---                                            @D2@/@D4@/@D6@. Factoring those three into
---                                            'disputeClosesWith' buys SOURCE-level agreement
---                                            between the two ways a dispute closes, not bytes —
---                                            PlutusTx inlines it at both call sites, so the arm
---                                            pays for its own copy either way. That was the trade,
---                                            made deliberately: the alternative was three
---                                            invariants kept equal by hand on a path that moves
---                                            money.
+--   DisputesValidator  8457 -> 9401  (+944)  almost all of it the @ExpireDispute@ arm — ~30 is the
+--                                            sixth 'OracleParams' field, the same ~30 the two lines
+--                                            below pay, because this script decodes that record
+--                                            too, and a little more is the wider 'OnchainDispute'.
+--                                            The arm itself: @D3@, @D9@
+--                                            ('Utils.checkDateHasPassed' — this script's first use
+--                                            of the @Interval@ library, which is the single largest
+--                                            term) and a SHARED call to @D2@/@D4@/@D6@.
+--
+-- __Shared, measured, and the first draft of this entry had it backwards.__ It said "PlutusTx
+-- inlines it at both call sites, so the arm pays for its own copy either way" — an assertion, in a
+-- table whose own best line is "MEASURED AT 20 ... and the gap is the more useful result". An audit
+-- called that out, so it was measured the way the audit proposed: replace the ResolveDispute arm's
+-- @&& disputeClosesWith …@ with @&& True@, rebuild, restore.
+--
+--   both call sites   9439
+--   one call site     9415   (-24)
+--
+-- Twenty-four bytes for a call site that carries a whole-datum comparison, an @any@ over the
+-- outputs and a counting traversal of the inputs. So the body is compiled ONCE and 24 bytes is the
+-- application of five arguments: 'disputeClosesWith' did not merely buy source-level agreement
+-- between the two ways a dispute closes, it also cost far less than duplicating the three
+-- statements would have. The justification was correctness; the bytes went the same way by luck,
+-- and saying so required a build rather than a belief.
 --   OracleValidator    7547 -> 7688  (+141)  one more field in 'OracleParams'. @O2@ compares the
 --                                            whole record and @O6@ checks it, so a field costs here
 --                                            twice over.
@@ -282,8 +303,21 @@ measured =
 -- Those last two are the measurement worth keeping: both validators DECODE 'OracleParams' — @P6@
 -- and @A7@ read @opPaused@ — so adding a sixth field to that record costs ~30 bytes in every script
 -- that parses it, whether or not it reads the new field. A record on the oracle is not free to
--- extend; it is ~30 bytes times the number of validators that look at the oracle at all, which is
--- now four. The 2026-10-22 audit's calibration had no line for this.
+-- extend; it is ~30 bytes times the number of SCRIPTS that decode it, which is five: the three
+-- state validators, the minting policy (whose entry above says it paid for the wider decode) and
+-- the OracleValidator itself, which pays twice over because @O2@ compares the whole record and @O6@
+-- checks it. The first draft of this line said "four validators", which needs an unstated reading
+-- in which the minting policy is not one. The 2026-10-22 audit's calibration had no line for any of
+-- this.
+--
+-- __And a per-USE price this table has never recorded.__ It prices size as deploy-time min-ADA on
+-- the reference UTxO plus the 14000 ceiling. Under Conway a transaction that USES a reference script
+-- also pays @minFeeRefScriptCoinsPerByte@: at the base tier of 15 lovelace per byte — a protocol
+-- parameter, worth re-reading from the live pparams rather than trusting this line —
+-- DisputesValidator's 9401 bytes are ~0.141 ADA on every dispute-closing transaction, and this
+-- round's +944 adds ~0.014 ADA to each one, forever. It changes no verdict here, the headroom being
+-- unchanged, but "has headroom" and "is free" are different claims and only the first was asserted.
+--
 -- __D-E: a credential claim gains a revocation.__ One script moved, which is the whole report:
 --
 --   ProfilesValidator 8444 -> 8759  (+315)  the @RevokeCredential@ arm. Most of it is
@@ -296,11 +330,27 @@ measured =
 --
 -- The other four did not budge, and that is the assertion worth having: a revocation is reached
 -- from exactly one validator, and nothing about it leaked into the oracle or the policy.
+-- __The audit response.__ Three independent audits of D-C/D-A/D-E — vulnerabilities, cost, and
+-- whether the new comments are true — moved one script:
+--
+--   DisputesValidator 9401 -> 9439  (+38)  @Da@, which refuses a RESOLUTION naming 'VerdictExpired'
+--                                          (the arm takes `Verdict` as an unconstrained redeemer
+--                                          argument, so appending a third constructor had handed
+--                                          the admin an expiry with no clock), and the two
+--                                          @!ownInput@ bangs. The bangs are byte-neutral by
+--                                          themselves and were taken for a different reason: the
+--                                          binding is impure, so `StrictifyBindings` refuses it and
+--                                          without a bang each of the four derived values re-runs a
+--                                          `find` over an attacker-sized input list.
+--
+-- The cost audit's verdict on the three new arms was "nothing material" — 30-80 bytes against 4,599
+-- of headroom on the script that grew most — and its one actionable item was not an optimisation but
+-- the measurement recorded above.
 expected :: [(String, Int)]
 expected =
   [ ("ProfilesValidator", 8759),
     ("AttestationsValidator", 8163),
-    ("DisputesValidator", 9401),
+    ("DisputesValidator", 9439),
     ("OracleValidator", 7688),
     ("MintingPolicy", 12393)
   ]

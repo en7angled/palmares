@@ -388,6 +388,17 @@ resolveTests =
       testCase "either verdict validates, because the deposit comes back on both" $
         runResolve VerdictRejected 0 (settling goodSettlement {settledVerdict = VerdictRejected})
           @?= True,
+      -- D-A appended a third `Verdict` constructor, and this arm takes `Verdict` as an UNCONSTRAINED
+      -- redeemer argument — so for one commit the oracle admin could assert "the clock ran out" with
+      -- no clock, one second after a dispute opened, byte-identical on chain to a real timeout while
+      -- the read layer is under instruction to present `expired` as nobody's decision. An
+      -- independent audit found it; `Da` is the guard.
+      --
+      -- The output datum here carries `VerdictExpired` too, so @D2@ passes and `Da` is the only
+      -- thing left to refuse it.
+      testCase "an admin cannot resolve a dispute as EXPIRED — only the clock writes that (Da)" $
+        runResolve VerdictExpired 0 (settling goodSettlement {settledVerdict = VerdictExpired})
+          @?= False,
       -- ---------------------------------------------------------------------------------------
       -- D2, FIRST ELEMENT: the output datum must be the RESOLVED one the validator computed.
       --

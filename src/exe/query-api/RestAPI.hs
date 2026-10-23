@@ -119,6 +119,7 @@ import Palmares.WebAPI.CSV (CSV)
 import Data.Text qualified as T
 import Palmares.WebAPI.Envelope (ApiError, ErrorCode (..), Page (..), errorCodeToHttpStatus)
 import Palmares.WebAPI.Errors (errorCodeFromParserMessage, mkServantErr)
+import Palmares.WebAPI.Utils (addSharedSwaggerDescriptions)
 import Query.Common
   ( PageBounds (..),
     activityBounds,
@@ -1735,7 +1736,10 @@ apiSwagger =
     -- knows the two findings still parses every document — but a client that SWITCHES on the value
     -- gains a case, and one that renders it as a finding is now wrong. A new enum value in a
     -- response is exactly the shape MINOR is for.
-    & info . Data.Swagger.version .~ "1.2.0"
+    -- 1.3.0, MINOR: `AttestationRow` gained `credential`. ADR 0003 stored the column and published
+    -- nothing, so a `credential_claim` row was served with its entire content missing; adding an
+    -- optional field breaks no 1.2.0 client.
+    & info . Data.Swagger.version .~ "1.3.0"
     & info . Data.Swagger.description
       ?~ "Read-only queries over the Cardano governance record: DReps, governance actions, votes, \
          \delegations, the constitutional committee and treasury withdrawals. Every row comes from \
@@ -1744,6 +1748,13 @@ apiSwagger =
          \/metrics/formulas."
     & info . license ?~ "Apache-2.0"
     & host .~ Nothing
+    -- `addSharedSwaggerDescriptions`'s own Haddock says "call this in both interaction-api and
+    -- query-api", and until now only interaction-api did — so the definition-level descriptions were
+    -- absent from THIS document. Measured before adding it: of the seven rows, five name definitions
+    -- this API does not emit at all (they are inlined, so the `at` lens is a silent no-op) and
+    -- `GYAssetClass` gets its text from its own instance. The one that mattered is `AttestationType`,
+    -- which this document DOES declare and which a client switches on to read `/attestations?kind=`.
+    & addSharedSwaggerDescriptions
     -- ApiError and ErrorCode are declared EXPLICITLY, because nothing in the served API type
     -- mentions them: servant types the success body only, so swagger2 had no reason to emit
     -- either and the error contract was undiscoverable from the document. Every non-2xx body this

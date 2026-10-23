@@ -61,10 +61,10 @@ assert /status '.deployed_scripts' 'true'
 
 echo "== the published document"
 assert /swagger-api.json '.info.title' '"Palmares Interaction API"'
-assert /swagger-api.json '.info.version' '"3.0.0"'
-assert /swagger-api.json '[.paths|keys[]]|length' '12'
+assert /swagger-api.json '.info.version' '"3.1.0"'
+assert /swagger-api.json '[.paths|keys[]]|length' '15'
 for p in /claim-profile /update-profile /issue-attestation /accept-attestation /open-dispute \
-  /resolve-dispute /build-tx /submit-tx /status; do
+  /resolve-dispute /expire-dispute /claim-credential /withdraw-credential /build-tx /submit-tx /status; do
   assert /swagger-api.json "(.paths|has(\"$p\"))" 'true'
 done
 # The sum-encoding fix, on the document a client actually downloads: swagger2's generic instance

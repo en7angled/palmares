@@ -473,16 +473,16 @@ sendAdaToAddress user addr lovelace = asUser user $ do
 -- off chain — with a 400, a missing required signer, an unbuildable output, or an off-chain filter
 -- that never offers the UTxO — and a @mustFail@ on that refusal says nothing about whether the
 -- validator checks anything at all. That is the mistake 'UnitTests.Oracle' documents for @O1@; these
--- are the same remedy for @Mp3@, @Mp2@, @Ml@, @Mf@, @A3@, @D1@, @D3@, @P6@ and the three @Cleanup@
+-- are the same remedy for @Mc3@, @Mp2@, @Ml@, @Mf@, @A3@, @D1@, @D3@, @P6@ and the three @Cleanup@
 -- codes @P0@/@A0@/@D0@.
 
 ------------------------------------------------------------------------------------------------
 
--- | MALICIOUS: mint a profile that CLAIMS a credential while proving nothing.
+-- | MALICIOUS: mint a credential-claim record while proving nothing.
 --
 -- 'claimProofSkeleton' is what makes the claim real: a key credential gets @mustBeSignedBy@, a
 -- script credential gets a spend of one of its own UTxOs. Neither can be omitted through the API, so
--- @Mp3@ is unreachable from it — and @Mp3@ is the whole identity rule.
+-- @Mc3@ is unreachable from it — and @Mc3@ is the whole identity rule.
 --
 -- @mProofRef@ is the input the attacker OFFERS as proof, spent with a plain key witness:
 --

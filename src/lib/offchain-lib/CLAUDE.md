@@ -75,7 +75,8 @@ about the `palmares_attest` schema.
 
 When adding a new validator, token kind, projection, or API surface:
 
-**On-chain**: datum type (`Types.hs`, stable indices, `HasBlueprintDefinition`) → ID derivation (`Id.hs`) →
+**On-chain**: datum type (`Types.hs`, stable indices, `HasBlueprintDefinition`) → ID derivation
+(`CIP68.hs`; `Id.hs` was deleted and is not where a new one goes) →
 redeemer/validator → minting redeemer (exact mint, oracle pause gate, `feeFor`) → `INLINEABLE` pragmas →
 cabal `exposed-modules`
 
@@ -104,8 +105,8 @@ in `GYTxGameMonad`
 - Missing `INLINEABLE` on cross-module onchain functions
 - Forgetting ProtocolParams: update `ProtocolParams` and redeploy minting policy if new validator hash needed
 - Not checking opPaused: check pause gate if concept involves minting
-- Missing CurrencySymbol validation: validate referenced AssetClasses share protocol CurrencySymbol via
-  `hasCurrencySymbol`
+- Missing CurrencySymbol validation: validate referenced AssetClasses with `isProtocolRefToken`, which
+  checks the symbol AND the reference prefix — `hasCurrencySymbol` accepts a user token too
 - Datum type confusion: use wrapper sum type for multiple datum types at same validator
 - Incomplete skeleton: include all required ref inputs (e.g. oracle), validity range when the contract
   checks time, `mustBeSignedBy` when the contract expects signatories

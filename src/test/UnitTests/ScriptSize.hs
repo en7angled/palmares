@@ -370,6 +370,18 @@ measured =
 -- -404 +225 +130 = __-49 bytes across the protocol__, for a binding that no redeemer can erase and
 -- a withdrawal that appends instead of deleting. The two zeros are the assertion worth having: a
 -- change this wide reached exactly the two scripts that handle profiles and attestations.
+--
+-- __The zero-byte change that still moves a hash.__ An audit reconciliation found that
+-- 'oracleParamsAreWellFormed' admitted @opDisputeTimeoutMs = 0@ — the exact value the comment beside
+-- it argues against — so the conjunct went from @>= 0@ to @> 0@:
+--
+--   OracleValidator       7688 -> 7688   (0)
+--
+-- Zero because one builtin was swapped for another of the same size, and the table says so rather
+-- than staying silent: a size that does not move is not the same claim as a script that does not
+-- move. The BYTES differ, so the hash differs, so @ProtocolParams@ and the minting policy's hash
+-- differ — which costs nothing today and would cost a redeployment after T-ATTEST-10. That is the
+-- whole reason this correction was made now and not filed.
 expected :: [(String, Int)]
 expected =
   [ ("ProfilesValidator", 8355),

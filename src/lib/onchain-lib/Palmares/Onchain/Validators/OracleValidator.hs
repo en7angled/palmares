@@ -88,7 +88,7 @@ oracleLambda (ScriptContext TxInfo {..} (Redeemer bredeemer) scriptInfo) =
                       -- PROTOCOL VACUOUS, because `geq`'s `These a b -> a >= b` arm is satisfied by
                       -- anything when `b` is below zero. See 'oracleParamsAreWellFormed' for the
                       -- concrete drain it opens on the admin's own wallet. Checked on the RESULT, so
-                      -- it covers all six actions and every future one.
+                      -- it covers all seven actions and every future one.
                       traceIfFalse "O6" $ oracleParamsAreWellFormed newParams -- Params must be well-formed (O6)
                     ]
     _ -> traceError "O3" -- Invalid script purpose (O3)

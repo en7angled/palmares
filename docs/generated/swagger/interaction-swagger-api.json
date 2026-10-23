@@ -62,7 +62,7 @@
             "type": "object"
         },
         "AttestationType": {
-            "description": "What an attestation asserts about its subject: milestone_delivered (a budget administrator attests a vendor's delivery), audit_passed (an auditor attests it reviewed one), affiliation (organisation to member, usually with a claimed period), role_held (an extra-chain mandate such as a working-group lead or committee chair, usually with a claimed period), endorsement. No validator branches on it: the kind says what a reader is being told, not what the protocol permits.",
+            "description": "What an attestation asserts about its subject: milestone_delivered (a budget administrator attests a vendor's delivery), audit_passed (an auditor attests it reviewed one), affiliation (organisation to member, usually with a claimed period), role_held (an extra-chain mandate such as a working-group lead or committee chair, usually with a claimed period), endorsement, credential_claim (a profile binds itself to a Cardano governance credential, which is what the `credential` field of a profile is derived from) and credential_withdrawal (that binding ended). For the first five the kind is presentational: it says what a reader is being told, not what the protocol permits. The last two the protocol does enforce — they must be self-issued and must name a credential that proved control of the minting transaction, and the first five must name none.",
             "enum": [
                 "milestone_delivered",
                 "audit_passed",
@@ -114,7 +114,7 @@
             "type": "object"
         },
         "ClaimProfileRequest": {
-            "description": "Mint a profile, optionally claiming a Cardano credential. `recipient` receives any unlocked funds and defaults to the change address. `witness` says how the input that proves control of `credential` is spent; both are omitted for an unclaimed profile.",
+            "description": "Mint a profile. It claims no credential: since ADR 0003 a binding is its own record, so bind the profile with POST /claim-credential afterwards. `recipient` receives any unlocked funds and defaults to the change address.",
             "properties": {
                 "description": {
                     "description": "Profile description",
@@ -840,7 +840,7 @@
                 "consumes": [
                     "application/json;charset=utf-8"
                 ],
-                "description": "Mints a profile, optionally claiming a Cardano credential (a CIP-129 DRep or committee id) by proving the claimant can spend as it.",
+                "description": "Mints a profile. The profile claims no credential; bind one with POST /claim-credential, which is a separate record and a separate transaction.",
                 "parameters": [
                     {
                         "in": "body",

@@ -120,7 +120,9 @@ OnchainMatchEvent
 -- anything ordered by it; the chain's slot is immune to replay. Readers convert with
 -- 'Palmares.TxBuilding.Utils.slotToUTC'.
 --
--- profileCredential is the CIP-129 rendering of the credential the datum claims, and it carries
+-- profileCredential is the CIP-129 rendering of the credential the profile currently publishes.
+-- DERIVED, not read off a datum — ADR 0003 removed the datum field and made a binding its own
+-- record; 'deriveProfileCredential' is the fold. It carries
 -- NO unique constraint on purpose: a credential may be claimed by two profiles and the read layer
 -- reports that as `contested` rather than the ingest path refusing the second claim. A unique
 -- index here would make the losing claim invisible instead of visible-and-flagged, which is the
@@ -399,19 +401,16 @@ putKupoMatch km = do
     )
     ev
 
--- | Store a profile projection, upserting by profile ID.
 -- | Store a profile projection, upserting by profile id.
 --
--- __The credential column is carried over, not written — ADR 0003.__ It is derived from the
+-- __The credential column is recomputed, not carried over — ADR 0003.__ It is derived from the
 -- attestation stream and this event does not carry it, while 'upsertByUnique' REPLACES the whole
--- row. Writing 'Nothing' here would therefore make every later metadata update silently erase a
--- binding a 'CredentialClaim' had established — a projection that drifts from the chain with no
--- error anywhere. Carrying the existing value is what keeps the derived column a function of the
--- attestations alone.
+-- row, so writing 'Nothing' here would make every later metadata update silently erase a binding a
+-- 'CredentialClaim' had established. The first fix for that was to carry the existing column over,
+-- and that was order-dependent in a way a replay breaks — see 'deriveProfileCredential'.
 putProfileProjection :: (MonadIO m) => Integer -> Text -> Profile -> SqlPersistT m ()
 putProfileProjection createdSlot createdHash p = do
-  existing <- getBy (UniqueProfileProjection (profileId p))
-  let credential = (profileProjectionProfileCredential . entityVal) =<< existing
+  credential <- deriveProfileCredential (profileId p)
   -- Named fields, not positional, for the reason 'putAttestationProjection' spells out: name,
   -- description and image URI are all 'Text', so a transposition among them compiles and writes a
   -- row with the description in the name column. Three same-typed neighbours is enough.
@@ -483,26 +482,63 @@ putAttestationProjection createdSlot createdHash createdTxId createdOutIdx a = d
           }
   upsertByUnique (UniqueAttestationProjection . attestationProjectionAttestationId) ev
   -- __ADR 0003: this is where a profile's published credential comes from.__ The record above is the
-  -- fact; the profile column is the derived current state, and replay order is what makes the
-  -- derivation right — `sortedMatches` replays in true chain order, so a claim, a withdrawal and a
-  -- later claim land in the order they were made and the last write is the current answer.
+  -- fact; the profile column is the derived current state. Recomputed from the records rather than
+  -- written incrementally, so that this write and 'putProfileProjection' cannot disagree and
+  -- neither depends on arriving first.
   case attestationKind a of
-    CredentialClaim ->
-      updateWhere
-        [ProfileProjectionProfileId ==. attestationSubjectProfileId a]
-        [ProfileProjectionProfileCredential =. attestationCredential a]
-    -- A withdrawal clears the column only if it names the credential the profile currently
-    -- publishes. Clearing unconditionally would let a withdrawal naming some OTHER credential
-    -- delete a binding it has nothing to do with — the chain permits such a record (`Mc3` only asks
-    -- the named credential to consent), so the read layer has to be the one that ignores it.
-    CredentialWithdrawal -> do
-      existing <- getBy (UniqueProfileProjection (attestationSubjectProfileId a))
-      case existing of
-        Just (Entity key row)
-          | profileProjectionProfileCredential row == attestationCredential a ->
-              update key [ProfileProjectionProfileCredential =. Nothing]
-        _ -> pure ()
+    CredentialClaim -> refreshProfileCredential (attestationSubjectProfileId a)
+    CredentialWithdrawal -> refreshProfileCredential (attestationSubjectProfileId a)
     _ -> pure ()
+  where
+    refreshProfileCredential subject = do
+      credential <- deriveProfileCredential subject
+      updateWhere
+        [ProfileProjectionProfileId ==. subject]
+        [ProfileProjectionProfileCredential =. credential]
+
+-- | The credential a profile currently publishes, folded from its credential attestations.
+--
+-- __ADR 0003's derived column, and why it is a fold rather than two incremental writes.__ The first
+-- version wrote the column from each arriving record — a claim set it, a matching withdrawal
+-- cleared it — and had 'putProfileProjection' carry the existing value over. That is correct only
+-- while the profile row exists before the claim arrives, which is true of live operation and
+-- __false of every replay__: 'projectChainEvent' emits no event for a spent output, so a profile
+-- that was updated after claiming is seen only at its latest UTxO's slot, which is ABOVE the
+-- claim's. The claim's @updateWhere@ then matched no row, silently, and the profile came back from
+-- the re-sync with no credential. @currentSchemaVersion@ 3 -> 4 forces exactly that re-sync, so the
+-- bug would have shipped as the upgrade path. Found by an audit reconciliation, not by a test.
+--
+-- A fold over the records has no such order: whichever of the two rows is written second recomputes
+-- from everything already stored.
+--
+-- __The withdrawal rule.__ A withdrawal clears the column only if it names the credential the
+-- profile published at that point in the fold. Clearing unconditionally would let a withdrawal
+-- naming some OTHER credential delete a binding it has nothing to do with — the chain permits such
+-- a record (@Mc3@ asks only the named credential to consent), so the read layer has to be the one
+-- that ignores it.
+--
+-- __The order is chain order as closely as the table can express it__: slot, then output index,
+-- then transaction id. Two credential records for one profile in the SAME slot but different
+-- transactions are ordered by transaction id, which is deterministic but not the ledger's order;
+-- the complete history stays in @attestation_projection@ either way.
+deriveProfileCredential :: (MonadIO m) => GYAssetClass -> SqlPersistT m (Maybe Text)
+deriveProfileCredential subject = do
+  rows <-
+    selectList
+      [ AttestationProjectionSubjectProfileId ==. subject,
+        AttestationProjectionAttestationKind <-. [CredentialClaim, CredentialWithdrawal]
+      ]
+      [ Asc AttestationProjectionCreatedAtSlot,
+        Asc AttestationProjectionCreatedOutputIndex,
+        Asc AttestationProjectionCreatedTxId
+      ]
+  return (L.foldl' step Nothing (map entityVal rows))
+  where
+    step current row = case attestationProjectionAttestationKind row of
+      CredentialClaim -> attestationProjectionAttestationCredential row
+      CredentialWithdrawal
+        | current == attestationProjectionAttestationCredential row -> Nothing
+      _ -> current
 
 -- | The single source of chain-replay order: sort raw matches by true chain order
 -- @(slot, transaction_index, output_index)@. Used by 'rollbackTo' and by tests.

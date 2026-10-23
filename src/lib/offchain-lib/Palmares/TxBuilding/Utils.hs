@@ -76,8 +76,9 @@ extractNFTAssetClass v =
 -- under the policy, the datum parses, and this was the only gate. The registry then served a forged,
 -- ACCEPTED attestation from a reputable issuer on the victim's own "attestations about me" query,
 -- for about 1.3 ADA, with no cooperation from anybody, and nothing in this protocol burns so it
--- could never be removed. The same output shape at the Profiles address forges a profile that claims
--- a victim's governance credential with no @Mp3@ proof.
+-- could never be removed. The same output shape with a 'CredentialClaim' datum forges a BINDING of
+-- the victim's governance credential to the attacker's profile with no @Mc3@ proof — which until
+-- ADR 0003 was the same attack against a profile's own credential field and @Mp3@.
 --
 -- __Why the prefix closes it completely.__ A reference token provably cannot reach a wallet:
 -- @Mp5@/@Mk@/@Md5@ force the single minted ref NFT into a script output carrying the datum the

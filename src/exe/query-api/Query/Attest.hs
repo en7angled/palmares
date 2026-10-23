@@ -397,6 +397,7 @@ toAttestationRow a =
              ) of
           (Just from, Just to) -> Just (from, to)
           _ -> Nothing,
+      attestationRowCredential = attestationProjectionAttestationCredential a,
       attestationRowAccepted = attestationProjectionIsAccepted a,
       attestationRowName = attestationProjectionAttestationName a,
       attestationRowDescription = attestationProjectionAttestationDescription a,

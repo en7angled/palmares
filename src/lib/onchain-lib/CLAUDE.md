@@ -29,8 +29,12 @@ PlutusTx on-chain code. No off-chain imports (no Aeson, Servant, Swagger). Plutu
   reading an older commit, that module is not where a new derivation goes.
 - **Datum optimization**: Derive IDs from datum fields, don't store derivable IDs. Reduces datum size and min-ADA.
 - **ProtocolParams**: Carried in datums for unparameterized validators. Only MintingPolicy is parameterized.
-- **Address resolution**: ProfilesValidator and AttestationsValidator are **unparameterized**; they get
-  validator addresses from the datum's `protocolParams`. Do not add validator hashes as validator parameters.
+- **Address resolution**: ProfilesValidator, AttestationsValidator and DisputesValidator are
+  **unparameterized**, and none of them resolves a sibling validator's address at all — the only field
+  any of them reads out of `protocolParams` is `oracleToken`. The three script hashes are read by the
+  MintingPolicy, where they are a compile-time **parameter**, not a datum. Do not add validator hashes
+  as validator parameters, and do not write that a validator gets an address from a datum: this line
+  said so, and an audit (OC-08) found no code behind it.
 - **Multiple datum kinds**: Use wrapper sum type. List which redeemers each kind accepts; reject incompatible
   with `traceError`.
 - **Output layout**: The order of outputs in the transaction is determined by the off-chain skeleton
@@ -44,7 +48,10 @@ PlutusTx on-chain code. No off-chain imports (no Aeson, Servant, Swagger). Plutu
 - Oracle UTxO as **reference input** in every minting tx. Check `opPaused` and `checkFee`.
 - Min lovelace from oracle (`opMinUTxOValue`) only, not fixed constants.
 - One-off tokens: require spending a **seed TxOutRef**, derive token name from it.
-- Validate referenced AssetClasses share protocol CurrencySymbol via `hasCurrencySymbol`.
+- Validate referenced AssetClasses with `isProtocolRefToken` from `Palmares.Onchain.CIP68`: the symbol
+  AND the CIP-67 reference prefix. `hasCurrencySymbol` checks only the symbol, which a profile's USER
+  token also satisfies — that is the hole `isProtocolRefToken` closed, and `UnitTests.MintInputs` pins
+  it. The helper still exists in `Utils.hs` and has no caller; this line used to prescribe it.
 - **Authorization**: every redeemer names the credential it requires, and the requirement is token
   possession, not a signature list — that is what makes an organization or committee acting through a
   script a first-class issuer. Use `deriveUserFromRefAC` from `Palmares.Onchain.CIP68`: profile creation
@@ -78,9 +85,11 @@ PlutusTx on-chain code. No off-chain imports (no Aeson, Servant, Swagger). Plutu
   value (use min-value check).
 - **Time**: any date carried in a datum is validated against the transaction's validity interval — never
   trusted as supplied (inherited fix #4).
-- **Lookups**: Use `Palmares.Onchain.Protocol.Lookup` for reading state: `readOracleParams`,
-  `readOracleParams` is the live one. (The `unsafeGet*` profile helpers are currently UNCALLED, and there
-  is no `unsafeGetAttestation` — this line named a function that has never existed.)
+- **Lookups**: `Palmares.Onchain.Protocol.Lookup` holds exactly two live readers, `readOracleParams`
+  and `feeFor`. The `unsafeGet*` profile helpers it used to export were deleted with `Protocol/Id.hs`;
+  there has never been an `unsafeGetAttestation`. `Utils.checkAndGetCurrentStateDatumAndValue` is also
+  uncalled — the Haddock at `Lookup.hs:7` says validators read a profile through it and that is false
+  (audit `NEW-OC-5`), which is why its trace codes `U2`/`U3` can never be emitted.
 
 ### Deployment
 

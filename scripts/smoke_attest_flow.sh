@@ -281,7 +281,8 @@ case "$ATTEST_LAG" in
     die "the query API reports attest_lag_seconds=null — no projector cursor is VISIBLE, which is \
 three things and not one: attest-sync has never run against this database; or query-api's role \
 cannot SELECT palmares_attest.chain_cursor, which reads as absence because information_schema.tables \
-shows only what the role may see (check sql/050_roles.sql ran AFTER attest-sync created the table); \
+shows only what the role may see — run scripts/check_roles.sh, which asserts the pair of default \
+privileges that makes the order of apply-roles and attest-sync's first boot stop mattering; \
 or the first poll since boot raised, which clears on the next one — retry before blaming anything. \
 Either way this flow reads nothing but projections, so every wait below would time out" ;;
   *) echo "  ok   /status: attest-sync trails db-sync's cursor by ${ATTEST_LAG}s (add governance lag for absolute staleness)" ;;

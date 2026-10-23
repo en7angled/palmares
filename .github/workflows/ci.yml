@@ -231,6 +231,31 @@ jobs:
           PGPASSWORD: devonly
           PG_CONN_STR: host=localhost user=postgres dbname=postgres port=5432
 
+      # Role separation had no gate at all, and the hole that hid was on the only path there is:
+      # `palmares_attest.chain_cursor` is created by attest-sync, which every committed
+      # configuration connects as `postgres`, so the `ALTER DEFAULT PRIVILEGES FOR ROLE
+      # palmares_owner` in sql/050_roles.sql covered nothing and `palmares_ro` could not read the
+      # table. That failure is unreadable from outside — information_schema lists only what the role
+      # may see, so a missing grant and an absent table are the same observation, and /status serves
+      # `attest_lag_seconds: null` either way.
+      #
+      # Its own database because sql/050_roles.sql names `cexplorer`, which is db-sync's and the one
+      # the grants are written for. A second copy of the skeleton there costs about a second.
+      - name: role separation, and the grant attest-sync's table depends on
+        run: |
+          set -euo pipefail
+          createdb -h localhost -U postgres cexplorer
+          psql "$CEX" -v ON_ERROR_STOP=1 -q -f test/fixtures/dbsync-skeleton.sql
+          psql "$CEX" -v ON_ERROR_STOP=1 -q -f sql/050_roles.sql
+          # attest-sync's boot DDL, in the order that used to lose the grant: roles first, table after
+          psql "$CEX" -v ON_ERROR_STOP=1 -q -c 'CREATE TABLE palmares_attest.chain_cursor (slot_no bigint)'
+          PSQL="psql postgresql://postgres@localhost:5432/cexplorer" DBSYNC_ROLE=postgres scripts/check_roles.sh
+          # and what the default privilege exists for: query-api's reader can actually read it
+          psql "$CEX" -v ON_ERROR_STOP=1 -At -c 'SET ROLE palmares_ro; SELECT count(*) FROM palmares_attest.chain_cursor'
+        env:
+          PGPASSWORD: devonly
+          CEX: host=localhost user=postgres dbname=cexplorer port=5432
+
   secrets:
     runs-on: ubuntu-24.04-arm
     steps:

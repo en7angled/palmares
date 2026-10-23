@@ -91,6 +91,26 @@ GRANT SELECT ON ALL TABLES IN SCHEMA palmares_attest TO palmares_ro;
 ALTER DEFAULT PRIVILEGES FOR ROLE palmares_owner IN SCHEMA palmares_attest
   GRANT SELECT ON TABLES TO palmares_ro;
 
+-- __And again with no `FOR ROLE`, because nothing in this repository creates that table as
+-- `palmares_owner`.__ `palmares_attest.chain_cursor` is attest-sync's, and all four places that
+-- configure its connection — `defaultConnStr` in `src/exe/attest-sync/Main.hs`,
+-- `Dockerfile.attest-sync`, `compose.yaml` and `.env.example` — say `user=postgres`, which in that
+-- deployment is also the role db-sync's migrations run as, and therefore the current role here. The
+-- line above covers a deployment that connects attest-sync as the owner; this one covers the four
+-- that exist. Neither covers the other, and a default privilege is scoped to the role that CREATES
+-- the object, so there is no single statement that covers both.
+--
+-- Without this, the failure is silent and accuses the wrong service. `GRANT ... ON ALL TABLES`
+-- above resolves when it runs, so it covers nothing when `apply-roles` runs before attest-sync's
+-- first boot — the normal order — and `palmares_ro` then cannot see the table at all, because
+-- `information_schema.tables` lists only what the current role holds a privilege on: a missing
+-- grant and an absent table are the same observation. `/status` then serves
+-- `attest_lag_seconds: null`, which reads as "attest-sync has never run against this database".
+--
+-- The two statements together make the ORDER not matter, which is the point: the explicit GRANT
+-- catches a table that already exists, this default catches one created afterwards.
+ALTER DEFAULT PRIVILEGES IN SCHEMA palmares_attest GRANT SELECT ON TABLES TO palmares_ro;
+
 -- __And the same for db-sync's own schema, which is the one that matters.__ db-sync adds tables in
 -- its migrations, and a table added after this file ran would be invisible to `palmares_ro` — a
 -- view over it would fail at read time with a permission error that looks like a bug in the view.

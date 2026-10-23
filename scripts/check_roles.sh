@@ -82,6 +82,18 @@ chk "default privileges cover tables db-sync creates later in public" \
       WHERE n.nspname='public' AND d.defaclobjtype='r' AND d.defaclrole = '$DBSYNC_ROLE'::regrole
         AND array_to_string(d.defaclacl,',') LIKE '%palmares_ro=r%')"
 
+# The same hazard one schema over, and this one is on the only path there is: `chain_cursor` is
+# created by attest-sync, which every committed configuration connects as `postgres` rather than
+# `palmares_owner`. The explicit GRANT in sql/050_roles.sql resolves when it runs, so it covers
+# nothing if `apply-roles` precedes attest-sync's first boot, and the absence is unreadable from the
+# outside: information_schema shows only what the role may see, so /status serves
+# `attest_lag_seconds: null` and the smoke flow reads that as attest-sync never having run.
+chk "default privileges cover the table attest-sync creates in palmares_attest" \
+  "(SELECT count(*) > 0 FROM pg_default_acl d JOIN pg_namespace n ON n.oid = d.defaclnamespace
+      WHERE n.nspname='palmares_attest' AND d.defaclobjtype='r'
+        AND d.defaclrole = '$DBSYNC_ROLE'::regrole
+        AND array_to_string(d.defaclacl,',') LIKE '%palmares_ro=r%')"
+
 # The grant that `DROP SCHEMA palmares CASCADE` destroys on every query-api boot, re-made by
 # sql/040_grants.sql as the LAST statement of the boot transaction. Checked here because its
 # absence is invisible until a restart, and then it is every governance route returning 500.

@@ -393,29 +393,36 @@ tests in this pass, `Mp6` has none.
 
 ### The architecture set
 
-The three reference documents in [`../architecture/`](../architecture/README.md) were reconciled in the
-same pass — field, constructor and index level against the current types and validators, every
-`path:line` re-checked, all 26 mermaid blocks re-rendered from their edited source. Eleven of their
-errors turned out to be **already false at `4eb9117`** rather than drift, and three of those are worth
-naming because each contradicted something the set itself asserts:
+All three reference documents in [`../architecture/`](../architecture/README.md) were kept and
+corrected in place — 134 edits, field/constructor/index level against the current types and
+validators, every `path:line` re-checked, all 26 mermaid blocks re-rendered from their edited source,
+no section renumbered and no diagram orphaned. Two sections were added rather than changed
+(`onchain-flows.md` §3.11 for the credential-claim anatomy and §3.12 for `ExpireDispute`), both
+table-only, which is why the positional `<doc>-NN.svg` mapping still holds.
+
+**Six** of their errors were **already false at `4eb9117`** rather than drift. The count is six and
+not the eleven an earlier draft of this paragraph claimed: a second pass against
+`git show 4eb9117` cleared five of the candidates as ordinary drift, including three that read as
+pre-existing errors and were not — the exact-value helper's line range, the "no validator branches on
+the kind" citation, and `Mp6`'s justification, all of which were correct when written.
+
+The four that matter:
 
 - the component diagram put `onchain-lib` behind an external node labelled "atlas-cardano, cardano-api,
   plutus-*", where "no off-chain deps in `onchain-lib`" is a load-bearing claim of the document and of
   the architecture;
-- "`AcceptAttestation` is the protocol's single irreversible write", which D-C's own comment refutes
-  (see below) — and `D6` offered as what limits a transaction to one dispute, where it bounds script
-  instances and not one dispute's own obligations, so the `disputeDepositTo`-is-this-validator case
-  that destroys the deposit slips through;
-- and that same claim spelled out: a verdict is written once and nothing here burns, so every mint is
-  permanent too. The conjunction of irreversible **and** unreachable by the pause is what made
-  acceptance the urgent case for D-C.
+- "`AcceptAttestation` is the protocol's single irreversible write", which D-C's own comment refutes: a
+  verdict is written once and nothing here burns, so every mint is permanent too. The conjunction of
+  irreversible **and** unreachable by the pause is what made acceptance the urgent case;
+- `D6` offered as what limits a transaction to one dispute. It bounds script *instances*, not one
+  dispute's own obligations, so the `disputeDepositTo`-is-this-validator case that destroys the deposit
+  slips through — a finding that predates D-A;
+- "30 routes" for query-api against a `check_swagger.sh` that asserted `29 paths` at that very commit,
+  and "41 test modules" against a cabal that listed 40 and the document's own index, which named 40.
 
-`U2`/`U3`'s unreachability is **not** in that list, and the first draft of this section put it there.
-The documented chain was real at `4eb9117`: both profile lookups called
+`U2`/`U3`'s unreachability is **not** among them, and the first draft of this section put it there. The
+documented chain was real at `4eb9117`: both profile lookups called
 `checkAndGetCurrentStateDatumAndValue`. `3654f57` deleted those callers and, in the same commit, added
 the Haddock asserting that validators call it — so the finding is that commit's, not the snapshot's,
-and it is `NEW-OC-5`.
-
-Two more contradicted a gate or a section in their own tree: "30 routes" against a `check_swagger.sh`
-that asserted 29 at that very commit, and "41 test modules" against a cabal that listed 40 and the
-document's own index, which named 40.
+and it is `NEW-OC-5`. Both corrections here came from preferring an agent's intermediate notes over its
+final report; the documents themselves never carried either error.

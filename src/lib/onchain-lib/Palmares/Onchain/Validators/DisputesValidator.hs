@@ -69,10 +69,14 @@ data DisputesRedeemer
   = -- | ResolveDispute verdict disputeOutputIdx
     ResolveDispute Verdict Integer
   | Cleanup
+  | -- | ExpireDispute disputeOutputIdx — D-A, the exit that needs no key.
+    --
+    -- Appended at index 2, never inserted.
+    ExpireDispute Integer
   deriving stock (Generic, Prelude.Show)
   deriving anyclass (HasBlueprintDefinition)
 
-makeIsDataSchemaIndexed ''DisputesRedeemer [('ResolveDispute, 0), ('Cleanup, 1)]
+makeIsDataSchemaIndexed ''DisputesRedeemer [('ResolveDispute, 0), ('Cleanup, 1), ('ExpireDispute, 2)]
 
 type DisputesDatum = CIP68Datum OnchainDispute
 
@@ -80,7 +84,7 @@ type DisputesDatum = CIP68Datum OnchainDispute
 
 {-# INLINEABLE disputesLambda #-}
 disputesLambda :: ScriptContext -> Bool
-disputesLambda (ScriptContext TxInfo {..} (Redeemer bredeemer) scriptInfo) =
+disputesLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) scriptInfo) =
   let !redeemer = unsafeFromBuiltinData @DisputesRedeemer bredeemer
    in case scriptInfo of
         (SpendingScript spendingTxOutRef mdatum) -> case redeemer of
@@ -107,22 +111,18 @@ disputesLambda (ScriptContext TxInfo {..} (Redeemer bredeemer) scriptInfo) =
               Nothing -> traceError "D0" -- Invalid datum (D0)
               Just (disputeDatum :: DisputesDatum) ->
                 let dispute = extra disputeDatum
-                    ownInput = Utils.unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs
-                    ownValue = txOutValue ownInput
-                    ownAddress = txOutAddress ownInput
-                    resolvedDatum = disputeDatum {extra = resolveDispute verdict dispute}
-                    -- The deposit the dispute ACTUALLY paid, out of its own datum — never
-                    -- `opDisputeDeposit` from the oracle. Reading the oracle here would let the admin
-                    -- lower the price, resolve, and keep the difference; or raise it and make an open
-                    -- dispute unresolvable. The oracle prices new disputes; an open one's price is
-                    -- history.
-                    depositValue = V1.lovelaceValue (V1.Lovelace (disputeDeposit dispute))
+                    -- BANG, and not for style. `PlutusIR.Transform.StrictifyBindings` converts a
+                    -- non-strict binding only when the RHS is pure, and
+                    -- `unsafeFindOwnInputByTxOutRef` contains a `traceError`, so this one never
+                    -- qualifies: without the bang it stays a thunk, and UPLC does not memoise a
+                    -- forced thunk. `disputeClosesWith` derives four values from it, so each force
+                    -- would re-run a `find` over `txInfoInputs` — a list whose length the
+                    -- transaction's author chooses. 'ProfilesValidator' bangs the same binding.
+                    !ownInput = Utils.unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs
                     -- Read through the token recorded in the datum, so a forged "oracle" UTxO naming
                     -- the attacker as admin cannot be substituted. `readOracleParams` traces K1 when
                     -- no reference input carries that token.
                     oracle = readOracleParams (disputeOracleToken dispute) txInfoReferenceInputs
-                    paysDeposit TxOut {txOutValue, txOutAddress} =
-                      (txOutAddress == disputeDepositTo dispute) && (txOutValue `geq` depositValue)
                  in -- A PAUSE STOPS WRITES, NOT READS, and settling a dispute is a write. @opPaused@
                     -- used to be read by the minting policy alone (@M0@), so a paused protocol
                     -- refused new disputes while open ones could still be settled — the lever halted
@@ -151,38 +151,122 @@ disputesLambda (ScriptContext TxInfo {..} (Redeemer bredeemer) scriptInfo) =
                       -- argument as the attestation path's A3.
                       && traceIfFalse "D3" (disputeVerdict dispute == Nothing) -- Already resolved (D3)
                       && traceIfFalse "D1" (PlutusTx.List.elem (opAdminPkh oracle) txInfoSignatories) -- Oracle admin must sign (D1)
-                      && traceIfFalse
-                        "D2" -- Dispute must return resolved, less the deposit (D2)
-                        ( and
-                            [ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress
-                                outputIdx
-                                resolvedDatum
-                                (ownValue - depositValue)
-                                ownAddress
-                                txInfoOutputs,
-                              -- The spent UTxO must actually be this dispute, not something else
-                              -- carrying a copy of its datum.
-                              V1.assetClassValueOf ownValue (disputeId dispute) == 1
-                            ]
-                        )
-                      -- THE DEPOSIT COMES BACK, ON EITHER VERDICT. There is no punitive outcome, which
-                      -- is why `Verdict` has exactly two constructors: losing a dispute costs network
-                      -- fees and nothing else, because a registry that charged for contesting a false
-                      -- claim would be a registry that discourages contesting one. Paid to the address
-                      -- the disputer named when opening, because a validator cannot resolve a
-                      -- ProfileId into an address.
+                      -- A RESOLUTION IS A FINDING, and 'VerdictExpired' is not one.
                       --
-                      -- `any` IS A MULTIPLE-SATISFACTION HOLE WITHOUT D6 BELOW, and this is the site
-                      -- that made the rule concrete: two disputes naming the same payout address are
-                      -- the ordinary case — one person contesting two attestations — and resolving
-                      -- both in one transaction let a single returned deposit discharge both checks,
-                      -- with the second deposit landing in the change of whoever built the
-                      -- transaction. D1 means that is the oracle admin. The `any` stays; D6 makes it
-                      -- sound by ensuring there is only ever one obligation per transaction to
-                      -- discharge.
-                      && traceIfFalse "D4" (any paysDeposit txInfoOutputs) -- Deposit must return to the disputer (D4)
-                      && traceIfFalse "D6" (Utils.spentExactlyOnceFromAddress ownAddress txInfoInputs) -- One dispute per transaction (D6)
+                      -- `Verdict` is an unconstrained redeemer argument on this arm, so appending a
+                      -- third constructor for D-A silently handed the admin the power to assert
+                      -- "the clock ran out" with no clock — one second after a dispute opens, and
+                      -- byte-identical on chain to a real timeout, while the read layer is under
+                      -- instruction to present `expired` as nobody's decision. The expiry arm
+                      -- hardcodes the constructor and gates it on 'disputeStaleAfter'; this arm has
+                      -- to refuse it, because D-A's own guarantee is that only the clock writes it.
+                      --
+                      -- Found by an independent audit of D-A, not by this code's author.
+                      && traceIfFalse "Da" (not (verdict == VerdictExpired)) -- Resolution must be a finding (Da)
+                      -- D2, D4 and D6 — what CLOSING a dispute means, shared verbatim with
+                      -- @ExpireDispute@ below rather than written twice. See 'disputeClosesWith'.
+                      && disputeClosesWith verdict outputIdx disputeDatum ownInput txInfo
+          -- D-A: the exit that needs no key. After 'disputeStaleAfter' anyone may close an undecided
+          -- dispute as 'VerdictExpired'.
+          --
+          -- __NO @D7@ AND NO SIGNATURE, both deliberately.__ This arm exists because an admin who
+          -- does not act leaves a permanent accusation on a stranger's record, and a pause on top of
+          -- a lost key froze every open dispute forever. An escape hatch that the admin can gate —
+          -- by pausing, or by simply holding the only key — is not an escape hatch. So this arm
+          -- reads no oracle at all: there is no lever on it.
+          --
+          -- What stops abuse is that there is nothing to gain. @D4@ pays the deposit to the address
+          -- the OPENER named at open time, so a stranger who builds this transaction returns the
+          -- opener's money and keeps nothing; @D3@ means a decided dispute cannot be reopened or
+          -- rewritten; and the deadline is in the dispute's own datum, so the admin cannot move it
+          -- after the fact. The cost is real and was the owner's call: a legitimate dispute awaiting
+          -- a verdict can be closed by anyone once the clock runs out, which is why
+          -- 'opDisputeTimeoutMs' wants to be generous.
+          ExpireDispute outputIdx -> case mdatum of
+            Nothing -> traceError "D0" -- No datum (D0)
+            Just (Datum bdatum) -> case fromBuiltinData bdatum of
+              Nothing -> traceError "D0" -- Invalid datum (D0)
+              Just (disputeDatum :: DisputesDatum) ->
+                let dispute = extra disputeDatum
+                    -- Strict, for the reason the resolve arm's is.
+                    !ownInput = Utils.unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs
+                 in -- Same code as the resolve arm's, and the same statement: a verdict is written
+                    -- once. Without it, anyone could overwrite a settled finding with "expired" the
+                    -- moment the clock passed — which would make the clock a delete button for the
+                    -- record rather than a bound on inaction.
+                    traceIfFalse "D3" (disputeVerdict dispute == Nothing) -- Already resolved (D3)
+                      && traceIfFalse "D9" (Utils.checkDateHasPassed (disputeStaleAfter dispute) txInfoValidRange) -- Not stale yet (D9)
+                      && disputeClosesWith VerdictExpired outputIdx disputeDatum ownInput txInfo
         _ -> traceError "D5" -- Invalid script info (D5)
+
+-- | What it means to CLOSE a dispute, whichever way it closes: @D2@, @D4@ and @D6@.
+--
+-- __One definition because there are now two ways in.__ 'ResolveDispute' is the oracle admin's
+-- finding and 'ExpireDispute' is the clock running out. What they share is exactly these three
+-- statements: what happens to the record, where the deposit goes, and how many disputes one
+-- transaction may settle. Written twice, those would be three invariants kept equal by hand on a
+-- path that moves money.
+--
+-- Everything else differs, and the list is not "who may ask and what verdict is written" — that
+-- sentence stood here and was short by two. The arms also differ in @D7@, the pause, which only the
+-- resolve path reads, and in @D9@, the deadline, which only the expiry path checks. Both omissions
+-- are decisions argued at their own sites.
+--
+-- The trace codes stay what they were, so an operator's runbook entry for @D2@ still means
+-- "wrong output" on either path.
+{-# INLINEABLE disputeClosesWith #-}
+disputeClosesWith :: Verdict -> Integer -> DisputesDatum -> TxOut -> TxInfo -> Bool
+disputeClosesWith verdict outputIdx disputeDatum ownInput TxInfo {..} =
+  let dispute = extra disputeDatum
+      ownValue = txOutValue ownInput
+      ownAddress = txOutAddress ownInput
+      closedDatum = disputeDatum {extra = resolveDispute verdict dispute}
+      -- The deposit the dispute ACTUALLY paid, out of its own datum — never `opDisputeDeposit` from
+      -- the oracle. Reading the oracle here would let the admin lower the price, resolve, and keep
+      -- the difference; or raise it and make an open dispute unresolvable. The oracle prices new
+      -- disputes; an open one's price is history.
+      depositValue = V1.lovelaceValue (V1.Lovelace (disputeDeposit dispute))
+      paysDeposit TxOut {txOutValue, txOutAddress} =
+        (txOutAddress == disputeDepositTo dispute) && (txOutValue `geq` depositValue)
+   in traceIfFalse
+        "D2" -- Dispute must return closed, less the deposit (D2)
+        ( and
+            [ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress
+                outputIdx
+                closedDatum
+                (ownValue - depositValue)
+                ownAddress
+                txInfoOutputs,
+              -- The spent UTxO must actually be this dispute, not something else carrying a copy of
+              -- its datum.
+              V1.assetClassValueOf ownValue (disputeId dispute) == 1
+            ]
+        )
+        -- THE DEPOSIT COMES BACK, ON EVERY OUTCOME. There is no punitive outcome, which is why
+        -- `Verdict` has no "frivolous" finding: losing a dispute costs network fees and nothing
+        -- else, because a registry that charged for contesting a false claim would be a registry
+        -- that discourages contesting one. Paid to the address the disputer named when opening,
+        -- because a validator cannot resolve a ProfileId into an address — and on the expiry path
+        -- that is also what makes a stranger's transaction harmless.
+        --
+        -- `any` IS A MULTIPLE-SATISFACTION HOLE WITHOUT D6 BELOW, and this is the site that made
+        -- the rule concrete: two disputes naming the same payout address are the ordinary case —
+        -- one person contesting two attestations — and closing both in one transaction let a single
+        -- returned deposit discharge both checks, with the second deposit landing in the change of
+        -- whoever built the transaction. The `any` stays; D6 makes it sound by ensuring there is
+        -- only ever one obligation per transaction to discharge.
+        --
+        -- __D6 bounds instances, not outputs, and that is a narrower claim than it reads.__ An
+        -- independent audit of D-A found the gap: if a dispute's @disputeDepositTo@ IS the disputes
+        -- validator's own address — which @Md8@ permits, since it only requires an address the
+        -- opening transaction spends from — then one output carrying the whole `ownValue` satisfies
+        -- D2's floor and D4 at once, inside a single invocation. The deposit is then re-locked into
+        -- a closed dispute that @D3@ and @D8@ both refuse to spend, so it is destroyed rather than
+        -- returned. The only loser is the opener, who chose that address; no closer gains anything.
+        -- Pre-existing and unchanged by D-A, recorded here because this is where the sentence that
+        -- overstated D6 lives.
+        && traceIfFalse "D4" (any paysDeposit txInfoOutputs) -- Deposit must return to the disputer (D4)
+        && traceIfFalse "D6" (Utils.spentExactlyOnceFromAddress ownAddress txInfoInputs) -- One dispute per transaction (D6)
 
 -------------------------------------------------------------------------------
 

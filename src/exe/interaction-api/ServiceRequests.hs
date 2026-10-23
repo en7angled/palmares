@@ -39,15 +39,13 @@ describeField field desc ns =
 
 -------------------------------------------------------------------------------
 
--- | Mint a profile, optionally claiming a Cardano credential.
+-- | Mint a profile. It claims no credential — __ADR 0003__.
 --
--- @credential@ and @witness@ travel together: a profile that claims a credential must say how the
--- input proving control of it is spent. Both omitted is the unclaimed profile — a Community or an
--- Auditor — which the read layer presents as @unclaimed@ rather than verified.
+-- A binding is a record of its own, created by @\/claim-credential@ in a second transaction, so
+-- that it can be ended by appending a fact instead of clearing a field. Four of the six profile
+-- kinds correspond to no on-chain credential at all and never need that second call.
 data ClaimProfileRequest = ClaimProfileRequest
   { cprKind :: ProfileType
-  , cprCredential :: Maybe Text
-  , cprWitness :: Maybe ClaimWitness
   , cprName :: Text
   , cprDescription :: Text
   , cprImageURI :: Text
@@ -153,6 +151,81 @@ instance ToSchema AcceptAttestationRequest where
       & Swagger.schema . description ?~ "Countersign a pending attestation. Must be called by a wallet holding the subject profile's user token."
       & describeField "recipient" "Address to receive unlocked funds (defaults to change address if omitted)"
 
+--------------------------------------------------------------------------------
+
+-- | Bind a profile to a Cardano credential — __ADR 0003__.
+--
+-- Both parties consent in one appended record: the profile spends its user token and the credential
+-- proves control of the same transaction. @credential@ is a CIP-129 identifier (@drep1…@,
+-- @cc_cold1…@, @cc_hot1…@).
+--
+-- The name, description and image are the claim RECORD's own metadata — it is an attestation, so it
+-- carries the same CIP-68 fields every other attestation does.
+data ClaimCredentialRequest = ClaimCredentialRequest
+  { cclProfileId :: GYAssetClass
+  , cclCredential :: Text
+  , cclWitness :: Maybe ClaimWitness
+  , cclName :: Text
+  , cclDescription :: Text
+  , cclImageURI :: Text
+  , cclUserAddresses :: UserAddresses
+  , cclRecipient :: Maybe GYAddress
+  }
+  deriving (Show, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "ccl", CamelToSnake]] ClaimCredentialRequest
+
+instance ToSchema ClaimCredentialRequest where
+  declareNamedSchema proxy = do
+    s <- genericDeclareNamedSchema (mkStripPrefixSchemaOptions "ccl") proxy
+    return $
+      s
+        & Swagger.schema . description
+          ?~ "Bind a profile to a Cardano credential, as an append-only record. Needs BOTH parties: \
+             \the returned transaction spends the profile's user token and must be authorised by the \
+             \credential as well. Costs a second transaction after /claim-profile, and buys a binding \
+             \that can be ended by appending a withdrawal rather than by clearing a field."
+        & describeField "credential" "CIP-129 identifier: drep1..., cc_cold1..., cc_hot1..."
+        & describeField "witness" "How a SCRIPT credential proves control. Omit for a key credential: its signature on the returned transaction is the proof."
+        & describeField "recipient" "Address to receive unlocked funds (defaults to change address if omitted)"
+
+--------------------------------------------------------------------------------
+
+-- | End a binding — __ADR 0003__, and the remedy of whoever's credential it is.
+--
+-- __Not the profile owner's route.__ The credential's proof alone authorises it, and the profile's
+-- user token is deliberately not required: the case this exists for is a profile that claimed
+-- somebody else's credential, and that token is held by whoever did it.
+--
+-- Nothing is erased. The claim stays in the log, this record is appended beside it, and the read
+-- layer stops publishing the binding — so a malicious withdrawal costs a fee and leaves a visible
+-- fact, where the field this replaces could be cleared for good.
+data WithdrawCredentialRequest = WithdrawCredentialRequest
+  { wclProfileId :: GYAssetClass
+  , wclCredential :: Text
+  , wclWitness :: Maybe ClaimWitness
+  , wclName :: Text
+  , wclDescription :: Text
+  , wclImageURI :: Text
+  , wclUserAddresses :: UserAddresses
+  , wclRecipient :: Maybe GYAddress
+  }
+  deriving (Show, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "wcl", CamelToSnake]] WithdrawCredentialRequest
+
+instance ToSchema WithdrawCredentialRequest where
+  declareNamedSchema proxy = do
+    s <- genericDeclareNamedSchema (mkStripPrefixSchemaOptions "wcl") proxy
+    return $
+      s
+        & Swagger.schema . description
+          ?~ "End a profile's binding to a credential. Authorised by the CREDENTIAL alone -- not by \
+             \the profile's owner, who may be exactly the party that claimed a credential they do \
+             \not control. Nothing is deleted: the claim stays on chain and this record is appended \
+             \beside it, after which the read layer stops publishing the binding."
+        & describeField "credential" "The CIP-129 identifier being withdrawn. A withdrawal naming a different credential than the profile currently publishes changes nothing."
+        & describeField "witness" "How a SCRIPT credential proves control. Omit for a key credential."
+        & describeField "recipient" "Address to receive unlocked funds (defaults to change address if omitted)"
+
 -------------------------------------------------------------------------------
 
 -- * Dispute request types
@@ -217,3 +290,32 @@ instance ToSchema ResolveDisputeRequest where
         ?~ "Settle a dispute, naming it by `dispute_id`. Returns an UNSIGNED transaction: the oracle \
            \validator requires the admin's signature, so the admin signs what this route builds. \
            \`recipient` receives any unlocked funds and defaults to the change address."
+
+--------------------------------------------------------------------------------
+
+-- | Close an undecided dispute whose deadline has passed — D-A.
+--
+-- __The one write in this protocol that needs no authority.__ After a dispute's own deadline anyone
+-- may close it, because an exit the oracle admin can gate — by pausing, or by holding the only key
+-- — is not an exit, and an admin who does not act was the whole failure. There is nothing to gain:
+-- the deposit returns to the address the opener named when they opened it.
+data ExpireDisputeRequest = ExpireDisputeRequest
+  { edrDisputeId :: GYAssetClass
+  , edrUserAddresses :: UserAddresses
+  , edrRecipient :: Maybe GYAddress
+  }
+  deriving (Show, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "edr", CamelToSnake]] ExpireDisputeRequest
+
+instance ToSchema ExpireDisputeRequest where
+  declareNamedSchema proxy = do
+    s <- genericDeclareNamedSchema (mkStripPrefixSchemaOptions "edr") proxy
+    return $
+      s
+        & Swagger.schema . description
+          ?~ "Close an undecided dispute whose deadline has passed, naming it by `dispute_id`. No \
+             \verdict and no authority: the transaction this returns needs only a fee payer, and it \
+             \records the dispute as `expired`, which is NOT a finding against either party. The \
+             \deposit returns to the address the opener named. A dispute that is already decided, or \
+             \whose deadline has not passed, is a 400."
+        & describeField "recipient" "Address to receive unlocked funds (defaults to change address if omitted)"

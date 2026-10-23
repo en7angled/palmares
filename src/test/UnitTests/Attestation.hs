@@ -52,7 +52,7 @@ import Test.Fixtures
     orgProfileData,
   )
 import Test.Helpers (assert, failedWithTrace)
-import Test.Tasty
+import Test.Tasty hiding (after) -- see UnitTests.Projections: `after` here is a snapshot, not tasty's
 import TestRuns
   ( adminInteraction,
     deployValidators,
@@ -431,14 +431,14 @@ attestationTests =
         profileInteraction
           ctx
           (w1 testWallets)
-          (ClaimProfileAction Organization Nothing Nothing orgProfileData)
+          (ClaimProfileAction Organization orgProfileData)
           Nothing
       waitNSlots_ 1
       (_t2, subjectAC) <-
         profileInteraction
           ctx
           (w2 testWallets)
-          (ClaimProfileAction PersonDRep Nothing Nothing drepProfileData)
+          (ClaimProfileAction PersonDRep drepProfileData)
           Nothing
       waitNSlots_ 1
       return (ctx, issuerAC, subjectAC)

@@ -18,7 +18,6 @@ import Control.Exception (displayException, try)
 import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Aeson (encode, object, (.=))
-import Data.ByteString.Lazy.Char8 qualified as BL8
 import Data.Text hiding (elem, reverse, take)
 import Data.Time (defaultTimeLocale, getCurrentTime)
 import Data.Time.Format (formatTime)

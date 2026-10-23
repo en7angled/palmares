@@ -38,7 +38,7 @@ import Palmares.Storage
   )
 import UnitTests.Conversions (sampleAttestation)
 import Test.Pg (runPg, withScratchDb)
-import Test.Tasty
+import Test.Tasty hiding (after) -- see UnitTests.Projections: `after` here is a snapshot, not tasty's
 import Test.Tasty.HUnit
 
 tests :: TestTree
@@ -134,9 +134,12 @@ tests =
           assertBool ("attestation_kind missing: " <> shown) ("attestation_kind" `elem` cols)
           assertBool ("claimed_period_from missing: " <> shown) ("claimed_period_from" `elem` cols)
           assertBool ("claimed_period_to missing: " <> shown) ("claimed_period_to" `elem` cols)
+          assertBool ("attestation_credential missing: " <> shown) ("attestation_credential" `elem` cols)
           assertEqual
             ("attestation_projection column count changed — bump currentSchemaVersion with it: " <> shown)
-            17
+            -- 18 since ADR 0003: `attestation_credential` is where a profile's binding lives now, and
+            -- the schema version went 3 -> 4 with it, which is what forces the re-sync.
+            18
             (length cols)
 
           profileCols <- columnsIn pool attestSchema "profile_projection"
@@ -156,7 +159,7 @@ tests =
             12
             (length disputeCols)
 
-          assertEqual "currentSchemaVersion is the version this column set belongs to" 3 currentSchemaVersion,
+          assertEqual "currentSchemaVersion is the version this column set belongs to" 4 currentSchemaVersion,
       -- The index that must NOT be unique. A credential may be claimed by two profiles (Review
       -- Focus item 2) and the read layer reports that as `contested`; a unique index here would
       -- make ingestion drop the second claim instead, which is the opposite behaviour and would

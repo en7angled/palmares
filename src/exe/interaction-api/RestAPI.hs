@@ -161,6 +161,24 @@ type ServiceAPI =
              :> ReqBody '[JSON] ResolveDisputeRequest
              :> Post '[JSON] String
          )
+    :<|> ( Summary "Expire Dispute"
+             :> Description "Closes an undecided dispute whose deadline has passed. Needs no authority at all — that is the point, since an exit the oracle admin can gate is not an exit — and records `expired`, which is not a finding against either party. The deposit returns to the address the opener named."
+             :> "expire-dispute"
+             :> ReqBody '[JSON] ExpireDisputeRequest
+             :> Post '[JSON] String
+         )
+    :<|> ( Summary "Claim Credential"
+             :> Description "Binds a profile to a Cardano credential as an append-only record — ADR 0003. Needs BOTH parties: the transaction spends the profile's user token and must also be authorised by the credential. A second call after /claim-profile, which no longer claims anything."
+             :> "claim-credential"
+             :> ReqBody '[JSON] ClaimCredentialRequest
+             :> Post '[JSON] String
+         )
+    :<|> ( Summary "Withdraw Credential"
+             :> Description "Ends a profile's binding to a credential. Authorised by the CREDENTIAL alone — not by the profile's owner, who may be exactly the party that claimed a credential they do not control. Nothing is deleted: the claim stays on chain and this record is appended beside it."
+             :> "withdraw-credential"
+             :> ReqBody '[JSON] WithdrawCredentialRequest
+             :> Post '[JSON] String
+         )
 
 serviceServer :: ServerT ServiceAPI InteractionAppMonad
 serviceServer =
@@ -170,6 +188,9 @@ serviceServer =
     :<|> handleAcceptAttestation
     :<|> handleOpenDispute
     :<|> handleResolveDispute
+    :<|> handleExpireDispute
+    :<|> handleClaimCredential
+    :<|> handleWithdrawCredential
 
 ------------------------------------------------------------------------------------------------
 
@@ -215,7 +236,9 @@ apiSwagger :: Swagger
 apiSwagger =
   toSwagger proxyPublicAPI
     & info . title .~ "Palmares Interaction API"
-    & info . Data.Swagger.version .~ "3.0.0"
+    -- 3.1.0, MINOR: `DisputeActionType` gained `ExpireDisputeAction` and `DisputeVerdict` gained
+    -- `expired` (D-A). Both additive: every request body that parsed before still parses.
+    & info . Data.Swagger.version .~ "3.1.0"
     & info . Data.Swagger.description ?~ "This is the Palmares Interaction API — transaction building, submission, and the dedicated per-action service endpoints."
     & info . license ?~ "GPL-3.0 license"
     & host .~ Nothing

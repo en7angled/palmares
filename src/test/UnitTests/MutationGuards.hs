@@ -62,7 +62,7 @@ import Palmares.Onchain.CIP68
     updateCIP68DatumMetadata,
   )
 import Palmares.Onchain.Protocol.Types
-  ( AttestationKind (MilestoneDelivered),
+  ( AttestationKind (CredentialClaim, MilestoneDelivered),
     FeeConfig (..),
     OnchainAttestation (..),
     OnchainDispute (..),
@@ -124,6 +124,7 @@ tests =
     [ m0Tests,
       a1Tests,
       p3Tests,
+      mcTests,
       seedTests,
       k1Tests,
       k2Tests,
@@ -165,7 +166,7 @@ mintProfileCtx paused =
     (Redeemer (toBuiltinData redeemer))
     (MintingScript protocolCS)
   where
-    redeemer = MintProfile profileSeedRef Community Nothing profileFields 0
+    redeemer = MintProfile profileSeedRef Community profileFields 0
     -- Mp1: the seed must actually be spent, which is what makes the derived id unique.
     seedInput = TxInInfo profileSeedRef (plainOut walletAddr (lv 10_000_000))
     stateOut = inlineOut profilesAddr profileStateValue (toBuiltinData profileDatum)
@@ -230,18 +231,41 @@ a1Tests =
           attestationsLambda
             (acceptCtx (lv minLovelace) [subjectConsentInput] (acceptedStateOutOf (lv minLovelace)))
         )
+          @?= (True, False),
+      -- D-C. One bit differs between the two halves — `opPaused` in the oracle datum the validator
+      -- reads through `attestationOracleToken` — so this is the narrowest possible statement of what
+      -- @A7@ does. The pair is what makes it mean something: acceptance must still WORK unpaused, or
+      -- `traceIfFalse "A7" False` would pass the negative half on its own.
+      --
+      -- The emulator case (@UnitTests.Pause@ 7.4) proves the same rule end to end, including that an
+      -- attacker's hand-built transaction cannot route around it. This one proves it in a context
+      -- where nothing else can be the cause.
+      testCase "Test Case 8.17: a paused protocol refuses an acceptance (A7)" $
+        ( attestationsLambda (acceptCtx attestationOwnValue [subjectConsentInput] acceptedStateOut),
+          attestationsLambda (acceptCtxPaused attestationOwnValue [subjectConsentInput] acceptedStateOut)
+        )
           @?= (True, False)
     ]
 
 -- | An acceptance with its three moving parts supplied: the value the attestation UTxO holds, the
 -- inputs beside it, and the output that re-locks it. Everything else is fixed and valid.
 --
--- No reference inputs: 'attestationsLambda' reads no oracle, which is the documented reason the pause
--- does not cover acceptance (see @UnitTests.Pause@'s header).
+-- __The oracle IS a reference input now__, and it has to be: since D-C, @A7@ reads @opPaused@
+-- through 'Palmares.Onchain.Protocol.Types.attestationOracleToken', and `readOracleParams` traces
+-- @K1@ when no reference input carries that token. This used to say "no reference inputs:
+-- 'attestationsLambda' reads no oracle", which was the documented reason the pause did not cover
+-- acceptance.
 acceptCtx :: Value -> [TxInInfo] -> TxOut -> ScriptContext
-acceptCtx ownValue extraInputs stateOut =
+acceptCtx = acceptCtxWith (oracleRefInput False)
+
+-- | The same acceptance under a PAUSED oracle, which is the one bit @A7@ reads.
+acceptCtxPaused :: Value -> [TxInInfo] -> TxOut -> ScriptContext
+acceptCtxPaused = acceptCtxWith (oracleRefInput True)
+
+acceptCtxWith :: TxInInfo -> Value -> [TxInInfo] -> TxOut -> ScriptContext
+acceptCtxWith oracleIn ownValue extraInputs stateOut =
   ScriptContext
-    (mkTxInfo (ownInput : extraInputs) [] [stateOut] emptyMintValue)
+    (mkTxInfo (ownInput : extraInputs) [oracleIn] [stateOut] emptyMintValue)
     (Redeemer (toBuiltinData (AcceptAttestation 0)))
     (SpendingScript attestationOwnRef (Just (Datum (toBuiltinData pendingAttestationDatum))))
   where
@@ -289,6 +313,92 @@ p3Tests =
         )
           @?= (True, False)
     ]
+
+-------------------------------------------------------------------------------
+
+-- | @Mc1@ to @Mc4@: what keeps a credential binding honest — __ADR 0003__.
+--
+-- Four rules, one context builder, and each case changes exactly one of the three things the rules
+-- read: the kind, whether the issuer is the subject, and the credential the redeemer names. @Mk@
+-- compares the whole datum against the output, and this builder derives the datum from the same
+-- three parameters, so @Mk@ cannot be what refuses any of them.
+mcTests :: TestTree
+mcTests =
+  testGroup
+    "Mc1-Mc4: a credential binding is self-issued, names a credential, and proves it"
+    [ -- THE POSITIVE CONTROL. Self-issued, names a credential, and that credential signs — so all
+      -- four rules pass and every case below fails on the one thing it changes.
+      testCase "Test Case 8.18: a well-formed credential claim validates" $
+        mintingPolicyLambda params (credentialMintCtx CredentialClaim profileRefAC (Just boundCredential) [boundPkh])
+          @?= True,
+      -- @Mc1@. A record about one profile issued by ANOTHER would make the issuer field mean
+      -- something on these two kinds, where the authority is stated by `Mc3` instead — and would let
+      -- a third party mint bindings naming profiles it has nothing to do with.
+      testCase "Test Case 8.19: a credential claim issued by a different profile is refused (Mc1)" $
+        mintingPolicyLambda params (credentialMintCtx CredentialClaim issuerRefAC (Just boundCredential) [boundPkh])
+          @?= False,
+      -- @Mc2@. Without it the record would be a binding to nothing, which the read layer would have
+      -- to decide how to render.
+      testCase "Test Case 8.20: a credential claim naming no credential is refused (Mc2)" $
+        mintingPolicyLambda params (credentialMintCtx CredentialClaim profileRefAC Nothing [boundPkh])
+          @?= False,
+      -- @Mc3@, the rule that was @Mp3@. The credential does not sign, and nothing else changes.
+      testCase "Test Case 8.21: a credential claim the credential did not authorise is refused (Mc3)" $
+        mintingPolicyLambda params (credentialMintCtx CredentialClaim profileRefAC (Just boundCredential) [])
+          @?= False,
+      -- @Mc4@, and it is the rule that keeps the OTHER five kinds clean: a milestone carrying a
+      -- credential would be a binding nothing checks, since `Mc1` and `Mc3` only look at the two
+      -- credential kinds.
+      testCase "Test Case 8.22: an ordinary attestation carrying a credential is refused (Mc4)" $
+        mintingPolicyLambda params (credentialMintCtx MilestoneDelivered issuerRefAC (Just boundCredential) [boundPkh])
+          @?= False
+    ]
+
+-- | The key whose credential the records below bind.
+boundPkh :: PubKeyHash
+boundPkh = PubKeyHash (b28 0x0d)
+
+boundCredential :: Credential
+boundCredential = PubKeyCredential boundPkh
+
+-- | A credential-record mint, parameterised in the three things @Mc1@-@Mc4@ read, plus the
+-- signatories @Mc3@ reads.
+--
+-- The seed input carries the ISSUER's user token, so @Mf@ passes whichever profile is named as
+-- issuer — which is what lets the @Mc1@ case isolate @Mc1@ instead of tripping over @Mf@.
+credentialMintCtx :: AttestationKind -> V1.AssetClass -> Maybe Credential -> [PubKeyHash] -> ScriptContext
+credentialMintCtx kind issuer mCredential signatories =
+  ScriptContext
+    (mkTxInfo [seedInput] [oracleRefInput False] [recordOut] issueMint)
+      { txInfoValidRange = datedRange,
+        txInfoSignatories = signatories
+      }
+    (Redeemer (toBuiltinData redeemer))
+    (MintingScript protocolCS)
+  where
+    redeemer =
+      NewAttestation issueSeedRef profileFields [] profileRefAC issuer kind datedAt Nothing mCredential 0
+    seedInput =
+      TxInInfo issueSeedRef (plainOut walletAddr (V1.assetClassValue (deriveUserFromRefAC issuer) 1 <> lv 10_000_000))
+    recordOut =
+      inlineOut attestationsAddr (V1.assetClassValue issuedAC 1 <> lv minLovelace) (toBuiltinData recordDatum)
+    recordDatum =
+      mkCIP68Datum
+        OnchainAttestation
+          { attestationId = issuedAC,
+            attestationIssuer = issuer,
+            attestationSubject = profileRefAC,
+            attestationKind = kind,
+            attestationDate = datedAt,
+            attestationPeriod = Nothing,
+            attestationIsAccepted = False,
+            attestationCredential = mCredential,
+            attestationOracleToken = oracleAC
+          }
+        profileFields
+        []
+
+-------------------------------------------------------------------------------
 
 -- | A profile update the validator accepts, parameterised only by the inputs beside the profile.
 --
@@ -364,7 +474,8 @@ oracleParamsWith paused =
       opPaused = paused,
       opFeeConfig = Nothing,
       opMinUTxOValue = minLovelace,
-      opDisputeDeposit = 5_000_000
+      opDisputeDeposit = 5_000_000,
+      opDisputeTimeoutMs = 2_592_000_000
     }
 
 -- | The ids, derived with the protocol's own generator from the same seed the redeemer names, so the
@@ -399,7 +510,6 @@ profileDatum = mkCIP68Datum profileInfo profileFields []
       OnchainProfile
         { profileId = profileRefAC,
           profileKind = Community,
-          profileCredential = Nothing,
           protocolParams = params
         }
 
@@ -436,7 +546,9 @@ attestation =
       attestationKind = MilestoneDelivered,
       attestationDate = POSIXTime 1_700_000_000_000,
       attestationPeriod = Nothing,
-      attestationIsAccepted = False
+      attestationIsAccepted = False,
+      attestationCredential = Nothing,
+      attestationOracleToken = oracleAC
     }
 
 pendingAttestationDatum :: CIP68Datum OnchainAttestation
@@ -668,7 +780,7 @@ issueAttestationCtx =
     (MintingScript protocolCS)
   where
     redeemer =
-      NewAttestation issueSeedRef profileFields [] profileRefAC issuerRefAC MilestoneDelivered datedAt Nothing 0
+      NewAttestation issueSeedRef profileFields [] profileRefAC issuerRefAC MilestoneDelivered datedAt Nothing Nothing 0
     seedInput =
       TxInInfo issueSeedRef (plainOut walletAddr (V1.assetClassValue issuerUserAC 1 <> lv 10_000_000))
     issuedOut =
@@ -700,7 +812,9 @@ issuedDatum = mkCIP68Datum issued profileFields []
           attestationKind = MilestoneDelivered,
           attestationDate = datedAt,
           attestationPeriod = Nothing,
-          attestationIsAccepted = False
+          attestationIsAccepted = False,
+          attestationCredential = Nothing,
+          attestationOracleToken = oracleAC
         }
 
 -- | @Mj@: just the attestation's ref NFT, and no user token — the attestation path mints one token.
@@ -751,6 +865,9 @@ openedDispute =
       disputeDeposit = depositLovelace,
       disputeDepositTo = walletAddr,
       disputeOracleToken = oracleAC,
+      -- The same arithmetic `handleOpenDispute` does, from the same 30 days this module's
+      -- `oracleParamsWith` configures: `Md*` compares this whole datum against the output.
+      disputeStaleAfter = datedAt + POSIXTime 2_592_000_000,
       disputeVerdict = Nothing
     }
 

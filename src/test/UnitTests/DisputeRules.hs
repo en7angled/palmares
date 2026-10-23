@@ -50,12 +50,12 @@ import Palmares.Onchain.Protocol.Types
     OracleAdminAction (OraclePause),
     OracleParams (..),
     ProtocolParams (..),
-    Verdict (VerdictRejected, VerdictUpheld),
+    Verdict (VerdictExpired, VerdictRejected, VerdictUpheld),
     applyOracleAdminAction,
     resolveDispute,
   )
 import Palmares.Onchain.Utils (maxDateWindow, nameFromTxOutRef)
-import Palmares.Onchain.Validators.DisputesValidator (DisputesRedeemer (ResolveDispute), disputesLambda)
+import Palmares.Onchain.Validators.DisputesValidator (DisputesRedeemer (ExpireDispute, ResolveDispute), disputesLambda)
 import Palmares.Onchain.Validators.MintingPolicy
   ( MintingRedeemer (NewAttestation, OpenDispute),
     mintingPolicyLambda,
@@ -95,6 +95,7 @@ tests =
   testGroup
     "dispute, mint and oracle output rules"
     [ resolveTests,
+      expireTests,
       openDisputeMintTests,
       attestationMintTests,
       oracleReturnTests
@@ -161,7 +162,8 @@ oracleParamsFixture =
       opPaused = False,
       opFeeConfig = Nothing,
       opMinUTxOValue = minUTxOLv,
-      opDisputeDeposit = depositLv
+      opDisputeDeposit = depositLv,
+      opDisputeTimeoutMs = 2_592_000_000
     }
 
 minUTxOLv, depositLv :: Integer
@@ -281,6 +283,9 @@ openDispute =
       disputeDeposit = depositLv,
       disputeDepositTo = disputerAddr,
       disputeOracleToken = oracleAC,
+      -- 30 days out, so the resolve cases below are nowhere near the expiry window and @D9@ cannot
+      -- be what refuses them. The expiry cases use their own fixture with a deadline in the past.
+      disputeStaleAfter = nowT + POSIXTime 2_592_000_000,
       disputeVerdict = Nothing
     }
 
@@ -383,6 +388,17 @@ resolveTests =
       testCase "either verdict validates, because the deposit comes back on both" $
         runResolve VerdictRejected 0 (settling goodSettlement {settledVerdict = VerdictRejected})
           @?= True,
+      -- D-A appended a third `Verdict` constructor, and this arm takes `Verdict` as an UNCONSTRAINED
+      -- redeemer argument — so for one commit the oracle admin could assert "the clock ran out" with
+      -- no clock, one second after a dispute opened, byte-identical on chain to a real timeout while
+      -- the read layer is under instruction to present `expired` as nobody's decision. An
+      -- independent audit found it; `Da` is the guard.
+      --
+      -- The output datum here carries `VerdictExpired` too, so @D2@ passes and `Da` is the only
+      -- thing left to refuse it.
+      testCase "an admin cannot resolve a dispute as EXPIRED — only the clock writes that (Da)" $
+        runResolve VerdictExpired 0 (settling goodSettlement {settledVerdict = VerdictExpired})
+          @?= False,
       -- ---------------------------------------------------------------------------------------
       -- D2, FIRST ELEMENT: the output datum must be the RESOLVED one the validator computed.
       --
@@ -489,6 +505,119 @@ resolveTests =
 
 -------------------------------------------------------------------------------
 
+-- * @D9@: the exit that needs no key
+
+-------------------------------------------------------------------------------
+
+-- | 'openDispute' with its clock already run out. @t 900@ is the EARLIEST deadline @D9@ can accept,
+-- because it is where the validity range every transaction in this module carries begins.
+staleDispute :: OnchainDispute
+staleDispute = openDispute {disputeStaleAfter = t 900}
+
+-- | An expiry of the given dispute, with the given reference inputs. Everything else is fixed and
+-- valid: one input at the dispute address (@D6@), and the outputs the case supplies.
+--
+-- __The reference inputs are a parameter so that a case can prove they are IGNORED__, which is the
+-- whole design of this arm: it reads no oracle, so there is no lever — not the pause, not the admin
+-- key — on the exit that exists because the admin did not act.
+runExpireWith :: [TxInInfo] -> OnchainDispute -> Integer -> [TxOut] -> Bool
+runExpireWith refInputs dispute idx outs =
+  let dat = mkCIP68Datum dispute metadataFixture []
+      info =
+        emptyTxInfo
+          { txInfoInputs = [TxInInfo disputeInputRef (txOut disputesAddr disputeInputValue (inlineOf dat))],
+            txInfoReferenceInputs = refInputs,
+            txInfoOutputs = outs
+          }
+   in disputesLambda
+        ( ScriptContext
+            info
+            (Redeemer (toBuiltinData (ExpireDispute idx)))
+            (SpendingScript disputeInputRef (Just (Datum (toBuiltinData dat))))
+        )
+
+-- | No reference inputs and no signatories, which is the ordinary case for this arm.
+runExpire :: OnchainDispute -> Integer -> [TxOut] -> Bool
+runExpire = runExpireWith []
+
+-- | What a correct expiry pays back: the dispute at output 0 carrying 'VerdictExpired' and less the
+-- deposit, and the deposit at output 1 to the address the OPENER named.
+expiryOutputs :: OnchainDispute -> [TxOut]
+expiryOutputs dispute =
+  [ expiredOutputOf dispute resolvedOutputValue disputesAddr,
+    lovelaceOutput depositLv disputerAddr
+  ]
+
+expiredOutputOf :: OnchainDispute -> V1.Value -> Address -> TxOut
+expiredOutputOf dispute val addr =
+  txOut addr val (inlineOf (dat {extra = resolveDispute VerdictExpired dispute}))
+  where
+    dat = mkCIP68Datum dispute metadataFixture []
+
+expireTests :: TestTree
+expireTests =
+  testGroup
+    "expiring a stale dispute needs no key, and nothing before its deadline"
+    [ -- THE POSITIVE CONTROL, and it asserts the design as much as the rule: no reference inputs and
+      -- no signatories at all, so nothing here is reachable by the admin. If someone later adds an
+      -- oracle read to this arm — a @D7@ for symmetry, say — this is the case that goes red, and it
+      -- should, because a pause would then re-create the freeze D-A exists to break.
+      --
+      -- It is also the UPPER half of @D9@'s boundary: 'staleDispute''s deadline sits exactly at the
+      -- validity range's lower bound, which `checkDateHasPassed` accepts because the whole range is
+      -- then at or after it. The case below is the same transaction one millisecond later.
+      testCase "a well-formed expiry validates, with no oracle and nobody's signature (D9 boundary)" $
+        runExpire staleDispute 0 (expiryOutputs staleDispute) @?= True,
+      testCase "one millisecond past that boundary it is not stale yet (D9)" $
+        let early = openDispute {disputeStaleAfter = t 901}
+         in runExpire early 0 (expiryOutputs early) @?= False,
+      -- A dispute whose deadline is in the FUTURE is the ordinary case, and the one that matters:
+      -- without @D9@ anyone could close any dispute the moment it opened.
+      testCase "the fixture's own open dispute, 30 days out, cannot be expired (D9)" $
+        runExpire openDispute 0 (expiryOutputs openDispute) @?= False,
+      -- @D3@ on this arm, which is what keeps the clock from being a delete button: a dispute the
+      -- admin already decided cannot be overwritten with "expired" once it goes stale.
+      testCase "a dispute that already carries a verdict cannot be expired (D3)" $
+        let decided = staleDispute {disputeVerdict = Just VerdictUpheld}
+         in runExpire decided 0 (expiryOutputs decided) @?= False,
+      -- @D2@ through the shared 'disputeClosesWith': the output datum has to say EXPIRED. Writing a
+      -- finding instead would let a stranger record a verdict nobody reached.
+      testCase "writing a finding instead of EXPIRED is refused (D2)" $
+        runExpire
+          staleDispute
+          0
+          [ txOut disputesAddr resolvedOutputValue (inlineOf (resolvedDatum VerdictUpheld)),
+            lovelaceOutput depositLv disputerAddr
+          ]
+          @?= False,
+      -- @D4@: the deposit goes to the address the OPENER named, not to whoever built the
+      -- transaction. This is what makes a permissionless expiry harmless.
+      testCase "paying the deposit to the caller instead of the opener is refused (D4)" $
+        runExpire
+          staleDispute
+          0
+          [ expiredOutputOf staleDispute resolvedOutputValue disputesAddr,
+            lovelaceOutput depositLv strangerAddr
+          ]
+          @?= False,
+      -- And the deliberate ASYMMETRY with @D7@. A paused oracle in the reference inputs changes
+      -- nothing, because this arm never looks: an escape hatch the admin can close by pausing is
+      -- not an escape hatch, and "pause plus a lost key" was the permanent freeze.
+      testCase "a PAUSED oracle does not block an expiry, deliberately (no D7 here)" $
+        runExpireWith
+          [oracleRefInput oracleParamsFixture {opPaused = True}]
+          staleDispute
+          0
+          (expiryOutputs staleDispute)
+          @?= True
+    ]
+
+-- @D6@ is not re-tested here on purpose: since D-A it lives in 'disputeClosesWith', shared verbatim
+-- with the resolve arm, and the resolve group above already pins it. That sharing is the reason this
+-- note can be a note instead of a seventh case.
+
+-------------------------------------------------------------------------------
+
 -- * @Md2@, @Md3@ and @Md6@: opening a dispute
 
 -------------------------------------------------------------------------------
@@ -534,6 +663,8 @@ openedDisputeOutput openedAt =
           disputeDeposit = depositLv,
           disputeDepositTo = disputerAddr,
           disputeOracleToken = oracleAC,
+          -- The arithmetic the policy does, from this module's own oracle fixture.
+          disputeStaleAfter = openedAt + POSIXTime 2_592_000_000,
           disputeVerdict = Nothing
         }
 
@@ -677,7 +808,9 @@ attestationOutput =
           attestationKind = MilestoneDelivered,
           attestationDate = nowT,
           attestationPeriod = Nothing,
-          attestationIsAccepted = False
+          attestationCredential = Nothing,
+          attestationIsAccepted = False,
+          attestationOracleToken = oracleAC
         }
 
 goodAttestationInfo :: TxInfo
@@ -697,7 +830,7 @@ runNewAttestation info =
         info
         ( Redeemer
             ( toBuiltinData
-                (NewAttestation attSeedRef metadataFixture [] subjectId issuerId MilestoneDelivered nowT Nothing 0)
+                (NewAttestation attSeedRef metadataFixture [] subjectId issuerId MilestoneDelivered nowT Nothing Nothing 0)
             )
         )
         (MintingScript protocolCS)

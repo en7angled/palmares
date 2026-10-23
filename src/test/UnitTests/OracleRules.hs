@@ -156,7 +156,8 @@ tests =
           opPaused = False,
           opFeeConfig = Nothing,
           opMinUTxOValue = 2_000_000,
-          opDisputeDeposit = 5_000_000
+          opDisputeDeposit = 5_000_000,
+          opDisputeTimeoutMs = 2_592_000_000
         }
 
     t = POSIXTime

@@ -165,6 +165,7 @@ attestationFx slot aid subject issuer kind date accepted =
       attestationProjectionSubjectProfileId = subject,
       attestationProjectionIssuerProfileId = issuer,
       attestationProjectionAttestationKind = kind,
+      attestationProjectionAttestationCredential = Nothing,
       attestationProjectionAttestationDate = at date,
       attestationProjectionClaimedPeriodFrom = Just (at (date - 1000)),
       attestationProjectionClaimedPeriodTo = Just (at date),

@@ -241,18 +241,53 @@ data ProfileActionType
         new_desc :: Maybe Text,
         image_uri :: Text
       }
-  | -- | Mint a profile, optionally claiming a Cardano credential.
+  | -- | Mint a profile.
     --
-    -- The claim is the spec's one sentence: /prove you can spend as that credential/. @cp_credential@
-    -- is a CIP-129 identifier (@drep1…@, @cc_cold1…@, @cc_hot1…@) and @cp_witness@ says how the
-    -- proving input is spent; both are 'Nothing' for a profile that corresponds to no on-chain
-    -- credential — a Community or an Auditor — which the read layer presents as @unclaimed@ rather
-    -- than verified.
+    -- __It claims no credential — ADR 0003.__ It used to take a CIP-129 identifier and a witness,
+    -- and the binding landed in a field on the profile datum that a later redeemer could clear. An
+    -- audit found that clearing irreversible and reachable with a weak proof, so a binding became a
+    -- record of its own: 'ClaimCredentialAction', below, in a second transaction.
+    --
+    -- Four of the six profile kinds — Organization, Community, Vendor, Auditor — correspond to no
+    -- on-chain credential at all and never need that second transaction.
     ClaimProfileAction
       { cp_kind :: ProfileType,
-        cp_credential :: Maybe Text,
-        cp_witness :: Maybe ClaimWitness,
         cp_profile_data :: ProfileData
+      }
+  | -- | Bind a profile to a Cardano credential — __ADR 0003__.
+    --
+    -- Mints a @CredentialClaim@ attestation, self-issued by the profile and co-proven by the
+    -- credential: both parties consent, in one record that is never rewritten. @cc_credential@ is a
+    -- CIP-129 identifier (@drep1…@, @cc_cold1…@, @cc_hot1…@) and @cc_witness@ says how a SCRIPT
+    -- credential's proving input is spent.
+    --
+    -- __Two transactions, and that is the trade.__ The claim used to ride along with the profile
+    -- mint. It costs a second transaction now and buys a binding nothing can erase — and, less
+    -- obviously, a stronger proof: a signature on THIS transaction is a signature on a body whose
+    -- visible purpose is the binding, where @Mp3@ only ever proved consent to a transaction that
+    -- could have been about anything.
+    ClaimCredentialAction
+      { cc_profile_id :: ProfileRefAC,
+        cc_credential :: Text,
+        cc_witness :: Maybe ClaimWitness,
+        -- | CIP-68 metadata for the claim record itself — it is an attestation, so it has a name, a
+        -- description and an image like any other.
+        cc_profile_data :: ProfileData
+      }
+  | -- | End a binding — __ADR 0003__, and the remedy of whoever's credential it is.
+    --
+    -- Mints a @CredentialWithdrawal@ attestation on the credential's proof ALONE. The profile's user
+    -- token is deliberately not required: the case this exists for is a profile that claimed
+    -- somebody else's credential, and that token is held by whoever did it.
+    --
+    -- __Nothing is erased.__ The claim stays in the log, this record is appended beside it, and the
+    -- read layer stops publishing the binding — so a malicious withdrawal costs a fee and a visible
+    -- fact, where the field it replaces could be cleared for good.
+    WithdrawCredentialAction
+      { wc_profile_id :: ProfileRefAC,
+        wc_credential :: Text,
+        wc_witness :: Maybe ClaimWitness,
+        wc_profile_data :: ProfileData
       }
   | IssueAttestationAction
       { aa_subject_profile_id :: ProfileRefAC,
@@ -316,6 +351,19 @@ data DisputeActionType
       { rd_dispute_id :: GYAssetClass,
         rd_verdict :: DisputeVerdict
       }
+  | -- | Close an undecided dispute whose deadline has passed — D-A.
+    --
+    -- __Permissionless, and that is the point.__ It takes no verdict and no authority: after the
+    -- dispute's own @disputeStaleAfter@ the chain lets anyone close it as @expired@, because an
+    -- escape hatch the admin could gate — by pausing, or by holding the only key — is not an escape
+    -- hatch. The deposit returns to the address the opener named, so a stranger who builds this
+    -- transaction pays the fee and keeps nothing.
+    --
+    -- Reachable over HTTP for the same reason @ResolveDisputeAction@ is, and more so: there is no
+    -- signature to wait for, so the service can build it for whoever asks.
+    ExpireDisputeAction
+      { ed_dispute_id :: GYAssetClass
+      }
   deriving (Show, Generic, FromJSON, ToJSON)
 
 -- | Tagged, not constructor-keyed — see 'taggedSumSchema' for the defect this fixes.
@@ -377,6 +425,12 @@ data AdminActionType
     --
     -- It cannot touch a dispute already open — that deposit is recorded in the dispute's own datum.
     SetDisputeDepositAction Integer
+  | -- | Milliseconds a NEW dispute may sit undecided before anyone may close it (oracle
+    -- @opDisputeTimeoutMs@) — D-A.
+    --
+    -- Like the deposit above, it cannot touch a dispute already open: that deadline is recorded in
+    -- the dispute's own datum at open time, precisely so that an admin cannot postpone it.
+    SetDisputeTimeoutAction Integer
   deriving (Show, Generic)
 
 instance ToJSON AdminActionType where
@@ -388,6 +442,7 @@ instance ToJSON AdminActionType where
   -- echoing an action back, and a rotation's log line has no business carrying the key.
   toJSON (RotateAdminAction _) = object ["tag" .= ("RotateAdminAction" :: Text)]
   toJSON (SetDisputeDepositAction n) = object ["tag" .= ("SetDisputeDepositAction" :: Text), "lovelace" .= n]
+  toJSON (SetDisputeTimeoutAction ms) = object ["tag" .= ("SetDisputeTimeoutAction" :: Text), "milliseconds" .= ms]
 
 -- | Always fails — see the type's Haddock. The message is a 400 body a client reads, so it says
 -- where the action belongs rather than only that it was refused.

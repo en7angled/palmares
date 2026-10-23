@@ -68,17 +68,54 @@
                 "audit_passed",
                 "affiliation",
                 "role_held",
-                "endorsement"
+                "endorsement",
+                "credential_claim",
+                "credential_withdrawal"
             ],
             "type": "string"
+        },
+        "ClaimCredentialRequest": {
+            "description": "Bind a profile to a Cardano credential, as an append-only record. Needs BOTH parties: the returned transaction spends the profile's user token and must be authorised by the credential as well. Costs a second transaction after /claim-profile, and buys a binding that can be ended by appending a withdrawal rather than by clearing a field.",
+            "properties": {
+                "credential": {
+                    "description": "CIP-129 identifier: drep1..., cc_cold1..., cc_hot1...",
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "image_uri": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "profile_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "recipient": {
+                    "$ref": "#/definitions/GYAddress"
+                },
+                "user_addresses": {
+                    "$ref": "#/definitions/UserAddresses"
+                },
+                "witness": {
+                    "$ref": "#/definitions/ClaimWitness"
+                }
+            },
+            "required": [
+                "profile_id",
+                "credential",
+                "name",
+                "description",
+                "image_uri",
+                "user_addresses"
+            ],
+            "type": "object"
         },
         "ClaimProfileRequest": {
             "description": "Mint a profile, optionally claiming a Cardano credential. `recipient` receives any unlocked funds and defaults to the change address. `witness` says how the input that proves control of `credential` is spent; both are omitted for an unclaimed profile.",
             "properties": {
-                "credential": {
-                    "description": "CIP-129 credential identifier being claimed (drep1…, cc_cold1…, cc_hot1…). Omit for a profile that corresponds to no on-chain credential. A CIP-105 id is refused: it carries no header byte, so it cannot say key or script.",
-                    "type": "string"
-                },
                 "description": {
                     "description": "Profile description",
                     "type": "string"
@@ -99,9 +136,6 @@
                 },
                 "user_addresses": {
                     "$ref": "#/definitions/UserAddresses"
-                },
-                "witness": {
-                    "$ref": "#/definitions/ClaimWitness"
                 }
             },
             "required": [
@@ -118,8 +152,11 @@
             "type": "object"
         },
         "DisputeActionType": {
-            "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: OpenDisputeAction: od_attestation_id, od_opened_by_profile_id, od_deposit_to, od_profile_data; ResolveDisputeAction: rd_dispute_id, rd_verdict.",
+            "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: OpenDisputeAction: od_attestation_id, od_opened_by_profile_id, od_deposit_to, od_profile_data; ResolveDisputeAction: rd_dispute_id, rd_verdict; ExpireDisputeAction: ed_dispute_id.",
             "properties": {
+                "ed_dispute_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
                 "od_attestation_id": {
                     "$ref": "#/definitions/GYAssetClass"
                 },
@@ -142,7 +179,8 @@
                     "description": "Which arm of the union this object is.",
                     "enum": [
                         "OpenDisputeAction",
-                        "ResolveDisputeAction"
+                        "ResolveDisputeAction",
+                        "ExpireDisputeAction"
                     ],
                     "type": "string"
                 }
@@ -155,9 +193,29 @@
         "DisputeVerdict": {
             "enum": [
                 "upheld",
-                "rejected"
+                "rejected",
+                "expired"
             ],
             "type": "string"
+        },
+        "ExpireDisputeRequest": {
+            "description": "Close an undecided dispute whose deadline has passed, naming it by `dispute_id`. No verdict and no authority: the transaction this returns needs only a fee payer, and it records the dispute as `expired`, which is NOT a finding against either party. The deposit returns to the address the opener named. A dispute that is already decided, or whose deadline has not passed, is a 400.",
+            "properties": {
+                "dispute_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "recipient": {
+                    "$ref": "#/definitions/GYAddress"
+                },
+                "user_addresses": {
+                    "$ref": "#/definitions/UserAddresses"
+                }
+            },
+            "required": [
+                "dispute_id",
+                "user_addresses"
+            ],
+            "type": "object"
         },
         "GYAddress": {
             "description": "Bech32-encoded Cardano address (addr_test1... on testnet, addr1... on mainnet)",
@@ -352,7 +410,7 @@
             "type": "object"
         },
         "ProfileActionType": {
-            "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: UpdateProfileAction: profile_id, new_desc, image_uri; ClaimProfileAction: cp_kind, cp_credential, cp_witness, cp_profile_data; IssueAttestationAction: aa_subject_profile_id, aa_issuer_profile_id, aa_kind, aa_profile_data, aa_other_metadata, aa_claimed_period; AcceptAttestationAction: aca_attestation_id.",
+            "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: UpdateProfileAction: profile_id, new_desc, image_uri; ClaimProfileAction: cp_kind, cp_profile_data; ClaimCredentialAction: cc_profile_id, cc_credential, cc_witness, cc_profile_data; WithdrawCredentialAction: wc_profile_id, wc_credential, wc_witness, wc_profile_data; IssueAttestationAction: aa_subject_profile_id, aa_issuer_profile_id, aa_kind, aa_profile_data, aa_other_metadata, aa_claimed_period; AcceptAttestationAction: aca_attestation_id.",
             "properties": {
                 "aa_claimed_period": {
                     "items": [
@@ -404,17 +462,23 @@
                 "aca_attestation_id": {
                     "$ref": "#/definitions/GYAssetClass"
                 },
-                "cp_credential": {
+                "cc_credential": {
                     "type": "string"
+                },
+                "cc_profile_data": {
+                    "$ref": "#/definitions/ProfileData"
+                },
+                "cc_profile_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "cc_witness": {
+                    "$ref": "#/definitions/ClaimWitness"
                 },
                 "cp_kind": {
                     "$ref": "#/definitions/ProfileType"
                 },
                 "cp_profile_data": {
                     "$ref": "#/definitions/ProfileData"
-                },
-                "cp_witness": {
-                    "$ref": "#/definitions/ClaimWitness"
                 },
                 "image_uri": {
                     "type": "string"
@@ -430,10 +494,24 @@
                     "enum": [
                         "UpdateProfileAction",
                         "ClaimProfileAction",
+                        "ClaimCredentialAction",
+                        "WithdrawCredentialAction",
                         "IssueAttestationAction",
                         "AcceptAttestationAction"
                     ],
                     "type": "string"
+                },
+                "wc_credential": {
+                    "type": "string"
+                },
+                "wc_profile_data": {
+                    "$ref": "#/definitions/ProfileData"
+                },
+                "wc_profile_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "wc_witness": {
+                    "$ref": "#/definitions/ClaimWitness"
                 }
             },
             "required": [
@@ -590,6 +668,45 @@
                 "changeAddress"
             ],
             "type": "object"
+        },
+        "WithdrawCredentialRequest": {
+            "description": "End a profile's binding to a credential. Authorised by the CREDENTIAL alone -- not by the profile's owner, who may be exactly the party that claimed a credential they do not control. Nothing is deleted: the claim stays on chain and this record is appended beside it, after which the read layer stops publishing the binding.",
+            "properties": {
+                "credential": {
+                    "description": "The CIP-129 identifier being withdrawn. A withdrawal naming a different credential than the profile currently publishes changes nothing.",
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "image_uri": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "profile_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "recipient": {
+                    "$ref": "#/definitions/GYAddress"
+                },
+                "user_addresses": {
+                    "$ref": "#/definitions/UserAddresses"
+                },
+                "witness": {
+                    "$ref": "#/definitions/ClaimWitness"
+                }
+            },
+            "required": [
+                "profile_id",
+                "credential",
+                "name",
+                "description",
+                "image_uri",
+                "user_addresses"
+            ],
+            "type": "object"
         }
     },
     "info": {
@@ -598,7 +715,7 @@
             "name": "GPL-3.0 license"
         },
         "title": "Palmares Interaction API",
-        "version": "3.0.0"
+        "version": "3.1.0"
     },
     "paths": {
         "/accept-attestation": {
@@ -679,6 +796,45 @@
                 "summary": "Build Transaction"
             }
         },
+        "/claim-credential": {
+            "post": {
+                "consumes": [
+                    "application/json;charset=utf-8"
+                ],
+                "description": "Binds a profile to a Cardano credential as an append-only record — ADR 0003. Needs BOTH parties: the transaction spends the profile's user token and must also be authorised by the credential. A second call after /claim-profile, which no longer claims anything.",
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ClaimCredentialRequest"
+                        }
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
+                    },
+                    "404": {
+                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                    },
+                    "503": {
+                        "description": "Protocol is paused or deployed validator scripts are not yet available"
+                    }
+                },
+                "summary": "Claim Credential"
+            }
+        },
         "/claim-profile": {
             "post": {
                 "consumes": [
@@ -716,6 +872,45 @@
                     }
                 },
                 "summary": "Claim Profile"
+            }
+        },
+        "/expire-dispute": {
+            "post": {
+                "consumes": [
+                    "application/json;charset=utf-8"
+                ],
+                "description": "Closes an undecided dispute whose deadline has passed. Needs no authority at all — that is the point, since an exit the oracle admin can gate is not an exit — and records `expired`, which is not a finding against either party. The deposit returns to the address the opener named.",
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ExpireDisputeRequest"
+                        }
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
+                    },
+                    "404": {
+                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                    },
+                    "503": {
+                        "description": "Protocol is paused or deployed validator scripts are not yet available"
+                    }
+                },
+                "summary": "Expire Dispute"
             }
         },
         "/health": {
@@ -1024,6 +1219,45 @@
                     }
                 },
                 "summary": "Update Profile"
+            }
+        },
+        "/withdraw-credential": {
+            "post": {
+                "consumes": [
+                    "application/json;charset=utf-8"
+                ],
+                "description": "Ends a profile's binding to a credential. Authorised by the CREDENTIAL alone — not by the profile's owner, who may be exactly the party that claimed a credential they do not control. Nothing is deleted: the claim stays on chain and this record is appended beside it.",
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/WithdrawCredentialRequest"
+                        }
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
+                    },
+                    "404": {
+                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                    },
+                    "503": {
+                        "description": "Protocol is paused or deployed validator scripts are not yet available"
+                    }
+                },
+                "summary": "Withdraw Credential"
             }
         }
     },

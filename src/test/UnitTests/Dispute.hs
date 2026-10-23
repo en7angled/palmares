@@ -27,7 +27,6 @@ module UnitTests.Dispute (tests, disputeEmulatorTests) where
 import Control.Monad (void)
 import Data.Text (Text)
 import Data.Text qualified as T
-import GHC.Stack (HasCallStack)
 import GeniusYield.Test.Clb
 import GeniusYield.Test.FakeCoin (FakeCoin (..))
 import GeniusYield.Test.Utils
@@ -163,6 +162,7 @@ tests =
           disputeDeposit = 5_000_000,
           disputeDepositTo = depositAddr,
           disputeOracleToken = acOf "oracle",
+          disputeStaleAfter = POSIXTime (1_700_000_000_000 + 2_592_000_000),
           disputeVerdict = Nothing
         }
 
@@ -182,7 +182,8 @@ tests =
           opPaused = False,
           opFeeConfig = Nothing,
           opMinUTxOValue = 2_000_000,
-          opDisputeDeposit = 5_000_000
+          opDisputeDeposit = 5_000_000,
+          opDisputeTimeoutMs = 2_592_000_000
         }
 
     -- Read the constructor index straight out of the encoding, which is what a deployed validator
@@ -473,10 +474,10 @@ disputeEmulatorTests =
       ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
       (_t1, issuerAC) <-
-        profileInteraction ctx (w1 testWallets) (ClaimProfileAction Domain.Organization Nothing Nothing orgProfileData) Nothing
+        profileInteraction ctx (w1 testWallets) (ClaimProfileAction Domain.Organization orgProfileData) Nothing
       waitNSlots_ 1
       (_t2, subjectAC) <-
-        profileInteraction ctx (w2 testWallets) (ClaimProfileAction Domain.PersonDRep Nothing Nothing drepProfileData) Nothing
+        profileInteraction ctx (w2 testWallets) (ClaimProfileAction Domain.PersonDRep drepProfileData) Nothing
       waitNSlots_ 1
       (_t3, attestationAC) <-
         profileInteraction

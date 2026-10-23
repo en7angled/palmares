@@ -33,6 +33,7 @@ module Palmares.Onchain.Utils
 
     -- * Time
     checkDateInRange,
+    checkDateHasPassed,
     maxDateWindow,
   )
 where
@@ -241,6 +242,26 @@ checkDateInRange date range = case range of
   V1.Interval (V1.LowerBound (V1.Finite lo) _) (V1.UpperBound (V1.Finite hi) _) ->
     hi - lo <= maxDateWindow && V1.member date range
   _ -> False
+
+-- | Is the transaction's WHOLE validity range at or after this moment?
+--
+-- Asked by @ExpireDispute@ of 'Palmares.Onchain.Protocol.Types.disputeStaleAfter', and it is the
+-- mirror image of 'checkDateInRange' rather than a variant of it: containment asks the chain to
+-- agree a date is inside a window, this asks it to agree a moment has passed.
+--
+-- __No window bound here, deliberately, and that is the opposite of 'checkDateInRange'.__ There the
+-- interval's WIDTH is the attack — a wide range lets a date be claimed freely — so it is capped.
+-- Here widening can never make the check EASIER: only the lower bound is compared, so widening
+-- upwards is neutral and widening downwards fails, and a transaction submitted one second early
+-- cannot buy itself validity by widening at all.
+--
+-- @contains (from date)@ and not a hand-rolled bound comparison, for the reason the size audit gave
+-- for leaving 'checkDateInRange' on the @Interval@ library: these are the ledger's own
+-- inclusive/exclusive semantics, and an open lower bound (@NegInf@) is not contained, so a
+-- transaction that declines to say when it is valid fails CLOSED.
+{-# INLINEABLE checkDateHasPassed #-}
+checkDateHasPassed :: POSIXTime -> V1.POSIXTimeRange -> Bool
+checkDateHasPassed date = V1.contains (V1.from date)
 
 -------------------------------------------------------------------------------
 

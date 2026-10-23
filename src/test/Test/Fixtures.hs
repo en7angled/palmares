@@ -187,6 +187,9 @@ parsingDisputeDatum =
             disputeDeposit = 5000000,
             disputeDepositTo = Address (PubKeyCredential (PubKeyHash "")) Nothing,
             disputeOracleToken = fakeAC "oracle",
+            -- 30 days after `disputeOpenedAt`, which is what the minting policy computes from the
+            -- oracle's `opDisputeTimeoutMs` at open time.
+            disputeStaleAfter = POSIXTime (1700000000000 + 2592000000),
             disputeVerdict = Nothing
           }
     }

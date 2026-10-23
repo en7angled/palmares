@@ -28,7 +28,12 @@ check() {
 }
 
 echo "== swagger metadata"
-check "version is 1.1.0" '.info.version == "1.1.0"'
+check "version is 1.2.0" '.info.version == "1.2.0"'
+# D-A. A client that SWITCHES on the verdict gains a case here, and one that renders `expired` as a
+# finding is wrong — which is the whole reason the value is in the published enum rather than left
+# to a null and a comment.
+check "DisputeVerdict publishes expired beside the two findings" \
+  '(.definitions.DisputeVerdict.enum | sort) == ["expired","rejected","upheld"]'
 # DEVIATION from the plan, which pinned "Cardano Governance Registry Query API". The project is
 # named palmares and the title is what a reader sees first; the plan's title predates the name.
 check "title is the product's name" '.info.title == "Palmares Query API"'
@@ -111,7 +116,11 @@ check "the credential lookup takes a path parameter named credential" \
 # The five attestation kinds, as wire spellings. Same check as ActivityEventType below and for the
 # same reason: a client switches on these, so a sixth kind added without a published enum entry is
 # a client that cannot handle it.
-check "AttestationType has all five kinds" '.definitions.AttestationType.enum | length == 5'
+# Seven since ADR 0003: a credential binding is an attestation, so `credential_claim` and
+# `credential_withdrawal` are kinds. Asserted as a SET and not a count, because a count would stay
+# green if a kind were renamed — and the names are what a client branches on.
+check "AttestationType publishes all seven kinds" \
+  '(.definitions.AttestationType.enum | sort) == ["affiliation","audit_passed","credential_claim","credential_withdrawal","endorsement","milestone_delivered","role_held"]'
 check "AttestationType is the wire spelling" \
   '.definitions.AttestationType.enum | index("milestone_delivered") != null'
 

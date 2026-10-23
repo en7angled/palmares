@@ -221,7 +221,12 @@ mintOracleNFTAndLockDatum providerCtx skey adminPKH = do
               opFeeConfig = Nothing,
               opMinUTxOValue = 1000000,
               -- A starting price, not a constant: the oracle admin reprices it with SetDisputeDepositAction.
-              opDisputeDeposit = 5000000
+              opDisputeDeposit = 5000000,
+              -- 30 days, the D-A default, and a starting value exactly like the deposit above:
+              -- `admin set-dispute-timeout` retimes it for NEW disputes. Long on purpose — after
+              -- this, ANYONE may close an undecided dispute, so the number is how much time the
+              -- oracle admin is given to rule before a stranger may clear a stale accusation.
+              opDisputeTimeoutMs = 2592000000
             }
 
     -- Spend seed UTxO

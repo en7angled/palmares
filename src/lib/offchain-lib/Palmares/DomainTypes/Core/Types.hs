@@ -146,6 +146,19 @@ data AttestationType
   | Affiliation
   | RoleHeld
   | Endorsement
+  | -- | A profile binding itself to a Cardano credential — __ADR 0003__.
+    --
+    -- Self-issued: the subject and the issuer are the same profile, because the two parties to a
+    -- binding are the profile and the CREDENTIAL, and a credential is not a profile. The profile's
+    -- consent is its user token; the credential's is a proof of control in the same transaction.
+    --
+    -- This is where a profile's credential lives now. It was a field on the profile, set once and
+    -- cleared by a destructive redeemer — which an audit found irreversible and reachable with a
+    -- weak proof, so it became a record in the append-only log instead.
+    CredentialClaim
+  | -- | A credential withdrawing from a claim — __ADR 0003__. A later fact, never an erasure: the
+    -- claim stays in the log and the read layer stops publishing the binding.
+    CredentialWithdrawal
   deriving (Show, Generic, Eq, Ord, Enum, Bounded)
   deriving
     (FromJSON, ToJSON)
@@ -194,6 +207,17 @@ data Attestation = Attestation
     attestationSubjectProfileId :: ProfileRefAC,
     attestationIssuerProfileId :: ProfileRefAC,
     attestationKind :: AttestationType,
+    -- | The credential this record binds, as CIP-129 text, for the two credential kinds — and
+    -- 'Nothing' for every other kind. __ADR 0003.__
+    --
+    -- On chain @Mc2@ requires it present on a claim or a withdrawal and @Mc4@ requires it absent
+    -- elsewhere, so this field being 'Just' on an @endorsement@ would be a projection bug, not a
+    -- record the chain allows.
+    --
+    -- __It is the source of @profile_credential@, not a copy of it.__ A profile's published
+    -- credential is derived by replaying these: the latest 'CredentialClaim' for that subject with
+    -- no later 'CredentialWithdrawal' naming the same credential.
+    attestationCredential :: Maybe Text,
     attestationAttestationDate :: GYTime,
     -- | The period the attestation CLAIMS, self-reported and never chain-verified.
     --
@@ -222,6 +246,9 @@ instance FromJSON Attestation where
       <*> o .: "subject_profile_id"
       <*> o .: "issuer_profile_id"
       <*> o .: "kind"
+      -- Positional, like every line here, so this one had to be inserted where the field is — the
+      -- hazard the record's own neighbours are commented about, met in the one hand-written parser.
+      <*> o .:? "credential"
       <*> o .: "attestation_date"
       <*> o .:? "claimed_period"
       <*> o .: "accepted"
@@ -267,14 +294,21 @@ instance ToSchema Attestation where
             { AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "attestation"
             }
 
--- | How a dispute was decided — the off-chain mirror of
--- 'Palmares.Onchain.Protocol.Types.Verdict', the same two constructors in the same order.
+-- | How a dispute ended — the off-chain mirror of
+-- 'Palmares.Onchain.Protocol.Types.Verdict', the same three constructors in the same order.
 --
--- Two outcomes and no third, because __the deposit comes back either way__: there is no punitive
+-- Two FINDINGS and no third, because __the deposit comes back either way__: there is no punitive
 -- verdict for the admin to levy, so losing a dispute costs network fees and nothing else. An upheld
 -- dispute is published beside the attestation it contests and the attestation is never hidden or
 -- deleted (spec §4.3).
-data DisputeVerdict = VerdictUpheld | VerdictRejected
+--
+-- @expired@ is the third constructor and NOT a third finding: nobody decided it. After the
+-- dispute's own deadline anyone may close an undecided dispute, which is the exit D-A added for the
+-- case where the admin simply does not act — see
+-- 'Palmares.Onchain.Protocol.Types.VerdictExpired'. __The read layer must not render it as a
+-- finding against either side__, and in particular must not show an expired dispute the way it
+-- shows an upheld one.
+data DisputeVerdict = VerdictUpheld | VerdictRejected | VerdictExpired
   deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
   deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "Verdict", CamelToSnake]] DisputeVerdict
 

@@ -146,6 +146,7 @@ AttestationProjection
     subjectProfileId        GYAssetClass
     issuerProfileId        GYAssetClass
     attestationKind           AttestationType
+    attestationCredential     (Maybe Text)
     attestationDate           GYTime
     claimedPeriodFrom         (Maybe GYTime)
     claimedPeriodTo           (Maybe GYTime)
@@ -269,8 +270,12 @@ runMigrations = do
 -- @UnitTests.AttestSchema@ asserts this constant against the entity set, because a column added
 -- without a bump is a deployed service migrating a new column onto rows that will never hold a value
 -- for it, and nothing else in the test suite notices.
+-- | Bumped to 4 by __ADR 0003__: @attestation_projection@ gained @attestation_credential@, and
+-- @profile_projection.profile_credential@ stopped being read off the profile datum and became a
+-- value derived from the attestation stream. Both changes mean an existing projection is wrong
+-- rather than merely incomplete, so this bump is what forces the re-sync that rebuilds it.
 currentSchemaVersion :: Int
-currentSchemaVersion = 3
+currentSchemaVersion = 4
 
 -- | Upsert a record by its unique key: insert if absent, replace if present.
 upsertByUnique ::
@@ -372,7 +377,7 @@ projectAndStore networkId ourPolicy km =
       case ev of
         Left e -> liftIO $ putStrLn ("PROJECTION ERROR (dropped, raw match retained): " <> show e)
         Right proj -> case proj of
-          ProfileEvent p credential -> putProfileProjection slotNoInt header p credential
+          ProfileEvent p -> putProfileProjection slotNoInt header p
           AttestationEvent a -> putAttestationProjection slotNoInt header txId outIdx a
           DisputeEvent d -> putDisputeProjection slotNoInt header d
           NoEvent _ -> pure ()
@@ -395,8 +400,18 @@ putKupoMatch km = do
     ev
 
 -- | Store a profile projection, upserting by profile ID.
-putProfileProjection :: (MonadIO m) => Integer -> Text -> Profile -> Maybe Text -> SqlPersistT m ()
-putProfileProjection createdSlot createdHash p credential = do
+-- | Store a profile projection, upserting by profile id.
+--
+-- __The credential column is carried over, not written — ADR 0003.__ It is derived from the
+-- attestation stream and this event does not carry it, while 'upsertByUnique' REPLACES the whole
+-- row. Writing 'Nothing' here would therefore make every later metadata update silently erase a
+-- binding a 'CredentialClaim' had established — a projection that drifts from the chain with no
+-- error anywhere. Carrying the existing value is what keeps the derived column a function of the
+-- attestations alone.
+putProfileProjection :: (MonadIO m) => Integer -> Text -> Profile -> SqlPersistT m ()
+putProfileProjection createdSlot createdHash p = do
+  existing <- getBy (UniqueProfileProjection (profileId p))
+  let credential = (profileProjectionProfileCredential . entityVal) =<< existing
   -- Named fields, not positional, for the reason 'putAttestationProjection' spells out: name,
   -- description and image URI are all 'Text', so a transposition among them compiles and writes a
   -- row with the description in the name column. Three same-typed neighbours is enough.
@@ -451,6 +466,7 @@ putAttestationProjection createdSlot createdHash createdTxId createdOutIdx a = d
             attestationProjectionSubjectProfileId = attestationSubjectProfileId a,
             attestationProjectionIssuerProfileId = attestationIssuerProfileId a,
             attestationProjectionAttestationKind = attestationKind a,
+            attestationProjectionAttestationCredential = attestationCredential a,
             attestationProjectionAttestationDate = attestationAttestationDate a,
             -- Two typed columns rather than one JSON blob, because the obvious read on a claimed
             -- period is a range ("who held this role in 2024?") and that is a plain WHERE on
@@ -466,6 +482,27 @@ putAttestationProjection createdSlot createdHash createdTxId createdOutIdx a = d
             attestationProjectionOtherMetadata = Just $ AttestationOtherMetadataJson $ attestationOtherMetadata a
           }
   upsertByUnique (UniqueAttestationProjection . attestationProjectionAttestationId) ev
+  -- __ADR 0003: this is where a profile's published credential comes from.__ The record above is the
+  -- fact; the profile column is the derived current state, and replay order is what makes the
+  -- derivation right — `sortedMatches` replays in true chain order, so a claim, a withdrawal and a
+  -- later claim land in the order they were made and the last write is the current answer.
+  case attestationKind a of
+    CredentialClaim ->
+      updateWhere
+        [ProfileProjectionProfileId ==. attestationSubjectProfileId a]
+        [ProfileProjectionProfileCredential =. attestationCredential a]
+    -- A withdrawal clears the column only if it names the credential the profile currently
+    -- publishes. Clearing unconditionally would let a withdrawal naming some OTHER credential
+    -- delete a binding it has nothing to do with — the chain permits such a record (`Mc3` only asks
+    -- the named credential to consent), so the read layer has to be the one that ignores it.
+    CredentialWithdrawal -> do
+      existing <- getBy (UniqueProfileProjection (attestationSubjectProfileId a))
+      case existing of
+        Just (Entity key row)
+          | profileProjectionProfileCredential row == attestationCredential a ->
+              update key [ProfileProjectionProfileCredential =. Nothing]
+        _ -> pure ()
+    _ -> pure ()
 
 -- | The single source of chain-replay order: sort raw matches by true chain order
 -- @(slot, transaction_index, output_index)@. Used by 'rollbackTo' and by tests.

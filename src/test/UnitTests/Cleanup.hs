@@ -213,14 +213,14 @@ cleanupTests =
         profileInteraction
           ctx
           (w1 testWallets)
-          (ClaimProfileAction Domain.Organization Nothing Nothing orgProfileData)
+          (ClaimProfileAction Domain.Organization orgProfileData)
           Nothing
       waitNSlots_ 1
       (_t2, subjectAC) <-
         profileInteraction
           ctx
           (w2 testWallets)
-          (ClaimProfileAction Domain.PersonDRep Nothing Nothing drepProfileData)
+          (ClaimProfileAction Domain.PersonDRep drepProfileData)
           Nothing
       waitNSlots_ 1
       (_t3, attestationAC) <-

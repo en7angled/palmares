@@ -22,13 +22,11 @@
 module RestAPI where
 
 import Control.Lens hiding (Context)
-import Data.Proxy (Proxy (..))
 -- `hiding (Header)`: Data.Swagger has its own Header type and servant's is the one a route
 -- means. The alternative is a qualified import of every lens used in apiSwagger.
 import Data.Swagger hiding (Header)
 import Data.Swagger.Declare (execDeclare)
 import Data.Text (Text)
-import Network.Wai (Application)
 import Network.Wai.Middleware.Servant.Options (provideOptions)
 import Data.Either (partitionEithers)
 import Data.Int (Int64)
@@ -105,16 +103,13 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     DRepSummary,
     DRepUpdateRow,
     EpochPowerPoint,
-    GovActionAnchorContent,
     GovActionDetailResponse (..),
     GovActionSummary,
     ParamChangeRow (..),
-    ProposerSummary,
     SearchResults,
     SPOSummary,
     StatusResponse (..),
     TreasuryWithdrawalRecord,
-    TreasuryWithdrawalRow,
     VoteRecord,
     VoteTally (..),
   )
@@ -122,7 +117,7 @@ import Palmares.Metrics.Catalog (MetricFormula, resolvedMetricCatalog, retention
 import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.CSV (CSV)
 import Data.Text qualified as T
-import Palmares.WebAPI.Envelope (ApiError, ErrorCode (..), Page (..), errorCodeFromText, errorCodeToHttpStatus)
+import Palmares.WebAPI.Envelope (ApiError, ErrorCode (..), Page (..), errorCodeToHttpStatus)
 import Palmares.WebAPI.Errors (errorCodeFromParserMessage, mkServantErr)
 import Query.Common
   ( PageBounds (..),
@@ -188,7 +183,7 @@ import Query.Gov
     registeredDRepStatuses,
   )
 import Palmares.WebAPI.CORS (CorsConfig, mkCorsMiddleware)
-import Palmares.WebAPI.ServiceProbe (ServiceProbe, ServiceProbeStatus)
+import Palmares.WebAPI.ServiceProbe (ServiceProbe)
 import Query.Gov (Freshness (..), freshnessMiddleware)
 import Query.ServiceStatus (getHealthProbe, getReadyProbe, getStatusQuery)
 import QueryAppMonad (QueryAppContext (..), QueryAppMonad, runAppMonad, runRead, throwApi)
@@ -503,10 +498,10 @@ handleGetDRepPower did limit fromEpoch toEpoch sortOrder = do
   (kind, dhid) <- resolveDRepTarget did
   _ <- either throwApi pure (checkRanges Nothing Nothing fromEpoch toEpoch)
   (lim, off) <- either throwApi pure (normalizeLimitOffset epochSeriesBounds limit Nothing)
-  items <- runRead (listEpochPower kind dhid fromEpoch toEpoch (fromMaybe Asc sortOrder) lim)
+  points <- runRead (listEpochPower kind dhid fromEpoch toEpoch (fromMaybe Asc sortOrder) lim)
   -- total = the number of points returned: the series is at most 200 rows and a second COUNT
   -- query over it would cost as much as the page.
-  pure (Page items (Just (length items)) lim off Nothing)
+  pure (Page points (Just (length points)) lim off Nothing)
 
 handleGetDRepDelegators ::
   DRepId ->
@@ -651,9 +646,9 @@ type GovActionPageAPI =
 
 handleGetGovActionDetail :: GovActionId -> QueryAppMonad GovActionDetailResponse
 handleGetGovActionDetail (GovActionId gid) = do
-  (txHex, ix) <- maybe (throwApi InvalidGovActionId) pure (splitActionId gid)
+  (txHex, actionIx) <- maybe (throwApi InvalidGovActionId) pure (splitActionId gid)
   r <- runRead $ do
-    mid <- resolveGovAction txHex ix
+    mid <- resolveGovAction txHex actionIx
     case mid of
       Nothing -> pure Nothing
       Just gaid -> do
@@ -765,9 +760,9 @@ handleGetVotes ::
   Maybe VotesOrderBy ->
   Maybe SortOrder ->
   QueryAppMonad (Page VoteRecord)
-handleGetVotes accept limit offset roles voterIds gaIds verdicts gaTypes anchorStatus from to fromEpoch toEpoch q orderBy sortOrder = do
+handleGetVotes accept limit offset roles voterIds gaIds verdicts gaTypes anchorStatus fromTime toTime fromEpoch toEpoch q orderBy sortOrder = do
   q' <- either throwApi pure (normalizeQ q)
-  _ <- either throwApi pure (checkRanges from to fromEpoch toEpoch)
+  _ <- either throwApi pure (checkRanges fromTime toTime fromEpoch toEpoch)
   bounds <- either throwApi pure (normalizeLimitOffset (boundsFor accept) limit offset)
   -- Every voter_id must decode, and a bad one is a 400 rather than an empty page: a client that
   -- mistyped an identifier should be told, not shown "this voter never voted".
@@ -780,8 +775,8 @@ handleGetVotes accept limit offset roles voterIds gaIds verdicts gaTypes anchorS
             voteFilterVerdicts = verdicts,
             voteFilterGovActionTypes = gaTypes,
             voteFilterAnchorStatus = anchorStatus,
-            voteFilterFrom = from,
-            voteFilterTo = to,
+            voteFilterFrom = fromTime,
+            voteFilterTo = toTime,
             voteFilterFromEpoch = fromEpoch,
             voteFilterToEpoch = toEpoch,
             voteFilterQ = q'
@@ -983,8 +978,8 @@ handleGetDelegations ::
   Maybe DelegationsOrderBy ->
   Maybe SortOrder ->
   QueryAppMonad (Page DelegationRecord)
-handleGetDelegations accept limit offset drepIds stakeAddrs isCurrent from to minLovelace orderBy sortOrder = do
-  _ <- either throwApi pure (checkRanges from to Nothing Nothing)
+handleGetDelegations accept limit offset drepIds stakeAddrs isCurrent fromTime toTime minLovelace orderBy sortOrder = do
+  _ <- either throwApi pure (checkRanges fromTime toTime Nothing Nothing)
   bounds <- either throwApi pure (normalizeLimitOffset (boundsFor accept) limit offset)
   let filt =
         emptyDelegationFilter
@@ -992,8 +987,8 @@ handleGetDelegations accept limit offset drepIds stakeAddrs isCurrent from to mi
             delegationFilterReservedTargets = reserved,
             delegationFilterStakeAddresses = stakeAddrs,
             delegationFilterIsCurrent = fromMaybe True isCurrent,
-            delegationFilterFrom = from,
-            delegationFilterTo = to,
+            delegationFilterFrom = fromTime,
+            delegationFilterTo = toTime,
             delegationFilterMinLovelace = minLovelace
           }
   runRead (listDelegations filt (fromMaybe DelegationsOrderByAt orderBy, fromMaybe Desc sortOrder) bounds)
@@ -1520,9 +1515,11 @@ type DisputesAPI =
     :> Description
          "Every dispute opened against an attestation. `resolved` is `verdict IS NOT NULL` and not \
          \a verdict value, because the column is null while a dispute is open -- so `resolved=\
-         \false` is the open ones and `resolved=true` the decided ones, whichever way they were \
-         \decided. \
-         \\n`deposit` is returned to the opener either way: there is no punitive verdict, so \
+         \false` is the open ones and `resolved=true` the CLOSED ones, which is three values and \
+         \not two: `upheld` and `rejected` are the oracle admin's findings, and `expired` means \
+         \nobody decided it and its deadline passed, so anyone was free to close it. A client that \
+         \wants findings only must read the verdict value, not this flag. \
+         \\n`deposit` is returned to the opener on EVERY outcome: there is no punitive verdict, so \
          \losing a dispute costs network fees and nothing else. \
          \\nOrdered by `opened_at`, newest first. There is no `order_by`: the list has one \
          \chronology, and a second ordering would be a control with no screen behind it."
@@ -1734,7 +1731,11 @@ apiSwagger =
     -- 1.1.0: `/status` gained `attest_lag_seconds`. A MINOR bump because the field is optional and
     -- every 1.0.0 client keeps working — nothing was removed, renamed or made required. Independent
     -- of the app version by design (see CLAUDE.md): a client pins what it reads, not what we ship.
-    & info . Data.Swagger.version .~ "1.1.0"
+    -- 1.2.0, MINOR: `DisputeVerdict` gained `expired` (D-A). Additive for a reader — a client that
+    -- knows the two findings still parses every document — but a client that SWITCHES on the value
+    -- gains a case, and one that renders it as a finding is now wrong. A new enum value in a
+    -- response is exactly the shape MINOR is for.
+    & info . Data.Swagger.version .~ "1.2.0"
     & info . Data.Swagger.description
       ?~ "Read-only queries over the Cardano governance record: DReps, governance actions, votes, \
          \delegations, the constitutional committee and treasury withdrawals. Every row comes from \
@@ -1836,8 +1837,12 @@ apiSwagger =
     & definitions . at "DisputeRow" . mapped . description
       ?~ "One dispute against an attestation. `verdict` is null while the dispute is OPEN. An \
          \upheld dispute is published beside the attestation it contests and never hides or \
-         \deletes it. `deposit` comes back to the opener either way -- there is no punitive \
-         \verdict, so losing one costs network fees and nothing else."
+         \deletes it. `deposit` comes back to the opener on every outcome -- there is no punitive \
+         \verdict, so losing one costs network fees and nothing else. \
+         \\n`expired` is NOT a finding: it means the dispute's deadline passed with no verdict, at \
+         \which point anyone may close it, and it must not be rendered the way `upheld` is. The \
+         \deadline is per-dispute and fixed when it was opened, so repricing the protocol's \
+         \timeout never moves it."
     & definitions . at "AttestationDetailResponse" . mapped . description
       ?~ "One attestation with its disputes inline, read in a single transaction so they are the \
          \same snapshot. At most 50 disputes travel; GET /disputes?target=<id> is the paged view."

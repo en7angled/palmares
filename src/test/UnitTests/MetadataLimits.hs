@@ -225,7 +225,8 @@ oracleParams =
       opPaused = False,
       opFeeConfig = Nothing,
       opMinUTxOValue = 2000000,
-      opDisputeDeposit = 5000000
+      opDisputeDeposit = 5000000,
+      opDisputeTimeoutMs = 2592000000
     }
 
 minLv :: V1.Value
@@ -325,7 +326,7 @@ attestationMint fields outAddr =
     seed = seedRef 1
     attId = V1.AssetClass (policyCS, fst (generateRefAndUserTN (nameFromTxOutRef seed)))
     attNFT = V1.assetClassValue attId 1
-    redeemer = NewAttestation seed fields [] subjectId issuerId Endorsement recordedAt Nothing 0
+    redeemer = NewAttestation seed fields [] subjectId issuerId Endorsement recordedAt Nothing Nothing 0
     -- The datum the handler computes from that redeemer, rebuilt here so `Mk` sees a byte-identical
     -- output. That is also what keeps the `Mm` case honest: the oversized metadata goes into BOTH, so
     -- `Mk` is not what refuses the transaction.
@@ -338,7 +339,9 @@ attestationMint fields outAddr =
             attestationKind = Endorsement,
             attestationDate = recordedAt,
             attestationPeriod = Nothing,
-            attestationIsAccepted = False
+            attestationIsAccepted = False,
+            attestationCredential = Nothing,
+            attestationOracleToken = oracleAC
           }
         fields
         []
@@ -370,13 +373,12 @@ profileMint fields outAddr =
     refAC = V1.AssetClass (policyCS, refTN)
     refNFT = V1.assetClassValue refAC 1
     userNFT = V1.assetClassValue (V1.AssetClass (policyCS, userTN)) 1
-    redeemer = MintProfile seed Community Nothing fields 0
+    redeemer = MintProfile seed Community fields 0
     datum =
       mkCIP68Datum
         OnchainProfile
           { profileId = refAC,
             profileKind = Community,
-            profileCredential = Nothing,
             protocolParams = protoParams
           }
         fields
@@ -415,6 +417,7 @@ disputeOpen fields outAddr =
             disputeDeposit = deposit,
             disputeDepositTo = walletAddr,
             disputeOracleToken = oracleAC,
+            disputeStaleAfter = recordedAt + POSIXTime 2592000000,
             disputeVerdict = Nothing
           }
         fields
@@ -457,7 +460,6 @@ profileUpdate newFields =
         OnchainProfile
           { profileId = refAC,
             profileKind = Community,
-            profileCredential = Nothing,
             protocolParams = protoParams
           }
         okFields

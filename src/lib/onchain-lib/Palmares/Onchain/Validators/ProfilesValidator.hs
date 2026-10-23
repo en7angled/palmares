@@ -60,6 +60,11 @@ data ProfilesRedeemer
   deriving stock (Generic, Prelude.Show)
   deriving anyclass (HasBlueprintDefinition)
 
+-- __Index 2 is burnt, deliberately.__ A @RevokeCredential@ redeemer briefly lived there (D-E) and
+-- ADR 0003 removed it: it cleared a credential field in place, which an audit found irreversible and
+-- reachable with a weak proof. Nothing is deployed, so the index could be reused — it is not,
+-- because a stable-index discipline that makes an exception the first time it is inconvenient is not
+-- a discipline. A binding is now a 'Palmares.Onchain.Protocol.Types.CredentialClaim' attestation.
 makeIsDataSchemaIndexed ''ProfilesRedeemer [('UpdateProfile, 0), ('Cleanup, 1)]
 
 type ProfilesDatum = CIP68Datum Onchain.OnchainProfile
@@ -156,6 +161,11 @@ handleUpdateProfile txInfo@TxInfo {..} ownValue ownAddress profileRefAssetClass 
           traceIfFalse "P5" $ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress profileOutputIdx newCip68Datum ownValue ownAddress txInfoOutputs -- Lock updated profile (P5); >= ownValue (balancer may add min-ADA)
         ]
 
+-- __@P8@ and @P9@ are gone, and their codes are not reused.__ They belonged to the D-E
+-- @RevokeCredential@ arm that ADR 0003 removed. Noted here rather than silently dropped because a
+-- trace code is an operator's runbook entry: an operator who sees @P8@ in an old log should be able
+-- to find out that the rule no longer exists and why, instead of finding it reassigned to something
+-- else.
 
 -------------------------------------------------------------------------------
 

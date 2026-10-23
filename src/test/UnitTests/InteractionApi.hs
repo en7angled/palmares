@@ -82,7 +82,7 @@ pkhA = "11111111111111111111111111111111111111111111111111111111"
 profileArms :: [ProfileActionType]
 profileArms =
   [ UpdateProfileAction (ac "00000000000000000000000000000000000000000000000000000000.6161") (Just "new") "ipfs://i",
-    ClaimProfileAction PersonDRep (Just "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg") (Just WitnessKey) pd,
+    ClaimProfileAction PersonDRep pd,
     IssueAttestationAction
       (ac "00000000000000000000000000000000000000000000000000000000.6262")
       (ac "00000000000000000000000000000000000000000000000000000000.6363")
@@ -208,12 +208,19 @@ interactionApiTests =
       -- /update-profile. The two Swagger-UI paths are served by `SwaggerSchemaUI` and are not in the
       -- document by construction — `PublicAPI` excludes them — and /update-profile has existed since
       -- T-ATTEST-6. The captured path is spelled the way Swagger spells it.
-      testCase "every write action has a typed route" $ do
+      -- RENAMED from "every write action has a typed route", which is what the project WANTS but not
+      -- what this case checks: it pins the path set, so a write action added without a route leaves
+      -- it green. D-A and D-E added two such actions and this case said nothing — the invariant in
+      -- the old name is maintained by hand, and naming the case after the stronger claim is the same
+      -- mistake this repo keeps finding in its comments.
+      testCase "the published path set is exactly this" $ do
         doc <- readSwagger
         sort (objKeys (fromMaybe Null (field "paths" doc)))
           @?= [ "/accept-attestation",
                 "/build-tx",
+                "/claim-credential",
                 "/claim-profile",
+                "/expire-dispute",
                 "/health",
                 "/issue-attestation",
                 "/open-dispute",
@@ -222,7 +229,8 @@ interactionApiTests =
                 "/status",
                 "/submit-tx",
                 "/tx-status/{txId}",
-                "/update-profile"
+                "/update-profile",
+                "/withdraw-credential"
               ],
       -- /health answers `alwaysHealthy` and reports healthy with a dead provider and unreachable
       -- scripts. /status is what an operator actually needs.
@@ -233,7 +241,7 @@ interactionApiTests =
       testCase "the Swagger title and version name this product" $ do
         doc <- readSwagger
         (path ["info", "title"] doc, path ["info", "version"] doc)
-          @?= (Just (String "Palmares Interaction API"), Just (String "3.0.0")),
+          @?= (Just (String "Palmares Interaction API"), Just (String "3.1.0")),
       -- The same defect as the first case, asserted on the artifact a client actually downloads.
       -- This is the one that was measured: both definitions carried `maxProperties: 1`.
       testCase "the published action definitions are tagged objects" $ do

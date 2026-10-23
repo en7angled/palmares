@@ -48,8 +48,14 @@ data ProjectedDispute = ProjectedDispute
 
 -- | Classified domain event produced by projecting an on-chain UTxO datum.
 data ChainEventProjection
-  = -- | A profile, and the CIP-129 rendering of the credential it claims ('Nothing' claims none).
-    ProfileEvent Profile (Maybe Text)
+  = -- | A profile.
+    --
+    -- __No credential any more — ADR 0003.__ It used to carry the CIP-129 rendering of the
+    -- credential the profile claimed, read straight off the profile datum. A binding is now a
+    -- 'Palmares.DomainTypes.Core.Types.CredentialClaim' attestation, so it arrives as an
+    -- 'AttestationEvent' and the read layer derives @profile_credential@ from the attestation
+    -- stream rather than from this event.
+    ProfileEvent Profile
   | AttestationEvent Attestation
   | DisputeEvent ProjectedDispute
   | NoEvent AtlasMatch
@@ -83,10 +89,8 @@ projectChainEvent nid ourPolicy am@AtlasMatch {..}
   | amAddress == validatorAddress profilesValidatorHashGY =
       case profileFromGYOutDatum amDatum of
         Just datum
-          | authentic (OnchainTypes.profileId (extra datum)) -> do
-              profile <- profileDatumToProfile datum
-              let claimed = claimCredentialToText <$> OnchainTypes.profileCredential (extra datum)
-              return (ProfileEvent profile claimed)
+          | authentic (OnchainTypes.profileId (extra datum)) ->
+              ProfileEvent <$> profileDatumToProfile datum
         _ -> return (NoEvent am)
   | amAddress == validatorAddress attestationsValidatorHashGY =
       case attestationFromGYOutDatum amDatum of

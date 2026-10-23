@@ -158,7 +158,24 @@ handleUpdateProfile txInfo@TxInfo {..} ownValue ownAddress profileRefAssetClass 
         [ traceIfFalse "P2" $ V1.assetClassValueOf ownValue profileRefAssetClass == 1, -- Own value has Ref NFT (P2)
           traceIfFalse "P3" $ V1.assetClassValueOf (valueSpent txInfo) profileUserAssetClass == 1, -- Must spend User NFT (P3)
           traceIfFalse "P4" $ validateMetadataFields newFields, -- Metadata fields validation failed (P4)
-          traceIfFalse "P5" $ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress profileOutputIdx newCip68Datum ownValue ownAddress txInfoOutputs -- Lock updated profile (P5); >= ownValue (balancer may add min-ADA)
+          traceIfFalse "P5" $ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress profileOutputIdx newCip68Datum ownValue ownAddress txInfoOutputs, -- Lock updated profile (P5); >= ownValue (balancer may add min-ADA)
+          -- THE UPDATE PATH REOPENED THE HOLE `Mp6` CLOSED ON THE MINT PATH — OC-03.
+          --
+          -- `P5` requires the output to carry AT LEAST @ownValue@ and says nothing else about it, so
+          -- a holder could re-lock the profile with its own user token inside. `P3` is then satisfied
+          -- by the profile's own input, because @valueSpent@ sums ALL inputs including the script
+          -- one, and `P5` re-locks >= its own value so the token never leaves again. From that block
+          -- on, ANYONE can spend the profile UTxO with `UpdateProfile`.
+          --
+          -- And it is worse than a stuck profile. The same transaction can mint `NewAttestation` with
+          -- @issuer@ = that profile: `Mf` reads @valueSpent@ too, so __anyone can issue attestations
+          -- in that identity for ever__. That is the "permanently world-writable identity" the `Mp6`
+          -- comment describes, reached through the update path instead of the mint.
+          --
+          -- Only the holder can trigger it, by self-harm or by signing a front-end's transaction — so
+          -- it is not a third-party attack, and it is still irreversible, because nothing in this
+          -- protocol burns a user token.
+          traceIfFalse "Pa" $ V1.assetClassValueOf (Utils.valueAtOutputIdx profileOutputIdx txInfoOutputs) profileUserAssetClass == 0 -- User token must not be locked with the state (Pa)
         ]
 
 -- __@P8@ and @P9@ are gone, and their codes are not reused.__ They belonged to the D-E
@@ -166,6 +183,13 @@ handleUpdateProfile txInfo@TxInfo {..} ownValue ownAddress profileRefAssetClass 
 -- trace code is an operator's runbook entry: an operator who sees @P8@ in an old log should be able
 -- to find out that the rule no longer exists and why, instead of finding it reassigned to something
 -- else.
+--
+-- __Which is why @Pa@ and not @P8@.__ The audit's own fix text for @OC-03@ proposed @P8@ for the rule
+-- now above, written before those two were burnt. Reusing it would have put a live rule behind a code
+-- that already means something else in logs from before ADR 0003 — the precise failure the paragraph
+-- above exists to prevent. So the sequence continues past the burnt pair with a letter, the way
+-- @Da@ does in the Disputes validator after @D9@. @Mp3@ is burnt on the same terms in the minting
+-- policy, which is why its new rules are @Ms@ and @Md9@ rather than a reuse of it.
 
 -------------------------------------------------------------------------------
 

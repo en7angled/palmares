@@ -421,11 +421,28 @@ measured =
 -- a profile datum's embedded params, and confirms that the credential wrapper is paid only where an
 -- attestation datum is parsed. A change this wide reaching exactly two of five scripts, in opposite
 -- directions, is the shape you want: each cost lands where the thing that changed is read.
+-- __`OC-03`: `Mp6`'s rule in the four places it was missing.__ `Pa`, `Ms`, `A8`, `Md9` — the actor's
+-- user token must not be locked into the state output:
+--
+--   ProfilesValidator     8207 ->  8262  (+55)   Pa
+--   AttestationsValidator 8516 ->  8608  (+92)   A8
+--   DisputesValidator     9978 ->  9978  (0)
+--   OracleValidator       7856 ->  7856  (0)
+--   MintingPolicy        12756 -> 12852  (+96)   Ms + Md9
+--
+-- __+243 for four conjuncts__, against the audit's estimate of 30-55 each. `Pa` landed at exactly
+-- `Mp6`'s 55, which is the comparison worth having: it is the same conjunct on the same shape. `A8`
+-- cost 92 because the Attestations validator did not already use @valueAtOutputIdx@ and now carries
+-- it; the two in the minting policy share theirs and came to 48 apiece.
+--
+-- The two zeros again say where the cost lands. Nothing was added to the Disputes validator or the
+-- Oracle, and nothing moved — `Md9` guards the OPENING of a dispute, which is the minting policy's
+-- job, not the dispute validator's.
 expected :: [(String, Int)]
 expected =
-  [ ("ProfilesValidator", 8207),
-    ("AttestationsValidator", 8516),
+  [ ("ProfilesValidator", 8262),
+    ("AttestationsValidator", 8608),
     ("DisputesValidator", 9978),
     ("OracleValidator", 7856),
-    ("MintingPolicy", 12756)
+    ("MintingPolicy", 12852)
   ]

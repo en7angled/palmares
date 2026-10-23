@@ -129,7 +129,8 @@ tests =
       seedTests,
       k1Tests,
       k2Tests,
-      d6Tests
+      d6Tests,
+      oc03Tests
     ]
 
 -------------------------------------------------------------------------------
@@ -371,7 +372,11 @@ boundCredential = ClaimedDRep (PubKeyCredential boundPkh)
 -- The seed input carries the ISSUER's user token, so @Mf@ passes whichever profile is named as
 -- issuer — which is what lets the @Mc1@ case isolate @Mc1@ instead of tripping over @Mf@.
 credentialMintCtx :: AttestationKind -> V1.AssetClass -> Maybe ClaimedCredential -> [PubKeyHash] -> ScriptContext
-credentialMintCtx kind issuer mCredential signatories =
+credentialMintCtx = credentialMintCtxParking mempty
+
+-- | The same mint with extra value PARKED in the record output, which is what @Ms@ refuses.
+credentialMintCtxParking :: Value -> AttestationKind -> V1.AssetClass -> Maybe ClaimedCredential -> [PubKeyHash] -> ScriptContext
+credentialMintCtxParking parked kind issuer mCredential signatories =
   ScriptContext
     (mkTxInfo [seedInput] [oracleRefInput False] [recordOut] issueMint)
       { txInfoValidRange = datedRange,
@@ -385,7 +390,7 @@ credentialMintCtx kind issuer mCredential signatories =
     seedInput =
       TxInInfo issueSeedRef (plainOut walletAddr (V1.assetClassValue (deriveUserFromRefAC issuer) 1 <> lv 10_000_000))
     recordOut =
-      inlineOut attestationsAddr (V1.assetClassValue issuedAC 1 <> lv minLovelace) (toBuiltinData recordDatum)
+      inlineOut attestationsAddr (V1.assetClassValue issuedAC 1 <> lv minLovelace <> parked) (toBuiltinData recordDatum)
     recordDatum =
       mkCIP68Datum
         OnchainAttestation
@@ -411,7 +416,14 @@ credentialMintCtx kind issuer mCredential signatories =
 -- in both halves, the output datum being computed with the protocol's own
 -- 'updateCIP68DatumMetadata' so the test cannot disagree with the validator about what an update does.
 updateCtx :: [TxInInfo] -> ScriptContext
-updateCtx extraInputs =
+updateCtx = updateCtxParking mempty
+
+-- | The same update with extra value PARKED in the state output, which is what @Pa@ refuses.
+--
+-- @P5@ is a @>=@ check, so parking a token passes it; the attack is invisible to every other
+-- conjunct, which is why it needed a conjunct of its own.
+updateCtxParking :: Value -> [TxInInfo] -> ScriptContext
+updateCtxParking parked extraInputs =
   ScriptContext
     (mkTxInfo (ownInput : extraInputs) [oracleRefInput False] [stateOut] emptyMintValue)
     (Redeemer (toBuiltinData (UpdateProfile updatedProfileFields 0)))
@@ -421,7 +433,7 @@ updateCtx extraInputs =
     stateOut =
       inlineOut
         profilesAddr
-        profileStateValue
+        (profileStateValue <> parked)
         (toBuiltinData (updateCIP68DatumMetadata updatedProfileFields profileDatum))
 
 -- | The owner spending the profile's user NFT from their own wallet UTxO.
@@ -839,7 +851,11 @@ issueMint = UnsafeMintValue (AssocMap.singleton protocolCS (AssocMap.singleton i
 -- reference-prefixed tokens of 'protocolCS' as @Md4@ requires of each. The date is 'datedAt' in both
 -- the redeemer and the expected datum, which is what keeps @Md5@ satisfied while @Md6@ passes.
 openDisputeCtx :: ScriptContext
-openDisputeCtx =
+openDisputeCtx = openDisputeCtxParking mempty
+
+-- | The same opening with extra value PARKED in the dispute output, which is what @Md9@ refuses.
+openDisputeCtxParking :: Value -> ScriptContext
+openDisputeCtxParking parked =
   ScriptContext
     (mkTxInfo [seedInput] [oracleRefInput False] [openedOut] openMint) {txInfoValidRange = datedRange}
     (Redeemer (toBuiltinData redeemer))
@@ -848,7 +864,7 @@ openDisputeCtx =
     redeemer = OpenDispute openSeedRef attestationAC profileRefAC walletAddr profileFields datedAt 0
     seedInput =
       TxInInfo openSeedRef (plainOut walletAddr (V1.assetClassValue profileUserAC 1 <> lv 10_000_000))
-    openedOut = inlineOut disputesAddr (disputeValueOf openedAC) (toBuiltinData openedDatum)
+    openedOut = inlineOut disputesAddr (disputeValueOf openedAC <> parked) (toBuiltinData openedDatum)
 
 openSeedRef :: TxOutRef
 openSeedRef = TxOutRef (TxId (b32 0xd0)) 0
@@ -1278,3 +1294,69 @@ feeOut paid = plainOut feeAddr (lv paid)
 -- the change output would pay the fee and Test Cases 8.12 and 8.15 would both be vacuous.
 feeAddr :: Address
 feeAddr = Address (PubKeyCredential (PubKeyHash (b28 0x08))) Nothing
+
+-------------------------------------------------------------------------------
+
+-- * Pa, Ms, A8, Md9 — the authority token must not ride into the state output
+
+-------------------------------------------------------------------------------
+
+-- | One rule in four places, closing @OC-03@: @Mp6@ already refused the profile user token at the
+-- MINT output, and the same shape was open on the other four state-writing paths.
+--
+-- __Why a conjunct was needed at all, when four checks already look at those outputs.__ Every one of
+-- them — @P5@, @Mk@, @A1@, @Md5@ — requires the output to carry AT LEAST the expected value and says
+-- nothing about what else is in it. So parking a token passes all four, the datum is byte-identical,
+-- and nothing else in the protocol notices. That is the kind of hole a @>=@ leaves, and the reason
+-- each pair below has a @True@ beside its @False@: the valid case has to keep passing, or the test is
+-- only proving that something is broken.
+--
+-- __What it costs the victim.__ Nothing in this protocol burns a user token, so one parked in a state
+-- output is gone. On the profile path it is worse than gone: @P3@ is then satisfied by the profile's
+-- OWN input, because @valueSpent@ sums all inputs including the script one, so anyone can spend that
+-- profile — and mint @NewAttestation@ with it as issuer, because @Mf@ reads @valueSpent@ too. A
+-- permanently world-writable identity, reached through the update path instead of the mint.
+--
+-- Only the token holder can do it, by self-harm or by signing a front-end's transaction. That is why
+-- it is Medium and not High, and it is still irreversible.
+oc03Tests :: TestTree
+oc03Tests =
+  testGroup
+    "Pa/Ms/A8/Md9 — the actor's user token must not be locked into the state"
+    [ testCase "an update that re-locks the profile WITH its own user token is refused (Pa)" $
+        ( profilesLambda (updateCtx [userConsentInput]),
+          profilesLambda (updateCtxParking (V1.assetClassValue profileUserAC 1) [userConsentInput])
+        )
+          @?= (True, False),
+      testCase "a mint that parks the issuer's user token in the attestation is refused (Ms)" $
+        ( mintingPolicyLambda params (credentialMintCtx CredentialClaim profileRefAC (Just boundCredential) [boundPkh]),
+          mintingPolicyLambda
+            params
+            ( credentialMintCtxParking
+                (V1.assetClassValue profileUserAC 1)
+                CredentialClaim
+                profileRefAC
+                (Just boundCredential)
+                [boundPkh]
+            )
+        )
+          @?= (True, False),
+      -- The acceptance path is the sharpest of the four: @A5@ has just REQUIRED the subject's user
+      -- token to be spent, so it is in hand and one output index away from being locked into a record
+      -- nothing burns. @A5@ says the token must move; @A8@ says where it may not move to.
+      testCase "an acceptance that parks the subject's user token in the attestation is refused (A8)" $
+        ( attestationsLambda (acceptCtx attestationOwnValue [subjectConsentInput] acceptedStateOut),
+          attestationsLambda
+            ( acceptCtx
+                attestationOwnValue
+                [subjectConsentInput]
+                (acceptedStateOutOf (attestationOwnValue <> V1.assetClassValue profileUserAC 1))
+            )
+        )
+          @?= (True, False),
+      testCase "an opening that parks the opener's user token with the deposit is refused (Md9)" $
+        ( mintingPolicyLambda params openDisputeCtx,
+          mintingPolicyLambda params (openDisputeCtxParking (V1.assetClassValue profileUserAC 1))
+        )
+          @?= (True, False)
+    ]

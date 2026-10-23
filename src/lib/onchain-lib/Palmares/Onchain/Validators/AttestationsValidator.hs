@@ -172,6 +172,15 @@ attestationsLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) script
                       -- The subject's consent, and the only thing that makes an attestation about
                       -- somebody more than an assertion by its issuer.
                       && traceIfFalse "A5" (V1.assetClassValueOf (valueSpent txInfo) subjectUserAC == 1) -- Subject's user NFT must be spent (A5)
+                      -- `Mp6`'s rule, on this path — OC-03. `A1` re-locks the accepted attestation
+                      -- at @>= ownValue@, and `A5` has just required the subject's user token to be
+                      -- SPENT in this transaction — so the token is in hand and one output index
+                      -- away from being locked into a record nothing ever burns. Accepting an
+                      -- attestation about yourself would cost you your own authority instrument.
+                      --
+                      -- The pair is the point: `A5` says the token must move, this says where it may
+                      -- not move to.
+                      && traceIfFalse "A8" (V1.assetClassValueOf (Utils.valueAtOutputIdx outputIdx txInfoOutputs) subjectUserAC == 0) -- Subject's user token must not be locked with the state (A8)
                       -- And the UTxO being spent must actually be this attestation, not something
                       -- else carrying a copy of its datum. Same statement as D2's second element.
                       && traceIfFalse "A6" (V1.assetClassValueOf ownValue (attestationId attestation) == 1) -- Own attestation NFT (A6)

@@ -318,6 +318,15 @@ handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOu
           "Mj" -- Tx must mint JUST attestation NFT (Mj)
           (mintValueMinted txInfoMint == attestationNFT && mintValueBurned txInfoMint == mempty)
         && traceIfFalse "Mk" (Utils.checkTxOutAtIndexWithDatumMinValueAndAddress attestationOutputIdx attestationDatum attestationValue attestationsValidatorAddress txInfoOutputs) -- Lock attestation at AttestationsValidator address (Mk)
+        -- `Mp6`'s rule, on this path — OC-03. `Mk` accepts an output carrying AT LEAST the expected
+        -- value, so the issuer's own user token could be parked inside the attestation it issues.
+        -- Nothing ever burns an attestation, so the token would be gone for good and the issuer's
+        -- identity would lose the authority instrument this protocol runs on.
+        --
+        -- A WITHDRAWAL IS NOT EXEMPT, unlike under `Mf`. `Mf` exempts it because a withdrawal proves
+        -- control by the credential alone and spends no user token; this rule is about what the
+        -- OUTPUT holds, and a withdrawal has no more business locking a token away than a claim does.
+        && traceIfFalse "Ms" (V1.assetClassValueOf (Utils.valueAtOutputIdx attestationOutputIdx txInfoOutputs) (deriveUserFromRefAC issuer) == 0) -- Issuer's user token must not be locked with the state (Ms)
 
 {-# INLINEABLE handleMintProfile #-}
 handleMintProfile ::
@@ -471,6 +480,11 @@ handleOpenDispute txInfo@TxInfo {..} mintingPolicyCurrencySymbol protocolParams 
         && traceIfFalse "Md4" (isProtocolRefToken target mintingPolicyCurrencySymbol && isProtocolRefToken openedBy mintingPolicyCurrencySymbol) -- Target and opener must be this protocol's REF tokens (Md4)
         && traceIfFalse "Md8" (any ((== depositTo) . txOutAddress . txInInfoResolved) txInfoInputs) -- Deposit address must be spent from by this tx (Md8)
         && traceIfFalse "Md5" (Utils.checkTxOutAtIndexWithDatumMinValueAndAddress disputeOutputIdx disputeDatum disputeValue disputesValidatorAddress txInfoOutputs) -- Lock dispute + deposit at DisputesValidator address (Md5)
+        -- `Mp6`'s rule, on this path — OC-03. The dispute output already holds the deposit, so `Md5`
+        -- is a @>=@ check with room in it: the opener's user token could ride along and never come
+        -- back, because resolution returns the deposit and re-locks the dispute, and nothing burns a
+        -- dispute. Opening one dispute would cost the opener their identity's authority.
+        && traceIfFalse "Md9" (V1.assetClassValueOf (Utils.valueAtOutputIdx disputeOutputIdx txInfoOutputs) (deriveUserFromRefAC openedBy) == 0) -- Opener's user token must not be locked with the dispute (Md9)
         && traceIfFalse "Md6" (Utils.checkDateInRange openedAt txInfoValidRange) -- Open date not inside validity interval (Md6)
         && traceIfFalse "Md7" (validateMetadataFields metadata) -- Metadata fields validation failed (Md7)
 

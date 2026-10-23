@@ -48,6 +48,10 @@ FROM --platform=$TARGETPLATFORM ${RUNTIME_IMAGE} AS runtime
 
 WORKDIR /app
 COPY --from=builder /palmares/admin /app/admin
-COPY ./config /app/config
+# TD-01: NOT `COPY ./config /app/config`, which baked the live provider config into the image.
+# Compose bind-mounts ./config over this path anyway, and in a cluster both files arrive by env, so
+# the baked copy was never read — it was only shipped. The two reconcile files stay because
+# `reconcile-koios` reads them from the image and neither is a secret.
+COPY ./config/reconcile-exceptions.yaml ./config/reconcile-sample.preprod.json /app/config/
 
 ENTRYPOINT ["/app/admin"]

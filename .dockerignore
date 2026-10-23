@@ -18,6 +18,21 @@ operation.prv
 *.skey
 *.vkey
 config/*.prv
+# TD-01. These two are excluded from the BUILD CONTEXT, so no stage can copy them even by accident.
+#
+#   config_atlas.json is the live provider config. `scripts/build-images.sh` builds from the working
+#   tree, so without this line a local build baked whatever provider key sat there into four images
+#   — and ADR 0002 claimed the opposite ("a provider token is the only secret in the deployment […]
+#   excluded by both .gitignore and .dockerignore"). The .gitignore half was true.
+#
+#   config_palmares_validators.json is not a secret — it is five public script hashes — but baking it
+#   ships a snapshot that the next deploy makes wrong, which is exactly how the Belt System came to
+#   have a committed validator config whose minting-policy hash matched nothing.
+#
+# Neither is needed to build: `extra-source-files` lists only config/reconcile-*. At run time both
+# arrive by env (ATLAS_CORE_CONFIG, DEPLOYED_VALIDATORS_CONFIG) or by the bind mount compose makes.
+config/config_atlas.json
+config/config_palmares_validators.json
 docs
 *.md
 !README.md

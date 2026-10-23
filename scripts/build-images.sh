@@ -13,6 +13,19 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# TD-01. This script builds from the WORKING TREE, so whatever sits in config/ goes into the build
+# context — which is how a local build came to bake the live provider config into four images while
+# ADR 0002 claimed the opposite. The exclusion lives in .dockerignore; this asserts it is still
+# there, because a deleted line in that file is silent and the leak it causes is not recoverable
+# once an image is pushed.
+for secret in config/config_atlas.json config/config_palmares_validators.json; do
+  if ! grep -qxF "${secret}" "${ROOT_DIR}/.dockerignore"; then
+    echo "REFUSING TO BUILD: .dockerignore does not exclude ${secret}." >&2
+    echo "Without that line the build context carries it and every image bakes it in." >&2
+    exit 1
+  fi
+done
+
 TAG="${1:-}"
 if [[ -z "${TAG}" ]]; then
   TAG="$(git -C "${ROOT_DIR}" rev-parse --short HEAD)"

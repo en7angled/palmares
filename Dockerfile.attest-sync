@@ -48,7 +48,9 @@ FROM --platform=$TARGETPLATFORM ${RUNTIME_IMAGE} AS runtime
 
 WORKDIR /app
 COPY --from=builder /palmares/attest-sync /app/attest-sync
-COPY ./config /app/config
+# TD-01: the runtime no longer carries `config/`. It baked the live provider config into the image,
+# and nothing read it: compose bind-mounts ./config over this path and a cluster supplies both files
+# by env (ATLAS_CORE_CONFIG, DEPLOYED_VALIDATORS_CONFIG). This service needs neither from disk.
 
 # Defaults (overridable)
 ENV KUPO_URL=http://localhost:1442 \

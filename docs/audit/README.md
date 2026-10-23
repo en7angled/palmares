@@ -402,13 +402,19 @@ naming because each contradicted something the set itself asserts:
 - the component diagram put `onchain-lib` behind an external node labelled "atlas-cardano, cardano-api,
   plutus-*", where "no off-chain deps in `onchain-lib`" is a load-bearing claim of the document and of
   the architecture;
-- `U2`/`U3` were documented as unreachable via a call chain that never existed —
-  `checkAndGetCurrentStateDatumAndValue` has had no caller at any point in this range, which is why
-  `3654f57` deleting the three lookups changed nothing about reachability, and the documents had
-  inherited the chain from the same false Haddock that is now `NEW-OC-5`;
-- "`AcceptAttestation` is the protocol's single irreversible write", which D-C's own comment refutes: a
-  verdict is written once and nothing here burns, so every mint is permanent too. The conjunction of
-  irreversible **and** unreachable by the pause is what made acceptance urgent.
+- "`AcceptAttestation` is the protocol's single irreversible write", which D-C's own comment refutes
+  (see below) — and `D6` offered as what limits a transaction to one dispute, where it bounds script
+  instances and not one dispute's own obligations, so the `disputeDepositTo`-is-this-validator case
+  that destroys the deposit slips through;
+- and that same claim spelled out: a verdict is written once and nothing here burns, so every mint is
+  permanent too. The conjunction of irreversible **and** unreachable by the pause is what made
+  acceptance the urgent case for D-C.
+
+`U2`/`U3`'s unreachability is **not** in that list, and the first draft of this section put it there.
+The documented chain was real at `4eb9117`: both profile lookups called
+`checkAndGetCurrentStateDatumAndValue`. `3654f57` deleted those callers and, in the same commit, added
+the Haddock asserting that validators call it — so the finding is that commit's, not the snapshot's,
+and it is `NEW-OC-5`.
 
 Two more contradicted a gate or a section in their own tree: "30 routes" against a `check_swagger.sh`
 that asserted 29 at that very commit, and "41 test modules" against a cabal that listed 40 and the

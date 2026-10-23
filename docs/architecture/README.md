@@ -18,11 +18,13 @@ ADR 0003 and `A7`, `D9`, `Da` and `Mc1`–`Mc4` arrived, so the inventory at the
 and ADR 0003 and D-A moved the HTTP surface, both Swagger versions, the attestation-kind and
 dispute-verdict enums, and the projection schema version.
 
-`U2` and `U3` are unreachable, and the reason is not what either document first said: the chain
-`checkAndGetCurrentStateDatumAndValue` ← `unsafeGetProfile*` never existed. That helper has had **no
-caller at all**, before `3654f57` and after it, which is why deleting the three lookups changed nothing
-about reachability. The Haddock at `Protocol/Lookup.hs:7` still asserts the call, and that sentence is
-the audit finding `NEW-OC-5`.
+`U2` and `U3` are unreachable, and the history is worth getting right because this paragraph got it
+wrong once. At `4eb9117` the documented chain was real: `unsafeGetProfile` and
+`unsafeGetProfileDatumAndValue` both called `checkAndGetCurrentStateDatumAndValue`
+(`git show 4eb9117:…/Protocol/Lookup.hs:29,36`). `3654f57` deleted those two callers and left the
+helper in place, so it now has no caller at all — and the **same commit** added the Haddock at
+`Protocol/Lookup.hs:7` claiming every validator reads a profile through it. The commit that removed
+the only callers asserted the call. That sentence is the audit finding `NEW-OC-5`.
 
 Reconciliation also found claims in these documents that were **already false at `4eb9117`** rather
 than drift — the component diagram putting `onchain-lib` behind a node labelled with off-chain

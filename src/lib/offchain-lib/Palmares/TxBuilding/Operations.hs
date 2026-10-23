@@ -256,7 +256,8 @@ claimProofSkeleton (ScriptCredential sh) mWitness = do
       return (mustHaveInput (GYTxIn (utxoRef spendable) (claimWitnessToTxInWitness witness)))
     _ -> throwError (GYApplicationException (ScriptCredentialHasNoUtxo gySh))
 
--- | Mint a profile, optionally claiming a Cardano credential.
+-- | Mint a profile. It claims no credential — ADR 0003 made a binding its own record, built by
+-- 'credentialAttestationTX'.
 --
 -- Corresponds to 'MintProfile' minting, and it is the operation whose absence made every other user
 -- operation unreachable: all three took a profile's Ref 'GYAssetClass' as input and nothing could

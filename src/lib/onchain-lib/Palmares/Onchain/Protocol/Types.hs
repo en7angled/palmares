@@ -192,7 +192,7 @@ applyOracleAdminAction (OracleSetDisputeTimeout ms) params = params {opDisputeTi
 -- admin. About 3.8 ADA out of the admin's pocket per dispute, repeatable by anyone who opens one.
 --
 -- So it is a foot-gun to set and an attack once set, which is the combination worth one check. It
--- is checked on the RESULT rather than per action, so it covers all six actions and every future
+-- is checked on the RESULT rather than per action, so it covers all seven actions and every future
 -- one by construction — the same reason @O2@ compares the output datum against this function's
 -- result instead of re-deriving each field.
 --

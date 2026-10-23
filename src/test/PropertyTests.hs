@@ -84,7 +84,7 @@ oracleMirrorTests =
       -- This is the line that fails when a seventh admin action is added: the new constructor has no
       -- row above, so its two implementations are free to disagree.
       testCase "the table covers all six OracleAdminAction constructors" $
-        map (constructorIndexOf . adminActionToOracleAdminAction) allAdminActions @?= [0, 1, 2, 2, 3, 4, 5],
+        map (constructorIndexOf . adminActionToOracleAdminAction) allAdminActions @?= [0, 1, 2, 2, 3, 4, 5, 6],
       -- And the redeemer the off-chain side sends is the action the on-chain side applies. A swap
       -- here — pause mapped to unpause — would keep the mirror above intact (both sides would be
       -- wrong together) while inverting what the admin asked for.
@@ -105,6 +105,11 @@ oracleMirrorTests =
 
     -- One row per constructor, plus the second 'SetFeesAction' because clearing fees and setting
     -- them are the two halves of a 'Maybe' and a mirror could get one right and the other wrong.
+    --
+    -- __This list is the test, so a missing row is a missing test and nothing says so.__ D-A added
+    -- 'SetDisputeTimeoutAction' and did not add it here, so both cases above — the index mirror and
+    -- the apply mirror — were silently not about it until an audit reconciliation noticed. The same
+    -- trap 'MintAction' carries a comment about, sprung one type over.
     allAdminActions :: [AdminActionType]
     allAdminActions =
       [ PauseProtocolAction,
@@ -113,7 +118,8 @@ oracleMirrorTests =
         SetFeesAction (Just feeConfig),
         SetMinUTxOValueAction 7_654_321,
         RotateAdminAction newAdminGY,
-        SetDisputeDepositAction 12_345_678
+        SetDisputeDepositAction 12_345_678,
+        SetDisputeTimeoutAction 2_592_000_000
       ]
 
 -------------------------------------------------------------------------------

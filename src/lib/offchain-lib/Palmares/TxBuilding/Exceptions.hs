@@ -71,12 +71,16 @@ data TxBuildingException
     -- deadline. An admin who wants a dispute closed without a finding waits for that deadline like
     -- anybody else — which is the whole guarantee D-A adds.
     DisputeVerdictNotAFinding
-  | -- | The profile claims no credential, so there is nothing to revoke. @P8@ refuses it on chain as
-    -- well.
+  | -- | @/issue-attestation@ was asked for a credential kind. @Mc2@ refuses it on chain as well,
+    -- because this route names no credential and a 'CredentialClaim' with none is not a record.
     --
-    -- 'Nothing' is a legitimate state for a profile — a Community or an Auditor corresponds to no
-    -- on-chain credential — so this is a 400 about the request and not a fault in the record.
-    ProfileClaimsNoCredential
+    -- Its own error and not a generic refusal, because the request is not wrong so much as sent to
+    -- the wrong route: @/claim-credential@ and @/withdraw-credential@ are where those two kinds are
+    -- built, and they are separate routes precisely because they take a credential and a witness.
+    --
+    -- This constructor replaced @ProfileClaimsNoCredential@, which belonged to the D-E revocation
+    -- that ADR 0003 removed; it had no throw site left and its Haddock cited the burnt code @P8@.
+    AttestationKindIsCredentialBinding
   | -- | The dispute's deadline has not passed, so there is nothing to expire yet. @D9@ refuses it on
     -- chain as well.
     --
@@ -128,7 +132,9 @@ instance Exception TxBuildingException where
     \another; this is an off-chain courtesy, not a protocol rule."
   displayException DisputeAlreadyResolved = "Dispute already carries a verdict and cannot be resolved twice"
   displayException DisputeNotStaleYet = "Dispute cannot be expired yet: its deadline has not passed"
-  displayException ProfileClaimsNoCredential = "Profile claims no credential, so there is nothing to revoke"
+  displayException AttestationKindIsCredentialBinding =
+    "A credential binding is not issued here: use /claim-credential or /withdraw-credential, which \
+    \take the credential and the witness that proves control of it"
   displayException DisputeVerdictNotAFinding = "A resolution must be a finding: only a passed deadline writes 'expired'"
   displayException OracleNotFound = "Oracle UTxO not found"
   displayException OracleDatumInvalid = "Oracle datum invalid or unparseable"

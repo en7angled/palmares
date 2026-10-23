@@ -13,7 +13,7 @@ import Data.Set qualified as Set
 import Data.Text
 import GeniusYield.TxBuilder
 import GeniusYield.Types
-import Palmares.Onchain.Protocol.Types (OracleParams (..))
+import Palmares.Onchain.Protocol.Types (OracleParams (..), oracleParamsAreWellFormed)
 import Text.Printf (printf)
 import Text.Printf qualified as Printf
 import Palmares.TxBuilding.Context (DeployedScriptsContext (..), ProviderCtx (..), TxBuildingContext (..), ctxProviders, deployedScriptsCtx, getNetworkId, providerCtx, runTx, runTx')
@@ -201,6 +201,32 @@ mintOracleNFTAndLockDatum providerCtx skey adminPKH = do
   let my_addr = addressFromSkey providerCtx skey
   let providers = ctxProviders providerCtx
 
+  -- Build initial oracle params. Outside the builder, because they are a function of `adminPKH`
+  -- alone and because the assertion below needs `IO`: `GYTxBuilderMonadIO` has no `MonadIO`
+  -- instance, which is the builder refusing to let arbitrary effects into transaction construction.
+  let initialOracleParams =
+        OracleParams
+          { opAdminPkh = paymentKeyHashToPlutus adminPKH,
+            opPaused = False,
+            opFeeConfig = Nothing,
+            opMinUTxOValue = 1000000,
+            -- A starting price, not a constant: the oracle admin reprices it with SetDisputeDepositAction.
+            opDisputeDeposit = 5000000,
+            -- 30 days, the D-A default, and a starting value exactly like the deposit above:
+            -- `admin set-dispute-timeout` retimes it for NEW disputes. Long on purpose — after
+            -- this, ANYONE may close an undecided dispute, so the number is how much time the
+            -- oracle admin is given to rule before a stranger may clear a stale accusation.
+            opDisputeTimeoutMs = 2592000000
+          }
+
+  -- `O6` is the one rule that never runs at deployment. `oracleParamsAreWellFormed` gates every
+  -- UPDATE through the Oracle Validator, and nothing at all gates THIS datum, so a wrong literal
+  -- above would be live from block one with no transaction to refuse it (audit OC-12). Asserted
+  -- here rather than trusted, because the one place a constant is written is the one place it can
+  -- be checked for free.
+  when (not (oracleParamsAreWellFormed initialOracleParams)) $
+    fail "mintOracleNFTAndLockDatum: the initial OracleParams would not pass O6"
+
   -- Build the transaction; also return the oracle NFT asset class from inside the builder.
   (txBody, oracleNFTAC) <- runGYTxBuilderMonadIO nid providers [my_addr] my_addr Nothing $ do
     -- Find a seed UTxO for the one-shot policy
@@ -212,22 +238,6 @@ mintOracleNFTAndLockDatum providerCtx skey adminPKH = do
     let oracleNFTMPId = mintingPolicyId oracleNFTPolicyGY
     let oracleNFTTN = "" -- empty token name for the NFT
     let theOracleNFTAC = GYToken oracleNFTMPId oracleNFTTN
-
-    -- Build initial oracle params
-    let initialOracleParams =
-          OracleParams
-            { opAdminPkh = paymentKeyHashToPlutus adminPKH,
-              opPaused = False,
-              opFeeConfig = Nothing,
-              opMinUTxOValue = 1000000,
-              -- A starting price, not a constant: the oracle admin reprices it with SetDisputeDepositAction.
-              opDisputeDeposit = 5000000,
-              -- 30 days, the D-A default, and a starting value exactly like the deposit above:
-              -- `admin set-dispute-timeout` retimes it for NEW disputes. Long on purpose — after
-              -- this, ANYONE may close an undecided dispute, so the number is how much time the
-              -- oracle admin is given to rule before a stranger may clear a stale accusation.
-              opDisputeTimeoutMs = 2592000000
-            }
 
     -- Spend seed UTxO
     let spendSeed = mustHaveInput (GYTxIn seedGYRef GYTxInWitnessKey)

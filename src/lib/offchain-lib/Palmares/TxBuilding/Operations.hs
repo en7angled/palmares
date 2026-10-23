@@ -214,7 +214,7 @@ updateProfileTX gyProfileRefAC mbNewDesc newImageURI ownAddrs = do
 -- Two arms, because a 'Credential' is one of two things and the proof differs:
 --
 --   * a __key__ credential is proven by the transaction carrying its signature, so this adds a
---     required signer and @Mp3@ finds it in @txInfoSignatories@;
+--     required signer and @Mc3@ finds it in @txInfoSignatories@;
 --   * a __script__ credential is proven by the transaction spending an input that script governs —
 --     if the ledger is spending it, the script's own condition was already satisfied, before our
 --     validator ran. The caller supplies the witness because a native multisig has no redeemer for
@@ -374,6 +374,15 @@ issueAttestationTX ::
   [GYAddress] ->
   m (GYTxSkeleton 'PlutusV3, GYAssetClass)
 issueAttestationTX gySubjectProfileId gyIssuerProfileId kind metadata otherMetadata claimedPeriod ownAddrs = do
+  -- The two credential kinds are not issuable here. This builder names no credential, so it would
+  -- build a record `Mc2` refuses — and mirroring that refusal off chain is the same discipline every
+  -- other rule in this module follows: without it the chain's "no" arrives as a generic build
+  -- failure and the caller cannot tell a wrong route from a funding problem. A pattern match rather
+  -- than `==` because 'AttestationKind' has no 'Eq' instance, deliberately.
+  case kind of
+    OnchainTypes.CredentialClaim -> throwError (GYApplicationException AttestationKindIsCredentialBinding)
+    OnchainTypes.CredentialWithdrawal -> throwError (GYApplicationException AttestationKindIsCredentialBinding)
+    _ -> pure ()
   mapM_
     ( \(k, _) ->
         when (k `elem` cip68StandardMetadataKeys) $

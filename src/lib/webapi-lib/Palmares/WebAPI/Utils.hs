@@ -54,6 +54,11 @@ addSharedSwaggerDescriptions s = s
     ?~ "What an attestation asserts about its subject: milestone_delivered (a budget administrator \
        \attests a vendor's delivery), audit_passed (an auditor attests it reviewed one), affiliation \
        \(organisation to member, usually with a claimed period), role_held (an extra-chain mandate \
-       \such as a working-group lead or committee chair, usually with a claimed period), endorsement. \
-       \No validator branches on it: the kind says what a reader is being told, not what the protocol \
-       \permits."
+       \such as a working-group lead or committee chair, usually with a claimed period), endorsement, \
+       \credential_claim (a profile binds itself to a Cardano governance credential, which is what \
+       \the `credential` field of a profile is derived from) and credential_withdrawal (that binding \
+       \ended). \
+       \For the first five the kind is presentational: it says what a reader is being told, not what \
+       \the protocol permits. The last two the protocol does enforce — they must be self-issued and \
+       \must name a credential that proved control of the minting transaction, and the first five \
+       \must name none."

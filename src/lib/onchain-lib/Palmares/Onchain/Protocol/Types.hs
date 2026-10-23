@@ -196,9 +196,10 @@ applyOracleAdminAction (OracleSetDisputeTimeout ms) params = params {opDisputeTi
 -- one by construction — the same reason @O2@ compares the output datum against this function's
 -- result instead of re-deriving each field.
 --
--- Zero is permitted for both: a zero @opDisputeDeposit@ is a deliberate configuration (disputes
--- free to open), and a zero @opMinUTxOValue@ simply defers to the ledger's own minimum, which is
--- the real floor at every configured value anyway.
+-- Zero is permitted for the first two: a zero @opDisputeDeposit@ is a deliberate configuration
+-- (disputes free to open), and a zero @opMinUTxOValue@ simply defers to the ledger's own minimum,
+-- which is the real floor at every configured value anyway. The timeout is the one field where zero
+-- is not a configuration — see its own note below.
 {-# INLINEABLE oracleParamsAreWellFormed #-}
 oracleParamsAreWellFormed :: OracleParams -> Bool
 oracleParamsAreWellFormed params =
@@ -207,7 +208,19 @@ oracleParamsAreWellFormed params =
     -- A NEGATIVE timeout would put every new dispute's `disputeStaleAfter` in the past, so it would
     -- be closable by anyone the instant it opened. Not a drain like the two above, but it voids the
     -- dispute mechanism with one keystroke and reads as a smaller number, not a wrong one.
-    && opDisputeTimeoutMs params >= 0
+    --
+    -- __And ZERO is that same value, which the first draft of this check admitted__: @>= 0@ while
+    -- the paragraph above argues against the class that contains it. With a zero timeout
+    -- @disputeStaleAfter == disputeOpenedAt@, @Md6@ already forces @disputeOpenedAt@ into the
+    -- opening transaction's validity range, so every later transaction's range starts after it and
+    -- @D9@ holds — the dispute is expirable in the block after it opens. A dispute whose window is
+    -- empty is not a configuration anyone wants; it is the degenerate case, so it is refused here.
+    --
+    -- What this check deliberately does NOT do is impose a FLOOR. A one-millisecond timeout is as
+    -- useless as zero, but "how long must a dispute stay open" is a policy question whose answer
+    -- belongs where it can be changed without a redeployment — the admin tooling and the API — not
+    -- frozen into a validator. This conjunct refuses the impossible; the floor refuses the unwise.
+    && opDisputeTimeoutMs params > 0
 
 -------------------------------------------------------------------------------
 

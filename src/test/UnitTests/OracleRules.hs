@@ -14,6 +14,7 @@ import Palmares.Onchain.Protocol.Types
   ( OracleAdminAction (..),
     OracleParams (..),
     applyOracleAdminAction,
+    oracleParamsAreWellFormed,
   )
 import Palmares.Onchain.Utils (checkDateInRange, maxDateWindow)
 import Palmares.TxBuilding.Skeletons (safeEraTime)
@@ -54,6 +55,41 @@ tests =
       testCase "repricing the dispute deposit changes nothing else" $
         applyOracleAdminAction (OracleSetDisputeDeposit 7_000_000) (paramsAdmin pkhA)
           @?= (paramsAdmin pkhA) {opDisputeDeposit = 7_000_000},
+      -- Appended at 6 for D-A's timeout. Untested until an audit reconciliation pointed out that the
+      -- action arrived with neither an index assertion nor a place in `otherActions`, so the
+      -- "no other action touches the admin" test was silently not about it.
+      testCase "OracleSetDisputeTimeout is at constructor index 6" $
+        constructorIndexOf (OracleSetDisputeTimeout 2_592_000_000) @?= 6,
+      testCase "retiming the dispute timeout changes nothing else" $
+        applyOracleAdminAction (OracleSetDisputeTimeout 600_000) (paramsAdmin pkhA)
+          @?= (paramsAdmin pkhA) {opDisputeTimeoutMs = 600_000},
+      -- ---------------------------------------------------------------------------------------
+      -- `O6` — `oracleParamsAreWellFormed`, which had NO test of any kind. It is the result-level
+      -- guard every admin action passes through, so a hole in it is a hole in all seven.
+      --
+      -- The first case is the one that found the defect: the timeout conjunct was written `>= 0`
+      -- while the comment beside it argued against exactly the class of values that contains zero.
+      -- A zero timeout makes `disputeStaleAfter == disputeOpenedAt`, and `Md6` already forces
+      -- `disputeOpenedAt` into the opening transaction's range, so every later range starts after it
+      -- and `D9` holds — one `OracleSetDisputeTimeout 0` and no dispute can ever reach a verdict.
+      testCase "a zero dispute timeout is refused, so a dispute always has a window (O6)" $
+        oracleParamsAreWellFormed ((paramsAdmin pkhA) {opDisputeTimeoutMs = 0}) @?= False,
+      testCase "a negative dispute timeout is refused (O6)" $
+        oracleParamsAreWellFormed ((paramsAdmin pkhA) {opDisputeTimeoutMs = -1}) @?= False,
+      testCase "one millisecond is well-formed: this check refuses the impossible, not the unwise" $
+        oracleParamsAreWellFormed ((paramsAdmin pkhA) {opDisputeTimeoutMs = 1}) @?= True,
+      -- The two drains the check was originally written for, and the asymmetry its Haddock claims:
+      -- zero is a configuration for these two and is not one for the timeout.
+      testCase "a negative minimum UTxO value is refused (O6)" $
+        oracleParamsAreWellFormed ((paramsAdmin pkhA) {opMinUTxOValue = -5_000_000}) @?= False,
+      testCase "a negative dispute deposit is refused (O6)" $
+        oracleParamsAreWellFormed ((paramsAdmin pkhA) {opDisputeDeposit = -1}) @?= False,
+      testCase "zero is accepted for the deposit and the minimum UTxO value (O6)" $
+        oracleParamsAreWellFormed ((paramsAdmin pkhA) {opDisputeDeposit = 0, opMinUTxOValue = 0}) @?= True,
+      -- No case here asserts that the GENESIS datum is well-formed, deliberately. `O6` is the one
+      -- rule that does not run at deployment (audit OC-12), and a test that re-typed those literals
+      -- would stay green while the real ones drifted. The guarantee belongs where the datum is
+      -- built, so `mintOracleNFTAndLockDatum` now asserts this function itself.
       -- ---------------------------------------------------------------------------------------
       -- Inherited fix #4. The old check was `date `before` txInfoValidRange`, which blocks
       -- future-dating but leaves BACK-dating unbounded — an attestation could claim 2015. The rule
@@ -148,7 +184,7 @@ tests =
     -- of whatever happens to be appended, which is the opposite of what that test is for.
     inheritedActions = [OraclePause, OracleUnpause, OracleSetFees Nothing, OracleSetMinUTxOValue 1_000_000]
 
-    otherActions = inheritedActions <> [OracleSetDisputeDeposit 3_000_000]
+    otherActions = inheritedActions <> [OracleSetDisputeDeposit 3_000_000, OracleSetDisputeTimeout 600_000]
 
     paramsAdmin pkh =
       OracleParams

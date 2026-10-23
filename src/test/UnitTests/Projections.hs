@@ -441,6 +441,26 @@ replayTests =
         applyAll pool [kupoMatch 600 "ff" attestationsAddress (credentialClaimDatum acClaimRecord testCredential) (withToken acClaimRecord)]
         applyAll pool [kupoMatch 800 "2b" profilesAddress (profileDatum acProfileA) (withToken acProfileA)]
         credentialOf pool acProfileA >>= (@?= Just (Just (claimCredentialToText testCredential))),
+    -- __The order every one of the three cases above missed, and the one a re-sync produces.__
+    -- 'projectChainEvent' emits nothing for a SPENT output, so a profile that was updated after it
+    -- claimed is replayed only at its latest UTxO's slot — ABOVE the claim's. The claim therefore
+    -- arrives when no profile row exists at all, and the first version of this derivation wrote it
+    -- with `updateWhere`, which matches no row and says nothing. `currentSchemaVersion` 3 -> 4 makes
+    -- this re-sync the upgrade path for every deployed database, so the loss would have been the
+    -- normal case rather than an edge one. Found by an audit reconciliation; no test had this shape.
+    testCase "a claim that replays before any profile row still binds (the re-sync order)" $
+      freshDb $ \pool -> do
+        applyAll pool [kupoMatch 600 "ff" attestationsAddress (credentialClaimDatum acClaimRecord testCredential) (withToken acClaimRecord)]
+        applyAll pool [kupoMatch 800 "2b" profilesAddress (profileDatum acProfileA) (withToken acProfileA)]
+        credentialOf pool acProfileA >>= (@?= Just (Just (claimCredentialToText testCredential))),
+    -- And the fold really is a fold, not "the last claim wins": a withdrawal that also precedes the
+    -- profile row has to cancel the claim that precedes it.
+    testCase "a claim and its withdrawal both replaying before the profile row leave it unbound" $
+      freshDb $ \pool -> do
+        applyAll pool [kupoMatch 600 "ff" attestationsAddress (credentialClaimDatum acClaimRecord testCredential) (withToken acClaimRecord)]
+        applyAll pool [kupoMatch 700 "1a" attestationsAddress (credentialRecordDatum OnchainTypes.CredentialWithdrawal acWithdrawRecord acProfileA testCredential) (withToken acWithdrawRecord)]
+        applyAll pool [kupoMatch 800 "2b" profilesAddress (profileDatum acProfileA) (withToken acProfileA)]
+        credentialOf pool acProfileA >>= (@?= Just Nothing),
     testCase "a rollback below a projection's slot drops it, and the survivors are rebuilt" $
       freshDb $ \pool -> do
         applyAll pool fixtureMatches

@@ -502,7 +502,8 @@ profileFields =
       metadataImageURI = "ipfs://QmCommunity"
     }
 
--- | A Community claiming no credential, so @Mp3@ has nothing to prove and cannot refuse the mint.
+-- | A Community profile. It claims nothing — since ADR 0003 no profile does — so no credential rule
+-- reaches this datum and none can refuse the mint.
 profileDatum :: CIP68Datum OnchainProfile
 profileDatum = mkCIP68Datum profileInfo profileFields []
   where

@@ -28,7 +28,7 @@ check() {
 }
 
 echo "== swagger metadata"
-check "version is 1.2.0" '.info.version == "1.2.0"'
+check "version is 1.3.0" '.info.version == "1.3.0"'
 # D-A. A client that SWITCHES on the verdict gains a case here, and one that renders `expired` as a
 # finding is wrong — which is the whole reason the value is in the published enum rather than left
 # to a null and a comment.
@@ -113,8 +113,8 @@ check "AttestProfileRow publishes credential_is_script" \
 check "the credential lookup takes a path parameter named credential" \
   '[.paths["/profiles/by-credential/{credential}"].get.parameters[] | select(.in == "path") | .name] == ["credential"]'
 
-# The five attestation kinds, as wire spellings. Same check as ActivityEventType below and for the
-# same reason: a client switches on these, so a sixth kind added without a published enum entry is
+# The attestation kinds, as wire spellings. Same check as ActivityEventType below and for the
+# same reason: a client switches on these, so a kind added without a published enum entry is
 # a client that cannot handle it.
 # Seven since ADR 0003: a credential binding is an attestation, so `credential_claim` and
 # `credential_withdrawal` are kinds. Asserted as a SET and not a count, because a count would stay

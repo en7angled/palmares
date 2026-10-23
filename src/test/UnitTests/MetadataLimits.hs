@@ -358,12 +358,13 @@ attestationMint fields outAddr =
           txInfoOutputs = [utxo outAddr (attNFT <> minLv) (inlineOf datum)]
         }
 
--- | A complete @MintProfile@ mint: @Mp1@, @Mp2@, @Mp3@, @Mp5@ and @Mp6@ all pass as given.
+-- | A complete @MintProfile@ mint: @Mp1@, @Mp2@, @Mp5@ and @Mp6@ all pass as given.
 --
--- The claimed credential is 'Nothing' on purpose. A profile that claims nothing has nothing to prove,
--- so @Mp3@ passes without this context having to witness a credential — which keeps the case about
--- the metadata and not about 'Palmares.Onchain.Utils.checkCredentialControl', whose own rules
--- @UnitTests.Claim@ already pins.
+-- Nothing here witnesses a credential, and since ADR 0003 nothing has to: a profile mint claims
+-- nothing, so no rule on this path reads
+-- 'Palmares.Onchain.Utils.checkCredentialControl' and the case stays about the metadata. The
+-- credential rules moved to @Mc1@–@Mc4@ on the attestation path, pinned by @UnitTests.Claim@ and
+-- @UnitTests.MutationGuards@.
 profileMint :: MetadataFields -> Address -> ScriptContext
 profileMint fields outAddr =
   ScriptContext txInfo (Redeemer (toBuiltinData redeemer)) (MintingScript policyCS)

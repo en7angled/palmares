@@ -1822,6 +1822,15 @@ data AttestationRow = AttestationRow
     attestationRowKind :: Core.AttestationType,
     attestationRowDate :: GYTime,
     attestationRowClaimedPeriod :: Maybe (GYTime, GYTime),
+    -- | The credential this record binds or releases, in its canonical CIP-129 rendering. Present
+    -- exactly for @credential_claim@ and @credential_withdrawal@ and 'Nothing' for the other five
+    -- kinds — the protocol enforces both directions (@Mc2@, @Mc4@), so a client may rely on it.
+    --
+    -- This is the HISTORY that @profile.credential@ is the current state of: the profile field is a
+    -- fold over these rows, so a reader who wants to know when a binding started, or that one was
+    -- withdrawn, reads it here. ADR 0003 stored the column and served it nowhere, which made a
+    -- @credential_claim@ row arrive with its entire content invisible.
+    attestationRowCredential :: Maybe Text,
     attestationRowAccepted :: Bool,
     attestationRowName :: Text,
     attestationRowDescription :: Text,

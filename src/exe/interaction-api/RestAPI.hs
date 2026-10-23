@@ -126,7 +126,7 @@ transactionsServer = handleBuildTx :<|> handleSubmitTx :<|> handleTxStatus
 
 type ServiceAPI =
   ( Summary "Claim Profile"
-      :> Description "Mints a profile, optionally claiming a Cardano credential (a CIP-129 DRep or committee id) by proving the claimant can spend as it."
+      :> Description "Mints a profile. The profile claims no credential; bind one with POST /claim-credential, which is a separate record and a separate transaction."
       :> "claim-profile"
       :> ReqBody '[JSON] ClaimProfileRequest
       :> Post '[JSON] String

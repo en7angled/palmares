@@ -59,15 +59,14 @@ instance ToSchema ClaimProfileRequest where
   declareNamedSchema proxy = do
     s <- genericDeclareNamedSchema (mkStripPrefixSchemaOptions "cpr") proxy
     return $ s
-      -- `recipient`, `kind` and `witness` are described HERE and not with `describeField`, because
+      -- `recipient` and `kind` are described HERE and not with `describeField`, because
       -- each of those properties is a bare `$ref` and a Swagger 2.0 $ref cannot carry a sibling
       -- description — measured: the key is simply absent from the generated document. Same reason
       -- `IssueAttestationRequest` below has no `describeField "kind"`.
       & Swagger.schema . description
-        ?~ "Mint a profile, optionally claiming a Cardano credential. `recipient` receives any \
-           \unlocked funds and defaults to the change address. `witness` says how the input that \
-           \proves control of `credential` is spent; both are omitted for an unclaimed profile."
-      & describeField "credential" "CIP-129 credential identifier being claimed (drep1…, cc_cold1…, cc_hot1…). Omit for a profile that corresponds to no on-chain credential. A CIP-105 id is refused: it carries no header byte, so it cannot say key or script."
+        ?~ "Mint a profile. It claims no credential: since ADR 0003 a binding is its own record, so \
+           \bind the profile with POST /claim-credential afterwards. `recipient` receives any \
+           \unlocked funds and defaults to the change address."
       & describeField "name" "Profile name. Immutable once minted."
       & describeField "description" "Profile description"
       & describeField "image_uri" "URI of the profile image (the client hosts it; the protocol stores the URI)"

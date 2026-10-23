@@ -298,14 +298,13 @@ ISSUER_TX=$(submit /claim-profile "$(jq -nc \
   --argjson ua "$(addrs)" \
   '{kind:"auditor",name:$n,description:$d,image_uri:$i,user_addresses:$ua}')" "issuer profile")
 
-# The subject claims the DRep credential, with a key witness. This claim is the thing the word
-# "verified" rests on — hence `witness: {"tag":"key"}` and the proof-of-control the minting policy
-# requires, rather than a credential string written into a datum by anyone who asks.
+# The subject's profile. No credential here: ADR 0003 made a binding its own record, so minting a
+# profile claims nothing and this request has no `credential` and no `witness` field at all. The
+# claim is the next step, and it is a second transaction on purpose.
 SUBJECT_TX=$(submit /claim-profile "$(jq -nc \
   --arg n "$SUBJECT_NAME" --arg d "subject profile for $TAG" --arg i "$IMG" \
-  --arg c "$ATTEST_SMOKE_DREP_ID" --argjson ua "$(addrs)" \
-  '{kind:"person_d_rep",name:$n,description:$d,image_uri:$i,
-    credential:$c,witness:{tag:"key"},user_addresses:$ua}')" "subject profile")
+  --argjson ua "$(addrs)" \
+  '{kind:"person_d_rep",name:$n,description:$d,image_uri:$i,user_addresses:$ua}')" "subject profile")
 
 wait_for "/profiles?q=$ISSUER_NAME" '.total' '1' "the issuer profile is projected"
 wait_for "/profiles?q=$SUBJECT_NAME" '.total' '1' "the subject profile is projected"
@@ -319,10 +318,26 @@ assert "/profiles/$ISSUER" '[.name,.kind,.credential]' "[\"$ISSUER_NAME\",\"audi
 assert "/profiles/$ISSUER" '[.description,.image_uri]' "[\"issuer profile for $TAG\",\"$IMG\"]"
 assert "/profiles/$ISSUER" '.slot > 0 and (.block_hash|test("^[0-9a-f]{64}$"))' 'true'
 assert "/profiles/$SUBJECT" '[.name,.kind]' "[\"$SUBJECT_NAME\",\"person_d_rep\"]"
+# Nothing is bound yet, and asserting that BEFORE the claim is the point: the profile column is
+# derived, so `null` here and a value after the next step is the derivation actually running.
+assert "/profiles/$SUBJECT" '.credential' 'null'
+
+# The binding, as its own transaction and its own record (ADR 0003). `witness: {"tag":"key"}` is how
+# the input that proves control of the credential is spent, and `Mc3` is the rule that demands it —
+# the same proof the old `Mp3` demanded, now attached to a transaction whose whole visible purpose
+# is the binding instead of to a profile mint that could be about anything.
+submit /claim-credential "$(jq -nc \
+  --arg p "$SUBJECT" --arg c "$ATTEST_SMOKE_DREP_ID" \
+  --arg n "credential claim for $TAG" --arg i "$IMG" --argjson ua "$(addrs)" \
+  '{profile_id:$p,credential:$c,witness:{tag:"key"},
+    name:$n,description:"binds the subject profile to its DRep credential",image_uri:$i,
+    user_addresses:$ua}')" "credential claim" >/dev/null
+
 # The credential is stored in its canonical CIP-129 rendering, which is not necessarily the
 # spelling the operator typed — so the assertion is that one is there and that its header byte
 # decodes to a KEY credential. Whether it is the same credential is settled in step 5, by the
 # lookup route, which canonicalises server-side instead of making this script do bech32 in bash.
+wait_for "/profiles/$SUBJECT" '.credential != null' 'true' "the claim is projected onto the profile"
 assert "/profiles/$SUBJECT" '[.credential != null, .credential_is_script]' '[true,false]'
 
 # ---------------------------------------------------------------------------------------------
@@ -374,7 +389,11 @@ wait_for "/attestations/$ATT" '.attestation.accepted' 'true' "the attestation re
 # named the issuing transaction, the row would be pointing at a UTxO that no longer exists.
 assert "/attestations/$ATT" '.attestation.tx_hash' "\"$ACCEPT_TX\""
 assert "/attestations?subject=$SUBJECT&accepted=true" '.total' '1'
-assert "/attestations?subject=$SUBJECT&accepted=false" '.total' '0'
+# ONE pending record left, not none: the credential claim from step 2 is an attestation about this
+# same subject and it is never accepted. It does not need to be — `Mc1` makes a claim self-issued,
+# so the subject's consent is already in the mint, and acceptance by the issuer-who-is-the-subject
+# would add nothing. The derivation that publishes the credential does not look at `accepted`.
+assert "/attestations?subject=$SUBJECT&accepted=false" '.total' '1'
 assert "/attestations/$ATT" '.disputes' '[]'
 
 # ---------------------------------------------------------------------------------------------
@@ -407,9 +426,13 @@ assert_err /profiles/by-credential/81378d3ea89b68f0fc09944b1f93f2feb851318f196f9
 # which is the difference between "cannot answer" and "no claim".
 assert /profiles/by-credential/drep1ywqn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmuzqx0 '.total' '0'
 
-# The track record: what others say about this profile, accepted first.
-assert "/profiles/$SUBJECT/attestations" '.total' '1'
-assert "/profiles/$SUBJECT/attestations" '[.items[0].id,.items[0].accepted]' "[\"$ATT\",true]"
+# The track record: what others say about this profile, accepted first. TWO records, because ADR
+# 0003 put the credential claim in this same list — a binding is part of the track record, and the
+# list is where a reader sees it. Asserted by id rather than by position so the ordering rule is
+# not what this case is about.
+assert "/profiles/$SUBJECT/attestations" '.total' '2'
+assert "/profiles/$SUBJECT/attestations" "[.items[]|select(.id==\"$ATT\")|.accepted]" '[true]'
+assert "/profiles/$SUBJECT/attestations" '[.items[]|select(.kind=="credential_claim")]|length' '1'
 # 404 and not an empty page: "no rows" for a mistyped id reads as "this profile has no record".
 assert_err "/profiles/$NOWHERE/attestations" '.code' '"profile_not_found"'
 assert_err "/profiles/$NOWHERE" '.code' '"profile_not_found"'
@@ -467,7 +490,7 @@ assert /disputes "[.items[].id]|index(\"$DISPUTE\") != null" 'true'
 assert "/attestations/$ATT" '.disputes[0].verdict' '"upheld"'
 # An upheld dispute does not delete or hide the attestation, and does not un-accept it.
 assert "/attestations/$ATT" '.attestation.accepted' 'true'
-assert "/profiles/$SUBJECT/attestations" '.total' '1'
+assert "/profiles/$SUBJECT/attestations" '.total' '2'
 
 # ---------------------------------------------------------------------------------------------
 echo

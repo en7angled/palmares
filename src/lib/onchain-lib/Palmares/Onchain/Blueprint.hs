@@ -160,8 +160,14 @@ mintingPolicyValidatorBlueprint =
           { argumentTitle = Just "Minting Redeemer",
             argumentDescription =
               Just
-                "NewAttestation seedTxOutRef metadata otherMetadata subject issuer kind date \
-                \claimedPeriod outputIdx — mints a pending attestation CIP-68 REFERENCE token (no user \
+                "MintProfile seedTxOutRef kind metadata outputIdx — mints the CIP-68 reference and \
+                \user token pair for a profile, the reference token locked at the Profiles Validator \
+                \and the user token sent wherever the builder chooses, since it is the authority the \
+                \holder spends to act as that profile. Minting a profile claims no credential: a \
+                \binding is a CredentialClaim attestation, which is a second transaction and an \
+                \append-only record. \
+                \NewAttestation seedTxOutRef metadata otherMetadata subject issuer kind date \
+                \claimedPeriod claimedCredential outputIdx — mints a pending attestation CIP-68 REFERENCE token (no user \
                 \token exists for an attestation, which is why a lineage attestation can never \
                 \satisfy A5) locked at \
                 \the Attestations Validator. Requires the issuer's user token to be spent, validates \
@@ -169,7 +175,10 @@ mintingPolicyValidatorBlueprint =
                 \the oracle configures one. The CLAIMED PERIOD is carried through unchecked and is \
                 \self-reported: no on-chain fact can establish when an affiliation or a mandate \
                 \began, so the protocol does not pretend to establish it. What makes a claimed \
-                \period part of the record is the subject's acceptance, not a validator rule. \
+                \period part of the record is the subject's acceptance, not a validator rule. The \
+                \CLAIMED CREDENTIAL is the opposite of self-reported: it is present exactly for the \
+                \two credential kinds, where the credential must prove control of this transaction \
+                \and the record must be self-issued, and must be absent for the other five. \
                 \OpenDispute seedTxOutRef target openedBy depositTo metadata openedAt outputIdx — \
                 \mints a dispute token locked at the Disputes Validator together with the oracle's \
                 \current dispute deposit, which the dispute's datum then records. Requires the \
@@ -249,7 +258,10 @@ attestationsValidatorBlueprint =
             argumentDescription =
               Just
                 "AcceptAttestation outputIdx — the subject accepts, flipping the acceptance flag and \
-                \returning the token to this validator. Cleanup — permissionless dust removal for \
+                \returning the token to this validator. The transaction must reference the oracle \
+                \UTxO named by the attestation's own oracleToken, because acceptance is refused while \
+                \the protocol is paused: it is the record's one irreversible write, so it is the one \
+                \the pause lever must reach. Cleanup — permissionless dust removal for \
                 \UTxOs whose datum is absent, does not parse, or names a state NFT the UTxO's own \
                 \value does not hold.",
             argumentPurpose = Set.fromList [Spend],
@@ -263,13 +275,17 @@ attestationsValidatorBlueprint =
                 Just
                   "CIP-68 datum carrying the attestation: its id, the subject it is about, the issuer \
                   \that authored it, its kind (one of MilestoneDelivered, AuditPassed, Affiliation, \
-                  \RoleHeld, Endorsement), the date it was ISSUED, an optional CLAIMED PERIOD, and \
+                  \RoleHeld, Endorsement, CredentialClaim, CredentialWithdrawal), the date it was \
+                  \ISSUED, an optional CLAIMED PERIOD, an optional CREDENTIAL, the oracle token that \
+                  \authenticates the pause gate on acceptance, and \
                   \whether the subject has accepted. The two dates are not the same kind of fact and \
                   \a consumer must not present them alike: the issuance date is bounded by the \
                   \transaction's validity interval and is therefore chain-attested within hours, \
                   \while the claimed period is whatever the issuer asserted and the subject \
-                  \counter-signed. No validator branches on the kind — it says what a reader is being \
-                  \told, not what the protocol permits.",
+                  \counter-signed. The kind is mostly presentational — it says what a reader is being \
+                  \told — with ONE exception the protocol does enforce: the two credential kinds must \
+                  \name a credential and must be self-issued, and the other five must name none, so \
+                  \a binding cannot be smuggled onto a milestone where nothing would check it.",
               argumentPurpose = Set.singleton Spend,
               -- NOT `definitionRef @()`. It was, so the published blueprint described the attestation
               -- datum as Unit — the one datum a reader most needs in order to decode a record off the
@@ -309,7 +325,13 @@ disputesValidatorBlueprint =
               Just
                 "ResolveDispute verdict outputIdx — the oracle admin records VerdictUpheld or \
                 \VerdictRejected, the dispute returns to this address with the verdict written and \
-                \its deposit released, and the deposit is paid to the address in the datum. \
+                \its deposit released, and the deposit is paid to the address in the datum. A \
+                \resolution may NOT name VerdictExpired: that constructor is the clock's, not a \
+                \decision. ExpireDispute outputIdx — after the dispute's own staleAfter deadline, \
+                \ANYONE may close an undecided dispute as VerdictExpired, with no signature and no \
+                \oracle read, and the deposit returns by the same rule as a resolution. It is the \
+                \protocol's only permissionless state transition and it exists so that a deposit \
+                \does not depend on the admin staying available. \
                 \Cleanup — permissionless dust removal for UTxOs whose datum does not parse as \
                 \protocol state, or names a dispute NFT the UTxO's own value does not hold; it fails \
                 \only when that NFT is actually there.",
@@ -324,10 +346,12 @@ disputesValidatorBlueprint =
                 Just
                   "CIP-68 datum carrying the dispute: its id, the attestation it contests, the \
                   \profile that opened it, when it was opened, the deposit AMOUNT ACTUALLY PAID and \
-                  \the address it returns to, the oracle token used to authenticate the verdict, and \
+                  \the address it returns to, the oracle token used to authenticate the verdict, the \
+                  \STALE-AFTER instant past which anyone may expire it, and \
                   \the verdict once set. The deposit amount is recorded here rather than read from \
                   \the oracle at resolution time, so that repricing the deposit cannot change what \
-                  \an open dispute is owed.",
+                  \an open dispute is owed; the deadline is recorded for the same reason, so that \
+                  \retiming the timeout cannot move the deadline of a dispute already open.",
               argumentPurpose = Set.singleton Spend,
               argumentSchema = definitionRef @(CIP68Datum OnchainDispute)
             },
@@ -371,8 +395,12 @@ oracleValidatorBlueprint =
               argumentDescription =
                 Just
                   "Inline datum with the operational parameters: the admin public key hash, the pause \
-                  \flag, the minimum UTxO value, and an optional fee configuration (fee address plus \
-                  \per-action amounts).",
+                  \flag, the minimum UTxO value, the dispute deposit charged to NEW disputes, the \
+                  \dispute timeout in milliseconds that fixes a new dispute's stale-after deadline, \
+                  \and an optional fee configuration (fee address plus \
+                  \per-action amounts). Every update is checked for well-formedness on chain: the \
+                  \three amounts may not be negative and the timeout may not be zero, since a \
+                  \dispute whose window is empty is expirable the block after it opens.",
               argumentPurpose = Set.singleton Spend,
               argumentSchema = definitionRef @OracleParams
             },

@@ -34,7 +34,6 @@ import GHC.Generics ()
 import GeniusYield.Types
   ( GYAddress,
     GYAssetClass,
-    GYPubKeyHash,
     GYRedeemer,
     GYScript,
     GYSimpleScript,
@@ -48,6 +47,11 @@ import GeniusYield.Types
     scriptToSerialisedScript,
   )
 import Palmares.Onchain.Protocol.Types (FeeConfig)
+-- `Credential` arrives from the ledger API rather than from a GY type because that is what the
+-- oracle datum holds and what `claimProofSkeleton` consumes; a GY wrapper here would be converted
+-- back at both ends. Same reasoning as 'FeeConfig' above, which is also an on-chain type used
+-- directly in an action.
+import PlutusLedgerApi.V1 (Credential)
 
 -------------------------------------------------------------------------------
 
@@ -420,7 +424,18 @@ data AdminActionType
   | -- | Minimum lovelace for protocol state outputs (oracle opMinUTxOValue)
     SetMinUTxOValueAction Integer
   | -- | Hand the oracle to a new admin — inherited fix #2.
-    RotateAdminAction GYPubKeyHash
+    --
+    -- __A 'Credential' and not a 'GYPubKeyHash' as of ADR 0005__, so a handover may target a native
+    -- multisig as well as a key. The 'Maybe' 'ClaimWitness' is how the INCOMING side proves control
+    -- when it is a script: @O5@ wants a spent input at the multisig's own address, and the witness
+    -- says how to spend it. A key target needs no witness — its proof is a signature — which is why
+    -- this is a 'Maybe' rather than two constructors.
+    RotateAdminAction Credential (Maybe ClaimWitness)
+  | -- | Hand the verdict-writing power to a new credential, leaving the admin alone — ADR 0005.
+    --
+    -- Same shape and the same @O5@ requirement as 'RotateAdminAction', because an unrotatable
+    -- arbiter would lock every open dispute's deposit the moment its credential is lost.
+    RotateArbiterAction Credential (Maybe ClaimWitness)
   | -- | Lovelace a NEW dispute must deposit (oracle opDisputeDeposit).
     --
     -- It cannot touch a dispute already open — that deposit is recorded in the dispute's own datum.
@@ -438,9 +453,10 @@ instance ToJSON AdminActionType where
   toJSON UnpauseProtocolAction = object ["tag" .= ("UnpauseProtocolAction" :: Text)]
   toJSON (SetFeesAction _) = object ["tag" .= ("SetFeesAction" :: Text)]
   toJSON (SetMinUTxOValueAction n) = object ["tag" .= ("SetMinUTxOValueAction" :: Text), "lovelace" .= n]
-  -- The new admin's hash is deliberately NOT serialized: this instance exists for logging and for
-  -- echoing an action back, and a rotation's log line has no business carrying the key.
-  toJSON (RotateAdminAction _) = object ["tag" .= ("RotateAdminAction" :: Text)]
+  -- The new credential is deliberately NOT serialized: this instance exists for logging and for
+  -- echoing an action back, and a rotation's log line has no business carrying it.
+  toJSON (RotateAdminAction _ _) = object ["tag" .= ("RotateAdminAction" :: Text)]
+  toJSON (RotateArbiterAction _ _) = object ["tag" .= ("RotateArbiterAction" :: Text)]
   toJSON (SetDisputeDepositAction n) = object ["tag" .= ("SetDisputeDepositAction" :: Text), "lovelace" .= n]
   toJSON (SetDisputeTimeoutAction ms) = object ["tag" .= ("SetDisputeTimeoutAction" :: Text), "milliseconds" .= ms]
 

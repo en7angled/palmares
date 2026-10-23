@@ -38,6 +38,7 @@ import GeniusYield.Types
 import Palmares.DomainTypes.Core.Actions
 import Palmares.Onchain.Protocol.Types (FeeConfig (..), OracleParams (..))
 import Palmares.TxBuilding.Lookups (queryOracleParams)
+import PlutusLedgerApi.V3 (Credential (PubKeyCredential))
 import PlutusTx.Prelude (isNothing)
 import Test.Helpers (assert, failedWithTrace, queryOracle)
 import Test.Tasty
@@ -81,7 +82,11 @@ oracleDeploymentTests =
       -- the deployment can silently get wrong, and 'opDisputeDeposit' is the price of opening a
       -- dispute — a zero there would make the deposit, which is the only thing bounding dispute
       -- spam, free.
-      assert (opAdminPkh oracleParams == userPlutusPkh (w1 testWallets))
+      assert (opAdmin oracleParams == PubKeyCredential (userPlutusPkh (w1 testWallets)))
+      -- ADR 0005 added this field, and the sentence above is exactly why it is asserted here: at
+      -- genesis the arbiter IS the admin, and a deployment that silently shipped them different
+      -- would hand verdict-writing to a credential nobody holds.
+      assert (opArbiter oracleParams == PubKeyCredential (userPlutusPkh (w1 testWallets)))
       assert (not (opPaused oracleParams))
       assert (isNothing (opFeeConfig oracleParams))
       assert (opMinUTxOValue oracleParams == 1_000_000)
@@ -181,7 +186,7 @@ oracleAdminTests =
       params1 <- queryOracle ctx
       assert (opDisputeDeposit params1 == 25_000_000)
       assert (opMinUTxOValue params1 == 1_000_000)
-      assert (opAdminPkh params1 == userPlutusPkh (w1 testWallets))
+      assert (opAdmin params1 == PubKeyCredential (userPlutusPkh (w1 testWallets)))
 
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Dispute deposit repriced, and nothing else moved."
 
@@ -233,7 +238,7 @@ oracleRotationTests =
     ]
   where
     -- Inherited fix #2, end to end. Before it, `OracleAdminAction` had no SetAdmin case and the
-    -- validator's whole-datum equality preserved `opAdminPkh` by construction — rotation was not
+    -- validator's whole-datum equality preserved the admin field by construction — rotation was not
     -- unimplemented, it was forbidden. These three cases are what make that a fix rather than a hope.
     rotateAndNewAdminActs :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     rotateAndNewAdminActs TestInfo {..} = do
@@ -242,12 +247,12 @@ oracleRotationTests =
       waitNSlots_ 1000
 
       params0 <- queryOracle ctx
-      assert (opAdminPkh params0 == userPlutusPkh (w1 testWallets))
+      assert (opAdmin params0 == PubKeyCredential (userPlutusPkh (w1 testWallets)))
 
       _ <- adminRotateInteraction ctx (w1 testWallets) (w2 testWallets)
       waitNSlots_ 1
       params1 <- queryOracle ctx
-      assert (opAdminPkh params1 == userPlutusPkh (w2 testWallets))
+      assert (opAdmin params1 == PubKeyCredential (userPlutusPkh (w2 testWallets)))
 
       -- The rotation is only real if the new key can actually act. Asserting the datum field alone
       -- would pass even if the validator refused every subsequent update.
@@ -280,7 +285,7 @@ oracleRotationTests =
       waitNSlots_ 1
       mustFailWith (failedWithTrace "O1") $
         void $
-          maliciousOracleUpdate ctx (w3 testWallets) (RotateAdminAction (User.userPkh (w3 testWallets)))
+          maliciousOracleUpdate ctx (w3 testWallets) (RotateAdminAction (PubKeyCredential (userPlutusPkh (w3 testWallets))) Nothing)
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Oracle seizure rejected (O1)."
 
     -- A HANDOVER IS TWO-SIDED, and only the outgoing side was ever checked. `O1` proved the current
@@ -299,7 +304,7 @@ oracleRotationTests =
       waitNSlots_ 1
       mustFailWith (failedWithTrace "O5") $
         void $
-          maliciousOracleUpdate ctx (w1 testWallets) (RotateAdminAction (User.userPkh (w2 testWallets)))
+          maliciousOracleUpdate ctx (w1 testWallets) (RotateAdminAction (PubKeyCredential (userPlutusPkh (w2 testWallets))) Nothing)
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A rotation the incoming admin did not sign was rejected (O5)."
 
 oracleNFTTests :: (HasCallStack) => TestTree

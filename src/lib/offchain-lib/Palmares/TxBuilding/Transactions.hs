@@ -14,6 +14,7 @@ import Data.Text
 import GeniusYield.TxBuilder
 import GeniusYield.Types
 import Palmares.Onchain.Protocol.Types (OracleParams (..), oracleParamsAreWellFormed)
+import PlutusLedgerApi.V1 (Credential (PubKeyCredential))
 import Text.Printf (printf)
 import Text.Printf qualified as Printf
 import Palmares.TxBuilding.Context (DeployedScriptsContext (..), ProviderCtx (..), TxBuildingContext (..), ctxProviders, deployedScriptsCtx, getNetworkId, providerCtx, runTx, runTx')
@@ -136,6 +137,42 @@ runActionWithPK txBuildingCtx@TxBuildingContext {..} skey action optionalRecipie
   txId <- submitTxAndWaitForConfirmation True (ctxProviders providerCtx) txSigned
   return (txId, mAssetClass)
 
+-- | Build the same transaction 'runActionWithPK' would, and stop before signing it.
+--
+-- __Why this exists: @O5@ cannot be satisfied by one process.__ A handover is two-sided, so the
+-- incoming admin has to witness a transaction that the outgoing admin built — and until this
+-- function existed, @rotate-admin@ went straight from build to sign to submit with a single key,
+-- which produced a transaction the chain refuses by construction. The audit's @OF-01@ is exactly
+-- that: the rotation command could not complete a rotation.
+--
+-- The hex it returns is the same shape the write routes hand a browser wallet
+-- ('interactionToHexEncodedCBOR'), which is why @sign-tx@ already knows how to read it: the
+-- two-party flow reuses the one-party plumbing rather than adding a second encoding.
+--
+-- The signing key is still required, and not as a formality — it determines the change address and
+-- therefore which UTxOs fund the transaction, so the built body is specific to the admin who will
+-- submit it.
+buildActionWithPK :: TxBuildingContext -> GYExtendedPaymentSigningKey -> ActionType -> IO String
+buildActionWithPK txBuildingCtx@TxBuildingContext {..} skey action = do
+  let my_addr = addressFromSkey providerCtx skey
+  let userAddrs = UserAddresses [my_addr] my_addr Nothing
+  runReaderT (interactionToHexEncodedCBOR (Interaction action userAddrs Nothing)) txBuildingCtx
+
+-- | Sign a transaction built elsewhere, add witnesses collected from other parties, and submit.
+--
+-- The other half of 'buildActionWithPK'. Witness sets merge, so the order of
+-- 'appendWitnessGYTx' against 'signGYTx' does not matter and neither does the order of the list.
+--
+-- It takes a transaction rather than rebuilding one, and that is the whole point: a witness signs a
+-- BODY HASH, so a rebuild — even of the same action, even seconds later — can select different
+-- inputs and invalidate every signature already collected. Whatever was signed must be what is
+-- submitted.
+submitSignedTxWithWitnesses :: ProviderCtx -> GYExtendedPaymentSigningKey -> GYTx -> [GYTxWitness] -> IO GYTxId
+submitSignedTxWithWitnesses pCtx skey tx witnesses = do
+  -- Qualified: this module imports `Data.Text` unqualified, which brings its own `foldr`.
+  let txSigned = Prelude.foldr appendWitnessGYTx (signGYTx tx [skey]) witnesses
+  submitTxAndWaitForConfirmation True (ctxProviders pCtx) txSigned
+
 ------------------------------------------------------------------------------------------------
 
 -- * Reference Script Deployment
@@ -206,7 +243,11 @@ mintOracleNFTAndLockDatum providerCtx skey adminPKH = do
   -- instance, which is the builder refusing to let arbitrary effects into transaction construction.
   let initialOracleParams =
         OracleParams
-          { opAdminPkh = paymentKeyHashToPlutus adminPKH,
+          { -- Both credentials start as the SAME key, which is what makes `opArbiter` free for an
+            -- operator who does not want the split: a deployment that never rotates it behaves
+            -- exactly as one field would. Splitting them later is `rotate-arbiter`, not a redeploy.
+            opAdmin = PubKeyCredential (paymentKeyHashToPlutus adminPKH),
+            opArbiter = PubKeyCredential (paymentKeyHashToPlutus adminPKH),
             opPaused = False,
             opFeeConfig = Nothing,
             opMinUTxOValue = 1000000,

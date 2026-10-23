@@ -67,7 +67,7 @@ import PlutusLedgerApi.V1.Value (AssetClass (..))
 import PlutusLedgerApi.V1.Value qualified as V1
 import PlutusLedgerApi.V3
   ( Address (..),
-    Credential (PubKeyCredential),
+    Credential (PubKeyCredential, ScriptCredential),
     Datum (..),
     Lovelace (..),
     OutputDatum (NoOutputDatum, OutputDatum),
@@ -158,7 +158,8 @@ protocolParamsFixture =
 oracleParamsFixture :: OracleParams
 oracleParamsFixture =
   OracleParams
-    { opAdminPkh = adminPkh,
+    { opAdmin = PubKeyCredential adminPkh,
+      opArbiter = PubKeyCredential adminPkh,
       opPaused = False,
       opFeeConfig = Nothing,
       opMinUTxOValue = minUTxOLv,
@@ -315,6 +316,25 @@ resolvedOutputValue = V1.assetClassValue openDisputeAC 1 <> minLvValue
 disputeInputWith :: V1.Value -> TxInInfo
 disputeInputWith val = TxInInfo disputeInputRef (txOut disputesAddr val (inlineOf openDisputeDatum))
 
+-- | A native multisig standing in for the arbiter — ADR 0005 made 'opArbiter' a 'Credential'.
+arbiterSH :: ScriptHash
+arbiterSH = ScriptHash "\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167\167"
+
+-- | A UTxO at the arbiter script's own address. Spending it is how a script proves control, since a
+-- script cannot appear in @txInfoSignatories@.
+arbiterInput :: TxInInfo
+arbiterInput = TxInInfo (txOutRefAt 11) (txOut (scriptHashAddress arbiterSH) minLvValue NoOutputDatum)
+
+-- | A good resolution whose oracle names a SCRIPT arbiter, with whatever inputs the case supplies
+-- beside the dispute. Nothing signs: that is the point.
+scriptArbiterSettling :: [TxInInfo] -> TxInfo
+scriptArbiterSettling extraInputs =
+  (settling goodSettlement)
+    { txInfoInputs = disputeInputWith disputeInputValue : extraInputs,
+      txInfoReferenceInputs = [oracleRefInput oracleParamsFixture {opArbiter = ScriptCredential arbiterSH}],
+      txInfoSignatories = []
+    }
+
 -- | The dispute coming back at the script with a verdict written on it, at whatever value.
 resolvedOutputOf :: Verdict -> V1.Value -> Address -> TxOut
 resolvedOutputOf verdict val addr = txOut addr val (inlineOf (resolvedDatum verdict))
@@ -398,6 +418,25 @@ resolveTests =
       -- thing left to refuse it.
       testCase "an admin cannot resolve a dispute as EXPIRED — only the clock writes that (Da)" $
         runResolve VerdictExpired 0 (settling goodSettlement {settledVerdict = VerdictExpired})
+          @?= False,
+      -- ---------------------------------------------------------------------------------------
+      -- D1 AFTER ADR 0005. The rule reads `opArbiter`, a `Credential`, through
+      -- `checkCredentialControl` — so proof of control has two shapes, and every case above is the
+      -- key one. These three are the script shape, which is the entire reason the field is a
+      -- credential rather than a key hash: a native multisig cannot sign, it proves control by
+      -- having one of its own UTxOs spent in the same transaction.
+      --
+      -- `UnitTests.Claim` pins `checkCredentialControl` itself on both branches. What these add is
+      -- the COMPOSITION — that `D1` actually routes through it, against a real resolution context.
+      testCase "a SCRIPT arbiter resolves by spending a UTxO at its own address (D1, ADR 0005)" $
+        runResolve VerdictUpheld 0 (scriptArbiterSettling [arbiterInput]) @?= True,
+      testCase "a SCRIPT arbiter with no input of its own cannot resolve (D1, ADR 0005)" $
+        runResolve VerdictUpheld 0 (scriptArbiterSettling []) @?= False,
+      -- And a signature is not a substitute. This is the shape that would quietly re-open the hole
+      -- `checkCredentialControl` was written to close: if anybody's signature satisfied a script
+      -- credential, every script arbiter would be impersonable.
+      testCase "signing does not stand in for a script arbiter's own input (D1)" $
+        runResolve VerdictUpheld 0 (scriptArbiterSettling []) {txInfoSignatories = [adminPkh, strangerPkh]}
           @?= False,
       -- ---------------------------------------------------------------------------------------
       -- D2, FIRST ELEMENT: the output datum must be the RESOLVED one the validator computed.
@@ -929,7 +968,7 @@ oracleReturnTests =
         runOracleUpdate
           0
           goodOracleInfo
-            {txInfoOutputs = [oracleUTxO pausedParams {opAdminPkh = strangerPkh} oracleInputValue oracleAddr]}
+            {txInfoOutputs = [oracleUTxO pausedParams {opAdmin = PubKeyCredential strangerPkh} oracleInputValue oracleAddr]}
           @?= False,
       -- The NFT must stay locked, which is what "at least the same value" is for: drop it and the
       -- oracle ceases to exist, and every `readOracleParams` in the protocol traces K1 for ever.

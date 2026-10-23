@@ -53,7 +53,6 @@ import PlutusLedgerApi.V1.Value (geq)
 import PlutusLedgerApi.V3
 import PlutusTx
 import PlutusTx.Blueprint
-import PlutusTx.List qualified
 import PlutusTx.Prelude
 import Prelude qualified
 
@@ -150,7 +149,13 @@ disputesLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) scriptInfo
                       -- because "already resolved" and "wrong output" are different mistakes; the same
                       -- argument as the attestation path's A3.
                       && traceIfFalse "D3" (disputeVerdict dispute == Nothing) -- Already resolved (D3)
-                      && traceIfFalse "D1" (PlutusTx.List.elem (opAdminPkh oracle) txInfoSignatories) -- Oracle admin must sign (D1)
+                      -- READS 'opArbiter' AND NOT 'opAdmin' — ADR 0005. Writing a verdict and
+                      -- repricing the protocol are different powers: this one is operational and
+                      -- repeated, the other rare and catastrophic. Held in one credential, a cold
+                      -- multisig admin would make every verdict cost that multisig a UTxO spend,
+                      -- because proof of control for a script is a spent input. Genesis sets the two
+                      -- fields equal, so splitting them costs nothing until somebody wants it.
+                      && traceIfFalse "D1" (Utils.checkCredentialControl (opArbiter oracle) txInfoSignatories txInfoInputs) -- Arbiter must prove control (D1)
                       -- A RESOLUTION IS A FINDING, and 'VerdictExpired' is not one.
                       --
                       -- `Verdict` is an unconstrained redeemer argument on this arm, so appending a

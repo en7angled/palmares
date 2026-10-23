@@ -61,18 +61,31 @@ makeIsDataSchemaIndexed ''FeeConfig [('FeeConfig, 0)]
 -- | Mutable operational parameters stored in the oracle UTxO datum.
 -- Read as a reference input by the MintingPolicy at execution time.
 data OracleParams = OracleParams
-  { -- | Admin public key hash. Rotated by 'OracleSetAdmin', __signed by the current admin__.
+  { -- | Who may change these parameters. Rotated by 'OracleSetAdmin', and that rotation needs
+    -- __both__ sides to prove control (@O1@ and @O5@).
     --
-    -- This field said "can rotate itself" for a long time while that was false in the strong sense:
-    -- 'OracleAdminAction' had no @SetAdmin@ case, and the validator requires the output datum to
-    -- equal @applyOracleAdminAction action@ of the current one, which preserved this field by
-    -- construction. Rotation was not unimplemented, it was forbidden. Inherited fix #2 added the
-    -- case, and the validator needed no change — which is what tells you it was written correctly.
+    -- __A 'Credential' and not a 'PubKeyHash', decided before the first kept deployment (ADR 0005).__
+    -- 'Palmares.Onchain.Utils.checkCredentialControl' reads a key credential as a signature and a
+    -- script credential as a spent input at its own address, so one field expresses both a plain
+    -- wallet key and a native multisig — and @PubKeyCredential@ is byte-for-byte the old behaviour,
+    -- which is what makes "start on one key, move to a multisig later" a rotation rather than a
+    -- redeploy. The shape this replaced is the one that foreclosed that: a 'PubKeyHash' cannot name
+    -- a script, so the upgrade would have needed a new datum format, which after deployment means a
+    -- new registry.
     --
-    -- What rotation does and does not buy: a key still held can be handed on, so compromise is
-    -- recoverable while you notice in time; a key already lost is not, because the rotation itself
-    -- needs its signature.
-    opAdminPkh :: PubKeyHash,
+    -- __Why not an authority NFT.__ A token admin makes handover a plain send, which is exactly the
+    -- property you do not want at the root of trust: one phishing signature transfers it
+    -- irreversibly, a lost token has no seed phrase, every admin action must spend and return it
+    -- (min-ADA, an extra input and output, and a contention point between concurrent actions), and
+    -- @O5@ would be gone, so a mistyped address bricks the protocol with no second side to check.
+    -- It is also the failure mode @OC-03@ already records elsewhere in this protocol — authority
+    -- tokens locked inside state outputs. A 'ScriptCredential' can point at a script that gates on
+    -- an NFT, so this shape CONTAINS that one; the reverse is not true.
+    --
+    -- What rotation does and does not buy: a credential still controlled can be handed on, so
+    -- compromise is recoverable while you notice in time; one already lost is not, because the
+    -- rotation itself needs its proof.
+    opAdmin :: Credential,
     -- | Protocol pause switch
     opPaused :: Bool,
     -- | Optional fee configuration
@@ -111,7 +124,28 @@ data OracleParams = OracleParams
     -- is redeemer data bounded only by @Md6@'s window — 'Palmares.Onchain.Utils.maxDateWindow',
     -- 14.4 hours — so an opener can shift their own deadline by up to that much. Immaterial against
     -- 30 days; it matters if anyone ever configures a timeout measured in hours.
-    opDisputeTimeoutMs :: Integer
+    opDisputeTimeoutMs :: Integer,
+    -- | Who may write a dispute verdict (@D1@). Rotated by 'OracleSetArbiter'.
+    --
+    -- __Separate from 'opAdmin' because the two powers have different blast radii and different
+    -- frequencies.__ Setting parameters is rare and catastrophic to get wrong; writing verdicts is
+    -- operational and repeated. Holding both in one credential forces one key hygiene on both: put
+    -- the admin in a cold multisig and every verdict then costs a UTxO spend by that multisig,
+    -- because @D1@ reads the same field through the same
+    -- 'Palmares.Onchain.Utils.checkCredentialControl'.
+    --
+    -- __Set equal to 'opAdmin' at genesis__ ('Palmares.TxBuilding.Transactions'), so the field costs
+    -- nothing to anyone who does not want the split — it is one extra credential in a datum that is
+    -- read as a reference input, never per-transaction work. Appended last, and appended rather than
+    -- inserted, for the reason 'OracleSetAdmin' documents: field order here is a data contract from
+    -- the first kept deployment onward.
+    --
+    -- It is rotatable for the reason 'opAdmin' is, and the reason is not symmetry: an arbiter
+    -- credential that could not be rotated would reintroduce @OC-01@ in the half of the protocol
+    -- that holds other people's money. Lose it and no dispute can ever be resolved, so every open
+    -- deposit is locked forever — which is precisely the outcome the 'Credential' change above
+    -- exists to make recoverable.
+    opArbiter :: Credential
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
@@ -129,13 +163,17 @@ data OracleAdminAction
     --
     -- Its absence did not merely leave rotation unimplemented, it __forbade__ it: the validator
     -- requires the output datum to equal @applyOracleAdminAction action@ of the current one, and
-    -- without this case that function preserves 'opAdminPkh' by construction. So the validator needs
+    -- without this case that function preserves 'opAdmin' by construction. So the validator needs
     -- no change at all; making this function able to express the change is the whole fix, and it is
     -- that cheap because the validator was written correctly.
     --
     -- Appended at index 4, never inserted: the four indices above are a deployed-data contract from
     -- the first deployment onward.
-    OracleSetAdmin PubKeyHash
+    --
+    -- __Takes a 'Credential' as of ADR 0005__, so the target of a handover may be a native multisig
+    -- as well as a key. @O5@ proves control of it rather than asking for a signature, which is the
+    -- same change and the reason a script target is checkable at all.
+    OracleSetAdmin Credential
   | -- | Reprice the dispute deposit for NEW disputes.
     --
     -- Here for the same reason 'OracleSetMinUTxOValue' is: a protocol constant that cannot be
@@ -149,6 +187,13 @@ data OracleAdminAction
     -- cannot move a dispute already open: that clock is in the dispute's own datum. Appended at
     -- index 6.
     OracleSetDisputeTimeout Integer
+  | -- | Hand the verdict-writing power to a new credential, leaving 'opAdmin' alone.
+    --
+    -- Appended at index 7. It exists because 'opArbiter' exists, and for the reason stated there:
+    -- an unrotatable arbiter is @OC-01@ reintroduced over the disputes' deposits. @O5@ covers this
+    -- action too — a handover is two-sided whichever power is handed over, and the arbiter is the
+    -- one whose loss locks other people's money rather than merely freezing the parameters.
+    OracleSetArbiter Credential
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
 
@@ -160,7 +205,8 @@ makeIsDataSchemaIndexed
     ('OracleSetMinUTxOValue, 3),
     ('OracleSetAdmin, 4),
     ('OracleSetDisputeDeposit, 5),
-    ('OracleSetDisputeTimeout, 6)
+    ('OracleSetDisputeTimeout, 6),
+    ('OracleSetArbiter, 7)
   ]
 
 -- | Apply an admin action to current oracle params to obtain the new params.
@@ -171,9 +217,10 @@ applyOracleAdminAction OraclePause params = params {opPaused = True}
 applyOracleAdminAction OracleUnpause params = params {opPaused = False}
 applyOracleAdminAction (OracleSetFees mFeeConfig) params = params {opFeeConfig = mFeeConfig}
 applyOracleAdminAction (OracleSetMinUTxOValue lovelace) params = params {opMinUTxOValue = lovelace}
-applyOracleAdminAction (OracleSetAdmin newAdmin) params = params {opAdminPkh = newAdmin}
+applyOracleAdminAction (OracleSetAdmin newAdmin) params = params {opAdmin = newAdmin}
 applyOracleAdminAction (OracleSetDisputeDeposit lovelace) params = params {opDisputeDeposit = lovelace}
 applyOracleAdminAction (OracleSetDisputeTimeout ms) params = params {opDisputeTimeoutMs = ms}
+applyOracleAdminAction (OracleSetArbiter newArbiter) params = params {opArbiter = newArbiter}
 
 -- | Are these oracle params usable at all?
 --
@@ -188,13 +235,19 @@ applyOracleAdminAction (OracleSetDisputeTimeout ms) params = params {opDisputeTi
 -- @disputeNFT + (-5 ADA) + 5 ADA@, whose lovelace component is zero, so @Md5@ accepts a dispute
 -- UTxO holding only the ledger's own minimum while its datum still records a 5 ADA deposit. At
 -- resolution @ownValue - depositValue@ is negative, so @D2@ is vacuous too — and @D4@ still demands
--- 5 ADA at @disputeDepositTo@, funded by whoever builds the transaction, which @D1@ says is the
--- admin. About 3.8 ADA out of the admin's pocket per dispute, repeatable by anyone who opens one.
+-- 5 ADA at @disputeDepositTo@, funded by whoever builds the transaction, which @D1@ says controls
+-- 'opArbiter'. About 3.8 ADA out of the arbiter's pocket per dispute, repeatable by anyone who
+-- opens one.
 --
 -- So it is a foot-gun to set and an attack once set, which is the combination worth one check. It
--- is checked on the RESULT rather than per action, so it covers all seven actions and every future
+-- is checked on the RESULT rather than per action, so it covers all eight actions and every future
 -- one by construction — the same reason @O2@ compares the output datum against this function's
 -- result instead of re-deriving each field.
+--
+-- It deliberately says NOTHING about 'opAdmin' or 'opArbiter'. A credential cannot be ill-formed:
+-- any 28 bytes are a possible key or script hash, and whether anybody controls them is not a
+-- property of the datum. That question belongs to @O5@, answered by proof of control at rotation
+-- time rather than by inspection here — which is the only place it CAN be answered.
 --
 -- Zero is permitted for the first two: a zero @opDisputeDeposit@ is a deliberate configuration
 -- (disputes free to open), and a zero @opMinUTxOValue@ simply defers to the ledger's own minimum,

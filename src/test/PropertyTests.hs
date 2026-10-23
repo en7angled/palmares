@@ -30,7 +30,7 @@
 module PropertyTests (propertyTests) where
 
 import Data.ByteString qualified as BS
-import GeniusYield.Types (GYPubKeyHash, pubKeyHashFromPlutus)
+import GeniusYield.Types (GYPubKeyHash, pubKeyHashFromPlutus, pubKeyHashToPlutus)
 import Palmares.DomainTypes.Core.Actions (AdminActionType (..))
 import Palmares.Onchain.CIP68 (CIP68Datum (..), MetadataFields (..))
 import Palmares.Onchain.Protocol.Types
@@ -49,7 +49,7 @@ import Palmares.Onchain.Protocol.Types
 import Palmares.TxBuilding.Operations (adminActionToOracleAdminAction, applyAdminAction)
 import Palmares.TxBuilding.Validators (blueprintProtocolParams)
 import PlutusLedgerApi.V1.Value (AssetClass (..), CurrencySymbol (..), TokenName (..))
-import PlutusLedgerApi.V3 (Address (..), Credential (PubKeyCredential), POSIXTime (..), PubKeyHash (..))
+import PlutusLedgerApi.V3 (Address (..), Credential (PubKeyCredential, ScriptCredential), POSIXTime (..), PubKeyHash (..), ScriptHash (..))
 import PlutusTx (Data (..), FromData, ToData, builtinDataToData, fromBuiltinData, toBuiltinData)
 import PlutusTx.Builtins (toBuiltin)
 import Test.Fixtures (parsingDisputeDatum)
@@ -81,10 +81,13 @@ oracleMirrorTests =
       testCase "every admin action produces the same OracleParams on both sides" $
         mapM_ mirrorsOn [paramsNoFees, paramsWithFees],
       -- The table is only a property if it is exhaustive, and nothing in the type system says it is.
-      -- This is the line that fails when a seventh admin action is added: the new constructor has no
+      -- This is the line that fails when a ninth admin action is added: the new constructor has no
       -- row above, so its two implementations are free to disagree.
-      testCase "the table covers all six OracleAdminAction constructors" $
-        map (constructorIndexOf . adminActionToOracleAdminAction) allAdminActions @?= [0, 1, 2, 2, 3, 4, 5, 6],
+      --
+      -- Two entries map to index 2 because 'SetFeesAction' is listed twice, with and without a
+      -- config. The list is the enumeration; the indices are what it proves.
+      testCase "the table covers all eight OracleAdminAction constructors" $
+        map (constructorIndexOf . adminActionToOracleAdminAction) allAdminActions @?= [0, 1, 2, 2, 3, 4, 5, 6, 7],
       -- And the redeemer the off-chain side sends is the action the on-chain side applies. A swap
       -- here — pause mapped to unpause — would keep the mirror above intact (both sides would be
       -- wrong together) while inverting what the admin asked for.
@@ -117,9 +120,12 @@ oracleMirrorTests =
         SetFeesAction Nothing,
         SetFeesAction (Just feeConfig),
         SetMinUTxOValueAction 7_654_321,
-        RotateAdminAction newAdminGY,
+        RotateAdminAction (PubKeyCredential (pubKeyHashToPlutus newAdminGY)) Nothing,
         SetDisputeDepositAction 12_345_678,
-        SetDisputeTimeoutAction 2_592_000_000
+        SetDisputeTimeoutAction 2_592_000_000,
+        -- ADR 0005. Appended for the reason the comment above gives: this list IS the test, so an
+        -- action missing from it is an index mirror and an apply mirror that quietly say nothing.
+        RotateArbiterAction (ScriptCredential (ScriptHash (toBuiltin (BS.replicate 28 0x5c)))) Nothing
       ]
 
 -------------------------------------------------------------------------------
@@ -202,7 +208,8 @@ feeConfig =
 paramsNoFees :: OracleParams
 paramsNoFees =
   OracleParams
-    { opAdminPkh = PubKeyHash (toBuiltin (BS.replicate 28 0x22)),
+    { opAdmin = PubKeyCredential (PubKeyHash (toBuiltin (BS.replicate 28 0x22))),
+      opArbiter = PubKeyCredential (PubKeyHash (toBuiltin (BS.replicate 28 0x22))),
       opPaused = False,
       opFeeConfig = Nothing,
       opMinUTxOValue = 1_000_000,

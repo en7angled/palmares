@@ -19,7 +19,7 @@ import Data.ByteString.Char8 qualified as LSB8
 import Data.ByteString.Lazy qualified as B
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
-import Palmares.DomainTypes.Core.Actions (AdminActionType (..), ProfileActionType (..), ProfileData (..), ProtocolActionType (..))
+import Palmares.DomainTypes.Core.Actions (AdminActionType (..), ClaimWitness, ProfileActionType (..), ProfileData (..), ProtocolActionType (..))
 import Data.List (intercalate)
 import Palmares.DomainTypes.Core.Types (AttestationType (..), ProfileType (..), attestationTypeText, parseAttestationType, parseProfileType, profileTypeText)
 import GeniusYield.GYConfig
@@ -72,7 +72,9 @@ data Command
   | SetMinUTxOValue Integer
   | SetDisputeDeposit Integer
   | SetDisputeTimeout Integer
-  | RotateAdmin GYPubKeyHash
+  | RotateAdmin RotateArgs
+  | RotateArbiter RotateArgs
+  | SubmitTx SubmitTxArgs
   | QueryOracle
   | UpdateProfile UpdateProfileArgs
   | IssueAttestation IssueAttestationArgs
@@ -80,7 +82,50 @@ data Command
   | CleanupDust
   | NewOperatorKey
   | OperatorAddress
-  | SignTx
+  | -- | Which mnemonic to witness with; 'Nothing' is @operation.prv@.
+    --
+    -- __Added with the two-party handover (ADR 0005).__ @O5@ needs the INCOMING side's witness, and
+    -- the incoming side is normally a different person on a different machine with their own
+    -- @operation.prv@ — so the default is right and stays the default. On ONE machine it was not:
+    -- the only way to sign as the other party was to move @operation.prv@ aside and put the other
+    -- key in its place, which is a manual file swap around the file that controls the protocol.
+    -- @new-operator-key@ already refuses to overwrite that file for the same reason.
+    SignTx (Maybe FilePath)
+  deriving (Show)
+
+-- | What a handover needs: who is taking over, and whether to stop before signing.
+--
+-- Shared by @rotate-admin@ and @rotate-arbiter@ because the two differ only in which field moves.
+data RotateArgs = RotateArgs
+  { -- | The incoming credential. A key hash unless @--script@ says the same 28 bytes are a script.
+    rotCredential :: Credential,
+    -- | Print the unsigned transaction and stop, instead of signing and submitting it.
+    --
+    -- __The default is the one that cannot work alone.__ @O5@ requires the INCOMING side to prove
+    -- control in the same transaction, and this process holds only the outgoing key, so building,
+    -- signing and submitting in one go produces a transaction the chain refuses — which is what
+    -- @rotate-admin@ did before this flag existed. So the flagless form now REFUSES rather than
+    -- submitting something doomed, and says which two commands finish the job.
+    rotBuildOnly :: Bool,
+    -- | How the INCOMING side proves control, when its credential is a script. Unused for a key.
+    rotIncomingWitness :: Maybe ClaimWitness,
+    -- | How the CURRENT admin proves control, when 'OracleParams.opAdmin' is already a script.
+    --
+    -- Only the two rotation commands take this. The other six admin commands pass 'Nothing' and so
+    -- assume a key admin, which is every deployment at genesis; wiring the same flag into them is
+    -- mechanical and waits for somebody who needs it. Rotation is the one that cannot wait, because
+    -- it is how you get back to a key.
+    rotAdminWitness :: Maybe ClaimWitness
+  }
+  deriving (Show)
+
+-- | Submit a transaction built earlier, with witnesses collected from other parties.
+data SubmitTxArgs = SubmitTxArgs
+  { -- | File holding the hex CBOR that @--build-only@ printed.
+    staTxFile :: FilePath,
+    -- | Files holding witness hex, one per co-signer, as @sign-tx@ prints it. Repeatable.
+    staWitnessFiles :: [FilePath]
+  }
   deriving (Show)
 
 data SetFeesArgs
@@ -229,6 +274,62 @@ parseAssetClass s = Aeson.decode (B.fromStrict (LSB8.pack s))
 parsePubKeyHash :: String -> Maybe GYPubKeyHash
 parsePubKeyHash s = Aeson.decode (B.fromStrict (LSB8.pack ("\"" <> s <> "\"")))
 
+-- | A 'ClaimWitness' straight from its own wire form, which is the laziest correct reader: the type
+-- already has the tagged 'FromJSON' that @\/claim-credential@ takes, so all three shapes — @key@,
+-- @simple_script@, @plutus_script@ — arrive with no new parsing code and no second encoding to keep
+-- in step.
+parseClaimWitnessJSON :: String -> Maybe ClaimWitness
+parseClaimWitnessJSON = Aeson.decode . B.fromStrict . LSB8.pack
+
+-- | The incoming side of a handover: 28 bytes, plus whether they name a script.
+--
+-- __A flag and not a prefix, because the bytes do not say.__ A payment credential is a 28-byte
+-- blake2b hash either way; only the address header distinguishes a key hash from a script hash, and
+-- a bare hash has no header. Guessing would be worse than asking: handing the oracle to
+-- @PubKeyCredential h@ when @h@ is a script hash brings the protocol to a stop that only @O5@
+-- prevents — which is exactly why @O5@ exists and why this flag must be explicit.
+rotateArgsParser :: Parser RotateArgs
+rotateArgsParser =
+  RotateArgs
+    <$> ( credentialFrom
+            <$> option
+              (maybeReader parsePubKeyHash)
+              ( long "new-credential"
+                  <> metavar "HASH28_HEX"
+                  <> help "The 28-byte hex hash of the credential taking over"
+              )
+            <*> switch
+              ( long "script"
+                  <> help "Those bytes are a SCRIPT hash (e.g. a native multisig), not a key hash"
+              )
+        )
+    <*> switch
+      ( long "build-only"
+          <> help "Print the unsigned transaction hex and stop, for the incoming side to sign with sign-tx"
+      )
+    <*> optional
+      ( option
+          (maybeReader parseClaimWitnessJSON)
+          ( long "incoming-witness"
+              <> metavar "FILE_OR_JSON"
+              <> help "How a SCRIPT incoming credential proves control: {\"tag\":\"simple_script\",\"script\":…}"
+          )
+      )
+    <*> optional
+      ( option
+          (maybeReader parseClaimWitnessJSON)
+          ( long "admin-witness"
+              <> metavar "FILE_OR_JSON"
+              <> help "How the CURRENT admin proves control, if it is already a script credential"
+          )
+      )
+  where
+    credentialFrom pkh isScript =
+      let raw = pubKeyHashToPlutus pkh
+       in if isScript
+            then ScriptCredential (ScriptHash (getPubKeyHash raw))
+            else PubKeyCredential raw
+
 -- Asset class parser
 assetClassParser :: Parser GYAssetClass
 assetClassParser =
@@ -286,12 +387,20 @@ commandParser =
         <> command
           "sign-tx"
           ( info
-              (pure SignTx)
+              ( SignTx
+                  <$> optional
+                    ( strOption
+                        ( long "key-file"
+                            <> metavar "FILE"
+                            <> help "Mnemonic file to sign with. Default operation.prv"
+                        )
+                    )
+              )
               ( progDesc
                   "Reads an unsigned transaction's CBOR hex on STDIN and writes the CIP-30 witness set CBOR hex \
-                  \to STDOUT, signed with operation.prv. Nothing else goes to STDOUT. No provider and no \
-                  \deployed-validators config: this is the signer scripts/smoke_attest_flow.sh takes as \
-                  \PALMARES_SIGN_CMD."
+                  \to STDOUT, signed with operation.prv unless --key-file says otherwise. Nothing else goes to \
+                  \STDOUT. No provider and no deployed-validators config: this is the signer \
+                  \scripts/smoke_attest_flow.sh takes as PALMARES_SIGN_CMD."
               )
           )
         <> command
@@ -452,16 +561,46 @@ commandParser =
         <> command
           "rotate-admin"
           ( info
-              ( RotateAdmin
-                  <$> option
-                    (maybeReader parsePubKeyHash)
-                    ( long "new-admin"
-                        <> metavar "PUBKEYHASH_HEX"
-                        <> help "The 28-byte hex key hash of the role taking over the oracle"
-                    )
+              (RotateAdmin <$> rotateArgsParser)
+              ( progDesc
+                  "Hand the oracle to a new admin. Two steps: --build-only here, sign-tx by the incoming side, then submit-tx"
+              )
+          )
+        -- ADR 0005. Separate from the admin because writing verdicts and repricing the protocol are
+        -- different powers with different blast radii; genesis sets them to the same credential, so
+        -- this command is what makes the split real for an operator who wants it.
+        <> command
+          "rotate-arbiter"
+          ( info
+              (RotateArbiter <$> rotateArgsParser)
+              ( progDesc
+                  "Hand the dispute-verdict power to a new credential, leaving the admin alone. Same two steps as rotate-admin"
+              )
+          )
+        -- The other half of --build-only, and the reason the two-party flow needs no new encoding:
+        -- the tx hex is what the write routes already hand a wallet, and the witness hex is what
+        -- sign-tx already prints.
+        <> command
+          "submit-tx"
+          ( info
+              ( SubmitTx
+                  <$> ( SubmitTxArgs
+                          <$> strOption
+                            ( long "tx"
+                                <> metavar "FILE"
+                                <> help "File holding the hex CBOR printed by a --build-only run"
+                            )
+                          <*> many
+                            ( strOption
+                                ( long "witness"
+                                    <> metavar "FILE"
+                                    <> help "File holding witness hex from sign-tx. Repeat once per co-signer"
+                                )
+                            )
+                      )
               )
               ( progDesc
-                  "Hand the oracle to a new admin (signed by the CURRENT admin; afterwards operation.prv no longer controls it)"
+                  "Sign a transaction built earlier with operation.prv, attach collected witnesses, and submit it"
               )
           )
         <> command
@@ -576,7 +715,7 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   -- this one enumerates, so omitting them made it non-exhaustive, which is what `-Wall` reported.
   NewOperatorKey -> pure () -- Handled in main before provider loading
   OperatorAddress -> pure () -- Handled in main before provider loading
-  SignTx -> pure () -- Handled in main before provider loading
+  SignTx _ -> pure () -- Handled in main before provider loading
   DeployReferenceScripts -> do
     printYellow "Deploying reference scripts..."
     deployedScriptsCtx <- deployReferenceScripts (providerCtx txBuildingCtx) signKey
@@ -585,37 +724,45 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   -- Oracle admin commands — routed through the Interaction pipeline
   PauseProtocol -> do
     printYellow "Pausing protocol..."
-    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction PauseProtocolAction) Nothing
+    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction PauseProtocolAction Nothing) Nothing
     printGreen $ "Protocol paused successfully! TxId: " <> show txId
   UnpauseProtocol -> do
     printYellow "Unpausing protocol..."
-    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction UnpauseProtocolAction) Nothing
+    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction UnpauseProtocolAction Nothing) Nothing
     printGreen $ "Protocol unpaused successfully! TxId: " <> show txId
   SetFees args -> do
     printYellow "Updating fee configuration..."
     let adminAction = setFeesToAdminAction args
-    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction adminAction) Nothing
+    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction adminAction Nothing) Nothing
     printGreen $ "Fee configuration updated successfully! TxId: " <> show txId
   SetMinUTxOValue n -> do
     printYellow $ "Setting min UTxO value to " <> show n <> " lovelace..."
-    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (SetMinUTxOValueAction n)) Nothing
+    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (SetMinUTxOValueAction n) Nothing) Nothing
     printGreen $ "Min UTxO value updated successfully! TxId: " <> show txId
   SetDisputeDeposit n -> do
     printYellow $ "Setting dispute deposit to " <> show n <> " lovelace..."
-    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (SetDisputeDepositAction n)) Nothing
+    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (SetDisputeDepositAction n) Nothing) Nothing
     printGreen $ "Dispute deposit updated successfully! TxId: " <> show txId
   SetDisputeTimeout ms -> do
     printYellow $ "Setting the stale-dispute clock to " <> show ms <> " ms (" <> show (ms `div` 86_400_000) <> " days)..."
     printYellow "Disputes already open keep their own deadline: it is recorded in each dispute's datum at open time."
-    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (SetDisputeTimeoutAction ms)) Nothing
+    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (SetDisputeTimeoutAction ms) Nothing) Nothing
     printGreen $ "Dispute timeout updated successfully! TxId: " <> show txId
   -- Inherited fix #2. Signed by the CURRENT admin, which is what the oracle validator's O1 requires,
   -- so this command is also the only proof that the key in `operation.prv` is still the live one.
-  RotateAdmin newAdmin -> do
-    printYellow $ "Rotating the oracle admin to " <> show newAdmin <> " ..."
-    printYellow "This is signed by the CURRENT admin. After it confirms, operation.prv no longer controls the oracle."
-    (txId, _) <- runActionWithPK txBuildingCtx signKey (AdminAction (RotateAdminAction newAdmin)) Nothing
-    printGreen $ "Oracle admin rotated successfully! TxId: " <> show txId
+  RotateAdmin args -> runRotation txBuildingCtx signKey "admin" RotateAdminAction args
+  RotateArbiter args -> runRotation txBuildingCtx signKey "arbiter" RotateArbiterAction args
+  SubmitTx args -> do
+    -- Stripped for the same reason `sign-tx` strips its stdin: a human will have produced these
+    -- files with a shell redirect, and a trailing newline is not part of the hex.
+    let readHexFile what path parse = do
+          hex <- T.unpack . T.strip <$> T.readFile path
+          maybe (die ("submit-tx: " <> path <> " is not " <> what <> ".")) return (parse hex)
+    tx <- readHexFile "a transaction's CBOR hex, as --build-only prints it" (staTxFile args) txFromHex
+    witnesses <- mapM (\p -> readHexFile "a witness hex, as sign-tx prints it" p txWitFromHex) (staWitnessFiles args)
+    printYellow $ "Submitting with " <> show (length witnesses) <> " collected witness(es) plus this key's ..."
+    txId <- submitSignedTxWithWitnesses (providerCtx txBuildingCtx) signKey tx witnesses
+    printGreen $ "Submitted and confirmed! TxId: " <> show txId
   -- Query oracle — read-only, does not go through the Interaction pipeline
   QueryOracle -> do
     printYellow "Querying oracle parameters..."
@@ -625,7 +772,14 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
     printGreen "=== Oracle Parameters ==="
     printGreen $ "  UTxO Ref:           " <> show oracleRef
     printGreen $ "  Value:              " <> show oracleVal
-    printGreen $ "  Admin PKH:          " <> show (opAdminPkh oracleParams)
+    printGreen $ "  Admin:              " <> show (opAdmin oracleParams)
+    -- Printed even when it equals the admin, which at genesis it does. "Same as admin" is a fact an
+    -- operator needs stated, not inferred from an absent line — the whole point of the split is
+    -- that these two CAN differ, so a reader must be able to see that they currently do not.
+    let arbiterNote
+          | opArbiter oracleParams == opAdmin oracleParams = "   (same as admin — not split)"
+          | otherwise = "   (SPLIT from admin)"
+    printGreen $ "  Arbiter:            " <> show (opArbiter oracleParams) <> arbiterNote
     printGreen $ "  Paused:             " <> show (opPaused oracleParams)
     printGreen $ "  Min UTxO Value:     " <> show (opMinUTxOValue oracleParams) <> " lovelace"
     printGreen $ "  Dispute Deposit:    " <> show (opDisputeDeposit oracleParams) <> " lovelace"
@@ -675,6 +829,55 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
     (txId, _) <- runActionWithPK txBuildingCtx signKey actionType Nothing
     printGreen $ "Dust cleanup successful! TxId: " <> show txId
 
+-- | Both handovers, which differ only in which field of the oracle datum moves.
+--
+-- __Why this cannot be one command.__ @O5@ requires the INCOMING side to prove control in the same
+-- transaction that the outgoing admin authorises, and this process holds one key. So a single
+-- build-sign-submit produces a transaction the chain refuses by construction — which is precisely
+-- what @rotate-admin@ did before, and the audit's @OF-01@: the command that exists to rotate the
+-- admin could not rotate the admin. The flagless form therefore refuses and names the two commands
+-- that finish the job, rather than submitting something doomed and reporting a script failure.
+--
+-- The refusal is the feature. An error that says what to do next costs one message; a confirmed
+-- transaction that turns out to be unsubmittable costs a fee and an investigation.
+runRotation ::
+  TxBuildingContext ->
+  GYExtendedPaymentSigningKey ->
+  -- | Which power is moving, for the messages: @"admin"@ or @"arbiter"@.
+  String ->
+  (Credential -> Maybe ClaimWitness -> AdminActionType) ->
+  RotateArgs ->
+  IO ()
+runRotation txBuildingCtx signKey what mkAction args = do
+  -- Not `action`: optparse-applicative exports one, and shadowing it inside the command that
+  -- builds an action reads fine and means something else.
+  let rotation = AdminAction (mkAction (rotCredential args) (rotIncomingWitness args)) (rotAdminWitness args)
+  if rotBuildOnly args
+    then do
+      printYellow $ "Building the " <> what <> " handover to " <> show (rotCredential args) <> " ..."
+      txHex <- buildActionWithPK txBuildingCtx signKey rotation
+      printYellow "Unsigned transaction hex follows. It is NOT submitted and NOT signed."
+      putStrLn txHex
+      printYellow $
+        "Next, and both are required:\n\
+        \  1. the INCOMING side proves control (O5). A key signs it:\n\
+        \       printf '%s' <hex> | cabal run -v0 exe:admin -- sign-tx > incoming.wit\n\
+        \     A native multisig instead proves control by SPENDING, so it must already hold a UTxO\n\
+        \     at its own address and the build above must have been given --incoming-witness.\n\
+        \  2. you submit, which also adds this key's signature (O1):\n\
+        \       cabal run exe:admin -- submit-tx --tx tx.hex --witness incoming.wit"
+    else
+      die $
+        "rotate-"
+          <> what
+          <> ": refused, because this would build a transaction the chain rejects.\n\
+             \O5 requires the INCOMING credential to prove control in the same transaction, and this\n\
+             \process holds only the key in operation.prv. Run it in two steps:\n\
+             \  cabal run -v0 exe:admin -- rotate-"
+          <> what
+          <> " --new-credential <hash> [--script] --build-only > tx.hex\n\
+             \then have the incoming side witness tx.hex, then submit-tx --tx tx.hex --witness <file>."
+
 -- | The startup banner.
 --
 -- It goes to stdout, and @sign-tx@'s stdout __is__ its product — the smoke script captures that
@@ -682,7 +885,7 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
 -- parse. That is why the banner is printed after the parse rather than as @main@'s first act: before
 -- the parse there is no command to exempt.
 banner :: Command -> IO ()
-banner SignTx = pure ()
+banner (SignTx _) = pure ()
 banner _ = printGreen "Palmares - Cardano governance track record"
 
 main :: IO ()
@@ -763,7 +966,7 @@ main = do
     -- Same family: signing is a function of the transaction and the key, so no provider, no
     -- validator config and no network. That is what lets the smoke script invoke this once per
     -- write with nothing but `operation.prv` beside it.
-    SignTx -> signTxWitness
+    SignTx mKeyFile -> signTxWitness (fromMaybe mnemonicFilePath mKeyFile)
     _ -> executeOnchainCommand cmd
 
 -- | Generate a fresh operator mnemonic into 'mnemonicFilePath' and print the address to fund.
@@ -873,11 +1076,11 @@ printOperatorAddress signKey = do
 -- the same bytes, so the body signed here and the body the witness is attached to there cannot
 -- differ. Whether the key is one the transaction actually requires is not checked and cannot be: a
 -- claim names its own credential and the node is what refuses a transaction that lacks a signature.
-signTxWitness :: IO ()
-signTxWitness = do
+signTxWitness :: FilePath -> IO ()
+signTxWitness keyFile = do
   -- NOT 'readMnemonicFile': that announces the path on stdout, and stdout is this command's product.
-  -- Same file and the same derivation — 'readMnemonic' is what @new-operator-key@ validates with.
-  signKey <- readMnemonic =<< T.readFile mnemonicFilePath
+  -- Same derivation — 'readMnemonic' is what @new-operator-key@ validates with.
+  signKey <- readMnemonic =<< T.readFile keyFile
   -- Stripped because a human will pipe `echo`'s newline in; the smoke script uses `printf '%s'`.
   input <- T.unpack . T.strip <$> T.getContents
   tx <-

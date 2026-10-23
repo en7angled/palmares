@@ -19,7 +19,9 @@ import Palmares.Onchain.Protocol.Types
 import Palmares.Onchain.Utils (checkDateInRange, maxDateWindow)
 import Palmares.TxBuilding.Skeletons (safeEraTime)
 import PlutusLedgerApi.V1.Interval (Interval (..), from, interval, lowerBound, strictLowerBound, strictUpperBound, to)
-import PlutusLedgerApi.V3 (POSIXTime (..), PubKeyHash (..), always)
+import Data.ByteString qualified as BS
+import PlutusLedgerApi.V3 (Credential (PubKeyCredential, ScriptCredential), POSIXTime (..), PubKeyHash (..), ScriptHash (..), always)
+import PlutusTx.Builtins (toBuiltin)
 import PlutusTx (Data (..), builtinDataToData, toBuiltinData)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -31,22 +33,44 @@ tests =
     [ -- ---------------------------------------------------------------------------------------
       -- Inherited fix #2. Rotation was not merely unimplemented: the validator FORBADE it, because
       -- O2 requires the output datum to equal applyOracleAdminAction of the current one and that
-      -- function preserved opAdminPkh by construction. So the validator needs no change — the fix is
-      -- to make this function able to express the change, which is the cheapest possible fix and is
-      -- cheap because the validator was written correctly.
+      -- function preserved the admin field by construction. So the validator needs no change — the
+      -- fix is to make this function able to express the change, which is the cheapest possible fix
+      -- and is cheap because the validator was written correctly.
       testCase "applyOracleAdminAction rotates the admin, which it could not before (fix #2)" $
-        opAdminPkh (applyOracleAdminAction (OracleSetAdmin pkhB) (paramsAdmin pkhA)) @?= pkhB,
+        opAdmin (applyOracleAdminAction (OracleSetAdmin (PubKeyCredential pkhB)) (paramsAdmin pkhA))
+          @?= PubKeyCredential pkhB,
+      -- ADR 0005: the target may be a script, which is the whole reason the field is a `Credential`.
+      -- A `PubKeyHash` could not name a native multisig, so "start on one key and move to a multisig
+      -- later" would have needed a new datum format — i.e. a new registry.
+      testCase "the admin may be rotated to a SCRIPT credential (ADR 0005)" $
+        opAdmin (applyOracleAdminAction (OracleSetAdmin scriptCred) (paramsAdmin pkhA)) @?= scriptCred,
+      testCase "rotating the admin leaves the arbiter alone" $
+        opArbiter (applyOracleAdminAction (OracleSetAdmin scriptCred) (paramsAdmin pkhA))
+          @?= PubKeyCredential pkhA,
+      -- The split is only real if it can be made. An arbiter that could not be rotated would be
+      -- OC-01 reintroduced over other people's deposits.
+      testCase "OracleSetArbiter moves the arbiter and nothing else (ADR 0005)" $
+        applyOracleAdminAction (OracleSetArbiter scriptCred) (paramsAdmin pkhA)
+          @?= (paramsAdmin pkhA) {opArbiter = scriptCred},
       testCase "rotation changes nothing else in OracleParams" $
-        applyOracleAdminAction (OracleSetAdmin pkhB) (paramsAdmin pkhA) @?= paramsAdmin pkhB,
-      -- The other four actions must still leave the admin alone, or a repricing would hand the
+        applyOracleAdminAction (OracleSetAdmin (PubKeyCredential pkhB)) (paramsAdmin pkhA)
+          @?= (paramsAdmin pkhA) {opAdmin = PubKeyCredential pkhB},
+      -- The other actions must still leave the admin alone, or a repricing would hand the
       -- protocol to whoever built the transaction.
-      testCase "no other admin action touches the admin key" $
-        map (opAdminPkh . (`applyOracleAdminAction` paramsAdmin pkhA)) otherActions
-          @?= replicate (length otherActions) pkhA,
+      testCase "no other admin action touches the admin credential" $
+        map (opAdmin . (`applyOracleAdminAction` paramsAdmin pkhA)) otherActions
+          @?= replicate (length otherActions) (PubKeyCredential pkhA),
+      -- And the same for the arbiter, including the admin rotation itself, which is the pair that
+      -- would make the split a lie if either leaked into the other.
+      testCase "no other admin action touches the arbiter credential" $
+        map (opArbiter . (`applyOracleAdminAction` paramsAdmin pkhA)) otherActions
+          @?= replicate (length otherActions) (PubKeyCredential pkhA),
+      testCase "OracleSetArbiter is at constructor index 7" $
+        constructorIndexOf (OracleSetArbiter scriptCred) @?= 7,
       -- APPENDED at index 4, never inserted: the four existing indices are a deployed-data contract
       -- from the first deployment, and T-ATTEST-10 is where that binds.
       testCase "OracleSetAdmin is at constructor index 4" $
-        constructorIndexOf (OracleSetAdmin pkhA) @?= 4,
+        constructorIndexOf (OracleSetAdmin (PubKeyCredential pkhA)) @?= 4,
       testCase "the four inherited actions keep indices 0 to 3" $
         map constructorIndexOf inheritedActions @?= [0, 1, 2, 3],
       -- Appended at 5 for the dispute deposit, same discipline.
@@ -186,14 +210,24 @@ tests =
 
     otherActions = inheritedActions <> [OracleSetDisputeDeposit 3_000_000, OracleSetDisputeTimeout 600_000]
 
-    paramsAdmin pkh =
+    -- A script credential of the same width as a key hash, which is the point: the 28 bytes do not
+    -- say which they are, so only the constructor does. That is also why the CLI asks with a flag.
+    scriptCred = ScriptCredential (ScriptHash (toBuiltin (BS.replicate 28 0x5c)))
+
+    -- Takes a key hash and wraps it, because every assertion below is about a KEY admin — the shape
+    -- ADR 0005 kept byte-for-byte compatible. The script branch is a different question and
+    -- `checkCredentialControl`'s own tests are where it is asked.
+    paramsAdmin pkh = (paramsAdminCred (PubKeyCredential pkh)) {opArbiter = PubKeyCredential pkh}
+
+    paramsAdminCred cred =
       OracleParams
-        { opAdminPkh = pkh,
+        { opAdmin = cred,
           opPaused = False,
           opFeeConfig = Nothing,
           opMinUTxOValue = 2_000_000,
           opDisputeDeposit = 5_000_000,
-          opDisputeTimeoutMs = 2_592_000_000
+          opDisputeTimeoutMs = 2_592_000_000,
+          opArbiter = cred
         }
 
     t = POSIXTime

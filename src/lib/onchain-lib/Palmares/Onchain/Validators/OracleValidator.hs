@@ -24,7 +24,7 @@ where
 
 import GHC.Generics (Generic)
 import Palmares.Onchain.Protocol.Types
-  ( OracleAdminAction (OracleSetAdmin),
+  ( OracleAdminAction (OracleSetAdmin, OracleSetArbiter),
     OracleParams (..),
     applyOracleAdminAction,
     oracleParamsAreWellFormed,
@@ -59,11 +59,11 @@ makeIsDataSchemaIndexed ''OracleRedeemer [('OracleUpdate, 0)]
 
 -- | Oracle validator logic.
 -- Validates that:
---   1. The current admin (from datum) signs the transaction (@O1@)
+--   1. The current admin (from datum) proves control of its credential (@O1@)
 --   2. The oracle UTxO is returned at the given output index with the datum produced by applying the
 --      redeemer action to current params, at LEAST the same value (the balancer may add min-ADA) and
 --      the same address (@O2@)
---   3. A handover (@OracleSetAdmin@) is also signed by the INCOMING admin (@O5@)
+--   3. A handover (@OracleSetAdmin@ or @OracleSetArbiter@) is also proved by the INCOMING side (@O5@)
 --   4. The resulting params are well-formed — no negative lovelace parameter (@O6@)
 {-# INLINEABLE oracleLambda #-}
 oracleLambda :: ScriptContext -> Bool
@@ -81,9 +81,9 @@ oracleLambda (ScriptContext TxInfo {..} (Redeemer bredeemer) scriptInfo) =
                   !ownAddr = txOutAddress ownInput
                   !newParams = applyOracleAdminAction action currentParams
                in and
-                    [ traceIfFalse "O1" $ elem (opAdminPkh currentParams) txInfoSignatories, -- Must be signed by admin (O1)
+                    [ traceIfFalse "O1" $ Utils.checkCredentialControl (opAdmin currentParams) txInfoSignatories txInfoInputs, -- Admin must prove control (O1)
                       traceIfFalse "O2" $ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress oracleOutputIdx newParams ownValue ownAddr txInfoOutputs, -- Must return oracle UTxO at index (O2); >= ownValue (balancer may add min-ADA)
-                      traceIfFalse "O5" $ incomingAdminSigned action, -- Handover must be signed by the INCOMING admin too (O5)
+                      traceIfFalse "O5" $ incomingProvedControl action, -- Handover must be proved by the INCOMING side too (O5)
                       -- A NEGATIVE LOVELACE PARAMETER WOULD MAKE EVERY MIN-VALUE CHECK IN THE
                       -- PROTOCOL VACUOUS, because `geq`'s `These a b -> a >= b` arm is satisfied by
                       -- anything when `b` is below zero. See 'oracleParamsAreWellFormed' for the
@@ -101,15 +101,27 @@ oracleLambda (ScriptContext TxInfo {..} (Redeemer bredeemer) scriptInfo) =
     -- undo it. That is not a recoverable mistake, it is the end of the protocol: no pause, no
     -- reprice, and every open dispute becomes unresolvable because `D1` wants this signature.
     --
-    -- The signature of the incoming key is the proof. It costs one list membership on the one action
-    -- that needs it and nothing on the other five, and it is the standard two-sided handover.
+    -- Proof of control by the incoming side is the check. It costs one credential test on the two
+    -- actions that need it and nothing on the other six, and it is the standard two-sided handover.
     --
-    -- 'OracleParams.opAdminPkh' documents the outgoing requirement — "a key already lost is not
-    -- [recoverable], because the rotation itself needs its signature" — and says nothing about the
+    -- 'OracleParams.opAdmin' documents the outgoing requirement — "one already lost is not
+    -- [recoverable], because the rotation itself needs its proof" — and says nothing about the
     -- incoming one, which is the half that was missing. Worth noticing as a habit: the sentence
     -- explaining why a rule is right is usually about the rule that IS enforced.
-    incomingAdminSigned (OracleSetAdmin newAdmin) = elem newAdmin txInfoSignatories
-    incomingAdminSigned _ = True
+    --
+    -- __It is proof of CONTROL and no longer a signature__, because ADR 0005 made both fields a
+    -- 'Credential'. The two sides of the test differ in cost and in shape: handing over to a key
+    -- needs that key's signature, handing over to a native multisig needs a UTxO at the multisig's
+    -- own address to be spent in this same transaction. The second has a prerequisite worth saying
+    -- out loud in the runbook — __fund the incoming multisig first__ — because a script that holds
+    -- no UTxO at its own address cannot prove control at all, which is the limitation
+    -- 'Palmares.Onchain.Utils.checkCredentialControl' already documents for credential claims.
+    --
+    -- Both handovers are covered, and the arbiter's is the one that matters more: losing 'opAdmin'
+    -- freezes the parameters, while losing 'opArbiter' locks every open dispute's deposit.
+    incomingProvedControl (OracleSetAdmin newAdmin) = Utils.checkCredentialControl newAdmin txInfoSignatories txInfoInputs
+    incomingProvedControl (OracleSetArbiter newArbiter) = Utils.checkCredentialControl newArbiter txInfoSignatories txInfoInputs
+    incomingProvedControl _ = True
 
 -------------------------------------------------------------------------------
 

@@ -58,7 +58,18 @@ data ActionType
   = ProfileAction ProfileActionType
   | DisputeAction DisputeActionType
   | ProtocolAction ProtocolActionType
-  | AdminAction AdminActionType
+  | -- | The second field is how the CURRENT admin proves control of 'OracleParams.opAdmin' — ADR
+    -- 0005 made it a 'Credential', so for a native multisig the proof is a spent input and the
+    -- witness says how to spend it. 'Nothing' is a key admin, whose proof is a signature, and that
+    -- is every deployment until somebody rotates.
+    --
+    -- On the wrapper rather than inside each 'AdminActionType' constructor because it is a property
+    -- of WHO is acting, not of WHICH action: all eight need it identically. The rotation actions
+    -- carry a second witness of their own, for the incoming side, which is a different question.
+    --
+    -- Carrying it costs this arm nothing in the published API: every 'AdminActionType' constructor
+    -- is refused over HTTP by its own 'FromJSON', so this field is only ever filled by the CLI.
+    AdminAction AdminActionType (Maybe ClaimWitness)
   deriving (Show, Generic, FromJSON, ToJSON)
 
 -- | Tagged, not constructor-keyed: 'taggedSumSchema' carries the measured defect and the mechanism.
@@ -71,9 +82,16 @@ instance ToSchema ActionType where
     where
       withAdminNote (NamedSchema n sch) =
         NamedSchema n sch {_schemaDescription = (<> adminNote) <$> _schemaDescription sch}
+      -- The first sentence used to come from the generator, which named each arm's payload type.
+      -- It stopped naming this one when ADR 0005 gave the arm a second field: aeson then wraps the
+      -- pair in a `contents` ARRAY and swagger2 emits no `$ref` for the generator to read. Said
+      -- here instead, because a published contract that silently drops a type name is worse than
+      -- one that spells it out — and this arm is refused anyway, so nothing depends on the shape.
       adminNote =
-        " The AdminAction arm is NOT accepted in a request body — it is a 400. Those actions are \
-        \built and signed by the admin CLI, which holds the key the oracle validator requires."
+        " The AdminAction arm carries [AdminActionType, ClaimWitness or null] — the action, and how \
+        \the current admin proves control of a script credential (ADR 0005). It is NOT accepted in \
+        \a request body — it is a 400. Those actions are built and signed by the admin CLI, which \
+        \holds the credential the oracle validator requires."
 
 data Interaction
   = Interaction
@@ -158,8 +176,14 @@ interactionToTxSkeleton Interaction {..} = do
             (fromMaybe (changeAddress userAddresses) mDepositTo)
             (profileDataToMetadataFields profileData)
             usedAddrs
+      -- `Nothing` for the arbiter's witness, deliberately: a script arbiter resolving over HTTP
+      -- would have to supply one, and that is a JSON field on `ResolveDisputeAction` which can be
+      -- added later without breaking a client, because it is optional. The datum format could not
+      -- be. So the split is taken now and this half is left until somebody rotates `opArbiter` to a
+      -- script; until then every arbiter is a key, whose proof is a signature and needs no witness.
+      -- A script arbiter can resolve today through the admin CLI, which does pass one.
       ResolveDisputeAction disputeId verdict -> do
-        skeleton <- resolveDisputeTX disputeId (disputeVerdictToOnchainVerdict verdict)
+        skeleton <- resolveDisputeTX disputeId (disputeVerdictToOnchainVerdict verdict) Nothing
         return (skeleton, Just disputeId)
       -- No verdict argument and no signer: the caller does not choose the outcome here, the clock
       -- does. See 'Palmares.TxBuilding.Operations.expireDisputeTX'.
@@ -170,6 +194,6 @@ interactionToTxSkeleton Interaction {..} = do
       CleanupDustAction -> do
         (skeleton, _dustCount) <- cleanupDustTX
         return (skeleton, Nothing)
-    AdminAction adminActionType -> do
-      skeleton <- updateOracleTX adminActionType
+    AdminAction adminActionType mAdminWitness -> do
+      skeleton <- updateOracleTX adminActionType mAdminWitness
       return (skeleton, Nothing)

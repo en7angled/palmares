@@ -382,11 +382,31 @@ measured =
 -- move. The BYTES differ, so the hash differs, so @ProtocolParams@ and the minting policy's hash
 -- differ — which costs nothing today and would cost a redeployment after T-ATTEST-10. That is the
 -- whole reason this correction was made now and not filed.
+-- __ADR 0005: the admin became a 'Credential' and the arbiter a second one.__ The widest change in
+-- this history, and the shape of the cost is the interesting part:
+--
+--   ProfilesValidator     8355 ->  8384  (+29)
+--   AttestationsValidator 8293 ->  8322  (+29)
+--   DisputesValidator     9439 ->  9978  (+539)
+--   OracleValidator       7688 ->  7856  (+168)
+--   MintingPolicy        12618 -> 12652  (+34)
+--
+-- __+799 bytes across the protocol__, and only two of the five scripts were edited. The +29 that
+-- Profiles and Attestations each pay without a line changing is 'OracleParams' gaining a field:
+-- every script that parses the oracle datum pays for its width, which is the quiet cost of putting
+-- anything in there and the reason 'OC-08' is worth taking in the same window.
+--
+-- The +539 on Disputes is @D1@ swapping @elem@ for 'checkCredentialControl', which has to walk the
+-- inputs rather than a signatory list — the price of a script arbiter being possible at all. The
+-- +168 on the Oracle is the same swap twice (@O1@ and @O5@) against a smaller baseline.
+--
+-- At ~4310 lovelace per byte of reference script this is about **3.4 ADA more** to deploy, against
+-- the ~205 already locked. The MintingPolicy's margin is what to watch and it barely moved.
 expected :: [(String, Int)]
 expected =
-  [ ("ProfilesValidator", 8355),
-    ("AttestationsValidator", 8293),
-    ("DisputesValidator", 9439),
-    ("OracleValidator", 7688),
-    ("MintingPolicy", 12618)
+  [ ("ProfilesValidator", 8384),
+    ("AttestationsValidator", 8322),
+    ("DisputesValidator", 9978),
+    ("OracleValidator", 7856),
+    ("MintingPolicy", 12652)
   ]

@@ -178,7 +178,8 @@ tests =
 
     baseOracle =
       OracleParams
-        { opAdminPkh = pkh,
+        { opAdmin = PubKeyCredential pkh,
+          opArbiter = PubKeyCredential pkh,
           opPaused = False,
           opFeeConfig = Nothing,
           opMinUTxOValue = 2_000_000,

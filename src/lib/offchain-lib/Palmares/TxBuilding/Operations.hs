@@ -10,7 +10,7 @@ import GeniusYield.TxBuilder
 import GeniusYield.Types
 import GeniusYield.Types.Script.ScriptHash (scriptHashFromPlutus)
 import Palmares.Onchain.CIP68 (CIP68Datum (..), ImageURI, MetadataFields (..), extra, getMetadataFields, mkCIP68Datum, updateCIP68DatumMetadata)
-import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetAdmin, OracleSetDisputeDeposit, OracleSetDisputeTimeout, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
+import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetAdmin, OracleSetArbiter, OracleSetDisputeDeposit, OracleSetDisputeTimeout, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
 import Palmares.Onchain.Protocol.Lookup qualified as Lookup
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer (..))
@@ -845,8 +845,11 @@ resolveDisputeTX ::
   -- | Dispute NFT AC
   GYAssetClass ->
   OnchainTypes.Verdict ->
+  -- | How the arbiter proves control, when 'OnchainTypes.opArbiter' is a script. 'Nothing' for a
+  -- key arbiter, whose proof is a signature — which is every deployment until somebody rotates it.
+  Maybe ClaimWitness ->
   m (GYTxSkeleton 'PlutusV3)
-resolveDisputeTX gyDisputeAC verdict = do
+resolveDisputeTX gyDisputeAC verdict mArbiterWitness = do
   dvRef <- asks getDisputesValidatorRef
 
   (disputeDatum, plutusDisputeValue) <- getDisputeDatumAndValue gyDisputeAC
@@ -862,7 +865,10 @@ resolveDisputeTX gyDisputeAC verdict = do
     throwError (GYApplicationException DisputeVerdictNotAFinding)
 
   (oracleParams, oracleRef, _oracleValue) <- queryOracleParams
-  gyAdminPkh <- pubKeyHashFromPlutus' (OnchainTypes.opAdminPkh oracleParams)
+  -- 'opArbiter' and not 'opAdmin' — ADR 0005 split the verdict-writing power out, and @D1@ reads
+  -- the field this reads. Genesis sets the two equal, so a deployment that has not split them sees
+  -- no difference here.
+  requireArbiterProof <- claimProofSkeleton (OnchainTypes.opArbiter oracleParams) mArbiterWitness
 
   -- ============================================================
   -- Output index tracking (order must match skeleton mconcat order)
@@ -897,7 +903,7 @@ resolveDisputeTX gyDisputeAC verdict = do
         mustHaveRefInput oracleRef, -- Reference input: oracle UTxO (D1 reads the admin from it)
         isLockingResolvedDispute, -- Output 0: Resolved dispute
         isReturningDeposit, -- Output 1: Returned deposit
-        mustBeSignedBy gyAdminPkh -- Required signer (no output index)
+        requireArbiterProof -- Proof of control, not a bare signature (no output index)
       ]
 
 -- | Close an undecided dispute whose deadline has passed — D-A, and the only write in this protocol
@@ -976,8 +982,11 @@ expireDisputeTX gyDisputeAC = do
 updateOracleTX ::
   (HasCallStack, GYTxQueryMonad m, MonadReader DeployedScriptsContext m) =>
   AdminActionType ->
+  -- | How the CURRENT admin proves control, when its credential is a script. 'Nothing' for a key
+  -- admin, whose proof is a signature.
+  Maybe ClaimWitness ->
   m (GYTxSkeleton 'PlutusV3)
-updateOracleTX adminAction = do
+updateOracleTX adminAction mAdminWitness = do
   ovRef <- asks getOracleValidatorRef
   (currentParams, oracleRef, oracleValue) <- queryOracleParams
   let actionPlutus = adminActionToOracleAdminAction adminAction
@@ -986,9 +995,6 @@ updateOracleTX adminAction = do
   -- Apply the action to derive the new oracle params (must match on-chain applyOracleAdminAction)
   let newParams = applyAdminAction adminAction currentParams
 
-  -- Convert admin PKH from Plutus to GY for required signer
-  gyAdminPkh <- pubKeyHashFromPlutus' (OnchainTypes.opAdminPkh currentParams)
-
   -- Spend the current oracle UTxO
   let currentDatum = datumFromPlutusData currentParams
   let spendOracle = txMustSpendFromRefScriptWithKnownDatum ovRef oracleRef currentDatum gyRedeemer oracleValidatorGY
@@ -996,23 +1002,29 @@ updateOracleTX adminAction = do
   -- Re-lock oracle with new datum and same value
   lockOracle <- txMustLockStateWithInlineDatumAndValue oracleValidatorGY newParams oracleValue
 
-  -- Require admin signature (on-chain validator checks txInfoSignatories)
-  let requireAdminSig = mustBeSignedBy gyAdminPkh
+  -- O1 IS NO LONGER A SIGNATURE, it is proof of control — ADR 0005 made `opAdmin` a `Credential`.
+  -- `claimProofSkeleton` is the same prover the credential claim uses, and reusing it is the point:
+  -- a key admin still produces `mustBeSignedBy` and nothing about today's deployment changes, while
+  -- a native-multisig admin produces a spent input at its own address, which is what the on-chain
+  -- `checkCredentialControl` looks for.
+  requireAdminProof <- claimProofSkeleton (OnchainTypes.opAdmin currentParams) mAdminWitness
 
-  -- A ROTATION NEEDS BOTH SIGNATURES, and the on-chain check (O5) is what makes this mandatory
-  -- rather than polite. The outgoing admin consents by spending; the incoming one consents by
-  -- signing, which is also the only proof the new key exists and somebody holds it. Without it a
-  -- mistyped rotation ends the protocol: O1 then refuses every later update, including the one that
-  -- would undo the mistake, and every open dispute becomes unresolvable because D1 wants that
-  -- signature too.
+  -- A ROTATION NEEDS BOTH SIDES, and the on-chain check (O5) is what makes this mandatory rather
+  -- than polite. The outgoing side consents by spending the oracle; the incoming one consents by
+  -- proving control, which is also the only evidence the new credential exists and somebody holds
+  -- it. Without it a mistyped rotation ends the protocol: O1 then refuses every later update,
+  -- including the one that would undo the mistake, and every open dispute becomes unresolvable
+  -- because D1 wants the same kind of proof.
   --
-  -- The signing itself is the caller's problem — `admin rotate-admin` has to be run with both keys
-  -- available, which is the right friction for a handover.
-  let requireIncomingAdminSig = case adminAction of
-        RotateAdminAction newAdmin -> mustBeSignedBy newAdmin
-        _ -> mempty
+  -- Producing that proof is the caller's problem, and for a script target it has a prerequisite the
+  -- runbook has to state: the incoming multisig must already hold a UTxO at its own address, or
+  -- `claimProofSkeleton` throws `ScriptCredentialHasNoUtxo` and there is nothing to spend.
+  requireIncomingProof <- case adminAction of
+    RotateAdminAction newAdmin mWitness -> claimProofSkeleton newAdmin mWitness
+    RotateArbiterAction newArbiter mWitness -> claimProofSkeleton newArbiter mWitness
+    _ -> return mempty
 
-  return $ mconcat [spendOracle, lockOracle, requireAdminSig, requireIncomingAdminSig]
+  return $ mconcat [spendOracle, lockOracle, requireAdminProof, requireIncomingProof]
 
 -- | Map off-chain admin action to on-chain OracleAdminAction (for the redeemer).
 adminActionToOracleAdminAction :: AdminActionType -> OracleAdminAction
@@ -1020,9 +1032,10 @@ adminActionToOracleAdminAction PauseProtocolAction = OraclePause
 adminActionToOracleAdminAction UnpauseProtocolAction = OracleUnpause
 adminActionToOracleAdminAction (SetFeesAction mFeeConfig) = OracleSetFees mFeeConfig
 adminActionToOracleAdminAction (SetMinUTxOValueAction lovelace) = OracleSetMinUTxOValue lovelace
-adminActionToOracleAdminAction (RotateAdminAction newAdmin) = OracleSetAdmin (pubKeyHashToPlutus newAdmin)
+adminActionToOracleAdminAction (RotateAdminAction newAdmin _) = OracleSetAdmin newAdmin
 adminActionToOracleAdminAction (SetDisputeDepositAction lovelace) = OracleSetDisputeDeposit lovelace
 adminActionToOracleAdminAction (SetDisputeTimeoutAction ms) = OracleSetDisputeTimeout ms
+adminActionToOracleAdminAction (RotateArbiterAction newArbiter _) = OracleSetArbiter newArbiter
 
 -- | Apply an admin action delta to current oracle params to produce new params.
 -- Must stay in sync with on-chain 'Onchain.Protocol.Types.applyOracleAdminAction'.
@@ -1031,9 +1044,10 @@ applyAdminAction PauseProtocolAction params = params {OnchainTypes.opPaused = Tr
 applyAdminAction UnpauseProtocolAction params = params {OnchainTypes.opPaused = False}
 applyAdminAction (SetFeesAction mFeeConfig) params = params {OnchainTypes.opFeeConfig = mFeeConfig}
 applyAdminAction (SetMinUTxOValueAction lovelace) params = params {OnchainTypes.opMinUTxOValue = lovelace}
-applyAdminAction (RotateAdminAction newAdmin) params = params {OnchainTypes.opAdminPkh = pubKeyHashToPlutus newAdmin}
+applyAdminAction (RotateAdminAction newAdmin _) params = params {OnchainTypes.opAdmin = newAdmin}
 applyAdminAction (SetDisputeDepositAction lovelace) params = params {OnchainTypes.opDisputeDeposit = lovelace}
 applyAdminAction (SetDisputeTimeoutAction ms) params = params {OnchainTypes.opDisputeTimeoutMs = ms}
+applyAdminAction (RotateArbiterAction newArbiter _) params = params {OnchainTypes.opArbiter = newArbiter}
 
 ------------------------------------------------------------------------------------------------
 

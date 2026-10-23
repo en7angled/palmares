@@ -20,7 +20,7 @@
             "type": "object"
         },
         "ActionType": {
-            "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: ProfileAction: \"contents\" is ProfileActionType; DisputeAction: \"contents\" is DisputeActionType; ProtocolAction: \"contents\" is ProtocolActionType; AdminAction: \"contents\" is AdminActionType. The AdminAction arm is NOT accepted in a request body — it is a 400. Those actions are built and signed by the admin CLI, which holds the key the oracle validator requires.",
+            "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: ProfileAction: \"contents\" is ProfileActionType; DisputeAction: \"contents\" is DisputeActionType; ProtocolAction: \"contents\" is ProtocolActionType; AdminAction: \"contents\". The AdminAction arm carries [AdminActionType, ClaimWitness or null] — the action, and how the current admin proves control of a script credential (ADR 0005). It is NOT accepted in a request body — it is a 400. Those actions are built and signed by the admin CLI, which holds the credential the oracle validator requires.",
             "properties": {
                 "contents": {
                     "description": "The arm's payload. Its schema depends on \"tag\" — see the shapes in this schema's description."

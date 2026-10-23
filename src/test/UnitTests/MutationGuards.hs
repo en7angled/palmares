@@ -470,7 +470,8 @@ oracleRefInput paused =
 oracleParamsWith :: Bool -> OracleParams
 oracleParamsWith paused =
   OracleParams
-    { opAdminPkh = PubKeyHash (b28 0x01),
+    { opAdmin = PubKeyCredential (PubKeyHash (b28 0x01)),
+      opArbiter = PubKeyCredential (PubKeyHash (b28 0x01)),
       opPaused = paused,
       opFeeConfig = Nothing,
       opMinUTxOValue = minLovelace,
@@ -1092,7 +1093,9 @@ depositLovelace = opDisputeDeposit (oracleParamsWith False)
 
 -- | Likewise the admin @D1@ asks to sign: the key 'oracleParamsWith' names, not a copy of it.
 adminPkh :: PubKeyHash
-adminPkh = opAdminPkh (oracleParamsWith False)
+adminPkh = case opAdmin (oracleParamsWith False) of
+  V1.PubKeyCredential pkh -> pkh
+  V1.ScriptCredential _ -> error "these guards build a key admin; a script one would need a spent input, not a signatory"
 
 -- | Built with the ledger's own derivation, which is also what the minting policy and the Disputes
 -- Validator call, so the expected address in @Md5@ and in @D2@ cannot drift from the one these

@@ -73,7 +73,7 @@ PlutusTx on-chain code. No off-chain imports (no Aeson, Servant, Swagger). Plutu
 - **Business logic**: In `Protocol.Types` helpers and the per-validator helper functions. Validators call
   these; no complex logic in the validator lambda.
 - **CIP68Datum**: State with metadata uses `CIP68Datum OnchainProfile` etc. Use `extra` for inner datum.
-- **Oracle validator**: Unparameterized; admin must sign; output preserves address and value ≥ spent.
+- **Oracle validator**: Unparameterized; the admin *credential* must prove control (`checkCredentialControl` — a key signs, a script is spent); output preserves address and value ≥ spent. Dispute verdicts read `opArbiter`, a second credential, not `opAdmin` (ADR 0005).
   `applyOracleAdminAction` computes expected new datum on-chain. Use
   `Utils.checkTxOutAtIndexWithDatumMinValueAndAddress` with the spent input's value (balancer may add lovelace).
   **`OracleAdminAction` must include `SetAdmin`** — the Belt System's omission made its admin key

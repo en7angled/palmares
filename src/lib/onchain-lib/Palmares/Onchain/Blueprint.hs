@@ -308,7 +308,9 @@ disputesValidatorBlueprint =
           "Holds a dispute and the deposit behind it. A dispute is a SEPARATE UTxO pointing at an \
           \attestation — never a field on one — so it can be opened without the subject's or the \
           \issuer's cooperation, the attestation it contests is never modified, and the attestation \
-          \path's execution cost is unchanged. The oracle admin writes the verdict, read through the \
+          \path's execution cost is unchanged. The oracle's ARBITER credential writes the verdict — \
+          \a separate field from the admin, so verdict-writing and repricing need not be the same \
+          \key — read through the \
           \oracle token recorded in the dispute's own datum so a forged oracle UTxO cannot be \
           \substituted; a verdict is written once and cannot be rewritten. The deposit returns to \
           \the address the disputer named, on EITHER verdict: there is no punitive outcome, so losing \
@@ -323,7 +325,7 @@ disputesValidatorBlueprint =
           { argumentTitle = Just "Disputes Redeemer",
             argumentDescription =
               Just
-                "ResolveDispute verdict outputIdx — the oracle admin records VerdictUpheld or \
+                "ResolveDispute verdict outputIdx — the oracle's arbiter records VerdictUpheld or \
                 \VerdictRejected, the dispute returns to this address with the verdict written and \
                 \its deposit released, and the deposit is paid to the address in the datum. A \
                 \resolution may NOT name VerdictExpired: that constructor is the clock's, not a \
@@ -331,7 +333,7 @@ disputesValidatorBlueprint =
                 \ANYONE may close an undecided dispute as VerdictExpired, with no signature and no \
                 \oracle read, and the deposit returns by the same rule as a resolution. It is the \
                 \protocol's only permissionless state transition and it exists so that a deposit \
-                \does not depend on the admin staying available. \
+                \does not depend on the arbiter staying available. \
                 \Cleanup — permissionless dust removal for UTxOs whose datum does not parse as \
                 \protocol state, or names a dispute NFT the UTxO's own value does not hold; it fails \
                 \only when that NFT is actually there.",
@@ -368,13 +370,17 @@ oracleValidatorBlueprint =
       validatorDescription =
         Just
           "Unparameterised spending validator guarding the oracle UTxO that holds OracleParams. The \
-          \admin named by the current datum must sign each update, and the UTxO must return to the \
+          \admin credential named by the current datum must prove control of itself on each update, \
+          \and the UTxO must return to the \
           \same address with at least the same value; only the datum may change. This is how the \
           \protocol is paused, repriced (fees, minimum UTxO, and the dispute deposit for NEW \
           \disputes — an open dispute's deposit is recorded in its own datum and cannot be changed \
-          \from here) or re-keyed without redeploying a validator. Re-keying is \
-          \OracleSetAdmin, and it is signed by the CURRENT admin: a compromised key is recoverable \
-          \while it is still held, and unrecoverable once it is not.",
+          \from here) or re-keyed without redeploying a validator. Re-keying is OracleSetAdmin for \
+          \the admin and OracleSetArbiter for the arbiter, and BOTH SIDES must prove control: the \
+          \outgoing one authorises, the incoming one proves it exists and is held, so a handover to \
+          \a credential nobody controls cannot be made by mistake. A credential still controlled is \
+          \recoverable by handing it on; one already lost is not, because the rotation needs its \
+          \proof.",
       validatorParameters = [],
       validatorRedeemer =
         MkArgumentBlueprint
@@ -394,13 +400,20 @@ oracleValidatorBlueprint =
             { argumentTitle = Just "Oracle Params Datum",
               argumentDescription =
                 Just
-                  "Inline datum with the operational parameters: the admin public key hash, the pause \
+                  "Inline datum with the operational parameters: the ADMIN CREDENTIAL, the pause \
                   \flag, the minimum UTxO value, the dispute deposit charged to NEW disputes, the \
                   \dispute timeout in milliseconds that fixes a new dispute's stale-after deadline, \
-                  \and an optional fee configuration (fee address plus \
-                  \per-action amounts). Every update is checked for well-formedness on chain: the \
-                  \three amounts may not be negative and the timeout may not be zero, since a \
-                  \dispute whose window is empty is expirable the block after it opens.",
+                  \an optional fee configuration (fee address plus \
+                  \per-action amounts), and the ARBITER CREDENTIAL. Both are credentials rather than \
+                  \key hashes, so a key and a native multisig are equally expressible and moving \
+                  \from one to the other is a rotation rather than a redeployment; a key proves \
+                  \control by signing, a script by spending a UTxO at its own address. The admin \
+                  \sets parameters; the arbiter alone writes dispute verdicts. They are the same \
+                  \credential at deployment and may be split later. Every update is checked for \
+                  \well-formedness on chain: the three amounts may not be negative and the timeout \
+                  \may not be zero, since a dispute whose window is empty is expirable the block \
+                  \after it opens. Nothing is checked about either credential — any 28 bytes are a \
+                  \possible hash, and whether anyone controls them is proved at rotation, not here.",
               argumentPurpose = Set.singleton Spend,
               argumentSchema = definitionRef @OracleParams
             },

@@ -46,11 +46,11 @@ import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Swagger (Referenced (Inline), Schema, ToSchema, enum_, maxProperties, properties, toSchema)
 import Data.Text (Text)
-import GeniusYield.Types (GYAssetClass, GYPubKeyHash)
+import GeniusYield.Types (GYAssetClass, GYPubKeyHash, pubKeyHashToPlutus)
+import PlutusLedgerApi.V3 (Credential (PubKeyCredential))
 import Palmares.ChainSync.KupoAtlas (toGYAssetClass)
 import Palmares.DomainTypes.Core.Actions
   ( AdminActionType (..),
-    ClaimWitness (WitnessKey),
     DisputeActionType (..),
     ProfileActionType (..),
     ProfileData (..),
@@ -108,15 +108,18 @@ disputeArms =
 nonAdminActionArms :: [ActionType]
 nonAdminActionArms = map ProfileAction profileArms <> map DisputeAction disputeArms
 
--- | All six, so the assertion is about the TYPE and not about the four arms that used to parse.
+-- | One per constructor, so the assertion is about the TYPE and not about the four arms that used
+-- to parse. 'RotateArbiterAction' is here for the same reason: an admin action absent from this
+-- list is an admin action nobody has checked is refused over HTTP.
 adminActions :: [AdminActionType]
 adminActions =
   [ PauseProtocolAction,
     UnpauseProtocolAction,
     SetFeesAction Nothing,
     SetMinUTxOValueAction 1_000_000,
-    RotateAdminAction pkhA,
-    SetDisputeDepositAction 5_000_000
+    RotateAdminAction (PubKeyCredential (pubKeyHashToPlutus pkhA)) Nothing,
+    SetDisputeDepositAction 5_000_000,
+    RotateArbiterAction (PubKeyCredential (pubKeyHashToPlutus pkhA)) Nothing
   ]
 
 -- | Request bodies built by the ENCODERS of the types under test, never hand-spelled. A hand-written
@@ -127,7 +130,7 @@ adminBodies = map toJSON adminActions
 
 -- | The same actions as they reach @\/build-tx@: wrapped in the arm of the union that route takes.
 adminArms :: [Value]
-adminArms = map (toJSON . AdminAction) adminActions
+adminArms = map (toJSON . (`AdminAction` Nothing)) adminActions
 
 -------------------------------------------------------------------------------
 
@@ -275,7 +278,7 @@ interactionApiTests =
     armChecks =
       checksFor "ProfileActionType" profileArms
         <> checksFor "DisputeActionType" disputeArms
-        <> checksFor "ActionType" (nonAdminActionArms <> [ProtocolAction CleanupDustAction, AdminAction PauseProtocolAction])
+        <> checksFor "ActionType" (nonAdminActionArms <> [ProtocolAction CleanupDustAction, AdminAction PauseProtocolAction Nothing])
 
     checksFor :: forall a. (ToSchema a, ToJSON a) => String -> [a] -> [(String, Schema, Value)]
     checksFor name vs = [(name, toSchema (Proxy :: Proxy a), toJSON v) | v <- vs]

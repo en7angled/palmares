@@ -168,14 +168,15 @@ userPlutusPkh u =
 
 -- | The initial oracle params every emulator test starts from.
 --
--- 'opAdminPkh' must be a wallet that can actually sign, because the oracle validator checks the
+-- 'opAdmin' must be a wallet that can actually sign, because the oracle validator checks the
 -- signature on chain — a placeholder hash here would make every admin test unfailable for the wrong
 -- reason. The other four are the deployment defaults: unpaused, no fees (the preprod configuration),
 -- 1 ADA minimum for protocol state, 5 ADA to open a dispute.
 initialOracleParamsFor :: User -> OracleParams
 initialOracleParamsFor w =
   OracleParams
-    { opAdminPkh = userPlutusPkh w,
+    { opAdmin = V3.PubKeyCredential (userPlutusPkh w),
+      opArbiter = V3.PubKeyCredential (userPlutusPkh w),
       opPaused = False,
       opFeeConfig = Nothing,
       opMinUTxOValue = 1_000_000,
@@ -383,7 +384,7 @@ adminInteraction txBuildingContext user adminAction = asUser user $ do
   (gyTxId, balanceDelta) <- withBalance "adminInteraction" user $ do
     let interaction =
           Interaction
-            { action = AdminAction adminAction,
+            { action = AdminAction adminAction Nothing,
               userAddresses = UserAddresses (toList $ User.userAddresses user) (User.userChangeAddress user) Nothing,
               recipient = Nothing
             }
@@ -1149,7 +1150,10 @@ adminRotateInteraction ::
 adminRotateInteraction txBuildingContext currentAdmin incomingAdmin = asUser currentAdmin $ do
   let interaction =
         Interaction
-          { action = AdminAction (RotateAdminAction (User.userPkh incomingAdmin)),
+          { -- A KEY credential, so `O5` is satisfied by the incoming admin's signature — the branch
+            -- this emulator run can actually produce. A script incoming admin proves control by
+            -- spending, which needs a funded script address and is a different test.
+            action = AdminAction (RotateAdminAction (V3.PubKeyCredential (userPlutusPkh incomingAdmin)) Nothing) Nothing,
             userAddresses =
               UserAddresses
                 (toList $ User.userAddresses currentAdmin)

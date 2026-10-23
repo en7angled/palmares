@@ -221,7 +221,8 @@ protoParams =
 oracleParams :: OracleParams
 oracleParams =
   OracleParams
-    { opAdminPkh = walletPkh,
+    { opAdmin = PubKeyCredential walletPkh,
+      opArbiter = PubKeyCredential walletPkh,
       opPaused = False,
       opFeeConfig = Nothing,
       opMinUTxOValue = 2000000,

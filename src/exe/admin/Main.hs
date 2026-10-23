@@ -202,7 +202,7 @@ claimedPeriodParser =
       )
   where
     readPeriod s = case break (== '.') s of
-      (from, '.' : '.' : to) -> (,) <$> readTime from <*> readTime to
+      (fromStr, '.' : '.' : toStr) -> (,) <$> readTime fromStr <*> readTime toStr
       _ -> Nothing
     readTime = fmap (timeFromPlutus . POSIXTime) . Text.readMaybe
 
@@ -556,6 +556,12 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
   ReconcileKoios _ -> pure () -- Handled in main before provider loading
   ApplyIndexes -> pure () -- Handled in main before provider loading
   ApplyRoles -> pure () -- Handled in main before provider loading
+  -- The three `main` dispatches before it loads a provider, so they never arrive here. Listed all
+  -- the same, and the clause above gets away with not listing them only because it ends in `_ ->`:
+  -- this one enumerates, so omitting them made it non-exhaustive, which is what `-Wall` reported.
+  NewOperatorKey -> pure () -- Handled in main before provider loading
+  OperatorAddress -> pure () -- Handled in main before provider loading
+  SignTx -> pure () -- Handled in main before provider loading
   DeployReferenceScripts -> do
     printYellow "Deploying reference scripts..."
     deployedScriptsCtx <- deployReferenceScripts (providerCtx txBuildingCtx) signKey

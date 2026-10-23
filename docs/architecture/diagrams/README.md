@@ -2,7 +2,10 @@
 
 Every file here is **generated** from a ```` ```mermaid ```` block in one of the three architecture documents in the parent directory. The Mermaid source in the Markdown is the source of truth; GitHub renders it inline. These SVGs exist so the diagrams can be opened, embedded in slides or shared without a Mermaid renderer.
 
-Rendered 2026-10-22 from `main` @ `4eb9117` with mermaid-cli 11.4.2.
+Rendered 2026-10-23 from `main` @ `2bf5bde` with mermaid-cli 11.4.2, after reconciling all three
+documents. All 26 blocks render; the one failure met on the way was a `;` inside a
+`sequenceDiagram` note, which is the first pitfall listed under *Regenerating* below — added by an
+edit that did not re-render, which is exactly what that instruction exists to prevent.
 
 **Stale as of 2026-10-23.** `system-overview.md` was reconciled against `main` @ `2bf5bde` and six of
 its Mermaid blocks changed, so these six SVGs are behind their source and need re-rendering:

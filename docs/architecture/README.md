@@ -6,23 +6,28 @@ Written 2026-10-22 against `main` @ `4eb9117`, from the code (every fact cites `
 drift as the code moves). Three documents, one directory of rendered diagrams, and a companion set of
 audit reports in [`../audit/`](../audit/README.md).
 
-**Drift (added 2026-10-23):** `main` moved fourteen commits past `4eb9117`, to `2bf5bde`, and this branch
-has that merged in. The audit synthesis maps every upstream commit to what it
-affects ([`../audit/README.md` §9](../audit/README.md)); for these three documents the known deltas are:
-(1) `Protocol/Id.hs`, `unsafeGetProfile*`, `unsafeGetProtocolParamsFromProfileRefInput` and trace code `K3`
-no longer exist, so `onchain-protocol.md` §1's module table and §8's inventory (now 64 codes, `K1`–`K2`)
-are stale; `U2` remains unreachable, and its only caller `checkAndGetCurrentStateDatumAndValue` is now
-itself uncalled (verified at `2bf5bde`: nothing in `src` calls it).
-(2) `interaction-api` no longer depends on `http-types` / `wai-extra` and the test suite no longer on `warp`.
-(3) `admin operator-address` prints a third form, the CIP-129 DRep id (`onchain-flows.md` §1 and its CLI
-table say two). (4) ADR 0003 and D-A moved the HTTP surface, the Swagger versions, the attestation kind and
-dispute-verdict enums, and the projection schema version — which the on-chain documents have **not** been
-re-read against.
+**All three documents are now reconciled against `2bf5bde`**, and every diagram has been re-rendered
+from the edited source. `main` moved fourteen commits past `4eb9117`; the audit synthesis maps each of
+them to what it affects ([`../audit/README.md` §9 and §10](../audit/README.md)). What those commits
+changed here, for the record: `Protocol/Id.hs`, `unsafeGetProfile*`,
+`unsafeGetProtocolParamsFromProfileRefInput` and trace code `K3` no longer exist; `Mp3` went with
+ADR 0003 and `A7`, `D9`, `Da` and `Mc1`–`Mc4` arrived, so the inventory at the end of
+`onchain-protocol.md` §7.7 is **70 codes**, not the 64 an earlier draft of this paragraph claimed
+(64 was `65 − K3` and missed both halves of ADR 0003); `interaction-api` no longer depends on
+`http-types` / `wai-extra` nor the test suite on `warp`; `admin operator-address` prints three forms;
+and ADR 0003 and D-A moved the HTTP surface, both Swagger versions, the attestation-kind and
+dispute-verdict enums, and the projection schema version.
 
-**`system-overview.md` has been reconciled against `2bf5bde`** and carries that in its own status line:
-items (1), (2) and (4) above are closed for it, and so is the `sql/050_roles.sql` / CI-determinism delta.
-The two on-chain documents have not been, and item (3) is still open. The SVGs were rendered from
-the snapshot; after editing a diagram, re-render as described in [`diagrams/README.md`](diagrams/README.md).
+`U2` and `U3` are unreachable, and the reason is not what either document first said: the chain
+`checkAndGetCurrentStateDatumAndValue` ← `unsafeGetProfile*` never existed. That helper has had **no
+caller at all**, before `3654f57` and after it, which is why deleting the three lookups changed nothing
+about reachability. The Haddock at `Protocol/Lookup.hs:7` still asserts the call, and that sentence is
+the audit finding `NEW-OC-5`.
+
+Reconciliation also found claims in these documents that were **already false at `4eb9117`** rather
+than drift — the component diagram putting `onchain-lib` behind a node labelled with off-chain
+dependencies is the one that mattered, since "no off-chain deps in `onchain-lib`" is a load-bearing
+claim of this set. Each is listed in the commit that fixed it.
 Six `system-overview-*.svg` files are now behind their Mermaid source — see that file.
 
 | Document | Question it answers | Diagrams |
@@ -69,7 +74,7 @@ regenerates them.
 1. `system-overview.md` §1–§3 — the two data paths and the component map (15 minutes).
 2. `onchain-protocol.md` §2–§4 — the six scripts and the ER diagrams (20 minutes).
 3. `onchain-flows.md` §3 for the transaction you care about, then §4 lifecycles.
-4. `onchain-protocol.md` §7 (per-script check tables) and §8 (authorisation matrix) when reviewing a
+4. `onchain-protocol.md` §7 (per-script check tables) and §8 (authorisation matrix; the trace-code inventory is at the end of §7.7) when reviewing a
    validator change; `onchain-flows.md` §9 (failure catalogue) when debugging a refused transaction.
 5. `../audit/README.md` for what the reviewers found wrong or missing.
 

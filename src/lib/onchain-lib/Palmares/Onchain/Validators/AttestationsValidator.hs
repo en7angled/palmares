@@ -11,26 +11,26 @@
 
 -- | Attestations validator enforcing attestation acceptance and permissionless cleanup.
 --
--- __A LINEAGE ATTESTATION CAN NEVER BE ACCEPTED, and that is a limit of the feature rather than a
--- missing check.__ An attestation about an earlier attestation is a record the spec asks for, and
--- 'Palmares.TxBuilding.Lookups.ensureSubjectProfileExists' permits it on purpose. But @A5@ is how a
--- subject consents: the transaction must spend the user NFT derived from the subject's id, and
--- @handleNewAttestation@ mints only a __reference__ token. No user token for an attestation exists,
--- in any wallet, so no transaction can satisfy @A5@ for a lineage record. It stays
--- @attestationIsAccepted = False@ for as long as the chain exists, and nothing in this protocol
--- burns it.
+-- __LINEAGE IS GONE, and the limit it used to carry with it__ — owner decision 2026-10-24, @OC-05@.
 --
--- Letting the subject attestation's own subject consent on its behalf would be the semantically
--- right fix and is deliberately not done: it needs that attestation as a reference input on the
--- accept path, and a validator cannot tell a profile id from an attestation id — both are CIP-67
--- reference tokens of the same policy — so it would cost a reference input on EVERY acceptance to
--- serve a case that has no users yet. @UnitTests.Attestation@ 5.11b pins the limit so it cannot be
--- rediscovered as a bug.
+-- An attestation about an earlier attestation was a record the spec asked for and the protocol could
+-- never finish. @A5@ is how a subject consents: the transaction must spend the user NFT derived from
+-- the subject's id, and @handleNewAttestation@ mints only a single reference token. No user token for
+-- an attestation has ever existed in any wallet, so no transaction could satisfy @A5@ for a lineage
+-- record. It stayed @attestationIsAccepted = False@ for as long as the chain existed, nothing burnt
+-- it, and the read layer was under instruction to show @False@ as "pending" — to a subject that could
+-- not act. A feature whose only reachable outcome is a stuck record is not a feature.
 --
--- What the limit actually requires is a READ-LAYER distinction. An @Endorsement@ of a record is its
--- issuer's statement and stands on the issuer alone; presenting it as "pending", which is what
--- @isAccepted = False@ means on a normal attestation, is the real defect and belongs to the read
--- surface.
+-- @Mg@ now requires the subject to be a PROFILE id, by CIP-67 label, so the case is refused at the
+-- mint instead of being documented at the acceptance. The paragraph that used to stand here argued
+-- that a validator "cannot tell a profile id from an attestation id — both are CIP-67 reference
+-- tokens of the same policy", which was true and is what @OC-05@ changed: they now carry different
+-- labels, and telling them apart costs four bytes of comparison.
+--
+-- __Keeping it would have cost more than dropping it.__ The semantically right fix — letting the
+-- subject attestation's own subject consent on its behalf — needs that attestation as a reference
+-- input on EVERY acceptance, paid by every ordinary record to serve a case that had no users. The
+-- cheap fix was to decide the feature was not wanted.
 module Palmares.Onchain.Validators.AttestationsValidator
   ( -- * Attestations Redeemer
     AttestationsRedeemer (..),
@@ -93,7 +93,7 @@ attestationsLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) script
             Just (Datum bd) -> case fromBuiltinData @AttestationsDatum bd of
               Nothing -> True
               Just (parkedDatum :: AttestationsDatum) ->
-                traceIfFalse "A4" (Utils.isUnbackedDatum (attestationId (extra parkedDatum)) spendingTxOutRef txInfoInputs) -- Cannot cleanup backed state (A4)
+                traceIfFalse "A4" (Utils.isUnbackedDatum isAttestationTokenName (attestationId (extra parkedDatum)) spendingTxOutRef txInfoInputs) -- Cannot cleanup backed state (A4)
           AcceptAttestation outputIdx -> case mdatum of
             Nothing -> traceError "A0" -- No datum (A0)
             Just (Datum bdatum) -> case fromBuiltinData bdatum of

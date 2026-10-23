@@ -34,6 +34,8 @@ import Palmares.Onchain.CIP68
     MetadataFields (..),
     deriveUserFromRefAC,
     generateRefAndUserTN,
+    generateAttestationTN,
+    generateDisputeTN,
     mkCIP68Datum,
     updateCIP68DatumMetadata,
   )
@@ -309,7 +311,10 @@ refIdFromSeed seed = V1.AssetClass (policyCS, fst (generateRefAndUserTN seed))
 subjectId, issuerId, targetId :: V1.AssetClass
 subjectId = refIdFromSeed "subject"
 issuerId = refIdFromSeed "issuer"
-targetId = refIdFromSeed "target"
+-- A DISPUTE TARGET IS AN ATTESTATION as of ADR 0006, so this is label 1 and not a profile id.
+-- Before `Md4` was typed, a dispute could name a profile as its target and the projection column
+-- `targetAttestationId` would point at something that is not an attestation.
+targetId = V1.AssetClass (policyCS, generateAttestationTN "target")
 
 -------------------------------------------------------------------------------
 
@@ -325,7 +330,7 @@ attestationMint fields outAddr =
   ScriptContext txInfo (Redeemer (toBuiltinData redeemer)) (MintingScript policyCS)
   where
     seed = seedRef 1
-    attId = V1.AssetClass (policyCS, fst (generateRefAndUserTN (nameFromTxOutRef seed)))
+    attId = V1.AssetClass (policyCS, generateAttestationTN (nameFromTxOutRef seed))
     attNFT = V1.assetClassValue attId 1
     redeemer = NewAttestation seed fields [] subjectId issuerId Endorsement recordedAt Nothing Nothing 0
     -- The datum the handler computes from that redeemer, rebuilt here so `Mk` sees a byte-identical
@@ -405,7 +410,7 @@ disputeOpen fields outAddr =
   ScriptContext txInfo (Redeemer (toBuiltinData redeemer)) (MintingScript policyCS)
   where
     seed = seedRef 3
-    dispId = V1.AssetClass (policyCS, fst (generateRefAndUserTN (nameFromTxOutRef seed)))
+    dispId = V1.AssetClass (policyCS, generateDisputeTN (nameFromTxOutRef seed))
     dispNFT = V1.assetClassValue dispId 1
     deposit = opDisputeDeposit oracleParams
     redeemer = OpenDispute seed targetId issuerId walletAddr fields recordedAt 0

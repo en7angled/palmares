@@ -55,3 +55,7 @@ node_modules
 # The reconciliation report and the snapshot pair it keeps while running. The COMMITTED pair
 # lives under test/fixtures/snapshot/; this is the scratch copy and the report.
 out/
+
+# Mermaid intermediates from docs/architecture/diagrams/render.py. The Markdown block is the
+# source of truth and the .svg is the artefact; the .mmd between them is a build temp file.
+docs/architecture/diagrams/*.mmd

@@ -77,8 +77,8 @@ attestationTests =
       mkTestFor "Issue attestation with other_metadata succeeds" withOtherMetadata,
       mkTestFor "Issue attestation with reserved other_metadata key fails" reservedMetadataKeyFails,
       mkTestFor "Test Case 5.10: an attestation whose subject profile does not exist is refused" missingSubjectRefused,
-      mkTestFor "Test Case 5.11: an attestation about another ATTESTATION (lineage) succeeds" lineageAttestation,
-      mkTestFor "Test Case 5.11b: a lineage attestation can NEVER be accepted, and that is the feature's limit" lineageCannotBeAccepted,
+      mkTestFor "Test Case 5.11: an attestation about another ATTESTATION is refused (Mg, OC-05)" lineageRefused,
+      mkTestFor "Test Case 5.11b: an attestation about ONESELF is refused (Mr, OC-05)" selfAttestationRefused,
       mkTestFor "Test Case 5.14: other_metadata past the entry limit FAILS (Mn)" oversizedOtherMetadataFails,
       mkTestFor "Test Case 5.12: a back-dated attestation FAILS (Mq, fix #4)" backDatedAttestationFails,
       mkTestFor "Test Case 5.13: an attestation issued with someone else's user NFT FAILS (Mf)" wrongIssuerNFTFails,
@@ -264,67 +264,51 @@ attestationTests =
 
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "An attestation about a non-existent subject was refused (SubjectProfileNotFound)."
 
-    -- Test Case 5.11. `ensureSubjectProfileExists` checks EXISTENCE and deliberately not kind, so an
-    -- attestation about an earlier attestation is permitted: that is the lineage record the spec asks
-    -- for — a second issuer endorsing a claim rather than its subject. The subject here is an
-    -- attestation id, and the acceptance path for it is intentionally dead, since an attestation has
-    -- no user token and nobody can counter-sign on its behalf.
-    lineageAttestation :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    lineageAttestation info@TestInfo {..} = do
+    -- Test Case 5.11. LINEAGE IS REFUSED NOW, and this case is the inversion of the one that used to
+    -- stand here. It asserted that an attestation about an earlier attestation LANDS, because
+    -- `ensureSubjectProfileExists` checked existence and deliberately not kind.
+    --
+    -- The owner dropped the feature on 2026-10-24 (`OC-05`), and the reason is in the test it
+    -- replaced: 5.11b asserted that such a record could never be accepted by anybody, ever, because
+    -- `A5` wants a user token that an attestation mint does not create. A feature whose only
+    -- reachable state is "pending for ever", shown to a subject who cannot act, is better refused at
+    -- the mint than documented at the acceptance.
+    --
+    -- `Mg` now requires a PROFILE id on both sides, by CIP-67 label — which is what the old
+    -- justification said a validator could not do, because every id wore label 100.
+    lineageRefused :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    lineageRefused info@TestInfo {..} = do
       (ctx, issuerAC, subjectAC) <- deployWithTwoProfiles info
       (_t1, baseAC) <- issue ctx (w1 testWallets) subjectAC issuerAC MilestoneDelivered milestoneAttestationData []
       waitNSlots_ 1
 
-      (_t2, lineageAC) <- issue ctx (w1 testWallets) baseAC issuerAC Endorsement lineageAttestationData []
+      -- The subject is an ATTESTATION id, which now carries label 1 instead of 100.
+      mustFailWith (failedWithTrace "Mg") $
+        void $
+          issue ctx (w1 testWallets) baseAC issuerAC Endorsement lineageAttestationData []
+
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "An attestation about an attestation was refused (Mg)."
+
+    -- Test Case 5.11b. `Mr` — OC-05's second half, and the one with teeth.
+    --
+    -- `Mf` and `A5` both read `valueSpent`, so when subject == issuer the SINGLE user token satisfies
+    -- both: an `AuditPassed` or an `Endorsement` by X about X lands as an ACCEPTED record with no
+    -- second party anywhere in the transaction. Not a forgery — X did say it — but the registry's
+    -- claim is that an accepted record carries its subject's consent, and here the consent and the
+    -- assertion are one signature.
+    --
+    -- The emulator and not a pure context, because the point is that an HONEST client could build
+    -- this: one profile, one wallet, one token, no trickery.
+    selfAttestationRefused :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    selfAttestationRefused info@TestInfo {..} = do
+      (ctx, issuerAC, _subjectAC) <- deployWithTwoProfiles info
       waitNSlots_ 1
 
-      (datum, _value) <- getAttestationDatumAndValue lineageAC
-      assert (OnchainTypes.attestationSubject (extra datum) == assetClassToPlutus baseAC)
-      assert (lineageAC /= baseAC)
+      mustFailWith (failedWithTrace "Mr") $
+        void $
+          issue ctx (w1 testWallets) issuerAC issuerAC Endorsement milestoneAttestationData []
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "An attestation about an attestation landed."
-
-    -- Test Case 5.11b. THE LIMIT OF THE FEATURE ABOVE, which nothing stated until an audit looked.
-    --
-    -- `A1` requires the transaction to spend the user NFT derived from the subject's id, and that is
-    -- how a subject consents. An attestation mints only a reference token — no user token exists to
-    -- spend — so a lineage attestation cannot be accepted by anybody, ever. It stays
-    -- `isAccepted = False` for as long as the chain exists, and nothing burns it.
-    --
-    -- This is asserted rather than fixed, and the reasoning is written down here because the
-    -- alternative is worse than the limit. Accepting a lineage record would mean letting the SUBJECT
-    -- ATTESTATION's own subject consent on its behalf, which needs that attestation as a reference
-    -- input on the accept path — and the validator cannot tell a profile id from an attestation id,
-    -- since both are CIP-67 reference tokens of the same policy. So it would cost a reference input
-    -- on EVERY acceptance to serve a case that has no user yet.
-    --
-    -- What the limit actually requires is a READ-LAYER distinction: an `Endorsement` of a record is
-    -- its issuer's statement and stands on the issuer alone, so presenting it as "pending" — which
-    -- is what `isAccepted = False` reads as on a normal attestation — is the real defect. That is
-    -- T-ATTEST-9's business, not a validator's.
-    --
-    -- `mustFail` and not `mustFailWith`: the off-chain path refuses first, because
-    -- `acceptAttestationTX` looks for the subject's user NFT and there is none to find. A trace-code
-    -- assertion here would be asserting which layer happens to say no first.
-    lineageCannotBeAccepted :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
-    lineageCannotBeAccepted info@TestInfo {..} = do
-      (ctx, issuerAC, subjectAC) <- deployWithTwoProfiles info
-      (_t1, baseAC) <- issue ctx (w1 testWallets) subjectAC issuerAC MilestoneDelivered milestoneAttestationData []
-      waitNSlots_ 1
-      (_t2, lineageAC) <- issue ctx (w1 testWallets) baseAC issuerAC Endorsement lineageAttestationData []
-      waitNSlots_ 1
-
-      -- w2 holds the base attestation's SUBJECT profile, which is the closest thing to an interested
-      -- party. It is not enough, and that is the point.
-      mustFail $ void $ profileInteraction ctx (w2 testWallets) (AcceptAttestationAction lineageAC) Nothing
-      -- w1 issued both, which is not enough either: an issuer accepting its own claim is the thing
-      -- `A1` exists to prevent.
-      mustFail $ void $ profileInteraction ctx (w1 testWallets) (AcceptAttestationAction lineageAC) Nothing
-
-      (datum, _value) <- getAttestationDatumAndValue lineageAC
-      assert (not (OnchainTypes.attestationIsAccepted (extra datum)))
-
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A lineage attestation stayed unaccepted, as it always will."
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A self-issued endorsement was refused (Mr)."
 
     -- Test Case 5.14. `Mn`. `otherMetadata` went into the permanent datum unbounded, and the cost
     -- lands on the SUBJECT rather than the issuer who paid for it: `A1` re-locks `ownValue`, so the

@@ -452,7 +452,7 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId kind metadata otherMetad
   let gyRedeemer = redeemerFromPlutusData redeemer
 
   -- Generate attestation NFT AC
-  (gyAttestationRefAC, _gyAttestationUserAC) <- gyGenerateRefAndUserAC mpGY seedTxOutRef
+  gyAttestationRefAC <- gyGenerateAttestationAC mpGY seedTxOutRef
   isMintingAttestationNFT <- txMustMintWithMintRef True mpRef mpGY gyRedeemer gyAttestationRefAC
 
   -- Build attestation datum
@@ -575,7 +575,7 @@ credentialAttestationTX kind gyProfileRefAC credential mWitness metadata ownAddr
               attestationOutputIdx
           )
 
-  (gyAttestationRefAC, _gyAttestationUserAC) <- gyGenerateRefAndUserAC mpGY seedTxOutRef
+  gyAttestationRefAC <- gyGenerateAttestationAC mpGY seedTxOutRef
   isMintingAttestationNFT <- txMustMintWithMintRef True mpRef mpGY gyRedeemer gyAttestationRefAC
 
   let attestationInfo =
@@ -767,7 +767,7 @@ openDisputeTX gyTargetAC gyOpenerProfileId depositTo metadata ownAddrs = do
               disputeOutputIdx
           )
 
-  (gyDisputeRefAC, _gyDisputeUserAC) <- gyGenerateRefAndUserAC mpGY seedTxOutRef
+  gyDisputeRefAC <- gyGenerateDisputeAC mpGY seedTxOutRef
   isMintingDisputeNFT <- txMustMintWithMintRef True mpRef mpGY gyRedeemer gyDisputeRefAC
 
   let disputeInfo =

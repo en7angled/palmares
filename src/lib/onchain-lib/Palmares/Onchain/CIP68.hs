@@ -36,6 +36,15 @@ module Palmares.Onchain.CIP68
 
     -- * CIP-67 Token Name Derivation
     generateRefAndUserTN,
+    generateAttestationTN,
+    generateDisputeTN,
+    isAttestationTokenName,
+    isDisputeTokenName,
+    isProfileId,
+    isAttestationId,
+    isDisputeId,
+    attestationTokenPrefixBS,
+    disputeTokenPrefixBS,
     deriveUserFromRefAC,
     deriveUserFromRefTN,
     deriveRefFromUserAC,
@@ -219,6 +228,62 @@ isRefTokenName (TokenName bs) = sliceByteString 0 4 bs == refTokenPrefixBS
 isProtocolRefToken :: AssetClass -> CurrencySymbol -> Bool
 isProtocolRefToken (AssetClass (cs, tn)) cs' = cs == cs' && isRefTokenName tn
 
+-------------------------------------------------------------------------------
+
+-- * Typed ids — one CIP-67 label per kind
+
+-------------------------------------------------------------------------------
+
+-- | Is this an ATTESTATION reference token name? CIP-67 private-use label 1.
+--
+-- __Why a second label at all, and why ids were untyped before — @OC-05@.__ Every id in this protocol
+-- was @label 100 ‖ blake2b_224(seed)@ under one policy, so @Mg@ and @Md4@ could only ask "is this a
+-- reference-prefixed token of this policy". Three classes of permanent garbage followed from that:
+--
+--   * @subject@ could be an attestation id, or a name never minted at all. The record mints, can
+--     never be accepted — @A5@ wants a user token that @handleNewAttestation@ does not mint — and can
+--     never be removed, because nothing in this protocol burns. The off-chain
+--     @ensureSubjectProfileExists@ is a courtesy, not a gate.
+--   * @target@ on a dispute could be a profile, another dispute, or a name never minted, and the
+--     projection column @targetAttestationId@ would then point at a non-attestation.
+--   * Neither is a forgery. Both are clutter a four-byte check prevents.
+--
+-- __Why a LABEL and not a byte in the name.__ A token name is at most 32 bytes and an id is already
+-- @4 + 28@ — exactly 32. There is no room for a discriminator without shortening the hash, but the
+-- four bytes already spent on a label can carry the kind for free.
+--
+-- __Why private use and not a new registered label.__ CIP-67 reserves labels 0-15 for private use,
+-- which is the spec's own answer for a protocol that needs its own classes; and the policy id already
+-- scopes every check here ('isProtocolRefToken' compares the currency symbol), so a private label
+-- under our own policy is unambiguous. Profiles keep 100/222 because a profile genuinely IS a CIP-68
+-- pair — it has a user token and a wallet should see it as one. An attestation and a dispute have no
+-- user token, so CIP-68 pairing is meaningless for them and squatting its labels would say something
+-- false about them to every wallet that reads labels.
+{-# INLINEABLE isAttestationTokenName #-}
+isAttestationTokenName :: TokenName -> Bool
+isAttestationTokenName (TokenName bs) = sliceByteString 0 4 bs == attestationTokenPrefixBS
+
+-- | Is this a DISPUTE reference token name? CIP-67 private-use label 2.
+{-# INLINEABLE isDisputeTokenName #-}
+isDisputeTokenName :: TokenName -> Bool
+isDisputeTokenName (TokenName bs) = sliceByteString 0 4 bs == disputeTokenPrefixBS
+
+-- | Right policy AND a profile id: the typed replacement for 'isProtocolRefToken' wherever the thing
+-- being named must be a PROFILE.
+{-# INLINEABLE isProfileId #-}
+isProfileId :: AssetClass -> CurrencySymbol -> Bool
+isProfileId (AssetClass (cs, tn)) cs' = cs == cs' && isRefTokenName tn
+
+-- | Right policy AND an attestation id.
+{-# INLINEABLE isAttestationId #-}
+isAttestationId :: AssetClass -> CurrencySymbol -> Bool
+isAttestationId (AssetClass (cs, tn)) cs' = cs == cs' && isAttestationTokenName tn
+
+-- | Right policy AND a dispute id.
+{-# INLINEABLE isDisputeId #-}
+isDisputeId :: AssetClass -> CurrencySymbol -> Bool
+isDisputeId (AssetClass (cs, tn)) cs' = cs == cs' && isDisputeTokenName tn
+
 -- All UTF-8 encoded keys and values need to be converted into their respective byte's representation when creating the datum on-chain.
 {-# INLINEABLE mkCIP68Datum #-}
 mkCIP68Datum :: a -> MetadataFields -> [(BuiltinByteString, BuiltinByteString)] -> CIP68Datum a
@@ -263,9 +328,38 @@ refTokenPrefixBS = integerToByteString BigEndian 4 (0x000643b0 :: Integer) -- 4 
 userTokenPrefixBS :: BuiltinByteString
 userTokenPrefixBS = integerToByteString BigEndian 4 (0x000de140 :: Integer) -- 4 bytes for the prefix according to CIP-67
 
+-- | CIP-67 __private-use label 1__, the attestation class. @0x00001070@: brackets, @0x0001@, CRC-8
+-- @0x07@. Computed with the spec's own algorithm and checked by reproducing all four registered
+-- CIP-68 labels (100, 222, 333, 444) with the same encoder before trusting it on a new one — a wrong
+-- checksum is a label every CIP-67 reader rejects, and it would be frozen into every id.
+{-# INLINEABLE attestationTokenPrefixBS #-}
+attestationTokenPrefixBS :: BuiltinByteString
+attestationTokenPrefixBS = integerToByteString BigEndian 4 (0x00001070 :: Integer) -- CIP-67 label 1 (private use)
+
+-- | CIP-67 __private-use label 2__, the dispute class. @0x000020e0@: brackets, @0x0002@, CRC-8 @0x0e@.
+{-# INLINEABLE disputeTokenPrefixBS #-}
+disputeTokenPrefixBS :: BuiltinByteString
+disputeTokenPrefixBS = integerToByteString BigEndian 4 (0x000020e0 :: Integer) -- CIP-67 label 2 (private use)
+
 {-# INLINEABLE generateRefAndUserTN #-}
 generateRefAndUserTN :: BuiltinByteString -> (TokenName, TokenName)
 generateRefAndUserTN bs = (TokenName (refTokenPrefixBS <> bs), TokenName (userTokenPrefixBS <> bs))
+
+-- | The single token an attestation is: label 1 over the same name body, and NO user token.
+--
+-- An attestation has no owner that acts on its behalf — acceptance is the subject spending their
+-- PROFILE's user token (@A5@), not the attestation's — so there is nothing for a second token to do.
+-- That is also why the label is a private one rather than CIP-68's 100: a lone 100 would tell every
+-- wallet to go looking for a 222 that does not exist.
+{-# INLINEABLE generateAttestationTN #-}
+generateAttestationTN :: BuiltinByteString -> TokenName
+generateAttestationTN bs = TokenName (attestationTokenPrefixBS <> bs)
+
+-- | The single token a dispute is: label 2 over the same name body, and no user token, for the same
+-- reason. A dispute's authority is its opener's profile, recorded in its datum.
+{-# INLINEABLE generateDisputeTN #-}
+generateDisputeTN :: BuiltinByteString -> TokenName
+generateDisputeTN bs = TokenName (disputeTokenPrefixBS <> bs)
 
 {-# INLINEABLE deriveUserFromRefTN #-}
 deriveUserFromRefTN :: TokenName -> TokenName

@@ -38,7 +38,6 @@ module Palmares.Onchain.Utils
   )
 where
 
-import Palmares.Onchain.CIP68 (isRefTokenName)
 import PlutusLedgerApi.V1 qualified as V1
 import PlutusLedgerApi.V1.Value
 import PlutusLedgerApi.V3
@@ -430,9 +429,22 @@ unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs =
 -- OWN policy. That residue is permanent clutter at min-ADA plus a self-mint, with no forgery
 -- attached, and closing it needs a parameter these validators deliberately do not take.
 {-# INLINEABLE isUnbackedDatum #-}
-isUnbackedDatum :: AssetClass -> TxOutRef -> [TxInInfo] -> Bool
-isUnbackedDatum stateNFT@(AssetClass (_, tn)) spendingTxOutRef txInfoInputs =
-  not (isRefTokenName tn)
+-- __TAKES THE KIND'S OWN NAME PREDICATE as of OC-05, and it had to.__ This used to hardcode
+-- 'isRefTokenName', which was right only while every id in the protocol wore CIP-67 label 100. Once
+-- attestations moved to label 1 and disputes to label 2, that test read "this is not a label-100
+-- name" — true of every real attestation and every real dispute — so @A4@ and @D8@ would have
+-- declared the entire protocol's state sweepable dust, and @Cleanup@ is PERMISSIONLESS.
+--
+-- Caught by reading the callers of the predicate the labels changed, not by the type checker: the
+-- signature was unchanged and the code compiled. The emulator's "Cleanup CANNOT spend real protocol
+-- state" case would have caught it too, which is what that case is for.
+--
+-- The parameterised form is also strictly STRONGER than the old one. Each validator now passes its
+-- OWN kind's predicate, so a dispute datum parked at the attestations address, naming a real dispute
+-- id, is sweepable there — it is not this validator's state, whatever its value backs.
+isUnbackedDatum :: (TokenName -> Bool) -> AssetClass -> TxOutRef -> [TxInInfo] -> Bool
+isUnbackedDatum isOwnKindName stateNFT@(AssetClass (_, tn)) spendingTxOutRef txInfoInputs =
+  not (isOwnKindName tn)
     || V1.assetClassValueOf (txOutValue (unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs)) stateNFT == 0
 
 -------------------------------------------------------------------------------

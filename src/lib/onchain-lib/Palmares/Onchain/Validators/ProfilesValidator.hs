@@ -27,7 +27,7 @@ module Palmares.Onchain.Validators.ProfilesValidator
 where
 
 import GHC.Generics (Generic)
-import Palmares.Onchain.CIP68 (CIP68Datum (CIP68Datum), MetadataFields (..), deriveUserFromRefAC, updateCIP68DatumMetadata, validateMetadataFields)
+import Palmares.Onchain.CIP68 (isRefTokenName, CIP68Datum (CIP68Datum), MetadataFields (..), deriveUserFromRefAC, updateCIP68DatumMetadata, validateMetadataFields)
 import Palmares.Onchain.Protocol (OnchainProfile (..), OracleParams (opPaused), readOracleParams)
 import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Utils qualified as Utils
@@ -93,7 +93,7 @@ profilesLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) scriptInfo
                 -- a malformed transaction; this means "it IS a profile and you may not sweep it",
                 -- which is somebody attempting to delete live state. One code for both told an
                 -- operator nothing about which had happened.
-                traceIfFalse "P7" (Utils.isUnbackedDatum (profileId profile) spendingTxOutRef txInfoInputs) -- Cannot cleanup backed state (P7)
+                traceIfFalse "P7" (Utils.isUnbackedDatum isRefTokenName (profileId profile) spendingTxOutRef txInfoInputs) -- Cannot cleanup backed state (P7)
           _ -> case mdatum of
             Nothing -> traceError "P0" -- No datum (P0)
             Just (Datum bdatum) -> case fromBuiltinData bdatum of

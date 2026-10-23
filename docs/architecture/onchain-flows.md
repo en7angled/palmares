@@ -287,7 +287,7 @@ flowchart LR
 
 | Aspect | Value | Code |
 |---|---|---|
-| Pre-checks (before any skeleton) | reserved `other_metadata` keys; subject NFT exists (profile **or** attestation — lineage is allowed); claimed period not inverted | `Operations.hs:377-382, 392, 409-410`; `Lookups.hs:182-184` |
+| Pre-checks (before any skeleton) | reserved `other_metadata` keys; subject NFT exists — EXISTENCE only, since ADR 0006 made the kind the chain's business (`Mg`); claimed period not inverted | `Operations.hs:377-382, 392, 409-410`; `Lookups.hs:182-184` |
 | Inputs | seed; issuer user NFT (derived from the issuer profile id, looked up at `used_addresses`); funding | `Operations.hs:413-417` |
 | Reference inputs | oracle; minting policy | `Operations.hs:386, 476` |
 | Mint | attestation ref token +1, redeemer `NewAttestation seed metadata other subject issuer kind attestationDate claimedPeriod Nothing 0` | `Operations.hs:426-444` |
@@ -297,7 +297,7 @@ flowchart LR
 | Trace codes | `M0`, `K2`, `K1`, `Mq`, `Mm`, `Mn`, `Mf`, `Mg`, `Mc1`–`Mc4`, `Mh`, `Mj`, `Mk` — the four `Mc` rules run on every issuance, and on this route they are satisfied by `Mc4` alone (not a credential kind, names no credential) | `MintingPolicy.hs:288-316` |
 | Off-chain failures | `AttestationOtherMetadataReservedKeys` 400; `SubjectProfileNotFound` 404; `AttestationPeriodInverted` 400; `ProfileNotFound` 404 (issuer token not held); `ProtocolPaused` 503 | |
 
-Not checked on chain: that the subject exists (`Mg` is policy + prefix only) and anything about `claimedPeriod` (`MintingPolicy.hs:244-251`).
+Not checked on chain: that the subject EXISTS. `Mg` requires policy + the profile label, so since ADR 0006 it does rule out an attestation id, a dispute id and a user token — but not a profile id nobody minted. Nothing about `claimedPeriod` is checked either (`MintingPolicy.hs:244-251`).
 
 **Finding F9 — a credential kind can be asked for here and cannot be built here.** `kind` is passed
 straight through (`Interactions.hs:136-144`) and `AttestationType`'s `FromJSON` accepts
@@ -360,7 +360,8 @@ the one `queryOracleParams` finds, which for a protocol attestation is the same 
 acceptance that omits it fails as `K1`, and one built during a pause fails as `A7` — so there is no
 longer a route by which an acceptance lands while the protocol is stopped.
 
-A **lineage** attestation (subject = another attestation id) can never pass: no user token was ever minted for
+A **lineage** attestation (subject = another attestation id) is REFUSED AT THE MINT since ADR 0006 — `Mg`
+requires a profile id. Before that it was mintable and then stuck for ever, because no user token was ever minted for
 an attestation, so `A5` is unsatisfiable and the builder fails earlier with `ProfileNotFound`
 (`AttestationsValidator.hs:14-28`; `Attestation` test 5.11b). A `CredentialClaim` or
 `CredentialWithdrawal`, by contrast, **is** acceptable: `Mc1` makes it self-issued, so its subject is a
@@ -690,12 +691,15 @@ since ADR 0003 the profile mint does not name one (`MintingPolicy.hs:358-378`).
 
 ```mermaid
 stateDiagram-v2
-  [*] --> Pending : NewAttestation (M0, K2, Mq, Mm, Mn, Mf, Mg, Mc1 to Mc4, Mh, Mj, Mk)
-  Pending --> Accepted : AcceptAttestation (K1, A7, A3, A1, A5, A6) by the subject's user NFT
+  [*] --> Pending : NewAttestation (M0, K2, Mq, Mm, Mn, Mf, Mg, Mr, Mc1 to Mc4, Mh, Mj, Mk)
+  Pending --> Accepted : AcceptAttestation (K1, A7, A3, A1, A5, A8, A6) by the subject's user NFT
   note right of Pending
-    A lineage attestation (subject is an attestation id)
-    stays Pending for ever: no user token for an attestation
-    exists, so A5 is unsatisfiable. AttestationsValidator.hs 14-28.
+    Two shapes never reach this state at all, as of ADR 0006.
+    Mg refuses a subject that is not a PROFILE id, which is
+    what lineage was, and Mr refuses a self-issued record
+    unless it is a credential binding. Both used to mint and
+    then sit here for ever, because A5 wants a user token
+    that an attestation mint never creates.
   end note
   note right of Accepted
     Written once (A3 refuses a second accept), and since D-C the
@@ -994,7 +998,7 @@ code that would refuse the same mistake in a hand-built transaction, or says tha
 |---|---|---|---|
 | `ProfileNotFound` | user token not in `used_addresses` (`Skeletons.hs:128`); profile state UTxO missing (`Lookups.hs:90`) | 404 | `Mf` / `P3` / `A5` / `Md3` — the token is not yours to spend |
 | `WrongProfileType` | `getOrganizationInformation` (`Lookups.hs:114`), not on a tx path | 400 | — |
-| `AttestationNotFound` | `getAttestationDatumAndValue` (`Lookups.hs:167`) on accept and on open-dispute target lookup | 404 | accept: ledger (missing input); open-dispute: **nothing** — `Md4` checks only policy and prefix, so a deposit can be locked against a non-existent target |
+| `AttestationNotFound` | `getAttestationDatumAndValue` (`Lookups.hs:167`) on accept and on open-dispute target lookup | 404 | accept: ledger (missing input); open-dispute: `Md4` now requires the target to carry the ATTESTATION label (ADR 0006), so a profile or a dispute is refused — but a deposit can still be locked against an attestation id nobody minted |
 | `AttestationAlreadyAccepted` | `Operations.hs:635-636` | 400 | `A3` |
 | `AttestationOtherMetadataReservedKeys` | `Operations.hs:377-382` | 400 | `Mn` (`CIP68.hs:183-185`) |
 | `AttestationPeriodInverted` | `Operations.hs:409-410` | 400 | nothing, by design |
@@ -1047,7 +1051,7 @@ Test suites, by section of this document:
 - §3.3, §3.11: `UnitTests.Profile` (the profile mint, now credential-free, and the four `Mc` rules each
   isolated by one changed input); `UnitTests.Claim` (`checkCredentialControl`, the rule that is `Mc3` now);
   `UnitTests.WritePath` (CIP-129 parsing, script-with-no-UTxO).
-- §3.5–§3.6: `UnitTests.Attestation` 5.1–5.14 (issue, accept, `A3`, `Mq`, `Mf`, lineage limit 5.11b, `Mn`);
+- §3.5–§3.6: `UnitTests.Attestation` 5.1–5.14 (issue, accept, `A3`, `Mq`, `Mf`, lineage refused 5.11, self-issue refused 5.11b, `Mn`);
   `UnitTests.MutationGuards` (`A1`, `A5`, `A6`, `A7`, seeds, `K1`); `UnitTests.MintInputs`.
 - §3.7–§3.8, §3.12: `UnitTests.Dispute` 6.1–6.10 (`D1`, `D3`, `Md8`, `Md4`, `D6`); `UnitTests.DisputeRules`
   (`D2`, `D4`, `D9`, `Da`, `Md2`, `Md3`, `Md6`); `UnitTests.Satisfaction`; `UnitTests.MutationGuards`.

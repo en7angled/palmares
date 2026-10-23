@@ -41,6 +41,9 @@ import Palmares.Onchain.CIP68
     MetadataFields (..),
     deriveUserFromRefAC,
     generateRefAndUserTN,
+    deriveUserFromRefTN,
+    generateAttestationTN,
+    generateDisputeTN,
     mkCIP68Datum,
   )
 import Palmares.Onchain.Protocol.Types
@@ -217,12 +220,17 @@ mintOne (AssetClass (cs, tn)) = mintOf [(cs, [(tn, 1)])]
 profileIdFor :: BuiltinByteString -> AssetClass
 profileIdFor seed = AssetClass (protocolCS, fst (generateRefAndUserTN seed))
 
-subjectId, issuerId, targetId, openerId, otherProfileId :: AssetClass
+subjectId, issuerId, openerId, otherProfileId :: AssetClass
 subjectId = profileIdFor "subject"
 issuerId = profileIdFor "issuer"
-targetId = profileIdFor "target"
 openerId = profileIdFor "opener"
 otherProfileId = profileIdFor "somebodyelse"
+
+-- | A DISPUTE TARGET IS AN ATTESTATION as of ADR 0006 — CIP-67 label 1, not a profile's 100. Before
+-- `Md4` was typed, a dispute could name a profile as its target, and the projection column
+-- @targetAttestationId@ would then point at something that is not an attestation.
+targetId :: AssetClass
+targetId = AssetClass (protocolCS, generateAttestationTN "target")
 
 metadataFixture :: MetadataFields
 metadataFixture =
@@ -668,7 +676,11 @@ disputeSeedRef = txOutRefAt 2
 -- with the policy's own two functions, so a change to either shows up as a failure here rather than
 -- as a test that still agrees with itself.
 mintedDisputeRefTN, mintedDisputeUserTN :: V1.TokenName
-(mintedDisputeRefTN, mintedDisputeUserTN) = generateRefAndUserTN (nameFromTxOutRef disputeSeedRef)
+mintedDisputeRefTN = generateDisputeTN (nameFromTxOutRef disputeSeedRef)
+-- The user token a dispute must NOT have. Derived by replacing the LABEL on the dispute name, which
+-- is what `deriveUserFromRefTN` does regardless of which label it finds — the point is only that a
+-- mint carrying it is refused, not that this name is CIP-68 anything.
+mintedDisputeUserTN = deriveUserFromRefTN mintedDisputeRefTN
 
 mintedDisputeId :: AssetClass
 mintedDisputeId = AssetClass (protocolCS, mintedDisputeRefTN)
@@ -819,7 +831,7 @@ attSeedRef :: TxOutRef
 attSeedRef = txOutRefAt 3
 
 mintedAttRefTN :: V1.TokenName
-mintedAttRefTN = fst (generateRefAndUserTN (nameFromTxOutRef attSeedRef))
+mintedAttRefTN = generateAttestationTN (nameFromTxOutRef attSeedRef)
 
 mintedAttId :: AssetClass
 mintedAttId = AssetClass (protocolCS, mintedAttRefTN)

@@ -167,10 +167,14 @@ mintingPolicyValidatorBlueprint =
                 \binding is a CredentialClaim attestation, which is a second transaction and an \
                 \append-only record. \
                 \NewAttestation seedTxOutRef metadata otherMetadata subject issuer kind date \
-                \claimedPeriod claimedCredential outputIdx — mints a pending attestation CIP-68 REFERENCE token (no user \
-                \token exists for an attestation, which is why a lineage attestation can never \
-                \satisfy A5) locked at \
-                \the Attestations Validator. Requires the issuer's user token to be spent, validates \
+                \claimedPeriod claimedCredential outputIdx — mints a pending attestation reference token under \
+                \CIP-67 PRIVATE-USE LABEL 1, deliberately not CIP-68's label 100: an attestation has no user \
+                \token, so it is not a CIP-68 pair and must not claim to be one. The label is also what lets \
+                \the policy TYPE an id — the subject and the issuer must both be profile ids, so an \
+                \attestation about another attestation is refused rather than minted into a record nobody \
+                \could ever accept. The record is locked at \
+                \the Attestations Validator. Requires the issuer's user token to be spent, refuses a \
+                \self-issued record unless it is a credential binding, validates \
                 \the DATE against the transaction validity range, and pays the attestation fee when \
                 \the oracle configures one. The CLAIMED PERIOD is carried through unchecked and is \
                 \self-reported: no on-chain fact can establish when an affiliation or a mandate \

@@ -58,6 +58,8 @@ import Palmares.Onchain.CIP68
     MetadataFields (..),
     deriveUserFromRefAC,
     generateRefAndUserTN,
+    generateAttestationTN,
+    generateDisputeTN,
     mkCIP68Datum,
     updateCIP68DatumMetadata,
   )
@@ -542,7 +544,7 @@ attestationOwnRef :: TxOutRef
 attestationOwnRef = TxOutRef (TxId (b32 0xb1)) 0
 
 attestationAC :: V1.AssetClass
-attestationAC = V1.AssetClass (protocolCS, fst (generateRefAndUserTN (nameFromTxOutRef seed)))
+attestationAC = V1.AssetClass (protocolCS, generateAttestationTN (nameFromTxOutRef seed))
   where
     seed = TxOutRef (TxId (b32 0xb0)) 0
 
@@ -808,7 +810,7 @@ issueSeedRef :: TxOutRef
 issueSeedRef = TxOutRef (TxId (b32 0xb3)) 0
 
 issuedRefTN :: V1.TokenName
-issuedRefTN = fst (generateRefAndUserTN (nameFromTxOutRef issueSeedRef))
+issuedRefTN = generateAttestationTN (nameFromTxOutRef issueSeedRef)
 
 issuedAC :: V1.AssetClass
 issuedAC = V1.AssetClass (protocolCS, issuedRefTN)
@@ -870,7 +872,7 @@ openSeedRef :: TxOutRef
 openSeedRef = TxOutRef (TxId (b32 0xd0)) 0
 
 openedRefTN :: V1.TokenName
-openedRefTN = fst (generateRefAndUserTN (nameFromTxOutRef openSeedRef))
+openedRefTN = generateDisputeTN (nameFromTxOutRef openSeedRef)
 
 openedAC :: V1.AssetClass
 openedAC = V1.AssetClass (protocolCS, openedRefTN)
@@ -1058,7 +1060,7 @@ disputeB :: OnchainDispute
 disputeB = openedDispute {disputeId = disputeBAC}
 
 disputeBAC :: V1.AssetClass
-disputeBAC = V1.AssetClass (protocolCS, fst (generateRefAndUserTN (nameFromTxOutRef disputeBSeedRef)))
+disputeBAC = V1.AssetClass (protocolCS, generateDisputeTN (nameFromTxOutRef disputeBSeedRef))
 
 disputeBSeedRef :: TxOutRef
 disputeBSeedRef = TxOutRef (TxId (b32 0xd3)) 0

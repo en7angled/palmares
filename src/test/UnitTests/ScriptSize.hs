@@ -438,11 +438,30 @@ measured =
 -- The two zeros again say where the cost lands. Nothing was added to the Disputes validator or the
 -- Oracle, and nothing moved — `Md9` guards the OPENING of a dispute, which is the minting policy's
 -- job, not the dispute validator's.
+-- __`OC-05`: typed ids.__ Per-kind CIP-67 labels, `Mg`/`Md4` typed, `Mr` added, lineage dropped:
+--
+--   ProfilesValidator     8262 ->  8262  (0)
+--   AttestationsValidator 8608 ->  8608  (0)
+--   DisputesValidator     9978 ->  9978  (0)
+--   OracleValidator       7856 ->  7856  (0)
+--   MintingPolicy        12852 -> 12924  (+72)
+--
+-- __+72 bytes, in one script, for the whole of `OC-05`.__ Four zeros and one small number, which is
+-- the cheapest correctness fix in this history and worth saying why: the labels cost NOTHING to mint
+-- under — a different four-byte constant is the same four bytes — so the only new code is three
+-- typed predicates and `Mr`'s inequality, all of it in the minting policy, which is the only script
+-- that decides what an id may name.
+--
+-- The four zeros also carry a claim. The three spending validators gained `isUnbackedDatum`'s new
+-- parameter and did not grow, because passing a predicate that was previously hardcoded is the same
+-- work; and the Attestations validator LOST the lineage limit without shrinking, because that limit
+-- was documentation rather than code. The audit estimated `OC-05` at effort M for this reason — the
+-- cost is in the ids themselves, which every fixture and every client derivation had to follow.
 expected :: [(String, Int)]
 expected =
   [ ("ProfilesValidator", 8262),
     ("AttestationsValidator", 8608),
     ("DisputesValidator", 9978),
     ("OracleValidator", 7856),
-    ("MintingPolicy", 12852)
+    ("MintingPolicy", 12924)
   ]

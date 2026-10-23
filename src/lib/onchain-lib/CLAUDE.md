@@ -24,7 +24,9 @@ PlutusTx on-chain code. No off-chain imports (no Aeson, Servant, Swagger). Plutu
 - **Types**: New types in `Protocol/Types.hs`. Use `makeIsDataSchemaIndexed` with **stable** indices. Never
   reorder constructors. Add `HasBlueprintDefinition` for CIP-57.
 - **ID derivation**: `Utils.nameFromTxOutRef` (`blake2b_224` of the seed `TxOutRef`) prefixed by
-  `CIP68.generateRefAndUserTN`, which applies the CIP-67 ref/user prefixes. This is the only derivation
+  `CIP68.generateRefAndUserTN` for a PROFILE (CIP-67 labels 100/222), `generateAttestationTN` for an
+  attestation (private-use label 1) and `generateDisputeTN` for a dispute (label 2) — ADR 0006 gave
+  each kind its own label so `Mg`, `Md4` and `Mr` can tell one id from another. This is the only derivation
   path. `Protocol/Id.hs` used to hold a second one with zero callers and has been deleted; if you are
   reading an older commit, that module is not where a new derivation goes.
 - **Datum optimization**: Derive IDs from datum fields, don't store derivable IDs. Reduces datum size and min-ADA.
@@ -48,8 +50,11 @@ PlutusTx on-chain code. No off-chain imports (no Aeson, Servant, Swagger). Plutu
 - Oracle UTxO as **reference input** in every minting tx. Check `opPaused` and `checkFee`.
 - Min lovelace from oracle (`opMinUTxOValue`) only, not fixed constants.
 - One-off tokens: require spending a **seed TxOutRef**, derive token name from it.
-- Validate referenced AssetClasses with `isProtocolRefToken` from `Palmares.Onchain.CIP68`: the symbol
-  AND the CIP-67 reference prefix. `hasCurrencySymbol` checks only the symbol, which a profile's USER
+- Validate referenced AssetClasses with the TYPED predicate for the kind you mean: `isProfileId`,
+  `isAttestationId` or `isDisputeId` from `Palmares.Onchain.CIP68` — symbol AND that kind's CIP-67
+  label. `isProtocolRefToken` is the untyped ancestor and now means only "is a profile id"; it is kept
+  because `isRefTokenName` is still what `P7` asks of a profile datum. `hasCurrencySymbol` checks only
+  the symbol, which a profile's USER
   token also satisfies — that is the hole `isProtocolRefToken` closed, and `UnitTests.MintInputs` pins
   it. The helper still exists in `Utils.hs` and has no caller; this line used to prescribe it.
 - **Authorization**: every redeemer names the credential it requires, and the requirement is token

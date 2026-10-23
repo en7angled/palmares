@@ -20,7 +20,7 @@ Source map (all paths under `src/lib/onchain-lib/Palmares/Onchain/` unless state
 |---|---|
 | `Protocol/Types.hs` | `ProtocolParams`, `FeeConfig`, `OracleParams`, `OracleAdminAction`, `MintAction`, `OnchainProfileKind`, `OnchainProfile`, `AttestationKind`, `OnchainAttestation`, `Verdict`, `OnchainDispute`, plus the pure state transitions `applyOracleAdminAction`, `resolveDispute`, `oracleParamsAreWellFormed`, `checkNoOpenDispute` |
 | `Protocol/Lookup.hs` | `readOracleParams` (`K1`), `feeFor`, `checkFee` (`K2`) — and nothing else since `3654f57` deleted the three uncalled profile lookups and with them trace code `K3` (`Lookup.hs:5-10`) |
-| `CIP68.hs` | `CIP68Datum`, `MetadataFields`, metadata size limits, CIP-67 prefixes and ref/user derivations, `isProtocolRefToken` |
+| `CIP68.hs` | `CIP68Datum`, `MetadataFields`, metadata size limits, CIP-67 prefixes and ref/user derivations, the three PER-KIND labels and the typed `isProfileId`/`isAttestationId`/`isDisputeId` (ADR 0006) |
 | `Utils.hs` | `mkUntypedLambda` (`U0`), `nameFromTxOutRef`, output-index checks, `isUnbackedDatum`, `checkCredentialControl`, `checkDateInRange`/`checkDateHasPassed`/`maxDateWindow`, `spentExactlyOnceFromAddress` |
 | `Validators/*.hs` | One module per script (section 7) |
 | `Blueprint.hs` | CIP-57 document; declares the minting policy by parameter and omits `OracleNFTPolicy` (`Blueprint.hs:384-386`) |
@@ -285,7 +285,7 @@ classDiagram
 Notes on B1: `ProfileId`, `AttestationId` and `DisputeId` are all aliases of `AssetClass`
 (`Types.hs:218-222`), so the arrows from `attestationIssuer`/`attestationSubject`/`disputeOpenedBy`
 and `disputeTarget` are references by asset class that no validator dereferences — only their shape
-is checked (`Mg`, `Md4`). `OnchainProfile.protocolParams` is the policy's own parameter, pinned by
+is checked, and since ADR 0006 so is the KIND's label (`Mg` profiles, `Md4` attestation target + profile opener). `OnchainProfile.profileOracleToken` is the one field the profiles validator ever read, pinned by
 `Mp5` (`MintingPolicy.hs:344,357`). No user token exists for an attestation or a dispute
 (`MintingPolicy.hs:233,437` derive only the ref name); `ProfileUserNFT` is the sole authority
 instrument. `OracleParams` is locked bare, not inside a `CIP68Datum` (`OracleValidator.hs:72-73`).
@@ -504,10 +504,17 @@ limits enforced at mint (`Mm`/`Mp4`/`Md7` via `validateMetadataFields`, `Mn` via
 Derivations, all in `CIP68.hs` and `Utils.hs`:
 
 - `nameFromTxOutRef (TxOutRef (TxId txIdbs) txIdx) = blake2b_224 (txIdbs <> integerToByteString BigEndian 0 txIdx)` — 28 bytes from the seed (`Utils.hs:66-68`).
-- `refTokenPrefixBS = integerToByteString BigEndian 4 0x000643b0` and `userTokenPrefixBS = integerToByteString BigEndian 4 0x000de140` — the CIP-67 label bytes (`CIP68.hs:258-264`).
+- `refTokenPrefixBS = integerToByteString BigEndian 4 0x000643b0` (CIP-67 label 100) and
+  `userTokenPrefixBS = … 0x000de140` (label 222) — the CIP-68 pair a PROFILE is.
+- `attestationTokenPrefixBS = … 0x00001070` (private-use label 1) and
+  `disputeTokenPrefixBS = … 0x000020e0` (label 2) — ADR 0006. An attestation and a dispute have no
+  user token, so they are not CIP-68 pairs and must not wear 100; and a kind-specific label is what
+  lets `Mg` require a profile subject, `Md4` an attestation target, and `Mr` compare the two at all.
+  Both checksums were computed with CIP-67's own CRC-8 and verified by reproducing all four
+  registered CIP-68 labels with the same encoder first.
 - `generateRefAndUserTN bs = (TokenName (refTokenPrefixBS <> bs), TokenName (userTokenPrefixBS <> bs))` — 32-byte names (`CIP68.hs:266-268`).
 - `deriveUserFromRefAC (AssetClass (cs, tn)) = AssetClass (cs, deriveUserFromRefTN tn)`, where `deriveUserFromRefTN` replaces the first four bytes with the user prefix (`CIP68.hs:270-276`). This is how every validator turns an id into the token that must be spent (`Mf`, `Md3`, `P3`, `A5`).
-- `isRefTokenName (TokenName bs) = sliceByteString 0 4 bs == refTokenPrefixBS`; `isProtocolRefToken (AssetClass (cs, tn)) cs' = cs == cs' && isRefTokenName tn` (`CIP68.hs:210-220`). Used by `Mg`, `Md4` and, prefix half only, by `isUnbackedDatum` (`Utils.hs:434-436`).
+- `isRefTokenName`, plus `isAttestationTokenName` and `isDisputeTokenName`, and the typed `isProfileId`/`isAttestationId`/`isDisputeId` that pair each with the currency-symbol check (`CIP68.hs`). `Mg` uses `isProfileId`, `Md4` uses `isAttestationId` and `isProfileId`, and `isUnbackedDatum` now TAKES the caller's kind predicate rather than hardcoding one (`Utils.hs`) — hardcoding it would have made every real attestation and dispute look sweepable the moment the labels diverged.
 - The oracle NFT is `AssetClass (oracleNFTPolicyId, TokenName emptyByteString)` (`OracleNFTPolicy.hs:37`).
 
 | Token | Policy | Token name | Minted by | Where it lives | What it does | Burned? |
@@ -647,7 +654,7 @@ Index 2 is burnt (section 5).
 | Code | Rule | Redeemer | Reads | Source |
 |---|---|---|---|---|
 | `P1` | Purpose must be `SpendingScript` | all | scriptInfo | `ProfilesValidator.hs:136` |
-| `P7` | `Cleanup` on a datum that parses: `isUnbackedDatum (profileId profile)` must hold — the named token is not CIP-67 ref-prefixed, or the spent input holds 0 of it | `Cleanup` | own datum, own input value | `:87-96`, `Utils.hs:432-436` |
+| `P7` | `Cleanup` on a datum that parses: `isUnbackedDatum isRefTokenName (profileId profile)` must hold — the named token does not carry THIS KIND's label, or the spent input holds 0 of it | `Cleanup` | own datum, own input value | `:87-96`, `Utils.hs:432-450` |
 | `P0` | Datum absent or not a `CIP68Datum OnchainProfile` | `UpdateProfile` | own datum | `:97-100` |
 | `U1` | Own input must be findable by `spendingTxOutRef` | `UpdateProfile` | inputs | `:102`, `Utils.hs:364-370` |
 | `K1` | Oracle reference input found via `oracleToken (protocolParams profile)` | `UpdateProfile` | reference inputs, own datum | `:116` |
@@ -927,7 +934,7 @@ pays `fcAttestationFee`.
    profile datum (`MintingPolicy.hs:344`) and its `oracleToken` into every dispute datum (`:454`) and,
    since D-C, every attestation datum (`:255`).
 9. **Protocol ids are checked by shape, not existence.** `isProtocolRefToken` = right currency symbol
-   and CIP-67 ref prefix (`Mg`, `Md4`); the unparameterised validators check the prefix only
+   and the kind's own CIP-67 label (`Mg` profiles, `Md4` attestation target + profile opener); the unparameterised validators check the label only
    (`Utils.hs:426-431`).
 10. **Pause stops the writes that can reach the oracle**: `M0`, `P6`, `D7` and, since D-C, `A7`. Not
     gated: `ExpireDispute` (deliberately — the admin must not be able to gate the escape hatch), every
@@ -964,7 +971,7 @@ pays `fcAttestationFee`.
 | **Currency symbol** | The minting policy's script hash; deployment-specific because the policy is parameterised by the oracle token (`Blueprint.hs:102-124`). |
 | **Lineage attestation** | An attestation whose subject is an attestation id rather than a profile id. Issuable (`Mg` only checks the ref prefix) but never acceptable, because no user token exists for an attestation (`AttestationsValidator.hs:14-28`). |
 | **Claimed period** | `attestationPeriod :: Maybe (POSIXTime, POSIXTime)`: the interval the issuer asserts and the subject counter-signs; deliberately unchecked on chain (`Types.hs:394-414`). |
-| **Unbacked datum** | A datum at a state address whose own UTxO value does not hold the CIP-67 ref token the datum names; sweepable by `Cleanup` (`Utils.hs:372-436`). |
+| **Unbacked datum** | A datum at a state address whose own UTxO value does not hold the token the datum names, where the token must carry THAT VALIDATOR's kind label; sweepable by `Cleanup` (`Utils.hs:372-450`). A dispute datum parked at the attestations address is unbacked there however well its value backs it. |
 | **Deposit** | `opDisputeDeposit` lovelace locked with a dispute at open time, recorded as `disputeDeposit`, returned to `disputeDepositTo` however the dispute closes — upheld, rejected or expired (`D4`). |
 | **Stale dispute** | One whose `disputeStaleAfter` (= `disputeOpenedAt + opDisputeTimeoutMs`, fixed at open time) is behind the closing transaction's whole validity range. Anyone may then close it as `VerdictExpired` (`D9`). |
 | **Pause** | `opPaused`; gates `M0`, `P6`, `D7`, `A7`. |

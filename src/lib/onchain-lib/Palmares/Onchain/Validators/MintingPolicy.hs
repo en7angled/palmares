@@ -26,7 +26,10 @@ import Palmares.Onchain.CIP68
   ( MetadataFields,
     deriveUserFromRefAC,
     generateRefAndUserTN,
-    isProtocolRefToken,
+    generateAttestationTN,
+    generateDisputeTN,
+    isProfileId,
+    isAttestationId,
     mkCIP68Datum,
     validateMetadataFields,
     validateOtherMetadata,
@@ -227,12 +230,25 @@ handleNewAttestation ::
   Integer ->
   Bool
 handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadataEncoded subject issuer kind attestationDate claimedPeriod claimedCredential attestationOutputIdx =
-  let isSubjectValid = isProtocolRefToken subject mintingPolicyCurrencySymbol
-      isIssuerValid = isProtocolRefToken issuer mintingPolicyCurrencySymbol
+  let -- TYPED, as of OC-05: both must be PROFILE ids, not merely reference-prefixed tokens of this
+      -- policy. Before the labels, `subject` could be an attestation id or a name never minted at
+      -- all — a record that mints, can never be accepted (@A5@ wants a user token this handler does
+      -- not mint) and can never be removed, because nothing in this protocol burns.
+      --
+      -- LINEAGE IS GONE, which is why this is `isProfileId` and not "profile OR attestation". The
+      -- audit's own fix text offered the union to keep an attestation about an attestation possible.
+      -- The owner dropped the feature on 2026-10-24, and that is the simpler protocol: the union was
+      -- the only reason to allow a non-profile subject, and the feature it preserved produced records
+      -- that were pending for ever and presented as "pending" to a subject who could not act.
+      isSubjectValid = isProfileId subject mintingPolicyCurrencySymbol
+      isIssuerValid = isProfileId issuer mintingPolicyCurrencySymbol
       minLv = ctxMinLv ctx
       attestationsValidatorAddress = ctxAttestationsAddress ctx
 
-      (attestationRefTN, _) = generateRefAndUserTN (Utils.nameFromTxOutRef seedTxOutRef)
+      -- LABEL 1, not CIP-68's 100 — OC-05. An attestation has no user token, so it is not a CIP-68
+      -- pair and must not wear the label of one; and a kind-specific label is what lets `Mg`, `Md4`
+      -- and `Mr` tell one id from another at all.
+      attestationRefTN = generateAttestationTN (Utils.nameFromTxOutRef seedTxOutRef)
       attestationRefAssetClass = V1.AssetClass (mintingPolicyCurrencySymbol, attestationRefTN)
       attestationNFT = V1.assetClassValue attestationRefAssetClass 1
       attestationValue = (attestationNFT + minLv)
@@ -306,7 +322,22 @@ handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOu
         -- acted. Who acted is @Mc3@'s statement, and on a claim it is both parties — @Mf@ for the
         -- profile, @Mc3@ for the credential.
         && traceIfFalse "Mf" (isWithdrawalKind || V1.assetClassValueOf (valueSpent txInfo) (deriveUserFromRefAC issuer) == 1) -- Must spend issued by user NFT (Mf)
-        && traceIfFalse "Mg" (isSubjectValid && isIssuerValid) -- Profile ids must be this protocol's REF tokens (Mg)
+        && traceIfFalse "Mg" (isSubjectValid && isIssuerValid) -- Subject and issuer must be this protocol's PROFILE ids (Mg)
+        -- SELF-ATTESTATION, refused — OC-05.
+        --
+        -- `Mf` and `A5` both read @valueSpent@, so when @subject == issuer@ the one user token
+        -- satisfies both: an `AuditPassed` or `Endorsement` by X about X lands as an ACCEPTED record,
+        -- with no second party anywhere in the transaction. Not a forgery — X really did say it — but
+        -- the registry's whole claim is that an accepted record carries its subject's consent, and
+        -- here consent and assertion are the same signature.
+        --
+        -- __EXEMPTS THE CREDENTIAL KINDS, which the audit's fix text did not.__ `Mc1` REQUIRES
+        -- @subject == issuer@ on a `CredentialClaim` and a `CredentialWithdrawal`: a binding is
+        -- self-issued by construction. Applying this rule literally, as the audit wrote it, would
+        -- have made the two rules contradict each other and every credential record unmintable. ADR
+        -- 0003 landed after the audit, which is how the fix text came to be written against a
+        -- protocol that no longer existed — and `isCredentialKind` was already here to say so.
+        && traceIfFalse "Mr" (isCredentialKind || subject /= issuer) -- An attestation may not be self-issued (Mr)
         -- ADR 0003. A binding is an attestation, so these four rules are what keep that record
         -- honest — and what keep the credential field off the five kinds where nothing checks it.
         && traceIfFalse "Mc1" (not isCredentialKind || subject == issuer) -- A credential record is self-issued (Mc1)
@@ -447,7 +478,8 @@ handleOpenDispute txInfo@TxInfo {..} mintingPolicyCurrencySymbol protocolParams 
       deposit = ctxDisputeDeposit ctx
       disputesValidatorAddress = ctxDisputesAddress ctx
 
-      (disputeRefTN, _) = generateRefAndUserTN (Utils.nameFromTxOutRef seedTxOutRef)
+      -- LABEL 2 — OC-05, same reasoning as the attestation's label 1.
+      disputeRefTN = generateDisputeTN (Utils.nameFromTxOutRef seedTxOutRef)
       disputeRefAssetClass = V1.AssetClass (mintingPolicyCurrencySymbol, disputeRefTN)
       disputeNFT = V1.assetClassValue disputeRefAssetClass 1
       -- The deposit is part of the locked value, which is the whole economic mechanism: it sits in
@@ -477,7 +509,11 @@ handleOpenDispute txInfo@TxInfo {..} mintingPolicyCurrencySymbol protocolParams 
           "Md2" -- Tx must mint JUST the dispute ref NFT (Md2)
           (mintValueMinted txInfoMint == disputeNFT && mintValueBurned txInfoMint == mempty)
         && traceIfFalse "Md3" (V1.assetClassValueOf (valueSpent txInfo) (deriveUserFromRefAC openedBy) == 1) -- Must spend the disputer's user NFT (Md3)
-        && traceIfFalse "Md4" (isProtocolRefToken target mintingPolicyCurrencySymbol && isProtocolRefToken openedBy mintingPolicyCurrencySymbol) -- Target and opener must be this protocol's REF tokens (Md4)
+        -- TYPED, as of OC-05: the target must be an ATTESTATION and the opener a PROFILE. Before the
+        -- labels a dispute could name a profile, another dispute, or a name never minted, and the
+        -- projection column @targetAttestationId@ would then point at something that is not an
+        -- attestation — a dispute the read layer cannot render against a record that does not exist.
+        && traceIfFalse "Md4" (isAttestationId target mintingPolicyCurrencySymbol && isProfileId openedBy mintingPolicyCurrencySymbol) -- Target must be an attestation id, opener a profile id (Md4)
         && traceIfFalse "Md8" (any ((== depositTo) . txOutAddress . txInInfoResolved) txInfoInputs) -- Deposit address must be spent from by this tx (Md8)
         && traceIfFalse "Md5" (Utils.checkTxOutAtIndexWithDatumMinValueAndAddress disputeOutputIdx disputeDatum disputeValue disputesValidatorAddress txInfoOutputs) -- Lock dispute + deposit at DisputesValidator address (Md5)
         -- `Mp6`'s rule, on this path — OC-03. The dispute output already holds the deposit, so `Md5`

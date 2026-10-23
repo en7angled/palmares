@@ -168,17 +168,23 @@ getAttestationDatumAndValue attestationAC =
 
 -- | The thing an attestation is about must exist on chain before the attestation is built.
 --
--- The off-chain half of Review Focus item 3, and it has to live off chain: the minting policy checks
--- only that the subject's asset class carries the protocol currency symbol (@Mg@), and nothing in
--- this protocol burns — so an attestation about a subject that was never minted is a record no
--- subject can ever counter-sign and nobody can ever remove. A separate error from the issuer's
--- 'ProfileNotFound', because the two are different mistakes made by different parties.
+-- The off-chain half of Review Focus item 3. Nothing in this protocol burns, so an attestation about
+-- a subject that was never minted is a record no subject can ever counter-sign and nobody can ever
+-- remove. A separate error from the issuer's 'ProfileNotFound', because the two are different
+-- mistakes made by different parties.
 --
--- __Existence only, not kind.__ It deliberately does not require the subject to be a profile: an
--- attestation ABOUT an earlier attestation is a lineage record the spec asks for, and its subject is
--- an attestation id. Requiring a profile datum here would refuse that whole feature in order to
--- catch nothing extra — a UTxO holding the subject NFT is what makes the record resolvable, which is
--- the property at stake.
+-- __EXISTENCE ONLY, AND NOW THAT IS THE WHOLE JOB__ — OC-05 moved the kind check on chain. @Mg@ used
+-- to accept any reference-prefixed token of this policy, so this function was the only thing standing
+-- between an issuer and a record about an attestation, a dispute, or a name nobody minted; it was a
+-- courtesy, and a bypassable one, since a client that builds its own transaction never calls it. @Mg@
+-- now requires a PROFILE id on both sides, by CIP-67 label, so the kind is the chain's business and
+-- existence is this function's.
+--
+-- __The paragraph that used to end here defended LINEAGE__ — an attestation about an earlier
+-- attestation — as a feature this check must not refuse. The owner dropped the feature on 2026-10-24,
+-- and the honest summary is that it never worked: @A5@ asks the subject to spend the user NFT derived
+-- from its id, and @handleNewAttestation@ mints no user token, so a lineage record was pending for
+-- ever and presented as "pending" to a subject that could not act. Defending it cost a real check.
 ensureSubjectProfileExists :: (GYTxQueryMonad m) => GYAssetClass -> m ()
 ensureSubjectProfileExists subjectAC =
   () <$ getUTxOWithNFTOrThrow subjectAC SubjectProfileNotFound

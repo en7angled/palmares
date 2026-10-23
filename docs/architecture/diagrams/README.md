@@ -7,12 +7,15 @@ documents. All 26 blocks render; the one failure met on the way was a `;` inside
 `sequenceDiagram` note, which is the first pitfall listed under *Regenerating* below — added by an
 edit that did not re-render, which is exactly what that instruction exists to prevent.
 
-**Stale as of 2026-10-23.** `system-overview.md` was reconciled against `main` @ `2bf5bde` and six of
-its Mermaid blocks changed, so these six SVGs are behind their source and need re-rendering:
-`system-overview-02.svg`, `-03.svg`, `-05.svg`, `-06.svg`, `-07.svg`, `-10.svg`. The other four
-`system-overview-*.svg` are current with their source; the on-chain documents were not reconciled in
-that pass, so say nothing about theirs on this basis. The manifest below — file, type and section for
-all 26 — is unchanged: no block was added, removed or renumbered.
+**Re-rendered 2026-10-24** for ADR 0006 (typed ids, lineage dropped): all 13 blocks of
+`onchain-flows.md` and all 3 of `onchain-protocol.md` render, 0 failures. The §4.2 Attestation note
+had said a lineage attestation "stays Pending for ever" — it is now refused at the mint by `Mg`, and
+an edit to a diagram's PROSE that is not re-rendered is exactly the drift this file exists to catch.
+
+The earlier staleness note said six `system-overview-*.svg` were behind their source after the
+2026-10-23 reconciliation. That is unchanged and still true — `system-overview.md` was not touched by
+ADR 0006, so its six remain to be re-rendered. The manifest below — file, type and section for all
+26 — is unchanged: no block was added, removed or renumbered.
 
 ## The three diagrams the owner asked for
 

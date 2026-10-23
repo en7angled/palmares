@@ -4,7 +4,7 @@ module Palmares.TxBuilding.Skeletons where
 import GeniusYield.Examples.Limbo
 import GeniusYield.TxBuilder
 import GeniusYield.Types
-import Palmares.Onchain.CIP68 (deriveUserFromRefTN, generateRefAndUserTN)
+import Palmares.Onchain.CIP68 (deriveUserFromRefTN, generateAttestationTN, generateDisputeTN, generateRefAndUserTN)
 import Palmares.Onchain.Utils (nameFromTxOutRef)
 import PlutusLedgerApi.V1.Value
 import PlutusLedgerApi.V3
@@ -27,6 +27,22 @@ gyGenerateRefAndUserAC mpScript seedTxOutRef = do
   gyRefAC <- assetClassFromPlutus' refAC
   gyUserAC <- assetClassFromPlutus' userAC
   return (gyRefAC, gyUserAC)
+
+-- | An ATTESTATION's id: one token under CIP-67 private-use label 1, and no user token — OC-05.
+--
+-- The mirror of 'Palmares.Onchain.CIP68.generateAttestationTN', which the minting policy derives the
+-- same id with. The two must agree or `Mj` refuses the mint, which is what makes a disagreement loud
+-- rather than a wrong id in the registry.
+gyGenerateAttestationAC :: (GYTxQueryMonad m) => GYScript 'PlutusV3 -> GYTxOutRef -> m GYAssetClass
+gyGenerateAttestationAC mpScript seedTxOutRef =
+  assetClassFromPlutus' . AssetClass . (mintingPolicyCurrencySymbol mpScript,) $
+    generateAttestationTN (nameFromTxOutRef (txOutRefToV3Plutus seedTxOutRef))
+
+-- | A DISPUTE's id: one token under CIP-67 private-use label 2, and no user token — OC-05.
+gyGenerateDisputeAC :: (GYTxQueryMonad m) => GYScript 'PlutusV3 -> GYTxOutRef -> m GYAssetClass
+gyGenerateDisputeAC mpScript seedTxOutRef =
+  assetClassFromPlutus' . AssetClass . (mintingPolicyCurrencySymbol mpScript,) $
+    generateDisputeTN (nameFromTxOutRef (txOutRefToV3Plutus seedTxOutRef))
 
 gyDeriveUserFromRefAC :: (GYTxQueryMonad m) => GYAssetClass -> m GYAssetClass
 gyDeriveUserFromRefAC (GYToken mp gyProfileRefTN) = do

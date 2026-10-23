@@ -34,7 +34,7 @@ import Palmares.Onchain.CIP68
 import Palmares.Onchain.Protocol.Lookup (checkFee, readOracleParams)
 import Palmares.Onchain.Protocol.Types
   ( AttestationId,
-    AttestationKind,
+    AttestationKind (CredentialClaim, CredentialWithdrawal),
     MintAction (MintActionAttestation, MintActionDispute, MintActionProfile),
     OnchainAttestation
       ( OnchainAttestation,
@@ -42,6 +42,7 @@ import Palmares.Onchain.Protocol.Types
         attestationSubject,
         attestationDate,
         attestationId,
+        attestationCredential,
         attestationIsAccepted,
         attestationKind,
         attestationOracleToken,
@@ -49,7 +50,6 @@ import Palmares.Onchain.Protocol.Types
       ),
     OnchainProfile
       ( OnchainProfile,
-        profileCredential,
         profileId,
         profileKind,
         protocolParams
@@ -103,18 +103,24 @@ import Prelude qualified
 -- | Custom redeemer :
 -- Output indices are passed in the redeemer for efficient O(1) lookup instead of O(n) search.
 data MintingRedeemer
-  = -- | NewAttestation seedTxOutRef metadata222 otherMetadata subject issuer kind attestationDate claimedPeriod attestationOutputIdx
+  = -- | NewAttestation seedTxOutRef metadata222 otherMetadata subject issuer kind attestationDate claimedPeriod claimedCredential attestationOutputIdx
     --
     -- @kind@ and @claimedPeriod@ are the two the spec's §3 glossary required and the first cut
     -- omitted. @claimedPeriod@ is self-reported and carries NO check — see 'attestationPeriod'.
-    NewAttestation TxOutRef MetadataFields [(BuiltinByteString, BuiltinByteString)] ProfileId ProfileId AttestationKind POSIXTime (Maybe (POSIXTime, POSIXTime)) Integer
-  | -- | MintProfile seedTxOutRef kind claimedCredential metadata profileOutputIdx
     --
-    -- The claim. @claimedCredential@ is 'Nothing' for a profile that corresponds to no on-chain
-    -- credential (a Community, an Auditor) and 'Just' for one that claims control of a DRep id, a
-    -- committee cold credential or a stake credential — the same rule for all three, because all
-    -- three are a 'Credential'.
-    MintProfile TxOutRef OnchainProfileKind (Maybe Credential) MetadataFields Integer
+    -- @claimedCredential@ arrived with __ADR 0003__ and is the opposite of self-reported: it is
+    -- 'Just' exactly for the two credential kinds, where @Mc3@ requires the credential to prove
+    -- control of this transaction, and 'Nothing' for the other five, where @Mc4@ requires its
+    -- absence. It used to be an argument of @MintProfile@, checked by @Mp3@, in a field on the
+    -- profile datum that a destructive redeemer could clear.
+    NewAttestation TxOutRef MetadataFields [(BuiltinByteString, BuiltinByteString)] ProfileId ProfileId AttestationKind POSIXTime (Maybe (POSIXTime, POSIXTime)) (Maybe Credential) Integer
+  | -- | MintProfile seedTxOutRef kind metadata profileOutputIdx
+    --
+    -- __No credential argument — ADR 0003.__ Minting a profile no longer claims anything; a claim is
+    -- a 'CredentialClaim' attestation, which costs a second transaction and buys an append-only
+    -- record that no redeemer can erase. The argument that used to sit here is now
+    -- @NewAttestation@'s.
+    MintProfile TxOutRef OnchainProfileKind MetadataFields Integer
   | -- | OpenDispute seedTxOutRef target openedBy depositTo metadata openedAt disputeOutputIdx
     --
     -- @depositTo@ is where the deposit returns on either verdict, named by the disputer here because
@@ -185,12 +191,12 @@ mintingPolicyLambda protocolParams (ScriptContext txInfo@TxInfo {..} (Redeemer b
            in -- Global gate: protocol must not be paused (M0).
               traceIfFalse "M0" (not (opPaused oracle)) -- Protocol is paused (M0)
                 && case redeemer of
-                  NewAttestation seedTxOutRef metadata otherMetadata subject issuer kind attestationDate claimedPeriod attestationOutputIdx ->
+                  NewAttestation seedTxOutRef metadata otherMetadata subject issuer kind attestationDate claimedPeriod claimedCredential attestationOutputIdx ->
                     checkFee oracle MintActionAttestation txInfoOutputs
-                      && handleNewAttestation txInfo mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadata subject issuer kind attestationDate claimedPeriod attestationOutputIdx
-                  MintProfile seedTxOutRef kind claimedCredential metadata profileOutputIdx ->
+                      && handleNewAttestation txInfo mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadata subject issuer kind attestationDate claimedPeriod claimedCredential attestationOutputIdx
+                  MintProfile seedTxOutRef kind metadata profileOutputIdx ->
                     checkFee oracle MintActionProfile txInfoOutputs
-                      && handleMintProfile txInfo mintingPolicyCurrencySymbol protocolParams ctx seedTxOutRef kind claimedCredential metadata profileOutputIdx
+                      && handleMintProfile txInfo mintingPolicyCurrencySymbol protocolParams ctx seedTxOutRef kind metadata profileOutputIdx
                   OpenDispute seedTxOutRef target openedBy depositTo metadata openedAt disputeOutputIdx ->
                     checkFee oracle MintActionDispute txInfoOutputs
                       && handleOpenDispute txInfo mintingPolicyCurrencySymbol protocolParams ctx seedTxOutRef target openedBy depositTo metadata openedAt disputeOutputIdx
@@ -215,9 +221,10 @@ handleNewAttestation ::
   AttestationKind ->
   POSIXTime ->
   Maybe (POSIXTime, POSIXTime) ->
+  Maybe Credential ->
   Integer ->
   Bool
-handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadataEncoded subject issuer kind attestationDate claimedPeriod attestationOutputIdx =
+handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadataEncoded subject issuer kind attestationDate claimedPeriod claimedCredential attestationOutputIdx =
   let isSubjectValid = isProtocolRefToken subject mintingPolicyCurrencySymbol
       isIssuerValid = isProtocolRefToken issuer mintingPolicyCurrencySymbol
       minLv = ctxMinLv ctx
@@ -245,10 +252,33 @@ handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOu
             attestationIsAccepted = False,
             -- The parameter, not anything the client chose — the same line 'handleOpenDispute'
             -- writes for `disputeOracleToken`, and the reason a datum cannot name a forged oracle.
-            attestationOracleToken = ctxOracleToken ctx
+            attestationOracleToken = ctxOracleToken ctx,
+            -- Carried through from the redeemer, and `Mk` compares this whole datum against the
+            -- output — so what the four rules below establish about it is what the record says
+            -- forever. ADR 0003.
+            attestationCredential = claimedCredential
           }
 
       attestationDatum = mkCIP68Datum attestationInfo metadata otherMetadataEncoded
+
+      -- ADR 0003's three predicates. Pattern matches rather than an `Eq AttestationKind` instance:
+      -- PlutusTx has no deriving for that class, and a two-way match is cheaper than writing one.
+      isCredentialKind = case kind of
+        CredentialClaim -> True
+        CredentialWithdrawal -> True
+        _ -> False
+      isWithdrawalKind = case kind of
+        CredentialWithdrawal -> True
+        _ -> False
+      credentialIsNamed = case claimedCredential of
+        Just _ -> True
+        Nothing -> False
+      -- The same rule @Mp3@ was, moved to the record whose whole purpose is the binding. Its
+      -- documented limit carries over: a script that ONLY ever votes or withdraws holds no UTxO at
+      -- its own address, so it sends itself one first.
+      credentialConsents = case claimedCredential of
+        Nothing -> False
+        Just credential -> Utils.checkCredentialControl credential txInfoSignatories txInfoInputs
    in -- RENAMED FROM `Ml` on 2026-10-22, and the reason is the terminal: a lowercase L is
       -- indistinguishable from a digit 1 in most monospace fonts, and `M1` is a different code on
       -- the same script ("invalid purpose"). An operator reading a failed transaction's log would
@@ -258,8 +288,27 @@ handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOu
       traceIfFalse "Mq" (Utils.checkDateInRange attestationDate txInfoValidRange) -- Attestation date not inside validity interval (Mq)
         && traceIfFalse "Mm" (validateMetadataFields metadata) -- Metadata fields validation failed (Mm)
         && traceIfFalse "Mn" (validateOtherMetadata otherMetadataEncoded) -- otherMetadata too big, or duplicate keys (Mn)
-        && traceIfFalse "Mf" (V1.assetClassValueOf (valueSpent txInfo) (deriveUserFromRefAC issuer) == 1) -- Must spend issued by user NFT (Mf)
+        -- @Mf@ IS CONDITIONAL, and 'CredentialWithdrawal' is the one exemption — ADR 0003.
+        --
+        -- For every other kind, spending the issuer's user NFT is what makes @attestationIssuer@
+        -- mean "this profile said so". A withdrawal is the one record where the profile must NOT be
+        -- asked: the case it exists for is a profile that claimed somebody else's credential, and
+        -- that profile's token is held by whoever did it. Requiring it would hand the remedy to the
+        -- only party that must not have it — the exact defect an audit found in the D-E revocation
+        -- this replaces.
+        --
+        -- So on the two credential kinds @attestationIssuer@ is STRUCTURAL: @Mc1@ forces it to equal
+        -- the subject, so it names the profile the record is about and makes no claim about who
+        -- acted. Who acted is @Mc3@'s statement, and on a claim it is both parties — @Mf@ for the
+        -- profile, @Mc3@ for the credential.
+        && traceIfFalse "Mf" (isWithdrawalKind || V1.assetClassValueOf (valueSpent txInfo) (deriveUserFromRefAC issuer) == 1) -- Must spend issued by user NFT (Mf)
         && traceIfFalse "Mg" (isSubjectValid && isIssuerValid) -- Profile ids must be this protocol's REF tokens (Mg)
+        -- ADR 0003. A binding is an attestation, so these four rules are what keep that record
+        -- honest — and what keep the credential field off the five kinds where nothing checks it.
+        && traceIfFalse "Mc1" (not isCredentialKind || subject == issuer) -- A credential record is self-issued (Mc1)
+        && traceIfFalse "Mc2" (not isCredentialKind || credentialIsNamed) -- A credential record must name a credential (Mc2)
+        && traceIfFalse "Mc3" (not isCredentialKind || credentialConsents) -- Named credential does not control this tx (Mc3)
+        && traceIfFalse "Mc4" (isCredentialKind || not credentialIsNamed) -- Only a credential record may name one (Mc4)
         && traceIfFalse "Mh" (Utils.inputsSpendTxOutRef seedTxOutRef txInfoInputs) -- Must spend seed for uniqueness (Mh)
         && traceIfFalse
           "Mj" -- Tx must mint JUST attestation NFT (Mj)
@@ -274,11 +323,10 @@ handleMintProfile ::
   MintingContext ->
   TxOutRef ->
   OnchainProfileKind ->
-  Maybe Credential ->
   MetadataFields ->
   Integer ->
   Bool
-handleMintProfile TxInfo {..} mintingPolicyCurrencySymbol protocolParams ctx seedTxOutRef kind claimedCredential metadata profileOutputIdx =
+handleMintProfile TxInfo {..} mintingPolicyCurrencySymbol protocolParams ctx seedTxOutRef kind metadata profileOutputIdx =
   let minLv = ctxMinLv ctx
       profilesValidatorAddress = ctxProfilesAddress ctx
 
@@ -293,7 +341,6 @@ handleMintProfile TxInfo {..} mintingPolicyCurrencySymbol protocolParams ctx see
         OnchainProfile
           { profileId = profileRefAssetClass,
             profileKind = kind,
-            profileCredential = claimedCredential,
             protocolParams = protocolParams
           }
       profileDatum = mkCIP68Datum profileInfo metadata []
@@ -301,7 +348,11 @@ handleMintProfile TxInfo {..} mintingPolicyCurrencySymbol protocolParams ctx see
         && traceIfFalse
           "Mp2" -- Tx must mint JUST the profile ref AND user NFT (Mp2)
           (mintValueMinted txInfoMint == (profileRefNFT + profileUserNFT) && mintValueBurned txInfoMint == mempty)
-        && traceIfFalse "Mp3" (checkClaim claimedCredential) -- Claimed credential is not controlled by this tx (Mp3)
+        -- @Mp3@ IS GONE, and its index is not reused: it required a claimed credential to control
+        -- this transaction, and ADR 0003 moved the claim out of this path entirely. The rule it
+        -- became is @Mc3@, on the 'CredentialClaim' attestation, where the transaction's whole
+        -- visible purpose is the binding — so a signature on it is far harder to misrepresent than
+        -- one on a profile mint that happened to carry a credential.
         && traceIfFalse "Mp4" (validateMetadataFields metadata) -- Metadata fields validation failed (Mp4)
         && traceIfFalse "Mp5" (Utils.checkTxOutAtIndexWithDatumMinValueAndAddress profileOutputIdx profileDatum profileValue profilesValidatorAddress txInfoOutputs) -- Lock profile at ProfilesValidator address (Mp5)
         -- THE USER TOKEN MUST NOT END UP IN THE STATE OUTPUT, and @Mp5@ positively permits it
@@ -320,20 +371,12 @@ handleMintProfile TxInfo {..} mintingPolicyCurrencySymbol protocolParams ctx see
         -- wallet, which is where authority belongs." That is a statement about the builder, and a
         -- hand-built transaction is not the builder.
         --
-        -- This is the cheap half. It does NOT bind the user token to the claimed credential's
-        -- holder, so a transaction the victim co-signs for an unrelated reason can still mint a
-        -- profile claiming the victim's credential while the attacker keeps the authority token —
-        -- @Mp3@ proves the credential consented to THIS TRANSACTION, never to where the authority
-        -- lands. Closing that needs the user token paid to an address the claimed credential
-        -- controls, which a validator cannot resolve for a script credential, so it is a design
-        -- decision and not a check to add here.
+        -- The paragraph that used to end here described what @Mp3@ did NOT close: a transaction the
+        -- victim co-signs for an unrelated reason minting a profile that claims the victim's
+        -- credential while the attacker keeps the authority token. ADR 0003 answered it by moving
+        -- the claim to its own append-only record, so a profile mint now claims nothing and there is
+        -- no binding here to misdirect.
         && traceIfFalse "Mp6" (V1.assetClassValueOf (Utils.valueAtOutputIdx profileOutputIdx txInfoOutputs) profileUserAssetClass == 0) -- User token must not be locked with the state (Mp6)
-  where
-    -- A profile that claims nothing has nothing to prove. That is not a hole: a Community or an
-    -- Auditor need not correspond to any on-chain credential, and the read layer presents such a
-    -- profile as @unclaimed@ rather than verified.
-    checkClaim Nothing = True
-    checkClaim (Just credential) = Utils.checkCredentialControl credential txInfoSignatories txInfoInputs
 
 -- | Open a dispute against an attestation: lock the deposit, record what was paid, prove who paid it.
 --

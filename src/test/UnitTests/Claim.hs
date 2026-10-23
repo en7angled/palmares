@@ -59,8 +59,12 @@ tests =
       -- hash — needs no witness for the script, so anyone could send themselves min-ADA to an
       -- address holding their own key in the payment half and a victim's script hash in the staking
       -- half, spend it with their own signature, and claim the victim's credential. Every script
-      -- DRep id and every committee cold script credential was claimable by anyone, permanently,
-      -- because `profileCredential` has no update redeemer and nothing burns a profile.
+      -- DRep id and every committee cold script credential was claimable by anyone, and at the time
+      -- permanently, because the binding was a profile field with no update redeemer and nothing
+      -- burns a profile. ADR 0003 has since made a binding an append-only record a withdrawal can
+      -- end — but this rule is the one that stops the bogus claim being made at all, and every case
+      -- in this module is about the rule rather than about where it is called from, which is why
+      -- moving the call site from @Mp3@ to @Mc3@ left all thirteen of them standing.
       --
       -- So this is now the assertion that fails on the old code, which is what `src/test/CLAUDE.md`
       -- asks of every fix.

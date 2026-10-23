@@ -292,54 +292,27 @@ makeIsDataSchemaIndexed
     ('Auditor, 5)
   ]
 
+-- | A profile: an actor's record, and the anchor every attestation points at.
+--
+-- __No credential field — ADR 0003.__ It had one, @profileCredential@, set at mint by @Mp3@ and
+-- cleared by a @RevokeCredential@ redeemer. An audit found that clearing irreversible and reachable
+-- with the same weak proof the claim took, which made the remedy more dangerous than the hole it
+-- answered: abusing @Mp3@ added a bogus profile and left the real one intact, while abusing the
+-- revocation severed a credential from its entire track record for good.
+--
+-- A binding is now a 'CredentialClaim' attestation and its end is a 'CredentialWithdrawal' — facts
+-- appended to a log that this protocol never rewrites, rather than a field with a delete button. The
+-- read layer still publishes @profile_credential@; it derives it.
 data OnchainProfile
   = OnchainProfile
   { profileId :: ProfileId,
     profileKind :: OnchainProfileKind,
-    -- | The Cardano credential this profile claims, if any.
-    --
-    -- A 'Credential' and not a bare hash, because that is what CIP-129 encodes — header byte
-    -- included — so the key-or-script distinction the claim rule turns on is never thrown away. It
-    -- covers a DRep id, a constitutional-committee cold credential and a stake credential
-    -- identically, which is why the claim rule needs no per-kind cases.
-    --
-    -- __'Nothing' is legitimate.__ A Community or an Auditor need not correspond to any on-chain
-    -- credential, and requiring one would make the registry refuse actors the spec names. What
-    -- 'Nothing' means is "this profile claims nothing", which the read layer must present as
-    -- @unclaimed@ — never as verified.
-    profileCredential :: Maybe Credential,
     protocolParams :: ProtocolParams
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
 
 makeIsDataSchemaIndexed ''OnchainProfile [('OnchainProfile, 0)]
-
--- | Clear a profile's credential claim, changing nothing else — D-E.
---
--- The same shape as 'resolveDispute' and 'applyOracleAdminAction', and for the same reason: the
--- validator computes the expected output datum on chain with this function and compares it to the
--- actual output, so off-chain and on-chain cannot disagree about what a revocation does. Everything
--- this function preserves — the id, the kind, the baked 'ProtocolParams' — is a field a revocation
--- provably cannot touch. Those three are all 'OnchainProfile' has besides the claim; the CIP-68
--- @metadata@ and @version@ sit on the WRAPPER and are preserved by the caller's record update, which
--- @P5@'s whole-datum comparison then pins.
---
--- __Why a revocation has to exist.__ @Mp3@ proves the credential consented to the TRANSACTION that
--- minted the profile, not that it agreed to hand its authority to whoever holds the resulting
--- token. A transaction co-signed for any unrelated reason therefore mints a profile claiming the
--- co-signer's credential, with the attacker holding the user NFT — and before D-E a claim was
--- proven once and asserted forever: no withdrawal, no expiry, and nothing in this protocol burns.
--- The victim had no move at all.
---
--- __And why the revocation is authorised by the CREDENTIAL and not by the profile's user NFT.__ The
--- attacker holds that token; requiring it would hand the remedy to exactly the wrong party. So the
--- revocation asks 'Palmares.Onchain.Utils.checkCredentialControl' of the credential being revoked —
--- the same proof the claim itself needed, which is what makes this symmetric rather than a new
--- privilege.
-{-# INLINEABLE revokeCredential #-}
-revokeCredential :: OnchainProfile -> OnchainProfile
-revokeCredential profile = profile {profileCredential = Nothing}
 
 -------------------------------------------------------------------------------
 
@@ -370,6 +343,26 @@ data AttestationKind
   | Affiliation
   | RoleHeld
   | Endorsement
+  | -- | A profile binding itself to a Cardano credential — __ADR 0003__, and the reason
+    -- 'OnchainProfile' no longer has a credential field.
+    --
+    -- Self-issued by rule (@Mc1@: issuer must equal subject), so the profile's own consent is the
+    -- existing @Mf@; the credential's consent is @Mc3@, the same 'checkCredentialControl' the old
+    -- @Mp3@ used. Both parties, in one record that is never rewritten.
+    --
+    -- __Why this is stronger than the field it replaces, not just tidier.__ @Mp3@ proved the
+    -- credential consented to a TRANSACTION, which could be about anything; here the transaction's
+    -- whole visible purpose is to mint this binding, so a signature on it is much harder to
+    -- misrepresent. And because the record is append-only, a later 'CredentialWithdrawal' adds a
+    -- fact instead of deleting one — where the D-E revocation it replaces cleared a field
+    -- irreversibly, severing a credential from its whole track record.
+    CredentialClaim
+  | -- | A credential withdrawing from a claim — __ADR 0003__.
+    --
+    -- Names the same credential and the same subject as the claim it supersedes. The read layer
+    -- publishes a binding only while the latest claim has no later withdrawal, so this is how a
+    -- binding ends: by one more fact, never by an erasure.
+    CredentialWithdrawal
   -- As with 'OnchainProfileKind': Haskell-only, hash-neutral, and what lets the round-trip test
   -- cover a sixth kind the day it is added. The domain mirror 'DomainTypes.Core.Types.AttestationType'
   -- already derives both.
@@ -382,7 +375,11 @@ makeIsDataSchemaIndexed
     ('AuditPassed, 1),
     ('Affiliation, 2),
     ('RoleHeld, 3),
-    ('Endorsement, 4)
+    ('Endorsement, 4),
+    -- Appended, never inserted: the five above are a deployed-data contract from the first
+    -- deployment onward, the same rule 'OracleSetAdmin' and 'VerdictExpired' follow.
+    ('CredentialClaim, 5),
+    ('CredentialWithdrawal, 6)
   ]
 
 data OnchainAttestation = OnchainAttestation
@@ -416,6 +413,19 @@ data OnchainAttestation = OnchainAttestation
     -- @issued_at@ — and must not sort or filter the record as though the chain had checked it.
     attestationPeriod :: Maybe (POSIXTime, POSIXTime),
     attestationIsAccepted :: Bool,
+    -- | The credential this record binds, for the two credential kinds, and 'Nothing' for every
+    -- other kind — __ADR 0003__.
+    --
+    -- @Mc2@ requires it present on a 'CredentialClaim' or a 'CredentialWithdrawal' and @Mc4@
+    -- requires it ABSENT on the other five, so the field cannot be smuggled onto a milestone or an
+    -- endorsement where nothing would check it.
+    --
+    -- __This is where a profile's credential lives now.__ It used to be
+    -- @OnchainProfile.profileCredential@, a mutable field cleared by a destructive redeemer; an
+    -- audit found that irreversible and reachable with a weak proof, so ADR 0003 moved the binding
+    -- into the append-only record type this protocol already has. 'Nothing' here on an ordinary
+    -- attestation is not "unclaimed" — it simply is not a claim.
+    attestationCredential :: Maybe Credential,
     -- | Which oracle UTxO governs this record, so that @AcceptAttestation@ can find it.
     --
     -- __The same field as 'disputeOracleToken', for the same reason, and decided as D-C.__ An

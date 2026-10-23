@@ -82,7 +82,7 @@ pkhA = "11111111111111111111111111111111111111111111111111111111"
 profileArms :: [ProfileActionType]
 profileArms =
   [ UpdateProfileAction (ac "00000000000000000000000000000000000000000000000000000000.6161") (Just "new") "ipfs://i",
-    ClaimProfileAction PersonDRep (Just "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg") (Just WitnessKey) pd,
+    ClaimProfileAction PersonDRep pd,
     IssueAttestationAction
       (ac "00000000000000000000000000000000000000000000000000000000.6262")
       (ac "00000000000000000000000000000000000000000000000000000000.6363")
@@ -218,6 +218,7 @@ interactionApiTests =
         sort (objKeys (fromMaybe Null (field "paths" doc)))
           @?= [ "/accept-attestation",
                 "/build-tx",
+                "/claim-credential",
                 "/claim-profile",
                 "/expire-dispute",
                 "/health",
@@ -225,11 +226,11 @@ interactionApiTests =
                 "/open-dispute",
                 "/ready",
                 "/resolve-dispute",
-                "/revoke-credential",
                 "/status",
                 "/submit-tx",
                 "/tx-status/{txId}",
-                "/update-profile"
+                "/update-profile",
+                "/withdraw-credential"
               ],
       -- /health answers `alwaysHealthy` and reports healthy with a dead provider and unreachable
       -- scripts. /status is what an operator actually needs.

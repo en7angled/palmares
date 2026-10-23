@@ -212,12 +212,14 @@ profileUnclaimed =
   OnchainProfile
     { profileId = fakeAC "profile",
       profileKind = minBound,
-      profileCredential = Nothing,
       protocolParams = blueprintProtocolParams
     }
 
+-- ADR 0003 removed the profile's credential field, so "claimed" is no longer a profile shape at
+-- all: a binding is a CredentialClaim attestation. The round-trip the pair used to cover is now
+-- covered by the attestation fixtures below, which carry `attestationCredential`.
 profileClaimed :: OnchainProfile
-profileClaimed = profileUnclaimed {profileCredential = Just (PubKeyCredential newAdminPlutus)}
+profileClaimed = profileUnclaimed
 
 attestationNoPeriod :: OnchainAttestation
 attestationNoPeriod =
@@ -228,6 +230,7 @@ attestationNoPeriod =
       attestationKind = minBound,
       attestationDate = POSIXTime 1_700_000_000_000,
       attestationPeriod = Nothing,
+      attestationCredential = Nothing,
       attestationIsAccepted = False,
       attestationOracleToken = fakeAC "oracle"
     }

@@ -167,10 +167,16 @@ type ServiceAPI =
              :> ReqBody '[JSON] ExpireDisputeRequest
              :> Post '[JSON] String
          )
-    :<|> ( Summary "Revoke Credential"
-             :> Description "Clears a profile's credential claim. Authorised by the CREDENTIAL and not by the profile's user token, because the party that claimed a credential it does not control is exactly the party holding that token. The profile survives; one field is cleared."
-             :> "revoke-credential"
-             :> ReqBody '[JSON] RevokeCredentialRequest
+    :<|> ( Summary "Claim Credential"
+             :> Description "Binds a profile to a Cardano credential as an append-only record — ADR 0003. Needs BOTH parties: the transaction spends the profile's user token and must also be authorised by the credential. A second call after /claim-profile, which no longer claims anything."
+             :> "claim-credential"
+             :> ReqBody '[JSON] ClaimCredentialRequest
+             :> Post '[JSON] String
+         )
+    :<|> ( Summary "Withdraw Credential"
+             :> Description "Ends a profile's binding to a credential. Authorised by the CREDENTIAL alone — not by the profile's owner, who may be exactly the party that claimed a credential they do not control. Nothing is deleted: the claim stays on chain and this record is appended beside it."
+             :> "withdraw-credential"
+             :> ReqBody '[JSON] WithdrawCredentialRequest
              :> Post '[JSON] String
          )
 
@@ -183,7 +189,8 @@ serviceServer =
     :<|> handleOpenDispute
     :<|> handleResolveDispute
     :<|> handleExpireDispute
-    :<|> handleRevokeCredential
+    :<|> handleClaimCredential
+    :<|> handleWithdrawCredential
 
 ------------------------------------------------------------------------------------------------
 

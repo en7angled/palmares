@@ -28,12 +28,12 @@ import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Database.Persist (Entity (..), Filter, SelectOpt (Asc), selectList, (==.))
+import Database.Persist (Entity (..), Filter, SelectOpt (Asc), getBy, selectList, (==.))
 import Database.Persist.Sql (ConnectionPool)
 import GeniusYield.Types
 import Palmares.ChainSync.KupoAtlas (AtlasMatch (..), toGYAssetClass)
 import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..))
-import Palmares.DomainTypes.Core.Types (Profile (..))
+import Palmares.DomainTypes.Core.Types (Attestation (..), AttestationType (CredentialClaim))
 import Palmares.Ingestion
 import Palmares.Onchain.CIP68 (MetadataFields (..), mkCIP68Datum)
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
@@ -82,6 +82,14 @@ acAttestation = ac "c0ffee00000000000000000000000000000000000000000000000001.000
 acDispute = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0e5"
 acForeign = ac "deadbeef000000000000000000000000000000000000000000000002.000643b0f6"
 
+acClaimRecord, acWithdrawRecord :: GYAssetClass
+acClaimRecord = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0f8"
+acWithdrawRecord = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0f9"
+
+-- | A second credential, for the case a withdrawal names one the profile does not publish.
+otherCredential :: Credential
+otherCredential = PubKeyCredential (PubKeyHash "fedcba9876543210fedcba987654")
+
 acOracle :: GYAssetClass
 acOracle = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0f7"
 
@@ -111,14 +119,13 @@ fixtureMetadata :: MetadataFields
 fixtureMetadata = Metadata222 "a name" "a description" "ipfs://QmFixture"
 
 -- | A profile datum naming @claimedId@ as its own id.
-profileDatum :: GYAssetClass -> Maybe Credential -> GYDatum
-profileDatum claimedId credential =
+profileDatum :: GYAssetClass -> GYDatum
+profileDatum claimedId =
   datumFromPlutusData
     ( mkCIP68Datum
         OnchainTypes.OnchainProfile
           { OnchainTypes.profileId = assetClassToPlutus claimedId,
             OnchainTypes.profileKind = OnchainTypes.PersonDRep,
-            OnchainTypes.profileCredential = credential,
             OnchainTypes.protocolParams = fixtureProtocolParams
           }
         fixtureMetadata
@@ -139,11 +146,36 @@ attestationDatum claimedId =
             OnchainTypes.attestationIsAccepted = True,
             -- Any value: the projection drops this field, which is the point of asserting the
             -- projected shape below rather than the datum's.
-            OnchainTypes.attestationOracleToken = assetClassToPlutus acOracle
+            OnchainTypes.attestationOracleToken = assetClassToPlutus acOracle,
+            OnchainTypes.attestationCredential = Nothing
           }
         fixtureMetadata
         []
     )
+
+-- | A 'CredentialClaim' record: self-issued, so subject and issuer are the same profile — which is
+-- what @Mc1@ requires on chain and what the derivation below reads the subject from.
+credentialRecordDatum :: OnchainTypes.AttestationKind -> GYAssetClass -> GYAssetClass -> Credential -> GYDatum
+credentialRecordDatum kind recordId subjectProfile credential =
+  datumFromPlutusData
+    ( mkCIP68Datum
+        OnchainTypes.OnchainAttestation
+          { OnchainTypes.attestationId = assetClassToPlutus recordId,
+            OnchainTypes.attestationIssuer = assetClassToPlutus subjectProfile,
+            OnchainTypes.attestationSubject = assetClassToPlutus subjectProfile,
+            OnchainTypes.attestationKind = kind,
+            OnchainTypes.attestationDate = POSIXTime 1700000000000,
+            OnchainTypes.attestationPeriod = Nothing,
+            OnchainTypes.attestationIsAccepted = False,
+            OnchainTypes.attestationOracleToken = assetClassToPlutus acOracle,
+            OnchainTypes.attestationCredential = Just credential
+          }
+        fixtureMetadata
+        []
+    )
+
+credentialClaimDatum :: GYAssetClass -> Credential -> GYDatum
+credentialClaimDatum recordId = credentialRecordDatum OnchainTypes.CredentialClaim recordId acProfileA
 
 disputeDatum :: GYAssetClass -> GYDatum
 disputeDatum claimedId =
@@ -203,7 +235,7 @@ atlasMatch addr d v =
 -- | The projection's verdict as a name, rather than an 'Eq' on 'ChainEventProjection' — 'NoEvent'
 -- carries an 'AtlasMatch', which has no 'Eq'. Total, so @-Wincomplete-patterns@ catches a new arm.
 eventName :: ChainEventProjection -> String
-eventName (ProfileEvent _ _) = "profile"
+eventName (ProfileEvent _) = "profile"
 eventName (AttestationEvent _) = "attestation"
 eventName (DisputeEvent _) = "dispute"
 eventName (NoEvent _) = "none"
@@ -268,15 +300,23 @@ kupoMatch slot txid addr d v =
 -- profile output with a well-formed datum and no protocol token, which must leave no row behind.
 fixtureMatches :: [KupoMatch]
 fixtureMatches =
-  [ kupoMatch 100 "aa" profilesAddress (profileDatum acProfileA (Just testCredential)) (withToken acProfileA),
-    kupoMatch 220 "bb" profilesAddress (profileDatum acProfileB (Just testCredential)) (withToken acProfileB),
+  [ kupoMatch 100 "aa" profilesAddress (profileDatum acProfileA) (withToken acProfileA),
+    kupoMatch 220 "bb" profilesAddress (profileDatum acProfileB) (withToken acProfileB),
     kupoMatch 300 "cc" attestationsAddress (attestationDatum acAttestation) (withToken acAttestation),
     kupoMatch 400 "dd" disputesAddress (disputeDatum acDispute) (withToken acDispute),
-    kupoMatch 500 "ee" profilesAddress (profileDatum acProfileC Nothing) dustOnly
+    kupoMatch 500 "ee" profilesAddress (profileDatum acProfileC) dustOnly
   ]
 
 fixtureAddresses :: [Text]
 fixtureAddresses = map address fixtureMatches
+
+-- | What the read layer publishes as a profile's credential. 'Nothing' means no row at all, which
+-- is a different answer from a row whose column is null — and the derivation tests need to tell
+-- those apart.
+credentialOf :: ConnectionPool -> GYAssetClass -> IO (Maybe (Maybe Text))
+credentialOf pool pid =
+  runAttest pool $
+    fmap (profileProjectionProfileCredential . entityVal) <$> getBy (UniqueProfileProjection pid)
 
 applyAll :: ConnectionPool -> [KupoMatch] -> IO ()
 applyAll pool = runAttest pool . mapM_ (putMatchAndProjections testNetworkId ourPolicy)
@@ -312,19 +352,19 @@ authenticationTests =
   [ -- THE case that fails on the old behaviour: a well-formed profile datum at the profiles
     -- address, 2 ADA, no protocol token. Before the fix this returned "profile".
     testCase "a UTxO at the profiles address WITHOUT the named token projects nothing" $
-      projectName (atlasMatch profilesAddress (profileDatum acProfileA Nothing) dustOnly) @?= "none",
+      projectName (atlasMatch profilesAddress (profileDatum acProfileA) dustOnly) @?= "none",
     testCase "a UTxO at the profiles address WITH its named token projects a profile" $
-      projectName (atlasMatch profilesAddress (profileDatum acProfileA Nothing) (withToken acProfileA))
+      projectName (atlasMatch profilesAddress (profileDatum acProfileA) (withToken acProfileA))
         @?= "profile",
     testCase "a token whose name does not match the datum's own id projects nothing" $
-      projectName (atlasMatch profilesAddress (profileDatum acProfileA Nothing) (withToken acProfileB))
+      projectName (atlasMatch profilesAddress (profileDatum acProfileA) (withToken acProfileB))
         @?= "none",
     testCase "the datum's own id under somebody else's policy projects nothing" $
-      projectName (atlasMatch profilesAddress (profileDatum acForeign Nothing) (withToken acForeign))
+      projectName (atlasMatch profilesAddress (profileDatum acForeign) (withToken acForeign))
         @?= "none",
     testCase "two copies of the named token projects nothing — the id is an NFT or it is not ours" $
       projectName
-        (atlasMatch profilesAddress (profileDatum acProfileA Nothing) (valueSingleton acProfileA 2 <> dustOnly))
+        (atlasMatch profilesAddress (profileDatum acProfileA) (valueSingleton acProfileA 2 <> dustOnly))
         @?= "none",
     testCase "an attestation UTxO without its token projects nothing" $
       projectName (atlasMatch attestationsAddress (attestationDatum acAttestation) dustOnly) @?= "none",
@@ -338,20 +378,21 @@ authenticationTests =
         DisputeEvent d -> (pdDisputeId d, pdTarget d, pdVerdict d) @?= (acDispute, acAttestation, Nothing)
         other -> assertFailure ("expected a dispute, got " <> eventName other),
     testCase "an authentic profile UTxO at an address we do not index projects nothing" $
-      projectName (atlasMatch unindexedAddress (profileDatum acProfileA Nothing) (withToken acProfileA))
+      projectName (atlasMatch unindexedAddress (profileDatum acProfileA) (withToken acProfileA))
         @?= "none",
     testCase "a spent UTxO projects nothing even when it authenticates" $
-      let m = atlasMatch profilesAddress (profileDatum acProfileA Nothing) (withToken acProfileA)
+      let m = atlasMatch profilesAddress (profileDatum acProfileA) (withToken acProfileA)
        in projectName m {amSpentAt = Just (unsafeSlotFromInteger 101)} @?= "none",
-    testCase "a profile projection carries the claimed credential, in its CIP-129 rendering" $
-      case project (atlasMatch profilesAddress (profileDatum acProfileA (Just testCredential)) (withToken acProfileA)) of
-        ProfileEvent p credential ->
-          (profileId p, credential) @?= (acProfileA, Just (claimCredentialToText testCredential))
-        other -> assertFailure ("expected a profile, got " <> eventName other),
-    testCase "a profile that claims no credential projects no credential" $
-      case project (atlasMatch profilesAddress (profileDatum acProfileA Nothing) (withToken acProfileA)) of
-        ProfileEvent _ credential -> credential @?= Nothing
-        other -> assertFailure ("expected a profile, got " <> eventName other)
+    -- ADR 0003 moved the binding off the profile datum, so a PROFILE event no longer has a
+    -- credential to carry. The two cases that asserted it are replaced by one that asserts where it
+    -- lives now, and by the DB-backed derivation tests further down — which are the real coverage,
+    -- because the derivation is the part that is new rather than moved.
+    testCase "a credential claim projects with its credential, in its CIP-129 rendering" $
+      case project (atlasMatch attestationsAddress (credentialClaimDatum acAttestation testCredential) (withToken acAttestation)) of
+        AttestationEvent a ->
+          (attestationKind a, attestationCredential a)
+            @?= (CredentialClaim, Just (claimCredentialToText testCredential))
+        other -> assertFailure ("expected an attestation, got " <> eventName other)
   ]
 
 replayTests :: [TestTree]
@@ -369,6 +410,37 @@ replayTests =
         runAttest pool (rollbackTo testNetworkId ourPolicy 1000)
         after <- projectionSnapshot pool
         after @?= before,
+    -- __ADR 0003: the derivation, which is the only part of this change that is new rather than
+    -- moved.__ `profile_credential` is no longer read off the profile datum; it is computed from the
+    -- credential records. Three things have to hold and none of them would fail loudly on their own:
+    -- a claim sets it, a withdrawal naming the SAME credential clears it, and a withdrawal naming a
+    -- different one changes nothing — the last because the chain permits such a record (@Mc3@ asks
+    -- only the named credential to consent), so the read layer is what has to ignore it.
+    testCase "a credential claim sets the profile's published credential, and the matching withdrawal clears it" $
+      freshDb $ \pool -> do
+        applyAll pool [kupoMatch 100 "aa" profilesAddress (profileDatum acProfileA) (withToken acProfileA)]
+        unbound <- credentialOf pool acProfileA
+        applyAll pool [kupoMatch 600 "ff" attestationsAddress (credentialClaimDatum acClaimRecord testCredential) (withToken acClaimRecord)]
+        bound <- credentialOf pool acProfileA
+        applyAll pool [kupoMatch 700 "1a" attestationsAddress (credentialRecordDatum OnchainTypes.CredentialWithdrawal acWithdrawRecord acProfileA testCredential) (withToken acWithdrawRecord)]
+        withdrawn <- credentialOf pool acProfileA
+        (unbound, bound, withdrawn)
+          @?= (Just Nothing, Just (Just (claimCredentialToText testCredential)), Just Nothing),
+    testCase "a withdrawal naming a credential the profile does not publish changes nothing" $
+      freshDb $ \pool -> do
+        applyAll pool [kupoMatch 100 "aa" profilesAddress (profileDatum acProfileA) (withToken acProfileA)]
+        applyAll pool [kupoMatch 600 "ff" attestationsAddress (credentialClaimDatum acClaimRecord testCredential) (withToken acClaimRecord)]
+        applyAll pool [kupoMatch 700 "1a" attestationsAddress (credentialRecordDatum OnchainTypes.CredentialWithdrawal acWithdrawRecord acProfileA otherCredential) (withToken acWithdrawRecord)]
+        credentialOf pool acProfileA >>= (@?= Just (Just (claimCredentialToText testCredential))),
+    -- The hazard `putProfileProjection` carries a paragraph about: `upsertByUnique` REPLACES the
+    -- whole row, so a profile event that wrote the credential column would erase a binding every
+    -- time the profile's metadata changed. A later profile match is exactly that event.
+    testCase "a later profile match does not erase a binding the attestations established" $
+      freshDb $ \pool -> do
+        applyAll pool [kupoMatch 100 "aa" profilesAddress (profileDatum acProfileA) (withToken acProfileA)]
+        applyAll pool [kupoMatch 600 "ff" attestationsAddress (credentialClaimDatum acClaimRecord testCredential) (withToken acClaimRecord)]
+        applyAll pool [kupoMatch 800 "2b" profilesAddress (profileDatum acProfileA) (withToken acProfileA)]
+        credentialOf pool acProfileA >>= (@?= Just (Just (claimCredentialToText testCredential))),
     testCase "a rollback below a projection's slot drops it, and the survivors are rebuilt" $
       freshDb $ \pool -> do
         applyAll pool fixtureMatches
@@ -396,9 +468,19 @@ replayTests =
         profiles <- runAttest pool (selectList ([] :: [Filter ProfileProjection]) [])
         (length raw, length profiles) @?= (length fixtureMatches, 2),
     -- Review Focus item 2: a credential may be claimed twice, and both claims must stay visible.
-    testCase "a profile projection carries the claimed credential, and two claims coexist" $
+    --
+    -- Two CLAIM RECORDS now, not two profile datums (ADR 0003) — and the query is the same one a
+    -- reader would run, so what it pins is that the derivation sets the column on BOTH profiles
+    -- rather than treating a credential as something only one profile may hold. The chain does not
+    -- enforce uniqueness and the read layer must not invent it.
+    testCase "two profiles may hold a binding to one credential, and the read layer shows both" $
       freshDb $ \pool -> do
         applyAll pool fixtureMatches
+        applyAll
+          pool
+          [ kupoMatch 600 "ff" attestationsAddress (credentialClaimDatum acClaimRecord testCredential) (withToken acClaimRecord),
+            kupoMatch 610 "3c" attestationsAddress (credentialRecordDatum OnchainTypes.CredentialClaim acWithdrawRecord acProfileB testCredential) (withToken acWithdrawRecord)
+          ]
         claimants <-
           runAttest
             pool

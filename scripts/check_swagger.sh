@@ -116,7 +116,11 @@ check "the credential lookup takes a path parameter named credential" \
 # The five attestation kinds, as wire spellings. Same check as ActivityEventType below and for the
 # same reason: a client switches on these, so a sixth kind added without a published enum entry is
 # a client that cannot handle it.
-check "AttestationType has all five kinds" '.definitions.AttestationType.enum | length == 5'
+# Seven since ADR 0003: a credential binding is an attestation, so `credential_claim` and
+# `credential_withdrawal` are kinds. Asserted as a SET and not a count, because a count would stay
+# green if a kind were renamed — and the names are what a client branches on.
+check "AttestationType publishes all seven kinds" \
+  '(.definitions.AttestationType.enum | sort) == ["affiliation","audit_passed","credential_claim","credential_withdrawal","endorsement","milestone_delivered","role_held"]'
 check "AttestationType is the wire spelling" \
   '.definitions.AttestationType.enum | index("milestone_delivered") != null'
 

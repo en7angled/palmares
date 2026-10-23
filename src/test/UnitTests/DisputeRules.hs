@@ -808,6 +808,7 @@ attestationOutput =
           attestationKind = MilestoneDelivered,
           attestationDate = nowT,
           attestationPeriod = Nothing,
+          attestationCredential = Nothing,
           attestationIsAccepted = False,
           attestationOracleToken = oracleAC
         }
@@ -829,7 +830,7 @@ runNewAttestation info =
         info
         ( Redeemer
             ( toBuiltinData
-                (NewAttestation attSeedRef metadataFixture [] subjectId issuerId MilestoneDelivered nowT Nothing 0)
+                (NewAttestation attSeedRef metadataFixture [] subjectId issuerId MilestoneDelivered nowT Nothing Nothing 0)
             )
         )
         (MintingScript protocolCS)

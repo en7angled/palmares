@@ -79,6 +79,8 @@ attestationTypeToOnchainAttestationKind AuditPassed = Onchain.AuditPassed
 attestationTypeToOnchainAttestationKind Affiliation = Onchain.Affiliation
 attestationTypeToOnchainAttestationKind RoleHeld = Onchain.RoleHeld
 attestationTypeToOnchainAttestationKind Endorsement = Onchain.Endorsement
+attestationTypeToOnchainAttestationKind CredentialClaim = Onchain.CredentialClaim
+attestationTypeToOnchainAttestationKind CredentialWithdrawal = Onchain.CredentialWithdrawal
 
 -- | Map an on-chain attestation kind to the domain 'AttestationType'.
 onchainAttestationKindToAttestationType :: Onchain.AttestationKind -> AttestationType
@@ -87,6 +89,8 @@ onchainAttestationKindToAttestationType Onchain.AuditPassed = AuditPassed
 onchainAttestationKindToAttestationType Onchain.Affiliation = Affiliation
 onchainAttestationKindToAttestationType Onchain.RoleHeld = RoleHeld
 onchainAttestationKindToAttestationType Onchain.Endorsement = Endorsement
+onchainAttestationKindToAttestationType Onchain.CredentialClaim = CredentialClaim
+onchainAttestationKindToAttestationType Onchain.CredentialWithdrawal = CredentialWithdrawal
 
 ------------------------------------------------------------------------------------------------
 
@@ -227,6 +231,10 @@ onchainAttestationToAttestation datum = do
         attestationSubjectProfileId = gySubject,
         attestationIssuerProfileId = gyIssuer,
         attestationKind = gyKind,
+        -- Bound inline and not to a local, unlike `gyKind`: the on-chain field `attestationCredential`
+        -- is in scope under the same name, but it is a `Maybe Credential` and the off-chain field is
+        -- a `Maybe Text`, so the two cannot be confused for each other the way two kinds could.
+        attestationCredential = claimCredentialToText <$> attestationCredential,
         attestationAttestationDate = timeFromPlutus attestationDate,
         attestationClaimedPeriod = gyClaimedPeriod,
         attestationAccepted = attestationIsAccepted,

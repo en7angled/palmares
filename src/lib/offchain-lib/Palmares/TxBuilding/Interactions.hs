@@ -12,6 +12,7 @@ import Data.Swagger (NamedSchema (..), Schema (..), ToSchema (..), defaultSchema
 import Data.Swagger.Schema (SchemaOptions, fromAesonOptions)
 import Deriving.Aeson
 import Palmares.DomainTypes.Core.Actions
+import Palmares.DomainTypes.Core.Types (AttestationType (CredentialClaim, CredentialWithdrawal))
 import GHC.Stack (HasCallStack)
 import GeniusYield.TxBuilder
 import GeniusYield.Types
@@ -103,19 +104,35 @@ interactionToTxSkeleton Interaction {..} = do
               (textToBuiltinByteString <$> mbDesc)
               (textToBuiltinByteString imgURI)
               usedAddrs
-        -- No `usedAddrs`, and that is the point: this path does not spend the profile's user token,
-        -- because the party it exists for does not hold it. See
-        -- 'Palmares.TxBuilding.Operations.revokeCredentialTX'.
-        RevokeCredentialAction profileRefAC mWitness ->
-          (,profileRefAC) <$> revokeCredentialTX profileRefAC mWitness
-        ClaimProfileAction kind mCredText mWitness profileData -> do
-          -- Resolved before any chain query, so a pasted-wrong identifier is a 400 and not a timeout.
-          mCredential <- either (throwError . GYApplicationException) return (traverse parseClaimCredential mCredText)
+        -- ADR 0003: a profile mint claims nothing. The two credential actions below are the binding.
+        ClaimProfileAction kind profileData ->
           claimProfileTX
             (profileTypeToOnchainProfileKind kind)
-            mCredential
+            (profileDataToMetadataFields profileData)
+        -- The binding, and its end. Both go through one builder; the kind is what decides whether
+        -- the profile's own user token is spent, because a withdrawal must not ask for it.
+        --
+        -- `usedAddrs` is passed either way and used only on a claim — the builder decides, not this
+        -- call site, so the rule lives in one place.
+        ClaimCredentialAction profileRefAC credText mWitness profileData -> do
+          -- Resolved before any chain query, so a pasted-wrong identifier is a 400 and not a timeout.
+          credential <- either (throwError . GYApplicationException) return (parseClaimCredential credText)
+          credentialAttestationTX
+            (attestationTypeToOnchainAttestationKind CredentialClaim)
+            profileRefAC
+            credential
             mWitness
             (profileDataToMetadataFields profileData)
+            usedAddrs
+        WithdrawCredentialAction profileRefAC credText mWitness profileData -> do
+          credential <- either (throwError . GYApplicationException) return (parseClaimCredential credText)
+          credentialAttestationTX
+            (attestationTypeToOnchainAttestationKind CredentialWithdrawal)
+            profileRefAC
+            credential
+            mWitness
+            (profileDataToMetadataFields profileData)
+            usedAddrs
         IssueAttestationAction subjectId issuerId kind profileData otherMeta claimedPeriod -> do
           let otherMetadataPlutus = map (Data.Bifunctor.bimap textToBuiltinByteString textToBuiltinByteString) otherMeta
           issueAttestationTX

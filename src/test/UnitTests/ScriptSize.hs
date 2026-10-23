@@ -346,11 +346,35 @@ measured =
 -- The cost audit's verdict on the three new arms was "nothing material" — 30-80 bytes against 4,599
 -- of headroom on the script that grew most — and its one actionable item was not an optimisation but
 -- the measurement recorded above.
+-- __ADR 0003: a credential claim becomes an attestation.__ The net is NEGATIVE, which is the part
+-- worth recording: the cleanest variant is also the cheaper one.
+--
+--   ProfilesValidator     8759 -> 8355  (-404)  the @RevokeCredential@ arm went, and with it this
+--                                              validator's only call to
+--                                              'Utils.checkCredentialControl'. Almost exactly the
+--                                              +315 D-E paid two entries up, plus the arm's own
+--                                              statements — the table's first measured REFUND.
+--   MintingPolicy        12393 -> 12618  (+225)  @Mp3@ left the profile path, but
+--                                              `checkCredentialControl` stayed (it is @Mc3@ now),
+--                                              the four @Mc@ rules arrived, and the attestation
+--                                              datum got a field. Net cost of moving the rule.
+--   AttestationsValidator 8163 -> 8293  (+130)  nothing about this validator's RULES changed; it
+--                                              decodes one more 'Maybe Credential' in every
+--                                              attestation datum it reads. The same shape as the
+--                                              ~30-per-script 'OracleParams' lesson, at a larger
+--                                              number because a Maybe of a Credential is a bigger
+--                                              decoder than an Integer.
+--   DisputesValidator     9439 -> 9439   (0)    and
+--   OracleValidator       7688 -> 7688   (0)    neither touches profiles or attestations.
+--
+-- -404 +225 +130 = __-49 bytes across the protocol__, for a binding that no redeemer can erase and
+-- a withdrawal that appends instead of deleting. The two zeros are the assertion worth having: a
+-- change this wide reached exactly the two scripts that handle profiles and attestations.
 expected :: [(String, Int)]
 expected =
-  [ ("ProfilesValidator", 8759),
-    ("AttestationsValidator", 8163),
+  [ ("ProfilesValidator", 8355),
+    ("AttestationsValidator", 8293),
     ("DisputesValidator", 9439),
     ("OracleValidator", 7688),
-    ("MintingPolicy", 12393)
+    ("MintingPolicy", 12618)
   ]

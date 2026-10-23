@@ -241,37 +241,53 @@ data ProfileActionType
         new_desc :: Maybe Text,
         image_uri :: Text
       }
-  | -- | Mint a profile, optionally claiming a Cardano credential.
+  | -- | Mint a profile.
     --
-    -- The claim is the spec's one sentence: /prove you can spend as that credential/. @cp_credential@
-    -- is a CIP-129 identifier (@drep1…@, @cc_cold1…@, @cc_hot1…@) and @cp_witness@ says how the
-    -- proving input is spent; both are 'Nothing' for a profile that corresponds to no on-chain
-    -- credential — a Community or an Auditor — which the read layer presents as @unclaimed@ rather
-    -- than verified.
+    -- __It claims no credential — ADR 0003.__ It used to take a CIP-129 identifier and a witness,
+    -- and the binding landed in a field on the profile datum that a later redeemer could clear. An
+    -- audit found that clearing irreversible and reachable with a weak proof, so a binding became a
+    -- record of its own: 'ClaimCredentialAction', below, in a second transaction.
+    --
+    -- Four of the six profile kinds — Organization, Community, Vendor, Auditor — correspond to no
+    -- on-chain credential at all and never need that second transaction.
     ClaimProfileAction
       { cp_kind :: ProfileType,
-        cp_credential :: Maybe Text,
-        cp_witness :: Maybe ClaimWitness,
         cp_profile_data :: ProfileData
       }
-  | -- | Clear a profile's credential claim — D-E, and the remedy of whoever's credential it is.
+  | -- | Bind a profile to a Cardano credential — __ADR 0003__.
     --
-    -- __Signed by the CREDENTIAL, not by the profile's owner.__ @Mp3@ proves the credential
-    -- consented to the transaction that minted the profile, not that it agreed to hand its
-    -- authority to whoever ends up holding the resulting token — so a transaction co-signed for an
-    -- unrelated reason mints a profile claiming the co-signer's credential, with the attacker
-    -- holding the user NFT. Requiring that NFT here would hand the remedy to the attacker; the
-    -- on-chain rule (@P9@) asks the credential for the same proof the claim itself needed.
+    -- Mints a @CredentialClaim@ attestation, self-issued by the profile and co-proven by the
+    -- credential: both parties consent, in one record that is never rewritten. @cc_credential@ is a
+    -- CIP-129 identifier (@drep1…@, @cc_cold1…@, @cc_hot1…@) and @cc_witness@ says how a SCRIPT
+    -- credential's proving input is spent.
     --
-    -- The profile survives: a revocation clears one field and the record stays, which is the same
-    -- rule the rest of this protocol follows — nothing is deleted.
-    RevokeCredentialAction
-      { rc_profile_id :: ProfileRefAC,
-        -- | How the credential proves control, for a SCRIPT credential: the same field and the same
-        -- 'claimProofSkeleton' the claim used, so revoking asks exactly what claiming asked. A key
-        -- credential needs nothing here — its signature is the proof — and a script credential that
-        -- never votes has the same free workaround the claim path documents.
-        rc_witness :: Maybe ClaimWitness
+    -- __Two transactions, and that is the trade.__ The claim used to ride along with the profile
+    -- mint. It costs a second transaction now and buys a binding nothing can erase — and, less
+    -- obviously, a stronger proof: a signature on THIS transaction is a signature on a body whose
+    -- visible purpose is the binding, where @Mp3@ only ever proved consent to a transaction that
+    -- could have been about anything.
+    ClaimCredentialAction
+      { cc_profile_id :: ProfileRefAC,
+        cc_credential :: Text,
+        cc_witness :: Maybe ClaimWitness,
+        -- | CIP-68 metadata for the claim record itself — it is an attestation, so it has a name, a
+        -- description and an image like any other.
+        cc_profile_data :: ProfileData
+      }
+  | -- | End a binding — __ADR 0003__, and the remedy of whoever's credential it is.
+    --
+    -- Mints a @CredentialWithdrawal@ attestation on the credential's proof ALONE. The profile's user
+    -- token is deliberately not required: the case this exists for is a profile that claimed
+    -- somebody else's credential, and that token is held by whoever did it.
+    --
+    -- __Nothing is erased.__ The claim stays in the log, this record is appended beside it, and the
+    -- read layer stops publishing the binding — so a malicious withdrawal costs a fee and a visible
+    -- fact, where the field it replaces could be cleared for good.
+    WithdrawCredentialAction
+      { wc_profile_id :: ProfileRefAC,
+        wc_credential :: Text,
+        wc_witness :: Maybe ClaimWitness,
+        wc_profile_data :: ProfileData
       }
   | IssueAttestationAction
       { aa_subject_profile_id :: ProfileRefAC,

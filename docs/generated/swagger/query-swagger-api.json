@@ -295,7 +295,9 @@
                 "audit_passed",
                 "affiliation",
                 "role_held",
-                "endorsement"
+                "endorsement",
+                "credential_claim",
+                "credential_withdrawal"
             ],
             "type": "string"
         },
@@ -2359,7 +2361,9 @@
                                 "audit_passed",
                                 "affiliation",
                                 "role_held",
-                                "endorsement"
+                                "endorsement",
+                                "credential_claim",
+                                "credential_withdrawal"
                             ],
                             "type": "string"
                         },

@@ -36,7 +36,8 @@ mkDisputeInteraction actionType = Interaction (DisputeAction actionType)
 handleClaimProfile :: ClaimProfileRequest -> InteractionAppMonad String
 handleClaimProfile req = do
   let pd = ProfileData (cprName req) (cprDescription req) (cprImageURI req)
-  let action = ClaimProfileAction (cprKind req) (cprCredential req) (cprWitness req) pd
+  -- No credential: a profile mint claims nothing (ADR 0003). /claim-credential is the binding.
+  let action = ClaimProfileAction (cprKind req) pd
   buildInteractionApp $ mkInteraction action (cprUserAddresses req) (cprRecipient req)
 
 -- | Update a profile's mutable metadata.
@@ -98,9 +99,19 @@ handleExpireDispute req = buildInteractionApp $ mkDisputeInteraction
   (edrUserAddresses req)
   (edrRecipient req)
 
--- | Clear a profile's credential claim — D-E. Authorised by the credential, not by the profile's
--- user token, which is why it is a profile interaction that does not spend one.
-handleRevokeCredential :: RevokeCredentialRequest -> InteractionAppMonad String
-handleRevokeCredential req = do
-  let action = RevokeCredentialAction (rcrProfileId req) (rcrWitness req)
-  buildInteractionApp $ mkInteraction action (rcrUserAddresses req) (rcrRecipient req)
+-- | Bind a profile to a credential — ADR 0003. Both parties consent: the profile's user token and
+-- the credential's own proof, in one appended record.
+handleClaimCredential :: ClaimCredentialRequest -> InteractionAppMonad String
+handleClaimCredential req = do
+  let pd = ProfileData (cclName req) (cclDescription req) (cclImageURI req)
+      action = ClaimCredentialAction (cclProfileId req) (cclCredential req) (cclWitness req) pd
+  buildInteractionApp $ mkInteraction action (cclUserAddresses req) (cclRecipient req)
+
+-- | End a binding — ADR 0003. The credential's proof alone, and the profile's user token
+-- deliberately not asked for: the case this exists for is a profile that claimed somebody else's
+-- credential, and that token is held by whoever did it. Nothing is erased; a fact is appended.
+handleWithdrawCredential :: WithdrawCredentialRequest -> InteractionAppMonad String
+handleWithdrawCredential req = do
+  let pd = ProfileData (wclName req) (wclDescription req) (wclImageURI req)
+      action = WithdrawCredentialAction (wclProfileId req) (wclCredential req) (wclWitness req) pd
+  buildInteractionApp $ mkInteraction action (wclUserAddresses req) (wclRecipient req)

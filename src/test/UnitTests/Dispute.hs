@@ -474,10 +474,10 @@ disputeEmulatorTests =
       ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
       (_t1, issuerAC) <-
-        profileInteraction ctx (w1 testWallets) (ClaimProfileAction Domain.Organization Nothing Nothing orgProfileData) Nothing
+        profileInteraction ctx (w1 testWallets) (ClaimProfileAction Domain.Organization orgProfileData) Nothing
       waitNSlots_ 1
       (_t2, subjectAC) <-
-        profileInteraction ctx (w2 testWallets) (ClaimProfileAction Domain.PersonDRep Nothing Nothing drepProfileData) Nothing
+        profileInteraction ctx (w2 testWallets) (ClaimProfileAction Domain.PersonDRep drepProfileData) Nothing
       waitNSlots_ 1
       (_t3, attestationAC) <-
         profileInteraction

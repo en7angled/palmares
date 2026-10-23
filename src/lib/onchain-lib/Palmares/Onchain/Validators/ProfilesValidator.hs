@@ -27,8 +27,8 @@ module Palmares.Onchain.Validators.ProfilesValidator
 where
 
 import GHC.Generics (Generic)
-import Palmares.Onchain.CIP68 (CIP68Datum (CIP68Datum), MetadataFields (..), deriveUserFromRefAC, extra, updateCIP68DatumMetadata, validateMetadataFields)
-import Palmares.Onchain.Protocol (OnchainProfile (..), OracleParams (opPaused), ProtocolParams (oracleToken), readOracleParams, revokeCredential)
+import Palmares.Onchain.CIP68 (CIP68Datum (CIP68Datum), MetadataFields (..), deriveUserFromRefAC, updateCIP68DatumMetadata, validateMetadataFields)
+import Palmares.Onchain.Protocol (OnchainProfile (..), OracleParams (opPaused), ProtocolParams (oracleToken), readOracleParams)
 import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Utils qualified as Utils
 import PlutusLedgerApi.V1 qualified as V1
@@ -57,18 +57,15 @@ data ProfilesRedeemer
     -- profile Ref NFT the datum names must be in it. A datum that merely parses is not enough —
     -- see 'Utils.isUnbackedDatum' for the permanent clutter that reading bought.
     Cleanup
-  | -- | RevokeCredential profileOutputIdx — D-E, and the only remedy a claimed credential has.
-    --
-    -- Authorised by the CREDENTIAL being revoked, never by this profile's user NFT: an attacker who
-    -- minted a profile claiming somebody else's credential is precisely the party holding that
-    -- token. See 'Palmares.Onchain.Protocol.Types.revokeCredential'.
-    --
-    -- Appended at index 2, never inserted.
-    RevokeCredential Integer
   deriving stock (Generic, Prelude.Show)
   deriving anyclass (HasBlueprintDefinition)
 
-makeIsDataSchemaIndexed ''ProfilesRedeemer [('UpdateProfile, 0), ('Cleanup, 1), ('RevokeCredential, 2)]
+-- __Index 2 is burnt, deliberately.__ A @RevokeCredential@ redeemer briefly lived there (D-E) and
+-- ADR 0003 removed it: it cleared a credential field in place, which an audit found irreversible and
+-- reachable with a weak proof. Nothing is deployed, so the index could be reused — it is not,
+-- because a stable-index discipline that makes an exception the first time it is inconvenient is not
+-- a discipline. A binding is now a 'Palmares.Onchain.Protocol.Types.CredentialClaim' attestation.
+makeIsDataSchemaIndexed ''ProfilesRedeemer [('UpdateProfile, 0), ('Cleanup, 1)]
 
 type ProfilesDatum = CIP68Datum Onchain.OnchainProfile
 
@@ -136,19 +133,6 @@ profilesLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) scriptInfo
                         -- sweep while the clutter accumulates.
                         traceIfFalse "P6" (not (opPaused oracle)) -- Protocol is paused (P6)
                           && handleUpdateProfile txInfo ownValue ownAddress profileRefAssetClass profileDatum newFields profileOutputIdx
-                      -- D-E. NO @P6@ HERE, and no @P3@ either, and both omissions are the decision.
-                      --
-                      -- No pause, because this is the remedy of somebody whose credential was
-                      -- claimed without their consent, and a remedy the admin can suspend is not
-                      -- one — the same argument the Disputes Validator's @ExpireDispute@ arm makes
-                      -- about not reading the oracle at all. The `oracle` binding above is lazy and
-                      -- this arm never forces it, so a revocation needs no reference input.
-                      --
-                      -- No user NFT, because the attacker holds it. @P3@ is how the OWNER proves a
-                      -- profile is theirs to rewrite; requiring it here would hand the only remedy
-                      -- to the only party that must not have it.
-                      (RevokeCredential profileOutputIdx) ->
-                        handleRevokeCredential txInfo ownValue ownAddress profileRefAssetClass profileDatum profileOutputIdx
         _ -> traceError "P1" -- Invalid purpose (P1)
 
 -------------------------------------------------------------------------------
@@ -177,59 +161,11 @@ handleUpdateProfile txInfo@TxInfo {..} ownValue ownAddress profileRefAssetClass 
           traceIfFalse "P5" $ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress profileOutputIdx newCip68Datum ownValue ownAddress txInfoOutputs -- Lock updated profile (P5); >= ownValue (balancer may add min-ADA)
         ]
 
--- | D-E: clear a credential claim, proven by the credential being cleared.
---
--- Four statements, two of them the update path's own and two with no analogue there:
---
---   * @P9@ — the claimed credential controls this transaction. 'Utils.checkCredentialControl' is the
---     same rule @Mp3@ used to accept the claim, so revoking needs exactly what claiming needed and
---     no more. Its documented limit carries over verbatim, and it is about scripts that __only ever
---     vote or withdraw__: such a script holds no UTxO at its own address, so it cannot prove control
---     in the same transaction and has to send itself one first. An ordinary spending script proves
---     control directly, because an input at its own payment credential is the proof.
---   * @P8@ — there has to BE a claim, and this __changes no verdict__: a profile claiming 'Nothing'
---     fails @P9@ too, since there is no credential to consent. It is a DIAGNOSTIC split, the same
---     trade the @A1@ -> @A1@\/@A5@\/@A6@ split made and for the same reason — "this profile claims
---     nothing" and "the credential did not consent" are different mistakes to whoever reads the
---     failure, and 'Nothing' is a legitimate state for a Community or an Auditor rather than a
---     fault. Stated plainly because the first draft of this comment claimed P8 closed a hole, and
---     it does not.
---
--- @P2@ and @P5@ are the update path's own statements, unchanged: the UTxO must hold the Ref NFT its
--- datum names, and the profile must come back at the named index at the same address carrying
--- __AT LEAST__ the value it had.
---
--- At least, not exactly — 'Utils.checkTxOutAtIndexWithDatumMinValueAndAddress' is a @geq@, the same
--- one the update path calls and annotates as @>= ownValue@ because the balancer may add min-ADA. So
--- a revocation does not have to move value and the honest builder moves none, but the rule PERMITS
--- an output carrying more, including this profile's own user token. That is the shape @Mp6@ closes
--- on the mint path and it is unchanged here, inherited from the update path rather than introduced:
--- both are written against the same helper. Recorded because the first draft of this sentence said
--- "the value is untouched", which is what the builder does and not what the rule requires.
-{-# INLINEABLE handleRevokeCredential #-}
-handleRevokeCredential ::
-  TxInfo ->
-  Value ->
-  Address ->
-  V1.AssetClass ->
-  CIP68Datum OnchainProfile ->
-  Integer ->
-  Bool
-handleRevokeCredential TxInfo {..} ownValue ownAddress profileRefAssetClass profileDatum profileOutputIdx =
-  let profile = extra profileDatum
-      revokedDatum = profileDatum {extra = revokeCredential profile}
-   in and
-        [ traceIfFalse "P2" $ V1.assetClassValueOf ownValue profileRefAssetClass == 1, -- Own value has Ref NFT (P2)
-          -- Matched twice rather than once into a pair, because the two codes say different things
-          -- to an operator and a tuple in PlutusTx is an allocation to say the same thing.
-          traceIfFalse "P8" $ case profileCredential profile of -- Nothing claimed, nothing to revoke (P8)
-            Nothing -> False
-            Just _ -> True,
-          traceIfFalse "P9" $ case profileCredential profile of -- Claimed credential must consent (P9)
-            Nothing -> False
-            Just credential -> Utils.checkCredentialControl credential txInfoSignatories txInfoInputs,
-          traceIfFalse "P5" $ Utils.checkTxOutAtIndexWithDatumMinValueAndAddress profileOutputIdx revokedDatum ownValue ownAddress txInfoOutputs -- Lock revoked profile (P5)
-        ]
+-- __@P8@ and @P9@ are gone, and their codes are not reused.__ They belonged to the D-E
+-- @RevokeCredential@ arm that ADR 0003 removed. Noted here rather than silently dropped because a
+-- trace code is an operator's runbook entry: an operator who sees @P8@ in an old log should be able
+-- to find out that the rule no longer exists and why, instead of finding it reassigned to something
+-- else.
 
 -------------------------------------------------------------------------------
 

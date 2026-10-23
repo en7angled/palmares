@@ -61,20 +61,19 @@ import GeniusYield.TxBuilder hiding (userAddresses)
 import GeniusYield.TxBuilder.User qualified as User
 import GeniusYield.Types
 import Palmares.DomainTypes.Core.Actions
-import Palmares.DomainTypes.Core.Types (AttestationType, DisputeVerdict, ProfileType)
+import Palmares.DomainTypes.Core.Types (AttestationType, DisputeVerdict)
 import Palmares.Onchain.CIP68 (CIP68Datum (..), ImageURI, MetadataFields (..), getMetadataFields, mkCIP68Datum, updateCIP68DatumMetadata)
 import Palmares.Onchain.Protocol.Types (OracleAdminAction, OracleParams (..))
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer (AcceptAttestation))
 import Palmares.Onchain.Validators.DisputesValidator qualified as DisputesValidator (DisputesRedeemer (ResolveDispute))
-import Palmares.Onchain.Validators.MintingPolicy (MintingRedeemer (MintProfile, NewAttestation))
+import Palmares.Onchain.Validators.MintingPolicy (MintingRedeemer (NewAttestation))
 import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer (OracleUpdate))
 import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (UpdateProfile))
 import Palmares.TxBuilding.Context
 import Palmares.TxBuilding.Conversions
   ( attestationTypeToOnchainAttestationKind,
     disputeVerdictToOnchainVerdict,
-    profileTypeToOnchainProfileKind,
   )
 import Palmares.TxBuilding.Interactions
 import Palmares.TxBuilding.Lookups (getAttestationDatumAndValue, getDisputeDatumAndValue, getProfileStateDatumAndValue, queryOracleParams)
@@ -496,79 +495,112 @@ sendAdaToAddress user addr lovelace = asUser user $ do
 maliciousClaimWithoutControl ::
   (GYTxGameMonad m, HasCallStack) =>
   DeployedScriptsContext ->
-  -- | The attacker, who pays and signs.
+  -- | The attacker, who pays and signs. Holds the profile's user token, so @Mf@ passes.
   User ->
-  ProfileType ->
-  -- | The credential the redeemer claims.
+  -- | The profile that is binding itself — it has to exist first, since ADR 0003 made the binding
+  -- its own record rather than part of the profile mint.
+  GYAssetClass ->
+  -- | The credential the record claims.
   V3.Credential ->
   MetadataFields ->
   -- | The input offered as proof of control, if any.
   Maybe GYTxOutRef ->
   m (GYTxId, GYAssetClass)
-maliciousClaimWithoutControl ctx attacker kind credential metadata mProofRef = asUser attacker $ do
-  (skeleton, gyProfileRefAC) <- runReaderT (maliciousClaimTX kind credential metadata mProofRef) ctx
+maliciousClaimWithoutControl ctx attacker profileRefAC credential metadata mProofRef = asUser attacker $ do
+  let ownAddrs = toList $ User.userAddresses attacker
+  (skeleton, gyRecordAC) <- runReaderT (maliciousClaimTX profileRefAC credential metadata mProofRef ownAddrs) ctx
   gyLogInfo' ("MALICIOUS" :: GYLogNamespace) $
-    "Attempting a profile claim with no proof of control over " <> show credential <> " (Mp3)..."
+    "Attempting a credential binding with no proof of control over " <> show credential <> " (Mc3)..."
   (gyTxBody, gyTxId) <- sendSkeleton' skeleton
   logTxBudget gyTxBody
-  return (gyTxId, gyProfileRefAC)
+  return (gyTxId, gyRecordAC)
 
--- | Byte-identical to 'Palmares.TxBuilding.Operations.claimProfileTX' except that the proof is the
--- caller's choice instead of 'claimProofSkeleton''s, so what rejects it is @Mp3@ and nothing else.
+-- | Byte-identical to 'Palmares.TxBuilding.Operations.credentialAttestationTX' except that the proof
+-- is the caller's choice instead of 'claimProofSkeleton''s, so what rejects it is @Mc3@ and nothing
+-- else.
+--
+-- It still spends the profile's user NFT, which is what keeps @Mf@ satisfied and therefore keeps
+-- @Mc3@ the only rule left to say no. Before ADR 0003 this builder mounted the same attack on the
+-- profile MINT against @Mp3@; the attack is unchanged, the record it lands in is not.
 maliciousClaimTX ::
   (HasCallStack, GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
-  ProfileType ->
+  GYAssetClass ->
   V3.Credential ->
   MetadataFields ->
   Maybe GYTxOutRef ->
+  [GYAddress] ->
   m (GYTxSkeleton 'PlutusV3, GYAssetClass)
-maliciousClaimTX kind credential metadata mProofRef = do
+maliciousClaimTX profileRefAC credential metadata mProofRef ownAddrs = do
   ctx <- ask
   let mpGY = getMintingPolicyFromCtx ctx
       mpRef = getMintingPolicyRef ctx
-      onchainKind = profileTypeToOnchainProfileKind kind
-  (oracleRefSkeleton, oracleParams, feeSkeleton, isValidForSafeEra) <-
-    getOracleFeeAndValiditySkeleton OnchainTypes.MintActionProfile
+  (oracleRefSkeleton, oracleParams, feeSkeleton, isInvalidBeforeNow) <-
+    getOracleFeeAndValiditySkeleton OnchainTypes.MintActionAttestation
   let minLv = OnchainTypes.opMinUTxOValue oracleParams
+
+  gyProfileUserAC <- gyDeriveUserFromRefAC profileRefAC
+  spendsProfileUserNFT <- txMustSpendFromAddress gyProfileUserAC ownAddrs GYTxInWitnessKey
+
+  now <- slotOfCurrentBlock
+  recordedAt <- pPOSIXTimeFromGYSlot now
 
   seedTxOutRef <- someUTxOWithoutRefScript
   let isSpendingSeedUTxO = mustHaveInput (GYTxIn seedTxOutRef GYTxInWitnessKey)
       seedTxOutRefPlutus = txOutRefToV3Plutus seedTxOutRef
-      profileOutputIdx = 0 :: Integer
+      attestationOutputIdx = 0 :: Integer
+      plutusProfileId = assetClassToPlutus profileRefAC
       -- MALICIOUS: a plain key-witnessed spend, or nothing at all. No required signer and no script
       -- witness, which is precisely what `claimProofSkeleton` would have added.
       claimProof = maybe mempty (\r -> mustHaveInput (GYTxIn r GYTxInWitnessKey)) mProofRef
 
   let gyRedeemer =
-        redeemerFromPlutusData (MintProfile seedTxOutRefPlutus onchainKind (Just credential) metadata profileOutputIdx)
-  (gyProfileRefAC, _gyProfileUserAC) <- gyGenerateRefAndUserAC mpGY seedTxOutRef
-  isMintingProfileNFTs <- txMustMintCIP68UserAndRef mpRef mpGY gyRedeemer gyProfileRefAC
+        redeemerFromPlutusData
+          ( NewAttestation
+              seedTxOutRefPlutus
+              metadata
+              []
+              plutusProfileId
+              plutusProfileId
+              OnchainTypes.CredentialClaim
+              recordedAt
+              Nothing
+              (Just credential)
+              attestationOutputIdx
+          )
+  (gyRecordAC, _) <- gyGenerateRefAndUserAC mpGY seedTxOutRef
+  isMintingRecord <- txMustMintWithMintRef True mpRef mpGY gyRedeemer gyRecordAC
 
-  let profileInfo =
-        OnchainTypes.OnchainProfile
-          { OnchainTypes.profileId = assetClassToPlutus gyProfileRefAC,
-            OnchainTypes.profileKind = onchainKind,
-            OnchainTypes.profileCredential = Just credential,
-            OnchainTypes.protocolParams = getProtocolParamsFromCtx ctx
+  let recordInfo =
+        OnchainTypes.OnchainAttestation
+          { OnchainTypes.attestationId = assetClassToPlutus gyRecordAC,
+            OnchainTypes.attestationSubject = plutusProfileId,
+            OnchainTypes.attestationIssuer = plutusProfileId,
+            OnchainTypes.attestationKind = OnchainTypes.CredentialClaim,
+            OnchainTypes.attestationDate = recordedAt,
+            OnchainTypes.attestationPeriod = Nothing,
+            OnchainTypes.attestationIsAccepted = False,
+            OnchainTypes.attestationOracleToken = OnchainTypes.oracleToken (getProtocolParamsFromCtx ctx),
+            OnchainTypes.attestationCredential = Just credential
           }
-  let profileDatum = mkCIP68Datum profileInfo metadata []
-  isLockingProfileState <-
+  let recordDatum = mkCIP68Datum recordInfo metadata []
+  isLockingRecord <-
     txMustLockStateWithInlineDatumAndValue
-      profilesValidatorGY
-      profileDatum
-      (valueSingleton gyProfileRefAC 1 <> valueFromLovelace minLv)
+      attestationsValidatorGY
+      recordDatum
+      (valueSingleton gyRecordAC 1 <> valueFromLovelace minLv)
 
   return
     ( mconcat
         [ isSpendingSeedUTxO,
+          spendsProfileUserNFT,
           claimProof,
-          isValidForSafeEra,
+          isInvalidBeforeNow,
           oracleRefSkeleton,
-          isMintingProfileNFTs,
-          isLockingProfileState,
+          isMintingRecord,
+          isLockingRecord,
           feeSkeleton
         ],
-      gyProfileRefAC
+      gyRecordAC
     )
 
 -- | MALICIOUS: a legitimate profile mint with ONE extra token minted under the protocol policy.
@@ -729,6 +761,7 @@ maliciousIssueAttestationTX subjectId issuerId kind metadata backdateMs spendPro
               onchainKind
               attestationDate
               Nothing
+              Nothing
               attestationOutputIdx
           )
   (gyAttestationRefAC, _) <- gyGenerateRefAndUserAC mpGY seedTxOutRef
@@ -743,7 +776,8 @@ maliciousIssueAttestationTX subjectId issuerId kind metadata backdateMs spendPro
             OnchainTypes.attestationDate = attestationDate,
             OnchainTypes.attestationPeriod = Nothing,
             OnchainTypes.attestationIsAccepted = False,
-            OnchainTypes.attestationOracleToken = OnchainTypes.oracleToken attestationProtocolParams
+            OnchainTypes.attestationOracleToken = OnchainTypes.oracleToken attestationProtocolParams,
+            OnchainTypes.attestationCredential = Nothing
           }
   let attestationDatum = mkCIP68Datum attestationInfo metadata []
   isLockingAttestation <-

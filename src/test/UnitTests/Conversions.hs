@@ -66,6 +66,10 @@ sampleAttestation =
       attestationSubjectProfileId = ac "00000000000000000000000000000000000000000000000000000000.6262",
       attestationIssuerProfileId = ac "00000000000000000000000000000000000000000000000000000000.6363",
       attestationKind = Affiliation,
+      -- 'Nothing' because an Affiliation is not a binding, which is what @Mc4@ enforces on chain.
+      -- The round-trip below is what pins the FIELD; the kinds that carry one are covered where the
+      -- derivation is, in @UnitTests.Projections@.
+      attestationCredential = Nothing,
       attestationAttestationDate = timeFromPlutus (POSIXTime 1700000000000),
       -- A period that STARTS BEFORE the issuance date, which is the case the field exists for and
       -- the one the strict reading would have made unrepresentable.
@@ -105,11 +109,19 @@ conversionsTests =
       testCase "every attestation kind round-trips through the on-chain enum" $
         map (onchainAttestationKindToAttestationType . attestationTypeToOnchainAttestationKind) allKinds
           @?= allKinds,
-      -- The wire spelling is what a client branches on, so it is pinned by value. These five strings
-      -- are the published contract; the derived CamelToSnake is just how they are produced.
+      -- The wire spelling is what a client branches on, so it is pinned by value. These seven
+      -- strings are the published contract; the derived CamelToSnake is just how they are produced.
+      -- The last two arrived with ADR 0003: a credential binding is an attestation, so it is a kind.
       testCase "the attestation kinds' wire tags are snake_case" $
         map toJSON allKinds
-          @?= ["milestone_delivered", "audit_passed", "affiliation", "role_held", "endorsement"],
+          @?= [ "milestone_delivered",
+                "audit_passed",
+                "affiliation",
+                "role_held",
+                "endorsement",
+                "credential_claim",
+                "credential_withdrawal"
+              ],
       -- ---- the attestation's wire shape ------------------------------------------------------
       --
       -- `ToJSON` is DERIVED from `StripPrefix "attestation"` and `FromJSON` is HAND-WRITTEN with a
@@ -135,9 +147,14 @@ conversionsTests =
           Object o ->
             ( KeyMap.member "kind" o,
               KeyMap.member "attestation_date" o,
-              KeyMap.member "claimed_period" o
+              KeyMap.member "claimed_period" o,
+              -- ADR 0003. Published because a consumer has to be able to read a binding, and named
+              -- `credential` rather than `claimed_credential`: unlike the period, the chain DID
+              -- check it — @Mc3@ asked the credential to prove control — so calling it "claimed"
+              -- would understate it in exactly the direction the period's name overstates.
+              KeyMap.member "credential" o
             )
-              @?= (True, True, True)
+              @?= (True, True, True, True)
           v -> assertFailure ("an Attestation must encode as an object, got: " <> show v),
       -- ---- the published enum values must be the accepted enum values -------------------------
       --

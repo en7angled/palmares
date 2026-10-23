@@ -17,7 +17,7 @@ import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer (
 import Palmares.Onchain.Validators.DisputesValidator qualified as DisputesValidator (DisputesRedeemer (Cleanup, ExpireDispute, ResolveDispute))
 import Palmares.Onchain.Validators.MintingPolicy
 import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer (OracleUpdate))
-import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (RevokeCredential, UpdateProfile))
+import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (UpdateProfile))
 import Palmares.Onchain.Validators.ProfilesValidator qualified as ProfilesValidator (ProfilesRedeemer (Cleanup))
 import PlutusLedgerApi.V3
 import Palmares.TxBuilding.Context (DeployedScriptsContext (..), getAttestationsValidatorRef, getDisputesValidatorRef, getMintingPolicyFromCtx, getMintingPolicyRef, getOracleValidatorRef, getProfilesValidatorRef, getProtocolParamsFromCtx)
@@ -274,15 +274,10 @@ claimProfileTX ::
   (GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
   -- | What kind of actor this profile stands for
   OnchainTypes.OnchainProfileKind ->
-  -- | The credential claimed, if any. 'Nothing' for a Community or an Auditor, which correspond to
-  -- no on-chain credential and which the read layer must present as @unclaimed@, never as verified.
-  Maybe Credential ->
-  -- | How control of a script credential is proven. Ignored for a key credential.
-  Maybe ClaimWitness ->
   -- | CIP-68 metadata fields (name, description, image)
   MetadataFields ->
   m (GYTxSkeleton 'PlutusV3, GYAssetClass)
-claimProfileTX kind mCredential mWitness metadata = do
+claimProfileTX kind metadata = do
   ctx <- ask
   let mpGY = getMintingPolicyFromCtx ctx
       mpRef = getMintingPolicyRef ctx
@@ -290,8 +285,6 @@ claimProfileTX kind mCredential mWitness metadata = do
     getOracleFeeAndValiditySkeleton OnchainTypes.MintActionProfile
   let minLv = OnchainTypes.opMinUTxOValue oracleParams
 
-  -- Resolved first, so a claim that cannot be proven never reaches the balancer.
-  claimProof <- maybe (return mempty) (`claimProofSkeleton` mWitness) mCredential
 
   -- Get a seed TxOutRef for uniqueness
   seedTxOutRef <- someUTxOWithoutRefScript
@@ -305,7 +298,7 @@ claimProfileTX kind mCredential mWitness metadata = do
   -- Output 1 (optional): Fee payment
   let profileOutputIdx = 0 :: Integer
 
-  let gyRedeemer = redeemerFromPlutusData (MintProfile seedTxOutRefPlutus kind mCredential metadata profileOutputIdx)
+  let gyRedeemer = redeemerFromPlutusData (MintProfile seedTxOutRefPlutus kind metadata profileOutputIdx)
 
   (gyProfileRefAC, _gyProfileUserAC) <- gyGenerateRefAndUserAC mpGY seedTxOutRef
   isMintingProfileNFTs <- txMustMintCIP68UserAndRef mpRef mpGY gyRedeemer gyProfileRefAC
@@ -314,7 +307,6 @@ claimProfileTX kind mCredential mWitness metadata = do
         OnchainTypes.OnchainProfile
           { OnchainTypes.profileId = assetClassToPlutus gyProfileRefAC,
             OnchainTypes.profileKind = kind,
-            OnchainTypes.profileCredential = mCredential,
             OnchainTypes.protocolParams = getProtocolParamsFromCtx ctx
           }
   let profileDatum = mkCIP68Datum profileInfo metadata []
@@ -329,7 +321,8 @@ claimProfileTX kind mCredential mWitness metadata = do
   return
     ( mconcat
         [ isSpendingSeedUTxO, -- Input (no output index)
-          claimProof, -- Input or required signer (no output index)
+          -- No claim proof here any more: minting a profile claims nothing (ADR 0003). The proof
+          -- moved to 'claimCredentialTX', where the transaction's whole purpose is the binding.
           isValidForSafeEra, -- Validity (no output index)
           oracleRefSkeleton, -- Reference input: oracle UTxO
           isMintingProfileNFTs, -- Mint (no output index)
@@ -440,6 +433,9 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId kind metadata otherMetad
           kind
           attestationDate
           claimedPeriod
+          -- An ORDINARY attestation names no credential, and @Mc4@ refuses one that does. The two
+          -- credential kinds are built by 'credentialAttestationTX'.
+          Nothing
           attestationOutputIdx
   let gyRedeemer = redeemerFromPlutusData redeemer
 
@@ -460,7 +456,8 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId kind metadata otherMetad
             -- The same line 'openDisputeTX' writes for `disputeOracleToken`, and it has to agree
             -- with the policy's compile-time parameter exactly: `Mk` compares this whole datum
             -- against the output, so a wrong token here is a mint that does not validate.
-            OnchainTypes.attestationOracleToken = OnchainTypes.oracleToken attestationProtocolParams
+            OnchainTypes.attestationOracleToken = OnchainTypes.oracleToken attestationProtocolParams,
+            OnchainTypes.attestationCredential = Nothing
           }
   let attestationDatum = mkCIP68Datum attestationInfo metadata otherMetadata
 
@@ -479,6 +476,124 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId kind metadata otherMetad
           oracleRefSkeleton, -- Reference input: oracle UTxO
           isMintingAttestationNFT, -- Mint (no output index)
           isLockingAttestation, -- Output 0: Attestation NFT
+          feeSkeleton -- Output 1 (optional): Fee payment
+        ],
+      gyAttestationRefAC
+    )
+
+-- | Mint a 'CredentialClaim' or a 'CredentialWithdrawal' — the two records that bind a profile to a
+-- Cardano credential and end that binding. __ADR 0003.__
+--
+-- __Self-issued: subject and issuer are the same profile__, which @Mc1@ requires. The two parties to
+-- a binding are the profile and the credential, and a credential is not a profile — so the issuer
+-- field names the profile the record is about and the authority is stated by the rules: @Mf@ for the
+-- profile's own consent, @Mc3@ for the credential's.
+--
+-- __And on a withdrawal the profile is deliberately NOT asked.__ @Mf@ exempts that kind, because the
+-- case it exists for is a profile that claimed somebody else's credential — and that profile's user
+-- token is held by whoever did it. This builder therefore spends the issuer's user NFT only for a
+-- claim, which is also why it refuses to build a withdrawal for a profile whose token the caller
+-- happens to hold: the chain does not ask for it, so neither does this.
+--
+-- __Why this duplicates 'issueAttestationTX' rather than sharing a core.__ They differ in five
+-- places — who the issuer is, the kind, the credential, the proof, and whether the user NFT is spent
+-- — and, more to the point, a divergence between either builder and the policy is a VALIDATION
+-- failure rather than a silent one: @Mk@ compares the whole datum this locks against the datum the
+-- policy recomputes from the redeemer. Two readable builders whose disagreement fails loudly beat
+-- one parameterised builder nobody can read.
+credentialAttestationTX ::
+  (HasCallStack, GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
+  -- | 'CredentialClaim' or 'CredentialWithdrawal'; anything else is a caller error
+  OnchainTypes.AttestationKind ->
+  -- | The profile binding itself, or ending its binding
+  GYAssetClass ->
+  -- | The credential
+  Credential ->
+  -- | How control of a SCRIPT credential is proven; ignored for a key credential
+  Maybe ClaimWitness ->
+  -- | CIP-68 metadata fields for the record itself
+  MetadataFields ->
+  -- | The caller's addresses, to spend the profile's user NFT on a claim
+  [GYAddress] ->
+  m (GYTxSkeleton 'PlutusV3, GYAssetClass)
+credentialAttestationTX kind gyProfileRefAC credential mWitness metadata ownAddrs = do
+  mpGY <- asks getMintingPolicyFromCtx
+  mpRef <- asks getMintingPolicyRef
+  attestationProtocolParams <- asks getProtocolParamsFromCtx
+  (oracleRefSkeleton, oracleParams, feeSkeleton, isInvalidBeforeNow) <- getOracleFeeAndValiditySkeleton OnchainTypes.MintActionAttestation
+  let minLv = OnchainTypes.opMinUTxOValue oracleParams
+
+  -- The profile has to exist, for the reason `issueAttestationTX` gives: nothing burns, so a record
+  -- about a profile that does not exist is permanent and unremovable.
+  ensureSubjectProfileExists gyProfileRefAC
+
+  -- Resolved first, so a binding that cannot be proven never reaches the balancer.
+  claimProof <- claimProofSkeleton credential mWitness
+
+  -- A claim is the profile speaking too, so it spends the profile's user NFT (@Mf@). A withdrawal is
+  -- the credential alone, and @Mf@ exempts it.
+  spendsProfileUserNFT <- case kind of
+    OnchainTypes.CredentialWithdrawal -> return mempty
+    _ -> do
+      gyProfileUserAC <- gyDeriveUserFromRefAC gyProfileRefAC
+      txMustSpendFromAddress gyProfileUserAC ownAddrs GYTxInWitnessKey
+
+  now <- slotOfCurrentBlock
+  recordedAt <- pPOSIXTimeFromGYSlot now
+
+  seedTxOutRef <- someUTxOWithoutRefScript
+  let isSpendingSeedUTxO = mustHaveInput (GYTxIn seedTxOutRef GYTxInWitnessKey)
+      seedTxOutRefPlutus = txOutRefToV3Plutus seedTxOutRef
+      attestationOutputIdx = 0 :: Integer
+      plutusProfileId = assetClassToPlutus gyProfileRefAC
+
+  let gyRedeemer =
+        redeemerFromPlutusData
+          ( NewAttestation
+              seedTxOutRefPlutus
+              metadata
+              []
+              plutusProfileId -- subject
+              plutusProfileId -- issuer, the same profile: Mc1
+              kind
+              recordedAt
+              Nothing -- a binding claims no period; the dates that matter are the records' own
+              (Just credential)
+              attestationOutputIdx
+          )
+
+  (gyAttestationRefAC, _gyAttestationUserAC) <- gyGenerateRefAndUserAC mpGY seedTxOutRef
+  isMintingAttestationNFT <- txMustMintWithMintRef True mpRef mpGY gyRedeemer gyAttestationRefAC
+
+  let attestationInfo =
+        OnchainTypes.OnchainAttestation
+          { OnchainTypes.attestationId = assetClassToPlutus gyAttestationRefAC,
+            OnchainTypes.attestationSubject = plutusProfileId,
+            OnchainTypes.attestationIssuer = plutusProfileId,
+            OnchainTypes.attestationKind = kind,
+            OnchainTypes.attestationDate = recordedAt,
+            OnchainTypes.attestationPeriod = Nothing,
+            OnchainTypes.attestationIsAccepted = False,
+            OnchainTypes.attestationOracleToken = OnchainTypes.oracleToken attestationProtocolParams,
+            OnchainTypes.attestationCredential = Just credential
+          }
+  let attestationDatum = mkCIP68Datum attestationInfo metadata []
+
+  isLockingAttestation <-
+    txMustLockStateWithInlineDatumAndValue
+      attestationsValidatorGY
+      attestationDatum
+      (valueSingleton gyAttestationRefAC 1 <> valueFromLovelace minLv)
+
+  return
+    ( mconcat
+        [ isSpendingSeedUTxO, -- Input (no output index)
+          spendsProfileUserNFT, -- Input, on a claim only (no output index)
+          claimProof, -- Input or required signer (no output index)
+          isInvalidBeforeNow, -- Validity (no output index)
+          oracleRefSkeleton, -- Reference input: oracle UTxO
+          isMintingAttestationNFT, -- Mint (no output index)
+          isLockingAttestation, -- Output 0: the binding record
           feeSkeleton -- Output 1 (optional): Fee payment
         ],
       gyAttestationRefAC
@@ -773,59 +888,6 @@ resolveDisputeTX gyDisputeAC verdict = do
         isLockingResolvedDispute, -- Output 0: Resolved dispute
         isReturningDeposit, -- Output 1: Returned deposit
         mustBeSignedBy gyAdminPkh -- Required signer (no output index)
-      ]
-
--- | Clear a profile's credential claim — D-E, built for whoever's credential it is.
---
--- __No oracle reference input and no pause check__, on the same argument the expiry below makes: a
--- remedy the admin can suspend is not a remedy, and the party this exists for is the one who never
--- consented in the first place. @P9@ on chain reads no oracle either.
---
--- __And deliberately NOT the profile's user NFT.__ The attacker who minted a profile claiming
--- somebody else's credential is exactly the party holding that token, so requiring it would hand
--- the remedy to them. What authorises this is 'claimProofSkeleton' of the credential being revoked
--- — the identical proof the claim itself needed, which is what makes the remedy symmetric with the
--- act rather than a new privilege.
---
--- The 400 before the chain sees it is @P8@'s: a profile that claims nothing has nothing to revoke,
--- and 'Nothing' is a legitimate state rather than a fault.
-revokeCredentialTX ::
-  (GYTxQueryMonad m, MonadReader DeployedScriptsContext m) =>
-  -- | Profile Ref AC
-  GYAssetClass ->
-  -- | How a SCRIPT credential proves control; ignored for a key credential
-  Maybe ClaimWitness ->
-  m (GYTxSkeleton 'PlutusV3)
-revokeCredentialTX gyProfileRefAC mWitness = do
-  pvRef <- asks getProfilesValidatorRef
-  (plutusProfileDatum, plutusProfileValue) <- getProfileStateDatumAndValue gyProfileRefAC
-  let profile = extra plutusProfileDatum
-  credential <- case OnchainTypes.profileCredential profile of
-    Nothing -> throwError (GYApplicationException ProfileClaimsNoCredential)
-    Just credential -> return credential
-
-  -- ============================================================
-  -- Output index tracking (order must match skeleton mconcat order)
-  -- ============================================================
-  -- Output 0: the profile, with its claim cleared
-  let profileOutputIdx = 0 :: Integer
-      gyRedeemer = redeemerFromPlutusData (RevokeCredential profileOutputIdx)
-  spendsProfileRefNFT <- txMustSpendStateFromRefScriptWithRedeemer pvRef gyProfileRefAC gyRedeemer profilesValidatorGY
-
-  -- The same function the validator computes its expected output datum with, so the two cannot
-  -- disagree about what a revocation does — including that it changes nothing else.
-  let revokedDatum = plutusProfileDatum {extra = OnchainTypes.revokeCredential profile}
-  gyProfileValue <- valueFromPlutus' plutusProfileValue
-  isLockingRevokedProfile <-
-    txMustLockStateWithInlineDatumAndValue profilesValidatorGY revokedDatum gyProfileValue
-
-  proofSkeleton <- claimProofSkeleton credential mWitness
-
-  return $
-    mconcat
-      [ spendsProfileRefNFT, -- Input (no output index)
-        isLockingRevokedProfile, -- Output 0: the profile with no claim
-        proofSkeleton -- The credential's own proof (P9)
       ]
 
 -- | Close an undecided dispute whose deadline has passed — D-A, and the only write in this protocol

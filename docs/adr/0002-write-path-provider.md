@@ -1,6 +1,8 @@
 # ADR 0002 — Write-path chain provider
 
-Status: proposed
+Status: **superseded 2026-10-23 by [ADR 0004](0004-maestro-withdrew-its-cardano-api.md)** — Maestro
+withdrew its Cardano API (SDKs archived 2026-04-30, `gomaestro-api.org` no longer resolves), so the
+provider this ADR chose no longer exists. Kept as dated evidence of why it was chosen.
 Date: 2026-10-20
 
 ## Decision

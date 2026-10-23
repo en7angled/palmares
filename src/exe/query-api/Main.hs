@@ -57,7 +57,7 @@ writeSwagger = do
 -- | Boot order is the contract, and every step before 'runSettings' is fail-closed.
 --
 -- There is no Cardano provider here. This service reads @palmares@ views over db-sync and nothing
--- else (D-1), so it needs a Postgres DSN and no Maestro token — one fewer secret on a public read
+-- else (D-1), so it needs a Postgres DSN and no provider key — one fewer secret on a public read
 -- path, and the reason the smoke script can run anywhere.
 main :: IO ()
 main = do

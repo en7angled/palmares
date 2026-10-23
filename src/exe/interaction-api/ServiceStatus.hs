@@ -51,7 +51,7 @@ import Palmares.Utils (mkStripPrefixSchemaOptions)
 
 -- | What an operator needs in order to explain a refused write.
 data InteractionStatusResponse = InteractionStatusResponse
-  { -- | The provider FAMILY, never its configuration: a Maestro token is @Confidential@ and hidden
+  { -- | The provider FAMILY, never its configuration: a hosted provider's key is @Confidential@ and hidden
     -- even from @show@, but a node socket path and a Kupo URL are not, and an unauthenticated route
     -- has no business publishing internal addresses.
     statusProvider :: Text,

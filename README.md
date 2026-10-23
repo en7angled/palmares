@@ -155,6 +155,12 @@ exits rather than starting with an unsafe default.
 | `PALMARES_READY_MAX_LAG_SECONDS` | default `300` — `/ready` red above this | query-api |
 | `PALMARES_AMBER_LAG_SECONDS` | default `120` — UI amber above this | query-api |
 
-`MAESTRO_API_KEY` is **not** in this list: Atlas reads the provider token from the core config, never from
-the environment. `config/config_atlas.example.json` is the committed template and carries `REPLACE_ME`;
-the real `config/config_atlas.json` is gitignored.
+There is **no** provider-token variable in this list: Atlas reads the provider out of the core config,
+never from the environment. `config/config_atlas.example.json` is the committed template and carries
+`REPLACE_ME`; the real `config/config_atlas.json` is gitignored.
+
+The template's `coreProvider` is `{"blockfrostKey": …}` — a preprod project key of your own. Atlas picks
+the provider from **which keys are present**, so put exactly one provider in that object: `blockfrostKey`,
+or `maestroToken`, or `socketPath` + `kupoUrl`, or `ogmiosUrl` + `kupoUrl`. Mixing two lets the first
+shape that parses win silently. Maestro withdrew its Cardano API in 2026 and `maestroToken` no longer
+resolves to anything — see [ADR 0004](docs/adr/0004-maestro-withdrew-its-cardano-api.md).

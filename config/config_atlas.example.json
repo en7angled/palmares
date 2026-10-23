@@ -1,7 +1,6 @@
 {
     "coreProvider": {
-        "maestroToken": "REPLACE_ME",
-        "turboSubmit": true
+        "blockfrostKey": "REPLACE_ME"
     },
     "networkId": "preprod",
     "logging": [

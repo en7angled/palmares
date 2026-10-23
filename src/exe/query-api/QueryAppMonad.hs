@@ -8,7 +8,7 @@
 -- context__, because this service never queries the chain — D-1 says every row comes from a
 -- @palmares@ view or the one matview, and the inherited live-query handlers that needed a
 -- provider are gone. The consequence is worth stating: query-api boots with nothing but a
--- Postgres DSN, so it needs no Maestro token and no @config_atlas.json@, which is both one less
+-- Postgres DSN, so it needs no provider key and no @config_atlas.json@, which is both one less
 -- secret on a public read service and what makes the smoke script runnable anywhere.
 --
 -- There is also __no auth context__. query-api is public (rate limiting is the BFF's job), and a

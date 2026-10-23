@@ -7,7 +7,7 @@
 #
 # WHAT THIS SCRIPT DELIBERATELY DOES NOT DO: boot the binary to prove it dies on a broken DDL
 # file, which is how the plan drafted check 3. Booting query-api needs an Atlas provider config
-# and a Maestro token, neither of which belongs in a schema check, and the behaviour is already
+# and a provider key, neither of which belongs in a schema check, and the behaviour is already
 # pinned where it can be: UnitTests.Views asserts that a failing statement anywhere in the set
 # rolls the whole set back and leaves the previous schema serving, and applyPalmaresSchema's
 # `die` is what turns that into a refused boot. This script answers the question those tests

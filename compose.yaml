@@ -153,9 +153,14 @@ services:
   # fourth option: every non-hosted Atlas provider needs Kupo, and the remaining one — `ogmiosUrl` +
   # `kupoUrl` — is unavailable here because node 11.1.2 requires Ogmios v7 and Ogmios v7 breaks
   # Atlas (changed mempool/nextTransaction JSON, protocol-parameter field naming, tx object shape).
-  # That is the measured reason the Belt System's write path ended up on Maestro. `GYNodeKupo` takes
-  # parameters, slot, submission and gov/stake state from the NODE directly and uses Kupo only for
-  # UTxO query, datum lookup and await-confirmed, so no Ogmios is involved at all.
+  # That is the measured reason the Belt System's write path ended up on a hosted provider.
+  # `GYNodeKupo` takes parameters, slot, submission and gov/stake state from the NODE directly and
+  # uses Kupo only for UTxO query, datum lookup and await-confirmed, so no Ogmios is involved at all.
+  #
+  # The hosted provider is now `blockfrostKey`, NOT `maestroToken`: Maestro withdrew its Cardano API
+  # in 2026 and `preprod.gomaestro-api.org` no longer resolves. See ADR 0004. This service is the
+  # self-hosted alternative to that key, and on a Linux host it is the whole answer; on macOS the
+  # node socket is reachable only from inside this compose project, never from the host CLI.
   #
   # KUPO v2.12.0 AGAINST NODE 11.1.2 IS MEASURED, NOT ASSUMED — and the published documents say
   # otherwise, which is why it was measured. Kupo's own compatibility table tops out at node 10.1.*,

@@ -390,3 +390,26 @@ rows 4, 7, 8 need their fix text rewritten before anyone applies them. Row 17 (`
 codes added since the snapshot arrived with validator-level tests. `Mp6` and `O6`, the two security
 fixes of 2026-10-22 that the report singled out as untested, are the two that still matter: `O6` gained
 tests in this pass, `Mp6` has none.
+
+### The architecture set
+
+The three reference documents in [`../architecture/`](../architecture/README.md) were reconciled in the
+same pass — field, constructor and index level against the current types and validators, every
+`path:line` re-checked, all 26 mermaid blocks re-rendered from their edited source. Eleven of their
+errors turned out to be **already false at `4eb9117`** rather than drift, and three of those are worth
+naming because each contradicted something the set itself asserts:
+
+- the component diagram put `onchain-lib` behind an external node labelled "atlas-cardano, cardano-api,
+  plutus-*", where "no off-chain deps in `onchain-lib`" is a load-bearing claim of the document and of
+  the architecture;
+- `U2`/`U3` were documented as unreachable via a call chain that never existed —
+  `checkAndGetCurrentStateDatumAndValue` has had no caller at any point in this range, which is why
+  `3654f57` deleting the three lookups changed nothing about reachability, and the documents had
+  inherited the chain from the same false Haddock that is now `NEW-OC-5`;
+- "`AcceptAttestation` is the protocol's single irreversible write", which D-C's own comment refutes: a
+  verdict is written once and nothing here burns, so every mint is permanent too. The conjunction of
+  irreversible **and** unreachable by the pause is what made acceptance urgent.
+
+Two more contradicted a gate or a section in their own tree: "30 routes" against a `check_swagger.sh`
+that asserted 29 at that very commit, and "41 test modules" against a cabal that listed 40 and the
+document's own index, which named 40.

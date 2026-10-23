@@ -308,6 +308,30 @@ data OnchainProfile
 
 makeIsDataSchemaIndexed ''OnchainProfile [('OnchainProfile, 0)]
 
+-- | Clear a profile's credential claim, changing nothing else — D-E.
+--
+-- The same shape as 'resolveDispute' and 'applyOracleAdminAction', and for the same reason: the
+-- validator computes the expected output datum on chain with this function and compares it to the
+-- actual output, so off-chain and on-chain cannot disagree about what a revocation does. Everything
+-- this function preserves — the id, the kind, the metadata, the baked 'ProtocolParams' — is a field
+-- a revocation provably cannot touch.
+--
+-- __Why a revocation has to exist.__ @Mp3@ proves the credential consented to the TRANSACTION that
+-- minted the profile, not that it agreed to hand its authority to whoever holds the resulting
+-- token. A transaction co-signed for any unrelated reason therefore mints a profile claiming the
+-- co-signer's credential, with the attacker holding the user NFT — and before D-E a claim was
+-- proven once and asserted forever: no withdrawal, no expiry, and nothing in this protocol burns.
+-- The victim had no move at all.
+--
+-- __And why the revocation is authorised by the CREDENTIAL and not by the profile's user NFT.__ The
+-- attacker holds that token; requiring it would hand the remedy to exactly the wrong party. So the
+-- revocation asks 'Palmares.Onchain.Utils.checkCredentialControl' of the credential being revoked —
+-- the same proof the claim itself needed, which is what makes this symmetric rather than a new
+-- privilege.
+{-# INLINEABLE revokeCredential #-}
+revokeCredential :: OnchainProfile -> OnchainProfile
+revokeCredential profile = profile {profileCredential = Nothing}
+
 -------------------------------------------------------------------------------
 
 -- * Attestation

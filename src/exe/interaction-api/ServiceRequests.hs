@@ -153,6 +153,36 @@ instance ToSchema AcceptAttestationRequest where
       & Swagger.schema . description ?~ "Countersign a pending attestation. Must be called by a wallet holding the subject profile's user token."
       & describeField "recipient" "Address to receive unlocked funds (defaults to change address if omitted)"
 
+--------------------------------------------------------------------------------
+
+-- | Clear a profile's credential claim — D-E.
+--
+-- __Not the profile owner's route.__ Every other profile route is called by whoever holds the
+-- profile's user token; this one is called by whoever holds the CREDENTIAL, because the case it
+-- exists for is a profile that claimed somebody else's credential without their consent — and the
+-- party that did that is the one holding the token.
+data RevokeCredentialRequest = RevokeCredentialRequest
+  { rcrProfileId :: GYAssetClass
+  , rcrWitness :: Maybe ClaimWitness
+  , rcrUserAddresses :: UserAddresses
+  , rcrRecipient :: Maybe GYAddress
+  }
+  deriving (Show, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "rcr", CamelToSnake]] RevokeCredentialRequest
+
+instance ToSchema RevokeCredentialRequest where
+  declareNamedSchema proxy = do
+    s <- genericDeclareNamedSchema (mkStripPrefixSchemaOptions "rcr") proxy
+    return $
+      s
+        & Swagger.schema . description
+          ?~ "Clear a profile's credential claim. Returns an UNSIGNED transaction that the CREDENTIAL \
+             \must authorise -- not the profile's owner, who may be exactly the party that claimed a \
+             \credential they do not control. The profile itself survives: one field is cleared and \
+             \the record stays. A profile claiming nothing is a 400."
+        & describeField "witness" "How a SCRIPT credential proves control, the same field /claim-profile takes. Omit for a key credential: its signature on the returned transaction is the proof."
+        & describeField "recipient" "Address to receive unlocked funds (defaults to change address if omitted)"
+
 -------------------------------------------------------------------------------
 
 -- * Dispute request types
@@ -217,3 +247,32 @@ instance ToSchema ResolveDisputeRequest where
         ?~ "Settle a dispute, naming it by `dispute_id`. Returns an UNSIGNED transaction: the oracle \
            \validator requires the admin's signature, so the admin signs what this route builds. \
            \`recipient` receives any unlocked funds and defaults to the change address."
+
+--------------------------------------------------------------------------------
+
+-- | Close an undecided dispute whose deadline has passed — D-A.
+--
+-- __The one write in this protocol that needs no authority.__ After a dispute's own deadline anyone
+-- may close it, because an exit the oracle admin can gate — by pausing, or by holding the only key
+-- — is not an exit, and an admin who does not act was the whole failure. There is nothing to gain:
+-- the deposit returns to the address the opener named when they opened it.
+data ExpireDisputeRequest = ExpireDisputeRequest
+  { edrDisputeId :: GYAssetClass
+  , edrUserAddresses :: UserAddresses
+  , edrRecipient :: Maybe GYAddress
+  }
+  deriving (Show, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "edr", CamelToSnake]] ExpireDisputeRequest
+
+instance ToSchema ExpireDisputeRequest where
+  declareNamedSchema proxy = do
+    s <- genericDeclareNamedSchema (mkStripPrefixSchemaOptions "edr") proxy
+    return $
+      s
+        & Swagger.schema . description
+          ?~ "Close an undecided dispute whose deadline has passed, naming it by `dispute_id`. No \
+             \verdict and no authority: the transaction this returns needs only a fee payer, and it \
+             \records the dispute as `expired`, which is NOT a finding against either party. The \
+             \deposit returns to the address the opener named. A dispute that is already decided, or \
+             \whose deadline has not passed, is a 400."
+        & describeField "recipient" "Address to receive unlocked funds (defaults to change address if omitted)"

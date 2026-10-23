@@ -254,6 +254,25 @@ data ProfileActionType
         cp_witness :: Maybe ClaimWitness,
         cp_profile_data :: ProfileData
       }
+  | -- | Clear a profile's credential claim — D-E, and the remedy of whoever's credential it is.
+    --
+    -- __Signed by the CREDENTIAL, not by the profile's owner.__ @Mp3@ proves the credential
+    -- consented to the transaction that minted the profile, not that it agreed to hand its
+    -- authority to whoever ends up holding the resulting token — so a transaction co-signed for an
+    -- unrelated reason mints a profile claiming the co-signer's credential, with the attacker
+    -- holding the user NFT. Requiring that NFT here would hand the remedy to the attacker; the
+    -- on-chain rule (@P9@) asks the credential for the same proof the claim itself needed.
+    --
+    -- The profile survives: a revocation clears one field and the record stays, which is the same
+    -- rule the rest of this protocol follows — nothing is deleted.
+    RevokeCredentialAction
+      { rc_profile_id :: ProfileRefAC,
+        -- | How the credential proves control, for a SCRIPT credential: the same field and the same
+        -- 'claimProofSkeleton' the claim used, so revoking asks exactly what claiming asked. A key
+        -- credential needs nothing here — its signature is the proof — and a script credential that
+        -- never votes has the same free workaround the claim path documents.
+        rc_witness :: Maybe ClaimWitness
+      }
   | IssueAttestationAction
       { aa_subject_profile_id :: ProfileRefAC,
         aa_issuer_profile_id :: ProfileRefAC,

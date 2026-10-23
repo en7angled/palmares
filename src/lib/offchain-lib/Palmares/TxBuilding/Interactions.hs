@@ -103,6 +103,11 @@ interactionToTxSkeleton Interaction {..} = do
               (textToBuiltinByteString <$> mbDesc)
               (textToBuiltinByteString imgURI)
               usedAddrs
+        -- No `usedAddrs`, and that is the point: this path does not spend the profile's user token,
+        -- because the party it exists for does not hold it. See
+        -- 'Palmares.TxBuilding.Operations.revokeCredentialTX'.
+        RevokeCredentialAction profileRefAC mWitness ->
+          (,profileRefAC) <$> revokeCredentialTX profileRefAC mWitness
         ClaimProfileAction kind mCredText mWitness profileData -> do
           -- Resolved before any chain query, so a pasted-wrong identifier is a 400 and not a timeout.
           mCredential <- either (throwError . GYApplicationException) return (traverse parseClaimCredential mCredText)

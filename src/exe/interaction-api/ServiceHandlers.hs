@@ -89,3 +89,18 @@ handleResolveDispute req = buildInteractionApp $ mkDisputeInteraction
   (ResolveDisputeAction (rdrDisputeId req) (rdrVerdict req))
   (rdrUserAddresses req)
   (rdrRecipient req)
+
+-- | Close an undecided dispute whose deadline has passed — D-A. Takes no verdict: the caller does
+-- not choose the outcome here, the clock does.
+handleExpireDispute :: ExpireDisputeRequest -> InteractionAppMonad String
+handleExpireDispute req = buildInteractionApp $ mkDisputeInteraction
+  (ExpireDisputeAction (edrDisputeId req))
+  (edrUserAddresses req)
+  (edrRecipient req)
+
+-- | Clear a profile's credential claim — D-E. Authorised by the credential, not by the profile's
+-- user token, which is why it is a profile interaction that does not spend one.
+handleRevokeCredential :: RevokeCredentialRequest -> InteractionAppMonad String
+handleRevokeCredential req = do
+  let action = RevokeCredentialAction (rcrProfileId req) (rcrWitness req)
+  buildInteractionApp $ mkInteraction action (rcrUserAddresses req) (rcrRecipient req)

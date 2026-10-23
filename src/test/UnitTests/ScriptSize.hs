@@ -284,9 +284,21 @@ measured =
 -- that parses it, whether or not it reads the new field. A record on the oracle is not free to
 -- extend; it is ~30 bytes times the number of validators that look at the oracle at all, which is
 -- now four. The 2026-10-22 audit's calibration had no line for this.
+-- __D-E: a credential claim gains a revocation.__ One script moved, which is the whole report:
+--
+--   ProfilesValidator 8444 -> 8759  (+315)  the @RevokeCredential@ arm. Most of it is
+--                                           'Utils.checkCredentialControl', which until now was
+--                                           compiled into the MINTING POLICY alone (@Mp3@) and is
+--                                           now compiled into this validator too — PlutusTx shares
+--                                           nothing between scripts, so the second user of a helper
+--                                           pays full price for it. The arm's own statements reuse
+--                                           @P2@ and @P5@ and add two Maybe matches.
+--
+-- The other four did not budge, and that is the assertion worth having: a revocation is reached
+-- from exactly one validator, and nothing about it leaked into the oracle or the policy.
 expected :: [(String, Int)]
 expected =
-  [ ("ProfilesValidator", 8444),
+  [ ("ProfilesValidator", 8759),
     ("AttestationsValidator", 8163),
     ("DisputesValidator", 9401),
     ("OracleValidator", 7688),

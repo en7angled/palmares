@@ -65,6 +65,12 @@ data TxBuildingException
     DisputeAlreadyOpen
   | -- | The dispute already carries a verdict. @D3@ refuses it on chain as well.
     DisputeAlreadyResolved
+  | -- | The profile claims no credential, so there is nothing to revoke. @P8@ refuses it on chain as
+    -- well.
+    --
+    -- 'Nothing' is a legitimate state for a profile — a Community or an Auditor corresponds to no
+    -- on-chain credential — so this is a 400 about the request and not a fault in the record.
+    ProfileClaimsNoCredential
   | -- | The dispute's deadline has not passed, so there is nothing to expire yet. @D9@ refuses it on
     -- chain as well.
     --
@@ -116,6 +122,7 @@ instance Exception TxBuildingException where
     \another; this is an off-chain courtesy, not a protocol rule."
   displayException DisputeAlreadyResolved = "Dispute already carries a verdict and cannot be resolved twice"
   displayException DisputeNotStaleYet = "Dispute cannot be expired yet: its deadline has not passed"
+  displayException ProfileClaimsNoCredential = "Profile claims no credential, so there is nothing to revoke"
   displayException OracleNotFound = "Oracle UTxO not found"
   displayException OracleDatumInvalid = "Oracle datum invalid or unparseable"
   displayException ProtocolPaused = "Protocol is paused"

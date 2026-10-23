@@ -164,6 +164,25 @@
             ],
             "type": "string"
         },
+        "ExpireDisputeRequest": {
+            "description": "Close an undecided dispute whose deadline has passed, naming it by `dispute_id`. No verdict and no authority: the transaction this returns needs only a fee payer, and it records the dispute as `expired`, which is NOT a finding against either party. The deposit returns to the address the opener named. A dispute that is already decided, or whose deadline has not passed, is a 400.",
+            "properties": {
+                "dispute_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "recipient": {
+                    "$ref": "#/definitions/GYAddress"
+                },
+                "user_addresses": {
+                    "$ref": "#/definitions/UserAddresses"
+                }
+            },
+            "required": [
+                "dispute_id",
+                "user_addresses"
+            ],
+            "type": "object"
+        },
         "GYAddress": {
             "description": "Bech32-encoded Cardano address (addr_test1... on testnet, addr1... on mainnet)",
             "example": "00e1cbb80db89e292269aeb93ec15eb963dda5176b66949fe1c2a6a38d1b930e9f7add78a174a21000e989ff551366dcd127028cb2aa39f616",
@@ -357,7 +376,7 @@
             "type": "object"
         },
         "ProfileActionType": {
-            "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: UpdateProfileAction: profile_id, new_desc, image_uri; ClaimProfileAction: cp_kind, cp_credential, cp_witness, cp_profile_data; IssueAttestationAction: aa_subject_profile_id, aa_issuer_profile_id, aa_kind, aa_profile_data, aa_other_metadata, aa_claimed_period; AcceptAttestationAction: aca_attestation_id.",
+            "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: UpdateProfileAction: profile_id, new_desc, image_uri; ClaimProfileAction: cp_kind, cp_credential, cp_witness, cp_profile_data; RevokeCredentialAction: rc_profile_id, rc_witness; IssueAttestationAction: aa_subject_profile_id, aa_issuer_profile_id, aa_kind, aa_profile_data, aa_other_metadata, aa_claimed_period; AcceptAttestationAction: aca_attestation_id.",
             "properties": {
                 "aa_claimed_period": {
                     "items": [
@@ -430,11 +449,18 @@
                 "profile_id": {
                     "$ref": "#/definitions/GYAssetClass"
                 },
+                "rc_profile_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "rc_witness": {
+                    "$ref": "#/definitions/ClaimWitness"
+                },
                 "tag": {
                     "description": "Which arm of the union this object is.",
                     "enum": [
                         "UpdateProfileAction",
                         "ClaimProfileAction",
+                        "RevokeCredentialAction",
                         "IssueAttestationAction",
                         "AcceptAttestationAction"
                     ],
@@ -501,6 +527,28 @@
             "required": [
                 "dispute_id",
                 "verdict",
+                "user_addresses"
+            ],
+            "type": "object"
+        },
+        "RevokeCredentialRequest": {
+            "description": "Clear a profile's credential claim. Returns an UNSIGNED transaction that the CREDENTIAL must authorise -- not the profile's owner, who may be exactly the party that claimed a credential they do not control. The profile itself survives: one field is cleared and the record stays. A profile claiming nothing is a 400.",
+            "properties": {
+                "profile_id": {
+                    "$ref": "#/definitions/GYAssetClass"
+                },
+                "recipient": {
+                    "$ref": "#/definitions/GYAddress"
+                },
+                "user_addresses": {
+                    "$ref": "#/definitions/UserAddresses"
+                },
+                "witness": {
+                    "$ref": "#/definitions/ClaimWitness"
+                }
+            },
+            "required": [
+                "profile_id",
                 "user_addresses"
             ],
             "type": "object"
@@ -723,6 +771,45 @@
                 "summary": "Claim Profile"
             }
         },
+        "/expire-dispute": {
+            "post": {
+                "consumes": [
+                    "application/json;charset=utf-8"
+                ],
+                "description": "Closes an undecided dispute whose deadline has passed. Needs no authority at all — that is the point, since an exit the oracle admin can gate is not an exit — and records `expired`, which is not a finding against either party. The deposit returns to the address the opener named.",
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ExpireDisputeRequest"
+                        }
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
+                    },
+                    "404": {
+                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                    },
+                    "503": {
+                        "description": "Protocol is paused or deployed validator scripts are not yet available"
+                    }
+                },
+                "summary": "Expire Dispute"
+            }
+        },
         "/health": {
             "get": {
                 "description": "Returns the health status of the service",
@@ -890,6 +977,45 @@
                     }
                 },
                 "summary": "Resolve Dispute"
+            }
+        },
+        "/revoke-credential": {
+            "post": {
+                "consumes": [
+                    "application/json;charset=utf-8"
+                ],
+                "description": "Clears a profile's credential claim. Authorised by the CREDENTIAL and not by the profile's user token, because the party that claimed a credential it does not control is exactly the party holding that token. The profile survives; one field is cleared.",
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/RevokeCredentialRequest"
+                        }
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
+                    },
+                    "404": {
+                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                    },
+                    "503": {
+                        "description": "Protocol is paused or deployed validator scripts are not yet available"
+                    }
+                },
+                "summary": "Revoke Credential"
             }
         },
         "/status": {

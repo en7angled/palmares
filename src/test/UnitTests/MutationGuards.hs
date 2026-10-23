@@ -72,6 +72,7 @@ import Palmares.Onchain.Protocol.Types
     ProtocolParams (..),
     Verdict (VerdictUpheld),
     resolveDispute,
+    revokeCredential,
   )
 import Palmares.Onchain.Utils (nameFromTxOutRef)
 import Palmares.Onchain.Validators.AttestationsValidator
@@ -87,7 +88,7 @@ import Palmares.Onchain.Validators.MintingPolicy
     mintingPolicyLambda,
   )
 import Palmares.Onchain.Validators.ProfilesValidator
-  ( ProfilesRedeemer (UpdateProfile),
+  ( ProfilesRedeemer (RevokeCredential, UpdateProfile),
     profilesLambda,
   )
 import PlutusLedgerApi.V1 qualified as V1
@@ -124,6 +125,7 @@ tests =
     [ m0Tests,
       a1Tests,
       p3Tests,
+      p8p9Tests,
       seedTests,
       k1Tests,
       k2Tests,
@@ -312,6 +314,96 @@ p3Tests =
         )
           @?= (True, False)
     ]
+
+-------------------------------------------------------------------------------
+
+-- | @P8@ and @P9@: who may clear a credential claim — D-E.
+--
+-- __The positive control asserts the DESIGN as much as the rule.__ Its transaction carries no user
+-- NFT anywhere and no oracle in the reference inputs, because both omissions are decisions: the
+-- attacker who claimed somebody else's credential is the party holding that token, and a remedy the
+-- admin can suspend by pausing is not a remedy. If either ever becomes required, this case goes red.
+p8p9Tests :: TestTree
+p8p9Tests =
+  testGroup
+    "P8/P9: only the claimed credential may clear its own claim"
+    [ testCase "Test Case 8.18: the claimed credential's signature clears the claim (P9)" $
+        ( runRevoke claimedProfileDatum [claimantPkh] [] revokedStateOut,
+          -- The same transaction with nobody signing. Nothing else moves.
+          runRevoke claimedProfileDatum [] [] revokedStateOut
+        )
+          @?= (True, False),
+      testCase "Test Case 8.19: somebody else's signature does not clear a claim (P9)" $
+        runRevoke claimedProfileDatum [adminPkh] [] revokedStateOut @?= False,
+      -- @P5@ on this path: the output has to actually have the field cleared. Without it a
+      -- "revocation" that re-locks the claim unchanged would pass, which is the no-op-counts-as-an-
+      -- action shape @A3@ closes on the acceptance path.
+      testCase "Test Case 8.20: re-locking the claim unchanged is not a revocation (P5)" $
+        runRevoke
+          claimedProfileDatum
+          [claimantPkh]
+          []
+          (inlineOut profilesAddr profileStateValue (toBuiltinData claimedProfileDatum))
+          @?= False,
+      -- @P8@, which changes no verdict and says so: a profile claiming Nothing fails @P9@ as well,
+      -- since there is no credential to consent. The case is here because the REFUSAL is what
+      -- matters to a caller, and because `Nothing` is a legitimate state — a Community claims
+      -- nothing — rather than a fault.
+      testCase "Test Case 8.21: a profile that claims nothing has nothing to revoke (P8)" $
+        runRevoke profileDatum [claimantPkh] [] (inlineOut profilesAddr profileStateValue (toBuiltinData profileDatum))
+          @?= False,
+      -- The deliberate asymmetry with @P6@, and the same one 'ExpireDispute' makes with @D7@: a
+      -- paused oracle in the reference inputs changes nothing, because this arm never reads it.
+      testCase "Test Case 8.22: a PAUSED oracle does not block a revocation (no P6 here)" $
+        runRevoke claimedProfileDatum [claimantPkh] [oracleRefInput True] revokedStateOut @?= True
+    ]
+
+runRevoke :: CIP68Datum OnchainProfile -> [PubKeyHash] -> [TxInInfo] -> TxOut -> Bool
+runRevoke datum signatories refInputs stateOut =
+  profilesLambda (revokeCtx datum signatories refInputs stateOut)
+
+-- | The profile fixture CLAIMING a key credential. The kind stays 'Community' — the validator never
+-- reads it, and changing it would be a second difference from 'profileDatum' in a fixture whose
+-- point is one difference.
+claimedProfileDatum :: CIP68Datum OnchainProfile
+claimedProfileDatum = mkCIP68Datum profileInfo profileFields []
+  where
+    profileInfo =
+      OnchainProfile
+        { profileId = profileRefAC,
+          profileKind = Community,
+          profileCredential = Just (PubKeyCredential claimantPkh),
+          protocolParams = params
+        }
+
+-- | The key whose credential the profile claims. Not 'adminPkh', so "the admin signed" and "the
+-- claimant signed" are distinguishable — which is what Test Case 8.19 needs.
+claimantPkh :: PubKeyHash
+claimantPkh = PubKeyHash (b28 0x0d)
+
+-- | The profile coming back with its claim cleared, computed with the protocol's own
+-- 'revokeCredential' so the test cannot disagree with the validator about what a revocation does.
+revokedStateOut :: TxOut
+revokedStateOut =
+  inlineOut
+    profilesAddr
+    profileStateValue
+    (toBuiltinData (claimedProfileDatum {extra = revokeCredential (extra claimedProfileDatum)}))
+
+-- | A revocation of the given profile datum, with the given signatories and reference inputs.
+--
+-- Both are parameters because both are what the cases are about: @P9@ reads the signatories, and the
+-- reference inputs exist here only to prove they are IGNORED.
+revokeCtx :: CIP68Datum OnchainProfile -> [PubKeyHash] -> [TxInInfo] -> TxOut -> ScriptContext
+revokeCtx datum signatories refInputs stateOut =
+  ScriptContext
+    ((mkTxInfo [ownInput] refInputs [stateOut] emptyMintValue) {txInfoSignatories = signatories})
+    (Redeemer (toBuiltinData (RevokeCredential 0)))
+    (SpendingScript profileOwnRef (Just (Datum (toBuiltinData datum))))
+  where
+    ownInput = TxInInfo profileOwnRef (inlineOut profilesAddr profileStateValue (toBuiltinData datum))
+
+-------------------------------------------------------------------------------
 
 -- | A profile update the validator accepts, parameterised only by the inputs beside the profile.
 --

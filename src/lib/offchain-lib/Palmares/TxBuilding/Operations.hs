@@ -17,7 +17,7 @@ import Palmares.Onchain.Validators.AttestationsValidator (AttestationsRedeemer (
 import Palmares.Onchain.Validators.DisputesValidator qualified as DisputesValidator (DisputesRedeemer (Cleanup, ExpireDispute, ResolveDispute))
 import Palmares.Onchain.Validators.MintingPolicy
 import Palmares.Onchain.Validators.OracleValidator (OracleRedeemer (OracleUpdate))
-import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (UpdateProfile))
+import Palmares.Onchain.Validators.ProfilesValidator (ProfilesRedeemer (RevokeCredential, UpdateProfile))
 import Palmares.Onchain.Validators.ProfilesValidator qualified as ProfilesValidator (ProfilesRedeemer (Cleanup))
 import PlutusLedgerApi.V3
 import Palmares.TxBuilding.Context (DeployedScriptsContext (..), getAttestationsValidatorRef, getDisputesValidatorRef, getMintingPolicyFromCtx, getMintingPolicyRef, getOracleValidatorRef, getProfilesValidatorRef, getProtocolParamsFromCtx)
@@ -768,6 +768,59 @@ resolveDisputeTX gyDisputeAC verdict = do
         isLockingResolvedDispute, -- Output 0: Resolved dispute
         isReturningDeposit, -- Output 1: Returned deposit
         mustBeSignedBy gyAdminPkh -- Required signer (no output index)
+      ]
+
+-- | Clear a profile's credential claim — D-E, built for whoever's credential it is.
+--
+-- __No oracle reference input and no pause check__, on the same argument the expiry below makes: a
+-- remedy the admin can suspend is not a remedy, and the party this exists for is the one who never
+-- consented in the first place. @P9@ on chain reads no oracle either.
+--
+-- __And deliberately NOT the profile's user NFT.__ The attacker who minted a profile claiming
+-- somebody else's credential is exactly the party holding that token, so requiring it would hand
+-- the remedy to them. What authorises this is 'claimProofSkeleton' of the credential being revoked
+-- — the identical proof the claim itself needed, which is what makes the remedy symmetric with the
+-- act rather than a new privilege.
+--
+-- The 400 before the chain sees it is @P8@'s: a profile that claims nothing has nothing to revoke,
+-- and 'Nothing' is a legitimate state rather than a fault.
+revokeCredentialTX ::
+  (GYTxQueryMonad m, MonadReader DeployedScriptsContext m) =>
+  -- | Profile Ref AC
+  GYAssetClass ->
+  -- | How a SCRIPT credential proves control; ignored for a key credential
+  Maybe ClaimWitness ->
+  m (GYTxSkeleton 'PlutusV3)
+revokeCredentialTX gyProfileRefAC mWitness = do
+  pvRef <- asks getProfilesValidatorRef
+  (plutusProfileDatum, plutusProfileValue) <- getProfileStateDatumAndValue gyProfileRefAC
+  let profile = extra plutusProfileDatum
+  credential <- case OnchainTypes.profileCredential profile of
+    Nothing -> throwError (GYApplicationException ProfileClaimsNoCredential)
+    Just credential -> return credential
+
+  -- ============================================================
+  -- Output index tracking (order must match skeleton mconcat order)
+  -- ============================================================
+  -- Output 0: the profile, with its claim cleared
+  let profileOutputIdx = 0 :: Integer
+      gyRedeemer = redeemerFromPlutusData (RevokeCredential profileOutputIdx)
+  spendsProfileRefNFT <- txMustSpendStateFromRefScriptWithRedeemer pvRef gyProfileRefAC gyRedeemer profilesValidatorGY
+
+  -- The same function the validator computes its expected output datum with, so the two cannot
+  -- disagree about what a revocation does — including that it changes nothing else.
+  let revokedDatum = plutusProfileDatum {extra = OnchainTypes.revokeCredential profile}
+  gyProfileValue <- valueFromPlutus' plutusProfileValue
+  isLockingRevokedProfile <-
+    txMustLockStateWithInlineDatumAndValue profilesValidatorGY revokedDatum gyProfileValue
+
+  proofSkeleton <- claimProofSkeleton credential mWitness
+
+  return $
+    mconcat
+      [ spendsProfileRefNFT, -- Input (no output index)
+        isLockingRevokedProfile, -- Output 0: the profile with no claim
+        proofSkeleton -- The credential's own proof (P9)
       ]
 
 -- | Close an undecided dispute whose deadline has passed — D-A, and the only write in this protocol

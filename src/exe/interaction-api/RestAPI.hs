@@ -161,6 +161,18 @@ type ServiceAPI =
              :> ReqBody '[JSON] ResolveDisputeRequest
              :> Post '[JSON] String
          )
+    :<|> ( Summary "Expire Dispute"
+             :> Description "Closes an undecided dispute whose deadline has passed. Needs no authority at all — that is the point, since an exit the oracle admin can gate is not an exit — and records `expired`, which is not a finding against either party. The deposit returns to the address the opener named."
+             :> "expire-dispute"
+             :> ReqBody '[JSON] ExpireDisputeRequest
+             :> Post '[JSON] String
+         )
+    :<|> ( Summary "Revoke Credential"
+             :> Description "Clears a profile's credential claim. Authorised by the CREDENTIAL and not by the profile's user token, because the party that claimed a credential it does not control is exactly the party holding that token. The profile survives; one field is cleared."
+             :> "revoke-credential"
+             :> ReqBody '[JSON] RevokeCredentialRequest
+             :> Post '[JSON] String
+         )
 
 serviceServer :: ServerT ServiceAPI InteractionAppMonad
 serviceServer =
@@ -170,6 +182,8 @@ serviceServer =
     :<|> handleAcceptAttestation
     :<|> handleOpenDispute
     :<|> handleResolveDispute
+    :<|> handleExpireDispute
+    :<|> handleRevokeCredential
 
 ------------------------------------------------------------------------------------------------
 

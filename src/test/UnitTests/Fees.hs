@@ -43,7 +43,20 @@ tests =
       -- Zero is the configured value on preprod — spec §4.3 rules out protocol fees as a business
       -- model — so the zero case has to be the ordinary one, not an edge case.
       testCase "every action is free when every fee is zero, which is the preprod configuration" $
-        map (`feeFor` zeroFees) allActions @?= replicate (length allActions) 0
+        map (`feeFor` zeroFees) allActions @?= replicate (length allActions) 0,
+      -- `OF-04`. A dispute has NO `FeeConfig` field — its cost is the refundable deposit, not a fee
+      -- — so `feeFor` is `const 0` on that arm and stays 0 however the other fields are priced.
+      -- Pinned with DISTINCT non-zero fees, because the existing zero case above would hold even if
+      -- the dispute arm had been wired to one of them.
+      --
+      -- __Why this is the assertion that makes `OF-04` a bug and not a preference.__ The off-chain
+      -- builder used to emit a fee output whenever a `FeeConfig` existed at all, including for this
+      -- action at zero — and Atlas's `adjustTxOut` raises a 0-lovelace output to min-ADA, so every
+      -- disputer paid roughly 1 ADA, unadvertised and unrefunded, to an address the chain never
+      -- asked them to pay. `checkFee` reads this same function, so the chain was pricing zero while
+      -- the builder paid.
+      testCase "a dispute is free even when the other fees are priced (OF-04)" $
+        feeFor MintActionDispute distinctFees @?= 0
     ]
   where
     -- Driven off the constructor list, not a hand-written one. The hand-written one named two

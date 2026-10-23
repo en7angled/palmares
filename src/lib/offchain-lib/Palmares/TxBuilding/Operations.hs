@@ -67,9 +67,24 @@ getFeeSkeleton oracle action = case OnchainTypes.opFeeConfig oracle of
   Nothing -> return mempty
   Just feeConfig -> do
     let feeAmount = Lookup.feeFor action feeConfig
-    let plutusFeeAddr = OnchainTypes.fcFeeAddress feeConfig
-    gyFeeAddr <- addressFromPlutus' plutusFeeAddr
-    txMustPayValueToAddress gyFeeAddr (valueFromLovelace feeAmount)
+    -- A PRICE OF ZERO MEANS NO OUTPUT, NOT AN OUTPUT OF ZERO — `OF-04`.
+    --
+    -- Atlas's `adjustTxOut` raises a 0-lovelace output to the ledger's min-ADA (verified against the
+    -- pinned 0.14.1 source), so asking for one did not produce nothing: it produced a payment of
+    -- roughly a full min-ADA to the fee address. `feeFor MintActionDispute` is 0 BY DESIGN — a
+    -- dispute's cost is its refundable deposit, not a fee — so the moment an operator configured any
+    -- `FeeConfig` at all, every disputer paid an unadvertised ~1 ADA they never got back.
+    --
+    -- The chain never required it. `K2` checks that the fee the oracle PRICES was paid, and it
+    -- prices zero here, so this output was pure off-chain invention. `<= 0` and not `== 0` because
+    -- `O6` permits a zero fee and nothing bounds a negative one to zero; a negative price asking for
+    -- a negative output would be a build error rather than a refusal anybody could read.
+    if feeAmount <= 0
+      then return mempty
+      else do
+        let plutusFeeAddr = OnchainTypes.fcFeeAddress feeConfig
+        gyFeeAddr <- addressFromPlutus' plutusFeeAddr
+        txMustPayValueToAddress gyFeeAddr (valueFromLovelace feeAmount)
 
 -- | Oracle reference input, params, fee skeleton, and validity (invalid-before-now).
 -- Use when building TXs that require oracle, fee, and a validity window.
@@ -886,12 +901,20 @@ openDisputeTX gyTargetAC gyOpenerProfileId mDepositTo metadata ownAddrs = do
 -- The admin is not locked out, because 'updateOracleTX' genuinely does bypass the pause, so
 -- pause -> unpause -> resolve works.
 --
--- __What is still wrong here, and is a real defect rather than a decision:__ this builder does not
--- consult the oracle, so while paused it hands back a transaction the chain then refuses as a script
--- failure (@D7@) instead of refusing it at build time with a @503 ProtocolPaused@ the way every other
--- write path does. Routing it through 'getOracleRefInputSkeleton' is the fix; it is not done here
--- because that function also attaches the oracle as a reference input, which this skeleton already
--- does for @D1@, and doing it twice needs a careful look at the resulting input set.
+-- __That defect is fixed — @OF-03@__, and the obstacle the paragraph here used to name turned out not
+-- to exist. It said: "this builder does not consult the oracle […] Routing it through
+-- 'getOracleRefInputSkeleton' is the fix; it is not done here because that function also attaches
+-- the oracle as a reference input, which this skeleton already does for @D1@, and doing it twice
+-- needs a careful look at the resulting input set."
+--
+-- But this builder DOES consult the oracle: it calls 'queryOracleParams' for @D1@'s proof and for
+-- the deposit. It had the flag in hand and did not look at it. So the fix is the same @when@ every
+-- other write path uses, with no second reference input and nothing to look at carefully — the
+-- expensive-sounding route was never needed.
+--
+-- 'expireDisputeTX' is deliberately NOT gated, and that is not an oversight: @D-A@'s guarantee is
+-- that an undecided dispute's deposit does not depend on anybody staying available, and an escape
+-- hatch the admin can close by pausing is not an escape hatch.
 --
 -- Output index layout:
 --   Output 0: Resolved dispute, less the deposit, back at disputesValidator
@@ -921,6 +944,11 @@ resolveDisputeTX gyDisputeAC verdict mArbiterWitness = do
     throwError (GYApplicationException DisputeVerdictNotAFinding)
 
   (oracleParams, oracleRef, _oracleValue) <- queryOracleParams
+  -- @D7@ refuses a resolution while the protocol is paused, so refuse it HERE — OF-03. Without this
+  -- the only write path left that handed back a transaction the chain was certain to reject was this
+  -- one, and the user found out as a script failure after signing instead of as a 503 before.
+  when (OnchainTypes.opPaused oracleParams) $
+    throwError (GYApplicationException ProtocolPaused)
   -- 'opArbiter' and not 'opAdmin' — ADR 0005 split the verdict-writing power out, and @D1@ reads
   -- the field this reads. Genesis sets the two equal, so a deployment that has not split them sees
   -- no difference here.

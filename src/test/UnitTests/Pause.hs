@@ -100,14 +100,20 @@ pauseTests =
 
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A paused protocol refused a hand-built profile update (P6)."
 
-    -- Test Case 7.2, and it needs NO malicious builder, which is the honest statement of what changed:
-    -- 'Palmares.TxBuilding.Operations.resolveDisputeTX' reads the oracle directly rather than through
-    -- @getOracleRefInputSkeleton@, so the production path still BUILDS a resolution while paused and
-    -- the validator is what refuses it. The admin signs, the dispute is open, so @D1@ and @D3@ pass
-    -- and @D7@ is the only thing left to say no.
+    -- Test Case 7.2. A verdict is irreversible (@D3@) and a dispute is cheap and repeatable, so a
+    -- pause that stopped the opening and left the settling running had the two exactly the wrong way
+    -- round. @D7@ closed that on chain.
     --
-    -- A verdict is irreversible (@D3@) and a dispute is cheap and repeatable, so a pause that stopped
-    -- the opening and left the settling running had the two exactly the wrong way round.
+    -- __THE REFUSAL MOVED OFF CHAIN WITH `OF-03`.__ This case used to assert `failedWithTrace "D7"`
+    -- and said so deliberately: "it needs NO malicious builder […] 'resolveDisputeTX' reads the
+    -- oracle directly rather than through @getOracleRefInputSkeleton@, so the production path still
+    -- BUILDS a resolution while paused and the validator is what refuses it."
+    --
+    -- Reading the oracle directly is exactly why the fix was one line: the builder HAD the paused
+    -- flag and did not look at it. This was the last write path that handed back a transaction the
+    -- chain was certain to reject, so the arbiter found out as a script failure after signing instead
+    -- of as a 503 before. @D7@ still exists and the chain is still the authority; the test no longer
+    -- names a trace code because the production path no longer reaches one.
     pausedResolutionRefused :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     pausedResolutionRefused info@TestInfo {..} = do
       (ctx, _attestationAC, disputeAC) <- deployWithOpenDispute info
@@ -115,11 +121,18 @@ pauseTests =
       _ <- adminInteraction ctx (w1 testWallets) PauseProtocolAction
       waitNSlots_ 1
 
-      mustFailWith (failedWithTrace "D7") $
+      mustFail $
         void $
           disputeInteraction ctx (w1 testWallets) (ResolveDisputeAction disputeAC Domain.VerdictUpheld)
 
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A paused protocol refused a dispute resolution (D7)."
+      -- The half that makes the refusal mean something, the same rule 7.1 follows: unpaused it must
+      -- SUCCEED, or a guard that refused everything would pass this test.
+      _ <- adminInteraction ctx (w1 testWallets) UnpauseProtocolAction
+      waitNSlots_ 1
+      _ <- disputeInteraction ctx (w1 testWallets) (ResolveDisputeAction disputeAC Domain.VerdictUpheld)
+      waitNSlots_ 1
+
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A paused protocol refused a dispute resolution off-chain, and allowed it once unpaused."
 
     -- Test Case 7.3. The sweep is permissionless housekeeping and must survive a pause: it moves no
     -- protocol state, and an admin who could freeze it could let griefing dust pile up at every state

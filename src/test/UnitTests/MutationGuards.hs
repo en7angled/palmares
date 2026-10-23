@@ -62,7 +62,7 @@ import Palmares.Onchain.CIP68
     updateCIP68DatumMetadata,
   )
 import Palmares.Onchain.Protocol.Types
-  ( AttestationKind (MilestoneDelivered),
+  ( AttestationKind (CredentialClaim, MilestoneDelivered),
     FeeConfig (..),
     OnchainAttestation (..),
     OnchainDispute (..),
@@ -124,6 +124,7 @@ tests =
     [ m0Tests,
       a1Tests,
       p3Tests,
+      mcTests,
       seedTests,
       k1Tests,
       k2Tests,
@@ -312,6 +313,90 @@ p3Tests =
         )
           @?= (True, False)
     ]
+
+-------------------------------------------------------------------------------
+
+-- | @Mc1@ to @Mc4@: what keeps a credential binding honest — __ADR 0003__.
+--
+-- Four rules, one context builder, and each case changes exactly one of the three things the rules
+-- read: the kind, whether the issuer is the subject, and the credential the redeemer names. @Mk@
+-- compares the whole datum against the output, and this builder derives the datum from the same
+-- three parameters, so @Mk@ cannot be what refuses any of them.
+mcTests :: TestTree
+mcTests =
+  testGroup
+    "Mc1-Mc4: a credential binding is self-issued, names a credential, and proves it"
+    [ -- THE POSITIVE CONTROL. Self-issued, names a credential, and that credential signs — so all
+      -- four rules pass and every case below fails on the one thing it changes.
+      testCase "Test Case 8.18: a well-formed credential claim validates" $
+        mintingPolicyLambda params (credentialMintCtx CredentialClaim profileRefAC (Just boundCredential) [boundPkh])
+          @?= True,
+      -- @Mc1@. A record about one profile issued by ANOTHER would make the issuer field mean
+      -- something on these two kinds, where the authority is stated by `Mc3` instead — and would let
+      -- a third party mint bindings naming profiles it has nothing to do with.
+      testCase "Test Case 8.19: a credential claim issued by a different profile is refused (Mc1)" $
+        mintingPolicyLambda params (credentialMintCtx CredentialClaim issuerRefAC (Just boundCredential) [boundPkh])
+          @?= False,
+      -- @Mc2@. Without it the record would be a binding to nothing, which the read layer would have
+      -- to decide how to render.
+      testCase "Test Case 8.20: a credential claim naming no credential is refused (Mc2)" $
+        mintingPolicyLambda params (credentialMintCtx CredentialClaim profileRefAC Nothing [boundPkh])
+          @?= False,
+      -- @Mc3@, the rule that was @Mp3@. The credential does not sign, and nothing else changes.
+      testCase "Test Case 8.21: a credential claim the credential did not authorise is refused (Mc3)" $
+        mintingPolicyLambda params (credentialMintCtx CredentialClaim profileRefAC (Just boundCredential) [])
+          @?= False,
+      -- @Mc4@, and it is the rule that keeps the OTHER five kinds clean: a milestone carrying a
+      -- credential would be a binding nothing checks, since `Mc1` and `Mc3` only look at the two
+      -- credential kinds.
+      testCase "Test Case 8.22: an ordinary attestation carrying a credential is refused (Mc4)" $
+        mintingPolicyLambda params (credentialMintCtx MilestoneDelivered issuerRefAC (Just boundCredential) [boundPkh])
+          @?= False
+    ]
+
+-- | The key whose credential the records below bind.
+boundPkh :: PubKeyHash
+boundPkh = PubKeyHash (b28 0x0d)
+
+boundCredential :: Credential
+boundCredential = PubKeyCredential boundPkh
+
+-- | A credential-record mint, parameterised in the three things @Mc1@-@Mc4@ read, plus the
+-- signatories @Mc3@ reads.
+--
+-- The seed input carries the ISSUER's user token, so @Mf@ passes whichever profile is named as
+-- issuer — which is what lets the @Mc1@ case isolate @Mc1@ instead of tripping over @Mf@.
+credentialMintCtx :: AttestationKind -> V1.AssetClass -> Maybe Credential -> [PubKeyHash] -> ScriptContext
+credentialMintCtx kind issuer mCredential signatories =
+  ScriptContext
+    (mkTxInfo [seedInput] [oracleRefInput False] [recordOut] issueMint)
+      { txInfoValidRange = datedRange,
+        txInfoSignatories = signatories
+      }
+    (Redeemer (toBuiltinData redeemer))
+    (MintingScript protocolCS)
+  where
+    redeemer =
+      NewAttestation issueSeedRef profileFields [] profileRefAC issuer kind datedAt Nothing mCredential 0
+    seedInput =
+      TxInInfo issueSeedRef (plainOut walletAddr (V1.assetClassValue (deriveUserFromRefAC issuer) 1 <> lv 10_000_000))
+    recordOut =
+      inlineOut attestationsAddr (V1.assetClassValue issuedAC 1 <> lv minLovelace) (toBuiltinData recordDatum)
+    recordDatum =
+      mkCIP68Datum
+        OnchainAttestation
+          { attestationId = issuedAC,
+            attestationIssuer = issuer,
+            attestationSubject = profileRefAC,
+            attestationKind = kind,
+            attestationDate = datedAt,
+            attestationPeriod = Nothing,
+            attestationIsAccepted = False,
+            attestationCredential = mCredential,
+            attestationOracleToken = oracleAC
+          }
+        profileFields
+        []
 
 -------------------------------------------------------------------------------
 

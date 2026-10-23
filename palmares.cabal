@@ -423,7 +423,6 @@ executable interaction-api
     , aeson-pretty
     , bytestring         ^>=0.11.5
     , deriving-aeson
-    , http-types         ^>=0.12.4
     , lens               ^>=5.2.3
     , mtl
     , servant-options
@@ -434,7 +433,6 @@ executable interaction-api
     , text
     , time
     , wai
-    , wai-extra
     , warp
 
   --- Cardano specific dependencies
@@ -572,7 +570,6 @@ test-suite test
     , vector
     , wai
     , wai-cors
-    , warp
 
   --- Cardano specific dependencies
   build-depends:

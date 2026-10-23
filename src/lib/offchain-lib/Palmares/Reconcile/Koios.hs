@@ -55,7 +55,7 @@ module Palmares.Reconcile.Koios
 where
 
 import Data.Aeson (FromJSON (parseJSON), Value (Number, String), withObject, (.:), (.:?))
-import Data.Aeson.Types (Parser, typeMismatch)
+import Data.Aeson.Types (typeMismatch)
 import Data.Int (Int64)
 import Data.Text (Text)
 import Data.Text qualified as T

@@ -29,7 +29,7 @@ module Palmares.WebAPI.Envelope
   )
 where
 
-import Data.Aeson (FromJSON, ToJSON, Value (String), toJSON)
+import Data.Aeson (Value (String), toJSON)
 import Data.Aeson.Types qualified as AesonTypes
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
@@ -37,8 +37,9 @@ import Data.Swagger (SchemaOptions, ToSchema (..), genericDeclareNamedSchema)
 import Data.Swagger.SchemaOptions (fromAesonOptions)
 import Data.Text (Text)
 import Data.Typeable (Typeable)
+-- Open, as everywhere else in this repository, and it is also where Generic, FromJSON and ToJSON
+-- come from below: re-importing those three from their own modules is what -Wall called redundant.
 import Deriving.Aeson
-import GHC.Generics (Generic)
 
 -- | An opaque position in a keyset-paged feed. Clients echo it back and never parse it.
 --

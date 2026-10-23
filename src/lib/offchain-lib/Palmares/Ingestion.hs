@@ -80,7 +80,7 @@ projectChainEvent ::
   m ChainEventProjection
 projectChainEvent nid ourPolicy am@AtlasMatch {..}
   | isJust amSpentAt = return (NoEvent am)
-  | amAddress == scriptAddress profilesValidatorHashGY =
+  | amAddress == validatorAddress profilesValidatorHashGY =
       case profileFromGYOutDatum amDatum of
         Just datum
           | authentic (OnchainTypes.profileId (extra datum)) -> do
@@ -88,13 +88,13 @@ projectChainEvent nid ourPolicy am@AtlasMatch {..}
               let claimed = claimCredentialToText <$> OnchainTypes.profileCredential (extra datum)
               return (ProfileEvent profile claimed)
         _ -> return (NoEvent am)
-  | amAddress == scriptAddress attestationsValidatorHashGY =
+  | amAddress == validatorAddress attestationsValidatorHashGY =
       case attestationFromGYOutDatum amDatum of
         Just datum
           | authentic (OnchainTypes.attestationId (extra datum)) ->
               AttestationEvent <$> onchainAttestationToAttestation datum
         _ -> return (NoEvent am)
-  | amAddress == scriptAddress disputesValidatorHashGY =
+  | amAddress == validatorAddress disputesValidatorHashGY =
       case disputeFromGYOutDatum amDatum of
         Just datum
           | authentic (OnchainTypes.disputeId (extra datum)) ->
@@ -102,7 +102,10 @@ projectChainEvent nid ourPolicy am@AtlasMatch {..}
         _ -> return (NoEvent am)
   | otherwise = return (NoEvent am)
   where
-    scriptAddress = addressFromScriptHash nid
+    -- Not `scriptAddress`: "GeniusYield.TxBuilder", imported openly above, exports that name and
+    -- `scriptAddress'`, both monadic and taking the network id from the monad. This one is pure and
+    -- is handed `nid`, so shadowing theirs hid a real difference behind the same word.
+    validatorAddress = addressFromScriptHash nid
     -- The gate. An id the ledger cannot even represent as an asset class fails it, rather than
     -- being converted with 'assetClassFromPlutus'' and throwing: a forged datum must be skipped,
     -- not turned into a projection error that stops the batch.

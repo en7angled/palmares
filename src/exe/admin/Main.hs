@@ -629,6 +629,16 @@ executeCommand (Right txBuildingCtx) signKey cmd = case cmd of
     printGreen $ "  Paused:             " <> show (opPaused oracleParams)
     printGreen $ "  Min UTxO Value:     " <> show (opMinUTxOValue oracleParams) <> " lovelace"
     printGreen $ "  Dispute Deposit:    " <> show (opDisputeDeposit oracleParams) <> " lovelace"
+    -- The field `set-dispute-timeout` writes, which this command did not read back. An admin command
+    -- that can change a value but cannot show it leaves the operator guessing at the one number that
+    -- decides when a dispute becomes closable by anyone, and the first deploy is exactly when you
+    -- want to confirm the genesis value rather than infer it from the source you hope was built.
+    printGreen $
+      "  Dispute Timeout:    "
+        <> show (opDisputeTimeoutMs oracleParams)
+        <> " ms ("
+        <> show (opDisputeTimeoutMs oracleParams `div` 86_400_000)
+        <> " days)"
     case opFeeConfig oracleParams of
       Nothing -> printGreen "  Fee Config:          None"
       Just fc -> do

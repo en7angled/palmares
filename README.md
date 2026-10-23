@@ -159,8 +159,14 @@ There is **no** provider-token variable in this list: Atlas reads the provider o
 never from the environment. `config/config_atlas.example.json` is the committed template and carries
 `REPLACE_ME`; the real `config/config_atlas.json` is gitignored.
 
-The template's `coreProvider` is `{"blockfrostKey": …}` — a preprod project key of your own. Atlas picks
-the provider from **which keys are present**, so put exactly one provider in that object: `blockfrostKey`,
-or `maestroToken`, or `socketPath` + `kupoUrl`, or `ogmiosUrl` + `kupoUrl`. Mixing two lets the first
-shape that parses win silently. Maestro withdrew its Cardano API in 2026 and `maestroToken` no longer
-resolves to anything — see [ADR 0004](docs/adr/0004-maestro-withdrew-its-cardano-api.md).
+The template's `coreProvider` is `{"blockfrostKey": …}` — a project key of your own, for the network you
+are on. Atlas picks the provider from **which keys are present**, so put exactly one provider in that
+object: `blockfrostKey`, or `socketPath` + `kupoUrl`, or `ogmiosUrl` + `kupoUrl`. Mixing two lets the
+first shape that parses win silently. (`maestroToken` is a fourth shape Atlas still accepts, but Maestro
+withdrew its Cardano API in 2026 and the hostname no longer resolves.)
+
+**If you run a node yourself, you need no key at all.** `{"socketPath": …, "kupoUrl": …}` is measured
+rather than aspirational — see [ADR 0004](docs/adr/0004-maestro-withdrew-its-cardano-api.md) — and it
+leaves the write path with no secret. Kupo must run with `--match '*'`: the builder resolves the admin
+wallet's own UTxOs plus five validator addresses that change whenever the scripts do. On macOS the node
+socket is reachable only from inside the compose project, never from a host CLI.

@@ -67,7 +67,12 @@ Three facts make it that cheap, and each was checked rather than assumed:
 (`MaestroApi.maestroSubmitTx (Just True == turboSubmit)`), it has no Blockfrost equivalent, and
 leaving the key in an otherwise-Blockfrost object is the two-providers footgun above.
 
-## The alternative, and why it is not the decision
+## The alternative, and why it looked like the weaker one
+
+*Written before the deploy. The section after it records what happened when the alternative was
+actually tried, and it inverts the recommendation for a single-machine deployment — kept in this
+order because the two reasons below are still exactly true, and only one of them turned out to
+matter.*
 
 `GYNodeKupo` — `{"socketPath": …, "kupoUrl": …}` — would remove the third-party dependency entirely,
 which is what ADR 0002's Spike section set out to evaluate. The infrastructure for it is already
@@ -86,8 +91,33 @@ It is not the decision for two reasons, one local and one general:
   the socket bridge fixes only whichever machine is holding it.
 
 `GYNodeKupo` remains the right end state for an operator who runs the whole stack in one place — the
-Belt System's dev overlay took exactly that route. ADR 0002's spike is therefore still open, and the
-honest framing is that the provider question was decided for us before we got to answer it.
+Belt System's dev overlay took exactly that route.
+
+## Measured 2026-10-23: the local-node path works, and it is what deployed F1
+
+ADR 0002's spike asked "whether the local-node provider can build and submit the attestation
+transaction set, and what it costs in operational complexity versus one provider token." **It can.**
+The first palmares deployment was made through `GYNodeKupo`, not through a hosted provider: six
+transactions built, submitted and awaited to confirmation against cardano-node 11.1.2 and Kupo
+v2.12.0 — one reference script per validator, the minting policy, and the oracle NFT mint that locks
+the genesis `OracleParams`. `admin query-oracle` then read the datum back through the same provider.
+
+What it cost, precisely: **6.97 tADA burned**, plus **205.40 tADA locked** as min-ADA in the five
+reference-script UTxOs, which is recoverable by spending them. The earlier "~210 tADA" figure was the
+*balance you must hold*, not the price — a distinction worth keeping, because the deploy looks thirty
+times more expensive than it is.
+
+The operational complexity is one platform quirk and nothing else. On a Linux host the node socket is
+a path and there is no bridge at all. On macOS the socket lives in a named Docker volume, so it takes
+two hops to reach a host-run CLI — a socat container publishing it on loopback TCP, and a small
+UNIX-socket relay on the host. That is a laptop problem, not an architecture one.
+
+**So this ADR's decision is narrower than it first reads.** `blockfrostKey` is the answer for a
+service that does not sit beside a node — an `interaction-api` in a cluster, or any deployment where
+the write path and the node are on different machines. For a single-machine deployment the honest
+recommendation is now `GYNodeKupo`, because it is measured, it needs no account, and it leaves the
+protocol with **no secret at all** on the write path. ADR 0002's spike is closed, and it closed in
+favour of the option it was written to hope for.
 
 `GYOgmiosKupo` stays unavailable for the reason ADR 0002 already gave: node 11.1.2 requires Ogmios
 v7 and no Atlas release has shipped against v7's schema change.

@@ -857,16 +857,26 @@ openDisputeCtx = openDisputeCtxParking mempty
 
 -- | The same opening with extra value PARKED in the dispute output, which is what @Md9@ refuses.
 openDisputeCtxParking :: Value -> ScriptContext
-openDisputeCtxParking parked =
+openDisputeCtxParking parked = openDisputeCtxWith parked walletAddr
+
+-- | The same opening with a chosen refund address, which is what @Mda@ constrains.
+openDisputeCtxPayingTo :: Address -> ScriptContext
+openDisputeCtxPayingTo = openDisputeCtxWith mempty
+
+openDisputeCtxWith :: Value -> Address -> ScriptContext
+openDisputeCtxWith parked payTo =
   ScriptContext
     (mkTxInfo [seedInput] [oracleRefInput False] [openedOut] openMint) {txInfoValidRange = datedRange}
     (Redeemer (toBuiltinData redeemer))
     (MintingScript protocolCS)
   where
-    redeemer = OpenDispute openSeedRef attestationAC profileRefAC walletAddr profileFields datedAt 0
+    redeemer = OpenDispute openSeedRef attestationAC profileRefAC payTo profileFields datedAt 0
+    -- At `payTo`, so @Md8@ ("the refund address is spent from") stays satisfied and @Mda@ is the
+    -- only conjunct a script refund address trips.
     seedInput =
-      TxInInfo openSeedRef (plainOut walletAddr (V1.assetClassValue profileUserAC 1 <> lv 10_000_000))
-    openedOut = inlineOut disputesAddr (disputeValueOf openedAC <> parked) (toBuiltinData openedDatum)
+      TxInInfo openSeedRef (plainOut payTo (V1.assetClassValue profileUserAC 1 <> lv 10_000_000))
+    openedOut = inlineOut disputesAddr (disputeValueOf openedAC <> parked) (toBuiltinData thisDatum)
+    thisDatum = openedDatumPayingTo payTo
 
 openSeedRef :: TxOutRef
 openSeedRef = TxOutRef (TxId (b32 0xd0)) 0
@@ -880,7 +890,17 @@ openedAC = V1.AssetClass (protocolCS, openedRefTN)
 -- | The dispute @handleOpenDispute@ writes: no verdict yet, the deposit it actually paid recorded in
 -- its own datum, and the oracle token it will be read through recorded beside it.
 openedDispute :: OnchainDispute
-openedDispute =
+openedDispute = openedDisputePayingTo walletAddr
+
+-- | The same dispute with a chosen refund address. @Md5@ compares the whole datum against the
+-- output, so a context that moves the redeemer's @depositTo@ has to move the datum's with it or the
+-- case tests @Md5@ instead of what it means to.
+openedDisputePayingTo :: Address -> OnchainDispute
+openedDisputePayingTo payTo =
+  (openedDisputeBase) {disputeDepositTo = payTo}
+
+openedDisputeBase :: OnchainDispute
+openedDisputeBase =
   OnchainDispute
     { disputeId = openedAC,
       disputeTarget = attestationAC,
@@ -896,7 +916,10 @@ openedDispute =
     }
 
 openedDatum :: CIP68Datum OnchainDispute
-openedDatum = mkCIP68Datum openedDispute profileFields []
+openedDatum = openedDatumPayingTo walletAddr
+
+openedDatumPayingTo :: Address -> CIP68Datum OnchainDispute
+openedDatumPayingTo payTo = mkCIP68Datum (openedDisputePayingTo payTo) profileFields []
 
 -- | @Md2@: just the dispute's ref NFT. No user token, because there is nothing a dispute's holder
 -- may do — resolution is the oracle admin's.
@@ -1360,5 +1383,21 @@ oc03Tests =
         ( mintingPolicyLambda params openDisputeCtx,
           mintingPolicyLambda params (openDisputeCtxParking (V1.assetClassValue profileUserAC 1))
         )
-          @?= (True, False)
+          @?= (True, False),
+      -- `Mda` — OC-06 parts (2), (3) and (4). `D4` pays the refund as a DATUM-LESS output, which is
+      -- fine for a wallet and ruinous at a script: unspendable for ever at a Plutus address,
+      -- sweepable dust at one of this protocol's own, and lockable inside the resolved record at the
+      -- disputes address. All three need a script refund address, so one conjunct closes all three.
+      --
+      -- The seed input sits AT the refund address in both halves, so @Md8@ stays satisfied and
+      -- @Mda@ is the only thing that can differ.
+      testCase "a refund address at a SCRIPT is refused, a key address is not (Mda, OC-06)" $
+        ( mintingPolicyLambda params (openDisputeCtxPayingTo walletAddr),
+          mintingPolicyLambda params (openDisputeCtxPayingTo profilesAddr)
+        )
+          @?= (True, False),
+      -- And specifically this protocol's own disputes address, which is part (4): `D4` could
+      -- otherwise be discharged by the dispute's own continuing output.
+      testCase "a refund address at the DISPUTES validator is refused (Mda, OC-06 part 4)" $
+        mintingPolicyLambda params (openDisputeCtxPayingTo disputesAddr) @?= False
     ]

@@ -86,6 +86,7 @@ import Palmares.Onchain.Utils qualified as Utils
     checkDateInRange,
     checkTxOutAtIndexWithDatumMinValueAndAddress,
     inputsSpendTxOutRef,
+    isKeyAddress,
     mkUntypedLambda,
     nameFromTxOutRef,
     valueAtOutputIdx,
@@ -515,6 +516,33 @@ handleOpenDispute txInfo@TxInfo {..} mintingPolicyCurrencySymbol protocolParams 
         -- attestation — a dispute the read layer cannot render against a record that does not exist.
         && traceIfFalse "Md4" (isAttestationId target mintingPolicyCurrencySymbol && isProfileId openedBy mintingPolicyCurrencySymbol) -- Target must be an attestation id, opener a profile id (Md4)
         && traceIfFalse "Md8" (any ((== depositTo) . txOutAddress . txInInfoResolved) txInfoInputs) -- Deposit address must be spent from by this tx (Md8)
+        -- THE DEPOSIT MUST COME BACK TO A KEY ADDRESS — OC-06, parts (2), (3) and (4).
+        --
+        -- `D4` pays the refund as a DATUM-LESS output at `depositTo`, and that is fine for a wallet
+        -- and ruinous for anything else. Three shapes followed, and all three need a script address:
+        --
+        --   (2) a Plutus script address the opener controls: `Md8` is satisfiable, the org spends a
+        --       datum-carrying UTxO there — but the refund arrives without a datum and is
+        --       unspendable for ever. An organisation acting through a Plutus script lost EVERY
+        --       deposit, while the blueprint advertises scripts as first-class actors.
+        --   (3) one of this protocol's own validator addresses, reachable by sweeping dust there
+        --       with `Cleanup` in the same transaction: the refund becomes datum-less dust anyone
+        --       may sweep.
+        --   (4) the disputes validator's own address, where `D4` can be discharged by the dispute's
+        --       own continuing output if the resolver leaves >= the deposit in it — locking the
+        --       deposit inside the resolved record.
+        --
+        -- One conjunct closes all three, because a 'PubKeyCredential' payout cannot be any of them.
+        --
+        -- __What it costs, stated rather than hidden.__ A script-based organisation must name a KEY
+        -- address for its refund. The audit's alternative — let the opener record an optional inline
+        -- datum for the payout — would serve a script address properly, and it is a datum field plus
+        -- a `D4` change rather than a conjunct. Losing the deposit silently is the worse of the two,
+        -- so this ships and that stays available.
+        --
+        -- The STAKING half is not inspected: it is attacker-chosen data the ledger never witnesses,
+        -- the same reason 'Utils.checkCredentialControl' looks only at the payment half.
+        && traceIfFalse "Mda" (Utils.isKeyAddress depositTo) -- Deposit address must be a key address, not a script (Mda)
         && traceIfFalse "Md5" (Utils.checkTxOutAtIndexWithDatumMinValueAndAddress disputeOutputIdx disputeDatum disputeValue disputesValidatorAddress txInfoOutputs) -- Lock dispute + deposit at DisputesValidator address (Md5)
         -- `Mp6`'s rule, on this path — OC-03. The dispute output already holds the deposit, so `Md5`
         -- is a @>=@ check with room in it: the opener's user token could ride along and never come

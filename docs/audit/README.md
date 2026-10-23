@@ -295,7 +295,7 @@ those findings keep their line numbers exactly as published.
 | Finding | By | Evidence |
 |---|---|---|
 | `OC-02` un-pausable acceptance | `26d53f7` (decision D-C) | `attestationOracleToken` at `Protocol/Types.hs:445`; `A7` as the **first** conjunct at `AttestationsValidator.hs:139` — the fix this report prescribed, taken as prescribed. Its cost estimate was out by 5×: "~100 script bytes" against a measured **+494**, because `A7` brought this validator's first oracle read |
-| `OC-06` (1) deposits depend on admin liveness | `26d53f7` (decision D-A) | `ExpireDispute` at `DisputesValidator.hs:195-201`, `D9`, `disputeStaleAfter` at `Types.hs:556`. Anyone may close a stale dispute after the deadline, with no key and no oracle read. The owner chose "anyone" over "the opener"; the shapes (2)(3)(4) that lose the deposit are untouched |
+| `OC-06` (1) deposits depend on admin liveness | `26d53f7` (decision D-A) | `ExpireDispute` at `DisputesValidator.hs:195-201`, `D9`, `disputeStaleAfter` at `Types.hs:556`. Anyone may close a stale dispute after the deadline, with no key and no oracle read. The owner chose "anyone" over "the opener"; the shapes (2)(3)(4) that lose the deposit are CLOSED too as of 2026-10-24: `Mda` requires the refund address to be a key address, +29 bytes for all three, and the off-chain builder refuses a script `deposit_to` as `DepositAddressIsScript` before the signature |
 | `OC-11` a, b, and most of c | `3654f57` | `Protocol/Id.hs`, `unsafeGetProfile*`, `K3` and four dead helpers are gone |
 
 `CS-03`'s grant half (`5d50895`) and `CS-07`/`GV-23`'s wire half (`9a8d79b`, `5978d28`) were already

@@ -457,11 +457,24 @@ measured =
 -- work; and the Attestations validator LOST the lineage limit without shrinking, because that limit
 -- was documentation rather than code. The audit estimated `OC-05` at effort M for this reason — the
 -- cost is in the ids themselves, which every fixture and every client derivation had to follow.
+-- __`OC-06` parts (2)-(4): `Mda`, the refund address must be a key address.__
+--
+--   MintingPolicy 12924 -> 12953  (+29)   everything else unchanged
+--
+-- __+29 bytes for three sub-findings__, which is the whole argument for the shape of the rule. `D4`
+-- pays the refund as a DATUM-LESS output, and all three ways a dispute could lose its own deposit —
+-- unspendable at a Plutus address, sweepable dust at one of this protocol's addresses, lockable
+-- inside the resolved record at the disputes address — require a SCRIPT refund address. One
+-- credential test closes the class rather than enumerating the members.
+--
+-- Part (1), the admin-liveness half, needed no bytes at all: `ExpireDispute` already closes it, and
+-- more completely than the `WithdrawDispute` the audit proposed, because it is permissionless and so
+-- does not need the OPENER to be available either.
 expected :: [(String, Int)]
 expected =
   [ ("ProfilesValidator", 8262),
     ("AttestationsValidator", 8608),
     ("DisputesValidator", 9978),
     ("OracleValidator", 7856),
-    ("MintingPolicy", 12924)
+    ("MintingPolicy", 12953)
   ]

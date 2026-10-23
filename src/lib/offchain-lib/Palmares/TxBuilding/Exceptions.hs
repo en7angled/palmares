@@ -39,6 +39,17 @@ data TxBuildingException
     -- they had the funds for. A multi-address wallet met this BY DEFAULT, because @deposit_to@
     -- defaulted to the change address and a change address need not be an input.
     DepositAddressNotSpendable
+  | -- | @deposit_to@ is a SCRIPT address, and a refund paid there is lost — @OC-06@.
+    --
+    -- @D4@ pays the refund as a datum-less output, which a key can spend and a script cannot. Three
+    -- shapes followed and all three needed a script address: unspendable for ever at a Plutus
+    -- address, sweepable dust at one of this protocol's own, and lockable inside the resolved record
+    -- at the disputes address. @Mda@ refuses them on chain; this refuses them before the user signs.
+    --
+    -- Separate from 'DepositAddressNotSpendable' because the mistakes are different and the user
+    -- needs to know which: that one is "you cannot spend from there", this one is "you can, and the
+    -- refund would never come back".
+    DepositAddressIsScript
   | -- | The attestation names a subject profile that does not exist.
     --
     -- Off-chain only, and that is not an oversight: the minting policy checks only that the subject
@@ -130,6 +141,10 @@ instance Exception TxBuildingException where
       <> ", so this transaction cannot prove control of that script credential. The fix is one \
          \transaction: send a UTxO to that script address, then claim. A script witness must also be \
          \supplied, because the ledger has to be able to spend that input."
+  displayException DepositAddressIsScript =
+    "deposit_to is a script address. The deposit is refunded as a plain output with no datum, which \
+    \a script cannot spend, so it would be lost — including at this protocol's own addresses. Name a \
+    \key address, or omit deposit_to to use the one holding the profile's user NFT."
   displayException DepositAddressNotSpendable =
     "deposit_to names an address this wallet holds no spendable UTxO at, and the protocol requires \
     \the deposit address to be spent from in the same transaction (Md8). Omit deposit_to to use the \

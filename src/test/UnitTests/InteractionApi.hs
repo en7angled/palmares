@@ -244,7 +244,7 @@ interactionApiTests =
       testCase "the Swagger title and version name this product" $ do
         doc <- readSwagger
         (path ["info", "title"] doc, path ["info", "version"] doc)
-          @?= (Just (String "Palmares Interaction API"), Just (String "3.2.0")),
+          @?= (Just (String "Palmares Interaction API"), Just (String "3.3.0")),
       -- The same defect as the first case, asserted on the artifact a client actually downloads.
       -- This is the one that was measured: both definitions carried `maxProperties: 1`.
       testCase "the published action definitions are tagged objects" $ do

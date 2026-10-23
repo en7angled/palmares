@@ -246,7 +246,12 @@ apiSwagger =
     -- read "Not enough ADA". MINOR and not MAJOR because every request body that parsed before
     -- still parses: what changed is which of them SUCCEED, and the ones that stop succeeding are
     -- the ones the chain was refusing anyway.
-    & info . Data.Swagger.version .~ "3.2.0"
+    --
+    -- 3.3.0, MINOR: `/open-dispute` refuses a SCRIPT `deposit_to` as `DepositAddressIsScript`
+    -- (`OC-06`). The refund is a datum-less output, which a script cannot spend — including at this
+    -- protocol's own addresses, where it becomes sweepable dust. The chain refuses it too (`Mda`);
+    -- this is the same refusal moved before the signature.
+    & info . Data.Swagger.version .~ "3.3.0"
     & info . Data.Swagger.description ?~ "This is the Palmares Interaction API — transaction building, submission, and the dedicated per-action service endpoints."
     & info . license ?~ "GPL-3.0 license"
     & host .~ Nothing

@@ -10,6 +10,7 @@ import GeniusYield.TxBuilder
 import GeniusYield.Types
 import GeniusYield.Types.Script.ScriptHash (scriptHashFromPlutus)
 import Palmares.Onchain.CIP68 (CIP68Datum (..), ImageURI, MetadataFields (..), extra, getMetadataFields, mkCIP68Datum, updateCIP68DatumMetadata)
+import Palmares.Onchain.Utils (isKeyAddress)
 import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetAdmin, OracleSetArbiter, OracleSetDisputeDeposit, OracleSetDisputeTimeout, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
 import Palmares.Onchain.Protocol.Lookup qualified as Lookup
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
@@ -807,6 +808,13 @@ openDisputeTX gyTargetAC gyOpenerProfileId mDepositTo metadata ownAddrs = do
   (depositTo, forcesDepositInput) <- case mDepositTo of
     Nothing -> return (userNFTAddr, mempty)
     Just named
+      -- A script refund is lost, whichever script it is — @Mda@, @OC-06@. Checked before the
+      -- spendability question, because "you can spend from there and the refund still vanishes" is
+      -- the more surprising of the two and deserves its own message.
+      -- `addressToPlutus` and the protocol's own predicate, rather than a GY-level address helper:
+      -- it is the SAME function `Mda` evaluates, so the two cannot disagree about what a script
+      -- address is.
+      | not (isKeyAddress (addressToPlutus named)) -> throwError (GYApplicationException DepositAddressIsScript)
       | named == userNFTAddr -> return (named, mempty)
       | named `notElem` ownAddrs -> throwError (GYApplicationException DepositAddressNotSpendable)
       | otherwise -> do

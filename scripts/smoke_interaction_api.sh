@@ -61,7 +61,7 @@ assert /status '.deployed_scripts' 'true'
 
 echo "== the published document"
 assert /swagger-api.json '.info.title' '"Palmares Interaction API"'
-assert /swagger-api.json '.info.version' '"3.2.0"'
+assert /swagger-api.json '.info.version' '"3.3.0"'
 assert /swagger-api.json '[.paths|keys[]]|length' '15'
 for p in /claim-profile /update-profile /issue-attestation /accept-attestation /open-dispute \
   /resolve-dispute /expire-dispute /claim-credential /withdraw-credential /build-tx /submit-tx /status; do

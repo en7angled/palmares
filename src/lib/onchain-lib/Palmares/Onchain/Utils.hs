@@ -30,6 +30,7 @@ module Palmares.Onchain.Utils
 
     -- * Credential Control
     checkCredentialControl,
+    isKeyAddress,
 
     -- * Time
     checkDateInRange,
@@ -322,6 +323,20 @@ checkDateHasPassed date = V1.contains (V1.from date)
 --
 -- Takes the two lists rather than a @TxInfo@ so that the rule is a pure function of its actual inputs:
 -- it is cheaper to pass, and it is what makes the rule unit-testable without building a transaction.
+-- | Is this address's PAYMENT half a key credential rather than a script?
+--
+-- The question @OC-06@ needed asked of a dispute's refund address. A datum-less output — which is
+-- what @D4@ pays — is spendable by a key and useless at a script, so the three ways a dispute could
+-- lose its own deposit all reduce to this one predicate.
+--
+-- The staking half is not inspected, for the reason 'checkCredentialControl' gives: it is
+-- attacker-chosen data the ledger never witnesses.
+{-# INLINEABLE isKeyAddress #-}
+isKeyAddress :: Address -> Bool
+isKeyAddress (Address payment _) = case payment of
+  PubKeyCredential _ -> True
+  ScriptCredential _ -> False
+
 {-# INLINEABLE checkCredentialControl #-}
 checkCredentialControl :: Credential -> [PubKeyHash] -> [TxInInfo] -> Bool
 checkCredentialControl credential signatories inputs = case credential of

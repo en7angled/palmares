@@ -262,7 +262,8 @@ instance ToSchema OpenDisputeRequest where
            \name one it must be an address you listed in `user_addresses` — an input from anywhere \
            \else would need that holder's signature, which nothing in this flow can produce, so it is \
            \refused as `DepositAddressNotSpendable` before anything is built rather than after you \
-           \sign. `recipient` receives any unlocked funds and defaults to the change address."
+           \sign. A SCRIPT address is refused outright as `DepositAddressIsScript`: the refund is a \
+           \plain output with no datum, which a script cannot spend, so it would be lost. `recipient` receives any unlocked funds and defaults to the change address."
       & describeField "name" "Dispute name"
       & describeField "description" "What is being contested, and why"
       & describeField "image_uri" "URI of the dispute image (the client hosts it; the protocol stores the URI)"

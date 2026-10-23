@@ -4,6 +4,13 @@ Every file here is **generated** from a ```` ```mermaid ```` block in one of the
 
 Rendered 2026-10-22 from `main` @ `4eb9117` with mermaid-cli 11.4.2.
 
+**Stale as of 2026-10-23.** `system-overview.md` was reconciled against `main` @ `2bf5bde` and six of
+its Mermaid blocks changed, so these six SVGs are behind their source and need re-rendering:
+`system-overview-02.svg`, `-03.svg`, `-05.svg`, `-06.svg`, `-07.svg`, `-10.svg`. The other four
+`system-overview-*.svg` are current with their source; the on-chain documents were not reconciled in
+that pass, so say nothing about theirs on this basis. The manifest below — file, type and section for
+all 26 — is unchanged: no block was added, removed or renumbered.
+
 ## The three diagrams the owner asked for
 
 | Diagram | File | Source |

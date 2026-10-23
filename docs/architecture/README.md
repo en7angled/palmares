@@ -1,22 +1,29 @@
 # Palmares architecture documentation
 
+This set was written against `main` @ `4eb9117` and reconciled against `main` @ `2bf5bde` (2026-10-23).
+
 Written 2026-10-22 against `main` @ `4eb9117`, from the code (every fact cites `path:line`; line numbers
 drift as the code moves). Three documents, one directory of rendered diagrams, and a companion set of
 audit reports in [`../audit/`](../audit/README.md).
 
-**Drift (added 2026-10-23):** `main` moved eight commits past `4eb9117` (to `5d50895`) before this branch was
-published, and the branch is based on `5d50895`. The audit synthesis maps every upstream commit to what it
+**Drift (added 2026-10-23):** `main` moved fourteen commits past `4eb9117`, to `2bf5bde`, and this branch
+has that merged in. The audit synthesis maps every upstream commit to what it
 affects ([`../audit/README.md` §9](../audit/README.md)); for these three documents the known deltas are:
 (1) `Protocol/Id.hs`, `unsafeGetProfile*`, `unsafeGetProtocolParamsFromProfileRefInput` and trace code `K3`
-no longer exist, so `onchain-protocol.md` §1's module table and §8's inventory (now 64 codes, `K1`–`K2`),
-`system-overview.md` §3.1's on-chain node and its module-index row for `Protocol.Id` are one commit stale;
-`U2` remains unreachable, and its only caller `checkAndGetCurrentStateDatumAndValue` is now itself uncalled.
-(2) `interaction-api` no longer depends on `http-types` / `wai-extra` and the test suite no longer on `warp`;
-re-derive §3.1's dependency edges from `palmares.cabal` before trusting them. (3) `admin operator-address`
-prints a third form, the CIP-129 DRep id (`onchain-flows.md` §1 and its CLI table say two). (4)
-`sql/050_roles.sql` changed its `ALTER DEFAULT PRIVILEGES` statement and the CI determinism job gained steps,
-so the roles table and the §9.5 CI diagram in `system-overview.md` need a re-read. The SVGs were rendered from
+no longer exist, so `onchain-protocol.md` §1's module table and §8's inventory (now 64 codes, `K1`–`K2`)
+are stale; `U2` remains unreachable, and its only caller `checkAndGetCurrentStateDatumAndValue` is now
+itself uncalled (verified at `2bf5bde`: nothing in `src` calls it).
+(2) `interaction-api` no longer depends on `http-types` / `wai-extra` and the test suite no longer on `warp`.
+(3) `admin operator-address` prints a third form, the CIP-129 DRep id (`onchain-flows.md` §1 and its CLI
+table say two). (4) ADR 0003 and D-A moved the HTTP surface, the Swagger versions, the attestation kind and
+dispute-verdict enums, and the projection schema version — which the on-chain documents have **not** been
+re-read against.
+
+**`system-overview.md` has been reconciled against `2bf5bde`** and carries that in its own status line:
+items (1), (2) and (4) above are closed for it, and so is the `sql/050_roles.sql` / CI-determinism delta.
+The two on-chain documents have not been, and item (3) is still open. The SVGs were rendered from
 the snapshot; after editing a diagram, re-render as described in [`diagrams/README.md`](diagrams/README.md).
+Six `system-overview-*.svg` files are now behind their Mermaid source — see that file.
 
 | Document | Question it answers | Diagrams |
 |---|---|---|

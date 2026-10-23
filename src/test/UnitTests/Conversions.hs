@@ -46,6 +46,7 @@ import Palmares.TxBuilding.Conversions
   ( attestationTypeToOnchainAttestationKind,
     fromBuiltinByteStringUtf8,
     onchainAttestationKindToAttestationType,
+    representablePeriod,
     textToBuiltinByteString,
   )
 
@@ -188,7 +189,37 @@ conversionsTests =
       testCase "equal bounds are not inverted" $
         claimedPeriodIsInverted (Just (t 100, t 100)) @?= False,
       testCase "no claimed period is not an inverted one" $
-        claimedPeriodIsInverted Nothing @?= False
+        claimedPeriodIsInverted Nothing @?= False,
+      -- ---------------------------------------------------------------------------------------
+      -- Audit `CS-01`, the only Critical in the protocol, and the test it asked for by name.
+      --
+      -- `attestationPeriod` is the one datum value with NO on-chain bound — deliberately, since no
+      -- on-chain fact can establish when an affiliation began — so `POSIXTime 10^20` is as valid a
+      -- redeemer argument as last Tuesday. That value reached a `timestamptz` column, PostgreSQL
+      -- refused it, and the projector's batch aborted with the cursor never advancing: one hand-built
+      -- attestation, about 1.3 ADA, halted the read layer permanently.
+      --
+      -- `representablePeriod` is the boundary every datum crosses on the way to a projection, so the
+      -- check lives there and these cases are pure.
+      testCase "a period PostgreSQL cannot hold becomes no period, not a crash (CS-01)" $
+        representablePeriod (Just (t 100, POSIXTime (10 ^ (20 :: Int)))) @?= Nothing,
+      testCase "an absurd LOWER bound is refused too, not only an absurd upper one" $
+        representablePeriod (Just (POSIXTime (10 ^ (20 :: Int)), t 100)) @?= Nothing,
+      -- Negative, because `POSIXTime` is a signed Integer and the redeemer may carry one.
+      testCase "a negative period is refused" $
+        representablePeriod (Just (POSIXTime (-1), t 100)) @?= Nothing,
+      -- And the case that proves the guard is not simply returning Nothing: an ordinary period
+      -- survives, with both bounds, which is what every real attestation depends on.
+      testCase "an ordinary period is preserved, both bounds" $
+        representablePeriod (Just (t 1_700_000_000_000, t 1_800_000_000_000))
+          @?= Just (timeFromPlutus (t 1_700_000_000_000), timeFromPlutus (t 1_800_000_000_000)),
+      testCase "the far edge of the window is accepted and one millisecond past it is not" $
+        ( representablePeriod (Just (t 0, POSIXTime 31_556_952_000_000)),
+          representablePeriod (Just (t 0, POSIXTime 31_556_952_000_001))
+        )
+          @?= (Just (timeFromPlutus (t 0), timeFromPlutus (POSIXTime 31_556_952_000_000)), Nothing),
+      testCase "no period is still no period" $
+        representablePeriod Nothing @?= Nothing
     ]
   where
     allKinds = [minBound .. maxBound] :: [AttestationType]

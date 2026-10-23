@@ -210,6 +210,47 @@ cip68DatumOtherMetadataPairs datum =
           (AssocMap.toList (metadata datum))
       )
 
+-- | A claimed period only if both bounds are a date PostgreSQL can hold — audit `CS-01`.
+--
+-- __The one datum value with no on-chain bound at all.__ @attestationDate@ is bounded by @Mq@ to the
+-- transaction's validity range, and every amount is bounded by @O6@; @attestationPeriod@ is
+-- deliberately unchecked, because no on-chain fact can establish when an affiliation began. So the
+-- issuer chooses it freely, and @POSIXTime 10^20@ is as valid a redeemer argument as last Tuesday.
+--
+-- That value reached a @timestamptz@ column. PostgreSQL rejects it, the projector's batch aborted,
+-- the cursor never advanced, and the loop retried only Kupo client errors — so one hand-built
+-- attestation, for about 1.3 ADA, halted the read layer permanently and no later block could ever be
+-- indexed. The audit rated it the only Critical in the protocol and it was right.
+--
+-- __Clamped here rather than guarded at the database.__ This conversion is the single boundary every
+-- datum crosses on its way to a projection, so one check covers the ingest path, the replay path and
+-- any future reader; a guard in @Storage@ would be one guard per column. A period outside the
+-- representable range becomes 'Nothing', which is a true statement about what the read layer can
+-- show — and the attestation itself survives, which matters more: the record is the thing the
+-- registry promises, and a self-reported date nobody can render is not worth losing it for.
+--
+-- __What this does NOT fix.__ 'Palmares.ChainSync.ChainSyncLogic.applyMatches' still applies a whole
+-- window in one transaction, so any OTHER unrepresentable value would still abort the batch rather
+-- than one row. That is the second half of `CS-01` and it is a change to the sync loop's ordering and
+-- idempotency, not a boundary check. Left open deliberately; this half removes the only value the
+-- chain actually lets a stranger choose.
+representablePeriod :: Maybe (POSIXTime, POSIXTime) -> Maybe (GYTime, GYTime)
+representablePeriod mp = do
+  -- Not `from`/`to`: both are `PlutusLedgerApi.V1.Interval` constructors this module imports
+  -- unqualified, and shadowing an interval constructor inside a date check is the kind of name
+  -- collision that reads fine and means something else.
+  (periodFrom, periodTo) <- mp
+  if representable periodFrom && representable periodTo
+    then Just (timeFromPlutus periodFrom, timeFromPlutus periodTo)
+    else Nothing
+  where
+    -- PostgreSQL's `timestamptz` spans 4713 BC to 294276 AD. The window below is far tighter and
+    -- deliberately so: a claimed governance mandate outside 1970-2970 is not a near-miss on a
+    -- storage limit, it is a value nobody meant. Milliseconds, as `POSIXTime` is — 31556952000000
+    -- is a thousand Julian years of them. No underscores: this library does not enable
+    -- `NumericUnderscores`, and the first draft of this line assumed it did.
+    representable (POSIXTime ms) = ms >= 0 && ms <= 31556952000000
+
 -- | Convert a CIP-68 attestation datum to a domain 'Attestation'.
 onchainAttestationToAttestation :: (MonadError GYTxMonadException m) => CIP68Datum OnchainTypes.OnchainAttestation -> m Attestation
 onchainAttestationToAttestation datum = do
@@ -224,7 +265,7 @@ onchainAttestationToAttestation datum = do
   -- `attestationKind = f attestationKind` and having to know which side each one is on is how a
   -- conversion gets inverted; `attestationId`/`gyAttestationId` above is the same guard.
   let gyKind = onchainAttestationKindToAttestationType attestationKind
-      gyClaimedPeriod = fmap (Data.Bifunctor.bimap timeFromPlutus timeFromPlutus) attestationPeriod
+      gyClaimedPeriod = representablePeriod attestationPeriod
   return
     Attestation
       { attestationId = gyAttestationId,

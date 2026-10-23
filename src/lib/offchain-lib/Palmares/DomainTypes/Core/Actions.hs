@@ -337,9 +337,20 @@ data DisputeActionType
   = OpenDisputeAction
       { od_attestation_id :: AttestationAC,
         od_opened_by_profile_id :: ProfileRefAC,
-        -- | Where the deposit returns, on either verdict. Defaults to the change address when
-        -- omitted. A validator cannot resolve a profile id into an address, so the disputer names
-        -- one.
+        -- | Where the deposit returns, on either verdict. A validator cannot resolve a profile id
+        -- into an address, so the disputer names one — or omits it.
+        --
+        -- __OMIT IT.__ The default is the address holding the opener's user NFT, which is the one
+        -- address @Md8@ is satisfied by for free: spending that UTxO is how the opener authorises in
+        -- the first place. The default used to be the wallet's CHANGE address, which @Md8@ has no
+        -- reason to accept — a change address need not be an input at all — so a multi-address
+        -- wallet failed on the honest path, and failed as "Not enough ADA" about a deposit it had
+        -- the funds for (@OF-02@).
+        --
+        -- If you do name one, it must be an address you listed in @user_addresses@. An input from
+        -- anywhere else would need that holder's signature, which nothing in this flow can produce,
+        -- so it is refused as @DepositAddressNotSpendable@ before anything is built rather than
+        -- after you sign.
         --
         -- __This used to say "pointing it somewhere useless costs only the disputer". It does
         -- not.__ Resolution pays this address with @txOutAddress == disputeDepositTo@, so an address

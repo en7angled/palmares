@@ -256,10 +256,13 @@ instance ToSchema OpenDisputeRequest where
         ?~ "Open a dispute against an attestation, locking the deposit the oracle currently \
            \requires. `attestation_id` is the attestation being contested and \
            \`opened_by_profile_id` the disputer, whose user token the wallet must hold. \
-           \`deposit_to` is where the deposit returns on EITHER verdict and defaults to the change \
-           \address: a validator cannot resolve a profile id into an address, so the disputer names \
-           \one, and pointing it somewhere useless costs only the disputer. `recipient` receives any \
-           \unlocked funds and also defaults to the change address."
+           \`deposit_to` is where the deposit returns on EITHER verdict. OMIT IT: it then defaults to \
+           \the address holding the opener's user token, which is the one address the protocol is \
+           \satisfied by for free, because spending that UTxO is how the opener authorises. If you do \
+           \name one it must be an address you listed in `user_addresses` — an input from anywhere \
+           \else would need that holder's signature, which nothing in this flow can produce, so it is \
+           \refused as `DepositAddressNotSpendable` before anything is built rather than after you \
+           \sign. `recipient` receives any unlocked funds and defaults to the change address."
       & describeField "name" "Dispute name"
       & describeField "description" "What is being contested, and why"
       & describeField "image_uri" "URI of the dispute image (the client hosts it; the protocol stores the URI)"

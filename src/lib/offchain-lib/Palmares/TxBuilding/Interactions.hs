@@ -7,7 +7,6 @@ import Data.Aeson
 import Data.Aeson.Types qualified as AesonTypes
 import Data.Bifunctor qualified
 import Data.List.Extra
-import Data.Maybe (fromMaybe)
 import Data.Swagger (NamedSchema (..), Schema (..), ToSchema (..), defaultSchemaOptions, genericDeclareNamedSchema)
 import Data.Swagger.Schema (SchemaOptions, fromAesonOptions)
 import Deriving.Aeson
@@ -170,10 +169,11 @@ interactionToTxSkeleton Interaction {..} = do
           openDisputeTX
             targetId
             openerId
-            -- The deposit returns to the change address unless the disputer named another: a
-            -- validator cannot resolve a profile id into an address, so SOME address has to be in
-            -- the datum, and the wallet that paid is the only sensible default.
-            (fromMaybe (changeAddress userAddresses) mDepositTo)
+            -- Passed through, NOT defaulted here — OF-02. The default belongs in the builder
+            -- because only the builder knows which address holds the opener's user NFT, and that is
+            -- the one address @Md8@ is satisfied by for free. Defaulting to the CHANGE address here
+            -- is what broke multi-address wallets: a change address need not be an input.
+            mDepositTo
             (profileDataToMetadataFields profileData)
             usedAddrs
       -- `Nothing` for the arbiter's witness, deliberately: a script arbiter resolving over HTTP

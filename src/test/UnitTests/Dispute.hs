@@ -215,6 +215,7 @@ disputeEmulatorTests =
       mkTestFor "Test Case 6.6: the attestation is untouched by the dispute's whole lifecycle" attestationUntouched,
       mkTestFor "Test Case 6.7: a second dispute while one is open is refused off-chain" secondDisputeRefused,
       mkTestFor "Test Case 6.8: a payout address this tx does not spend from FAILS (Md8)" foreignDepositToFails,
+      mkTestFor "Test Case 6.8b: the DEFAULT deposit address is one this tx spends from (OF-02)" defaultDepositToIsSpendable,
       mkTestFor "Test Case 6.9: an opener id under a FOREIGN policy FAILS (Md4)" foreignOpenerFails,
       mkTestFor "Test Case 6.10: two disputes resolved with ONE returned deposit FAILS (D6)" twoDisputesOneDepositFails
     ]
@@ -358,14 +359,42 @@ disputeEmulatorTests =
     --
     -- `Palmares.DomainTypes.Core.Actions.od_deposit_to`'s own Haddock said "pointing it somewhere
     -- useless costs only the disputer". It does not: it costs the subject of the attestation.
+    --
+    -- __THE REFUSAL MOVED OFF CHAIN WITH `OF-02`, and that is the whole point of the finding.__ This
+    -- case used to assert `failedWithTrace "Md8"` — a script failure, reached after the user signed,
+    -- reported as a build error with no mention of the deposit address. It is now a 400 before
+    -- anything is built. The trace code still exists and the chain is still the authority; what
+    -- changed is that an honest client finds out from the response instead of from a script log.
     foreignDepositToFails :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     foreignDepositToFails info@TestInfo {..} = do
       (ctx, _issuerAC, disputerAC, attestationAC) <- deployWithAcceptedAttestation info
       let strangerAddr = User.userChangeAddress (w3 testWallets)
-      mustFailWith (failedWithTrace "Md8") $
-        void $
-          openWith ctx (w2 testWallets) attestationAC disputerAC (Just strangerAddr)
-      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A payout address the tx does not spend from was rejected (Md8)."
+      -- `mustFail` and not `mustFailWith`, for the reason 6.7 gives: the refusal is now off chain,
+      -- so there is no trace code to name — and asserting WHICH layer says no first is what this
+      -- change was about, not which string it uses.
+      mustFail $ void $ openWith ctx (w2 testWallets) attestationAC disputerAC (Just strangerAddr)
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A payout address the tx does not spend from was refused off-chain (DepositAddressNotSpendable)."
+
+    -- Test Case 6.8b. The other half of `OF-02`: the DEFAULT.
+    --
+    -- It used to be the wallet's CHANGE address, which `Md8` has no reason to accept — a change
+    -- address need not be an input at all — so a multi-address wallet failed on the honest path and
+    -- failed as "Not enough ADA", about a deposit it had the funds for. The default is now the
+    -- address holding the opener's user NFT, which is the ONE address `Md8` is satisfied by for
+    -- free, because spending that UTxO is how the opener authorises in the first place.
+    --
+    -- The emulator's wallets are single-address, so this cannot distinguish the two defaults by
+    -- value — it pins the invariant that matters instead: whatever the default resolves to, the
+    -- datum records it and the dispute opened, which means `Md8` passed on it.
+    defaultDepositToIsSpendable :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    defaultDepositToIsSpendable info@TestInfo {..} = do
+      (ctx, _issuerAC, disputerAC, attestationAC) <- deployWithAcceptedAttestation info
+      (_txId, disputeAC) <- open ctx (w2 testWallets) attestationAC disputerAC
+      waitNSlots_ 1
+      (datum, _value) <- getDisputeDatumAndValue disputeAC
+      let ownAddr = addressToPlutus (User.userChangeAddress (w2 testWallets))
+      assert (disputeDepositTo (extra datum) == ownAddr)
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "The default deposit address is one this tx spends from."
 
     -- Test Case 6.9. `Md4`, which used to check only the TARGET's currency symbol while the sibling
     -- mint path's `Mg` has always checked both of its profile ids.
@@ -516,10 +545,18 @@ disputeEmulatorTests =
     -- reachable through the ordinary off-chain path: 'openDisputeTX' takes the opener's profile id
     -- and the payout address from the caller and constrains neither. See 6.8 and 6.9.
     --
-    -- @od_deposit_to@ is deliberately not constrained off chain either. @Md8@'s rule is "an address
-    -- this transaction spends from", which legitimately includes one outside the disputer's
-    -- 'UserAddresses' — a cold wallet they also spend from here. A guard requiring it to be one of
-    -- @ownAddrs@ would be stricter than the validator and would refuse that.
+    -- @od_deposit_to@ IS constrained off chain as of `OF-02`, and the paragraph that used to stand
+    -- here argued it should not be: "@Md8@'s rule is an address this transaction spends from, which
+    -- legitimately includes one outside the disputer's 'UserAddresses' — a cold wallet they also
+    -- spend from here. A guard requiring it to be one of @ownAddrs@ would be stricter than the
+    -- validator and would refuse that."
+    --
+    -- That was wrong about the mechanism. A cold wallet this transaction spends from has to be in
+    -- @usedAddresses@, or the BUILDER cannot spend from it either — and an input the builder forces
+    -- from an address outside that list needs a signature nobody in the flow can produce, so it
+    -- would fail after the user signed. The cold-wallet case is served by listing the address; what
+    -- is refused is naming one nobody in this transaction can spend, which is exactly what the chain
+    -- would reject.
     openWith ::
       (HasCallStack) =>
       DeployedScriptsContext ->

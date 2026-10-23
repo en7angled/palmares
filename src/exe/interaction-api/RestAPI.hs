@@ -238,7 +238,15 @@ apiSwagger =
     & info . title .~ "Palmares Interaction API"
     -- 3.1.0, MINOR: `DisputeActionType` gained `ExpireDisputeAction` and `DisputeVerdict` gained
     -- `expired` (D-A). Both additive: every request body that parsed before still parses.
-    & info . Data.Swagger.version .~ "3.1.0"
+    --
+    -- 3.2.0, MINOR: `/open-dispute`'s published description was WRONG about `deposit_to` in two ways
+    -- — it said the field defaults to the change address, and that "pointing it somewhere useless
+    -- costs only the disputer" (`OF-02`). The default is now the address holding the opener's user
+    -- token, and a named address outside `user_addresses` is a 400 instead of a build failure that
+    -- read "Not enough ADA". MINOR and not MAJOR because every request body that parsed before
+    -- still parses: what changed is which of them SUCCEED, and the ones that stop succeeding are
+    -- the ones the chain was refusing anyway.
+    & info . Data.Swagger.version .~ "3.2.0"
     & info . Data.Swagger.description ?~ "This is the Palmares Interaction API — transaction building, submission, and the dedicated per-action service endpoints."
     & info . license ?~ "GPL-3.0 license"
     & host .~ Nothing

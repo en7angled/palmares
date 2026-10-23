@@ -30,6 +30,15 @@ data TxBuildingException
     -- would have to counter-sign about itself. But a client that transposed two dates deserves to be
     -- told so, which an unchecked field cannot do.
     AttestationPeriodInverted
+  | -- | The named @deposit_to@ holds no UTxO this wallet can spend, so @Md8@ cannot be satisfied —
+    -- @OF-02@.
+    --
+    -- __It exists because of what the failure used to look like.__ @Md8@ requires an input AT the
+    -- deposit address, the builder forced none, and the balancer was simply asked for a transaction
+    -- it could not make — so the error that reached the user was "Not enough ADA", about a deposit
+    -- they had the funds for. A multi-address wallet met this BY DEFAULT, because @deposit_to@
+    -- defaulted to the change address and a change address need not be an input.
+    DepositAddressNotSpendable
   | -- | The attestation names a subject profile that does not exist.
     --
     -- Off-chain only, and that is not an oversight: the minting policy checks only that the subject
@@ -121,6 +130,11 @@ instance Exception TxBuildingException where
       <> ", so this transaction cannot prove control of that script credential. The fix is one \
          \transaction: send a UTxO to that script address, then claim. A script witness must also be \
          \supplied, because the ledger has to be able to spend that input."
+  displayException DepositAddressNotSpendable =
+    "deposit_to names an address this wallet holds no spendable UTxO at, and the protocol requires \
+    \the deposit address to be spent from in the same transaction (Md8). Omit deposit_to to use the \
+    \address holding the profile's user NFT, which is always an input, or name an address you hold \
+    \funds at."
   displayException AttestationPeriodInverted =
     "claimed_period ends before it begins. Send [from, to] with from <= to, or omit the field \
     \entirely — a period must have both bounds or neither."

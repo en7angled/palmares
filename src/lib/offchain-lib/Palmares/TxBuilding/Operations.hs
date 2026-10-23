@@ -27,7 +27,8 @@ import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
 -- function itself stays: `Skeletons.txMustSpendFromAddress` calls it, and `Lookups.queryOracleParams`
 -- calls it internally.
 import Palmares.TxBuilding.Lookups
-  ( ensureSubjectProfileExists,
+  (
+    getUTxOWithTokenAtAddresses, ensureSubjectProfileExists,
     getAttestationDatumAndValue,
     getDisputeDatumAndValue,
     getDustUTxOs,
@@ -112,9 +113,26 @@ spendUserNFTForProfile ::
   GYAssetClass ->
   [GYAddress] ->
   m (GYTxSkeleton 'PlutusV3)
-spendUserNFTForProfile profileRefAC ownAddrs = do
+spendUserNFTForProfile profileRefAC ownAddrs = fst <$> spendUserNFTForProfileAt profileRefAC ownAddrs
+
+-- | The same, and the ADDRESS the user NFT was found at.
+--
+-- The address is what @OF-02@ needed: it is the one address guaranteed to be an input, because
+-- spending that UTxO is how the holder authorises, so it is the only sound default for a dispute's
+-- @deposit_to@ under @Md8@. Returned rather than re-looked-up, so the two cannot disagree about
+-- which UTxO is meant.
+spendUserNFTForProfileAt ::
+  (GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
+  GYAssetClass ->
+  [GYAddress] ->
+  m (GYTxSkeleton 'PlutusV3, GYAddress)
+spendUserNFTForProfileAt profileRefAC ownAddrs = do
   gyUserAC <- gyDeriveUserFromRefAC profileRefAC
-  txMustSpendFromAddress gyUserAC ownAddrs GYTxInWitnessKey
+  tokenUtxo <- getUTxOWithTokenAtAddresses gyUserAC ownAddrs ProfileNotFound
+  return
+    ( mustHaveInput (GYTxIn (utxoRef tokenUtxo) GYTxInWitnessKey),
+      utxoAddress tokenUtxo
+    )
 
 ------------------------------------------------------------------------------------------------
 
@@ -709,14 +727,22 @@ openDisputeTX ::
   GYAssetClass ->
   -- | Profile ID of the disputer (its user NFT is spent to authorise)
   GYAssetClass ->
-  -- | Where the deposit returns, on either verdict
-  GYAddress ->
+  -- | Where the deposit returns, on either verdict. 'Nothing' defaults to the address holding the
+  -- opener's user NFT — @OF-02@.
+  --
+  -- __That default is the only one that satisfies @Md8@ by construction.__ @Md8@ requires an input
+  -- AT the deposit address, and the user NFT's own UTxO is already an input because spending it is
+  -- how the opener authorises. The previous default was the wallet's CHANGE address, which for a
+  -- multi-address wallet need not be an input at all — so the honest case failed, and it failed as
+  -- \"Not enough ADA\" because the builder forced no input and the balancer was simply asked for a
+  -- transaction it could not make.
+  Maybe GYAddress ->
   -- | CIP-68 metadata fields (name, description, image) — the dispute's own statement
   MetadataFields ->
   -- | Disputer's wallet addresses (to spend User NFT)
   [GYAddress] ->
   m (GYTxSkeleton 'PlutusV3, GYAssetClass)
-openDisputeTX gyTargetAC gyOpenerProfileId depositTo metadata ownAddrs = do
+openDisputeTX gyTargetAC gyOpenerProfileId mDepositTo metadata ownAddrs = do
   ctx <- ask
   let mpGY = getMintingPolicyFromCtx ctx
       mpRef = getMintingPolicyRef ctx
@@ -746,7 +772,33 @@ openDisputeTX gyTargetAC gyOpenerProfileId depositTo metadata ownAddrs = do
   let isSpendingSeedUTxO = mustHaveInput (GYTxIn seedTxOutRef GYTxInWitnessKey)
   let seedTxOutRefPlutus = txOutRefToV3Plutus seedTxOutRef
 
-  spendsOpenerUserNFT <- spendUserNFTForProfile gyOpenerProfileId ownAddrs
+  -- The UTxO that authorises, and the address it sits at — which is the deposit default.
+  (spendsOpenerUserNFT, userNFTAddr) <- spendUserNFTForProfileAt gyOpenerProfileId ownAddrs
+
+  -- @Md8@ wants an input AT `depositTo`. For the default that is free: the user NFT's own UTxO is
+  -- already that input, because spending it is how the opener authorises.
+  --
+  -- For a caller-named address the input has to be forced, and it may only be forced from an address
+  -- the caller declared they are spending from — `ownAddrs` is `usedAddresses`, which the client
+  -- supplies. An input from anywhere else needs THAT holder's signature, which this builder cannot
+  -- obtain and the caller cannot supply, so forcing it would produce an unsignable transaction: a
+  -- worse failure than the one @OF-02@ is about, because it would fail after the user signed.
+  --
+  -- __That is not stricter than the validator, and the comment in `UnitTests.Dispute` that used to
+  -- say so was wrong about the mechanism.__ A cold wallet the disputer also spends from in this
+  -- transaction has to appear in `usedAddresses` or the builder cannot spend from it either. So the
+  -- cold-wallet case is served; what is refused is naming an address nobody in this transaction can
+  -- spend, which is precisely the case the chain would reject.
+  (depositTo, forcesDepositInput) <- case mDepositTo of
+    Nothing -> return (userNFTAddr, mempty)
+    Just named
+      | named == userNFTAddr -> return (named, mempty)
+      | named `notElem` ownAddrs -> throwError (GYApplicationException DepositAddressNotSpendable)
+      | otherwise -> do
+          candidates <- utxosToList <$> utxosAtAddress named Nothing
+          case filter (isNothing . utxoRefScript) candidates of
+            [] -> throwError (GYApplicationException DepositAddressNotSpendable)
+            (u : _) -> return (named, mustHaveInput (GYTxIn (utxoRef u) GYTxInWitnessKey))
 
   -- ============================================================
   -- Output index tracking (order must match skeleton mconcat order)
@@ -801,6 +853,7 @@ openDisputeTX gyTargetAC gyOpenerProfileId depositTo metadata ownAddrs = do
     ( mconcat
         [ isSpendingSeedUTxO, -- Input (no output index)
           spendsOpenerUserNFT, -- Input (no output index)
+          forcesDepositInput, -- Input at deposit_to, for Md8 (empty when that IS the NFT's address)
           isValidForSafeEra, -- Validity (no output index)
           oracleRefSkeleton, -- Reference input: oracle UTxO
           isMintingDisputeNFT, -- Mint (no output index)

@@ -87,15 +87,16 @@ acClaimRecord = ac "c0ffee00000000000000000000000000000000000000000000000001.000
 acWithdrawRecord = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0f9"
 
 -- | A second credential, for the case a withdrawal names one the profile does not publish.
-otherCredential :: Credential
-otherCredential = PubKeyCredential (PubKeyHash "fedcba9876543210fedcba987654")
+otherCredential :: OnchainTypes.ClaimedCredential
+otherCredential = OnchainTypes.ClaimedDRep (PubKeyCredential (PubKeyHash "fedcba9876543210fedcba987654"))
 
 acOracle :: GYAssetClass
 acOracle = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0f7"
 
 -- | The credential two of the profiles below both claim — Review Focus item 2.
-testCredential :: Credential
-testCredential = PubKeyCredential (PubKeyHash "0123456789abcdef0123456789ab")
+-- | ADR 0006: a claim names the credential AND the role, so the fixture is the claimed form.
+testCredential :: OnchainTypes.ClaimedCredential
+testCredential = OnchainTypes.ClaimedDRep (PubKeyCredential (PubKeyHash "0123456789abcdef0123456789ab"))
 
 profilesAddress, attestationsAddress, disputesAddress, unindexedAddress :: GYAddress
 profilesAddress = addressFromScriptHash testNetworkId profilesValidatorHashGY
@@ -126,7 +127,7 @@ profileDatum claimedId =
         OnchainTypes.OnchainProfile
           { OnchainTypes.profileId = assetClassToPlutus claimedId,
             OnchainTypes.profileKind = OnchainTypes.PersonDRep,
-            OnchainTypes.protocolParams = fixtureProtocolParams
+            OnchainTypes.profileOracleToken = OnchainTypes.oracleToken fixtureProtocolParams
           }
         fixtureMetadata
         []
@@ -155,7 +156,7 @@ attestationDatum claimedId =
 
 -- | A 'CredentialClaim' record: self-issued, so subject and issuer are the same profile — which is
 -- what @Mc1@ requires on chain and what the derivation below reads the subject from.
-credentialRecordDatum :: OnchainTypes.AttestationKind -> GYAssetClass -> GYAssetClass -> Credential -> GYDatum
+credentialRecordDatum :: OnchainTypes.AttestationKind -> GYAssetClass -> GYAssetClass -> OnchainTypes.ClaimedCredential -> GYDatum
 credentialRecordDatum kind recordId subjectProfile credential =
   datumFromPlutusData
     ( mkCIP68Datum
@@ -174,7 +175,7 @@ credentialRecordDatum kind recordId subjectProfile credential =
         []
     )
 
-credentialClaimDatum :: GYAssetClass -> Credential -> GYDatum
+credentialClaimDatum :: GYAssetClass -> OnchainTypes.ClaimedCredential -> GYDatum
 credentialClaimDatum recordId = credentialRecordDatum OnchainTypes.CredentialClaim recordId acProfileA
 
 disputeDatum :: GYAssetClass -> GYDatum

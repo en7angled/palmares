@@ -44,6 +44,7 @@ import GeniusYield.Types
   )
 import Palmares.DomainTypes.Core.Actions (ClaimWitness (..), ProfileActionType)
 import Palmares.DomainTypes.Core.Ids (parseCredentialCip129)
+import Palmares.Onchain.Protocol.Types (ClaimedCredential (..), claimedCredentialOf)
 import Palmares.TxBuilding.Conversions
   ( claimCredentialToText,
     claimWitnessToTxInWitness,
@@ -97,8 +98,15 @@ operatorKeyHash = "e1cbb80db89e292269aeb93ec15eb963dda5176b66949fe1c2a6a38d"
 -- Written as the composition the command uses rather than as a literal, because a literal would
 -- pin the ENCODER's current output and go on passing if the composition changed — which is the one
 -- thing these three cases are about.
+-- | The role a claim names, as the HRP that renders it. A tag rather than the constructor so the
+-- assertion reads as the identifier a client would see.
+roleTag :: ClaimedCredential -> Text
+roleTag (ClaimedDRep _) = "drep"
+roleTag (ClaimedCCCold _) = "cc_cold"
+roleTag (ClaimedCCHot _) = "cc_hot"
+
 operatorDrepId :: Text
-operatorDrepId = claimCredentialToText (PubKeyCredential (paymentKeyHashToPlutus operatorKeyHash))
+operatorDrepId = claimCredentialToText (ClaimedDRep (PubKeyCredential (paymentKeyHashToPlutus operatorKeyHash)))
 
 scriptHashA :: GYScriptHash
 scriptHashA = "cabdd19b58d4299fde05b53c2c0baf978bf9ade734b490fc0cc8b7d0"
@@ -135,9 +143,25 @@ writePathTests =
       testCase "a CIP-129 drep id round-trips to a key credential and back" $
         (claimCredentialToText <$> parseClaimCredential drepKeyBech32) @?= Right drepKeyBech32,
       testCase "a CIP-129 SCRIPT drep id parses to a script credential, not a key one" $
-        (isScriptCredential <$> parseClaimCredential drepScriptBech32) @?= Right True,
+        (isScriptCredential . claimedCredentialOf <$> parseClaimCredential drepScriptBech32) @?= Right True,
       testCase "a CIP-129 key drep id parses to a key credential" $
-        (isScriptCredential <$> parseClaimCredential drepKeyBech32) @?= Right False,
+        (isScriptCredential . claimedCredentialOf <$> parseClaimCredential drepKeyBech32) @?= Right False,
+      -- ADR 0006, AND THE WHOLE POINT OF IT. The three identifier families carry the same 28 bytes
+      -- and differ only in CIP-129's header byte, so a parser that dropped the role made all three
+      -- indistinguishable — and the renderer then published every claim as `drep1…`. These pin the
+      -- role surviving the round trip, which is the defect `OC-04` reported.
+      testCase "the ROLE survives: a drep id claims as a DRep" $
+        (roleTag <$> parseClaimCredential drepKeyBech32) @?= Right "drep",
+      testCase "the ROLE survives: a cc_cold id claims as committee cold, not as a DRep" $
+        (roleTag <$> parseClaimCredential ccColdBech32) @?= Right "cc_cold",
+      testCase "a committee cold claim renders back as cc_cold, not as drep of the same bytes" $
+        (claimCredentialToText <$> parseClaimCredential ccColdBech32) @?= Right ccColdBech32,
+      -- The regression in one line: same 28 bytes, two roles, two identifiers. Before ADR 0006 both
+      -- sides of this were `drep1…` and the assertion could not be written.
+      testCase "the same bytes under two roles render to two different identifiers" $
+        ( claimCredentialToText . ClaimedDRep . claimedCredentialOf <$> parseClaimCredential ccColdBech32
+        )
+          @?= Right drepKeyBech32,
       -- What @admin operator-address@ prints as ATTEST_SMOKE_DREP_ID. A test suite cannot import an
       -- executable's modules, so these pin the library composition and NOT the line in
       -- @admin/Main.hs@ that calls it: a change there to `drepIdCip105` would still be green here.
@@ -165,7 +189,7 @@ writePathTests =
       -- -> what the builder requires a signature from -> the operator's own key.
       testCase "the printed id resolves, by the builder's own conversion, to the key that signs" $
         ( case parseClaimCredential operatorDrepId of
-            Right (PubKeyCredential pkh) -> either (const Nothing) Just (pubKeyHashFromPlutus pkh)
+            Right (ClaimedDRep (PubKeyCredential pkh)) -> either (const Nothing) Just (pubKeyHashFromPlutus pkh)
             _ -> Nothing
         )
           @?= Just (toPubKeyHash operatorKeyHash),
@@ -177,7 +201,7 @@ writePathTests =
       -- A committee cold credential is claimable: the rule is the same for all three identifier
       -- families, because all three are a Credential.
       testCase "a CIP-129 committee cold id is claimable too" $
-        (isScriptCredential <$> parseClaimCredential ccColdBech32) @?= Right False,
+        (isScriptCredential . claimedCredentialOf <$> parseClaimCredential ccColdBech32) @?= Right False,
       -- Review Focus item 3, off-chain half. Its own code and its own status, because an issuer
       -- naming a subject that does not exist is a different mistake from an issuer with no profile:
       -- the record that would result can never be counter-signed and can never be removed.

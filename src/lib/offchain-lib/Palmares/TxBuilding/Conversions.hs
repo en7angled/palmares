@@ -7,7 +7,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error qualified as TEE
 import Palmares.DomainTypes.Core.Actions
-import Palmares.DomainTypes.Core.Ids (drepIdCip129, parseCredentialCip129)
+import Palmares.DomainTypes.Core.Ids (GovCredentialRole (..), parseCredentialRoleCip129, renderCredentialRoleCip129)
 import Palmares.DomainTypes.Core.Types
 import GeniusYield.TxBuilder
 import GeniusYield.Types
@@ -108,21 +108,35 @@ onchainAttestationKindToAttestationType Onchain.CredentialWithdrawal = Credentia
 --
 -- Pure, and refused before any chain query, so a client that pasted a broken identifier gets a 400
 -- rather than a timeout.
-parseClaimCredential :: T.Text -> Either TxBuildingException Credential
-parseClaimCredential t = case parseCredentialCip129 t of
-  Just (True, raw) -> Right (ScriptCredential (ScriptHash (toBuiltin raw)))
-  Just (False, raw) -> Right (PubKeyCredential (PubKeyHash (toBuiltin raw)))
+parseClaimCredential :: T.Text -> Either TxBuildingException OnchainTypes.ClaimedCredential
+parseClaimCredential t = case parseCredentialRoleCip129 t of
+  Just (role, isScript, raw) -> Right (wrap role (credentialOf isScript raw))
   Nothing -> Left CredentialMalformed
+  where
+    credentialOf True raw = ScriptCredential (ScriptHash (toBuiltin raw))
+    credentialOf False raw = PubKeyCredential (PubKeyHash (toBuiltin raw))
+    wrap RoleDRep = OnchainTypes.ClaimedDRep
+    wrap RoleCCCold = OnchainTypes.ClaimedCCCold
+    wrap RoleCCHot = OnchainTypes.ClaimedCCHot
 
 -- | The CIP-129 rendering of a claimed credential — the inverse of 'parseClaimCredential'.
 --
--- The HRP is @drep@ because a 'Credential' is 28 bytes plus the key-or-script flag and nothing else:
--- which governance role those bytes play is the profile's @kind@, not part of the credential, and the
--- on-chain datum stores no HRP either. So a committee cold credential claimed as @cc_cold1…@ reads
--- back as the @drep1…@ rendering of the same credential, which is the same bytes and the same flag.
-claimCredentialToText :: Credential -> T.Text
-claimCredentialToText (ScriptCredential (ScriptHash bs)) = drepIdCip129 True (fromBuiltin bs)
-claimCredentialToText (PubKeyCredential (PubKeyHash bs)) = drepIdCip129 False (fromBuiltin bs)
+-- __The HRP now follows the claimed ROLE__ (ADR 0006), which is the fix for @OC-04@. Before, every
+-- claim was rendered with @drep@, on the argument that "which governance role those bytes play is
+-- the profile's @kind@, not part of the credential". That argument was wrong twice: @profileKind@ is
+-- not a role — an @Organization@ may be a DRep and a @Committee@ may hold both committee
+-- credentials — and the datum now stores the role, so nothing has to be inferred. A committee cold
+-- credential claimed as @cc_cold1…@ used to read back as @drep1…@ of the same bytes: an identifier
+-- that resolves to nothing in GovTool or db-sync, so a reader could not verify what they were shown.
+claimCredentialToText :: OnchainTypes.ClaimedCredential -> T.Text
+claimCredentialToText claimed = renderCredentialRoleCip129 (roleOf claimed) isScript raw
+  where
+    (isScript, raw) = case OnchainTypes.claimedCredentialOf claimed of
+      ScriptCredential (ScriptHash bs) -> (True, fromBuiltin bs)
+      PubKeyCredential (PubKeyHash bs) -> (False, fromBuiltin bs)
+    roleOf (OnchainTypes.ClaimedDRep _) = RoleDRep
+    roleOf (OnchainTypes.ClaimedCCCold _) = RoleCCCold
+    roleOf (OnchainTypes.ClaimedCCHot _) = RoleCCHot
 
 -- | Is this credential a script rather than a key? The two take different proofs of control.
 isScriptCredential :: Credential -> Bool

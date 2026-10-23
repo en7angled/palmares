@@ -402,11 +402,30 @@ measured =
 --
 -- At ~4310 lovelace per byte of reference script this is about **3.4 ADA more** to deploy, against
 -- the ~205 already locked. The MintingPolicy's margin is what to watch and it barely moved.
+-- __ADR 0006: the claimed credential gained its role, and the profile datum lost three unread script
+-- hashes.__ Two changes in one window, and the table is the argument for having taken them together:
+--
+--   ProfilesValidator     8384 ->  8207  (-177)
+--   AttestationsValidator 8322 ->  8516  (+194)
+--   DisputesValidator     9978 ->  9978  (0)
+--   OracleValidator       7856 ->  7856  (0)
+--   MintingPolicy        12652 -> 12756  (+104)
+--
+-- __+121 bytes net: `OC-08` refunded 177 of `OC-04`'s 298.__ Taking the role-tagged credential alone
+-- would have cost +298 and bought a correctness fix; taking the dead `ProtocolParams` out of the
+-- profile datum in the same commit paid for more than half of it, which is what "the same format
+-- window" is worth in bytes rather than in prose.
+--
+-- The two zeros are the assertion worth having. Disputes and the Oracle read neither datum, so
+-- neither moved — which confirms `OC-08`'s claim that the profiles validator was the ONLY reader of
+-- a profile datum's embedded params, and confirms that the credential wrapper is paid only where an
+-- attestation datum is parsed. A change this wide reaching exactly two of five scripts, in opposite
+-- directions, is the shape you want: each cost lands where the thing that changed is read.
 expected :: [(String, Int)]
 expected =
-  [ ("ProfilesValidator", 8384),
-    ("AttestationsValidator", 8322),
+  [ ("ProfilesValidator", 8207),
+    ("AttestationsValidator", 8516),
     ("DisputesValidator", 9978),
     ("OracleValidator", 7856),
-    ("MintingPolicy", 12652)
+    ("MintingPolicy", 12756)
   ]

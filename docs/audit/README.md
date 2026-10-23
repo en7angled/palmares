@@ -54,7 +54,7 @@ What needs attention falls into four groups, in order of urgency:
 ## 2. Headline numbers
 
 | Report | Scope | Critical | High | Medium | Low | Info | Total |
-|---|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|---|
 | [01 On-chain security](01-onchain-security.md) | the six Plutus scripts, CIP-68, Utils, Blueprint | 0 | 1 | 5 | 4 | 5 | 15 |
 | [02 Off-chain and write API](02-offchain-and-write-api.md) | TxBuilding, domain types, interaction-api, admin CLI, webapi-lib | 0 | 2 | 12 | 9 | 2 | 25 |
 | [03 Chain-sync and projections](03-chainsync-and-projections.md) | Kupo client, attest-sync, Ingestion, Storage, attestation reads | 1 | 2 | 7 | 7 | 1 | 18 |
@@ -70,30 +70,35 @@ and report 06 a table of every environment variable the code reads against READM
 Ranked by impact on the product's promise and by how much harder each item becomes after the first
 deployment. Effort is the reviewer's estimate (S < 1 day, M = days, L = a week or more).
 
-| # | ID | Sev. | Effort | Action | Why now |
-|---|---|---|---|---|---|
-| 1 | OC-01 | High | S/M | `opAdminPkh :: PubKeyHash` → `opAdmin :: Credential`, proved with the same rule as `checkCredentialControl` at `O1`, `O5`, `D1`; multisig admin tooling | datum format freezes at deployment; key loss today freezes the protocol and every open deposit |
-| 2 | OF-01 | High | M | two-step `rotate-admin`: build → `sign-tx` by the incoming admin → submit | rotation is impossible with the shipped CLI, so the single key cannot even be rotated |
-| 3 | CS-01 | Critical | M | clamp datum-sourced timestamps before `timestamptz`; isolate each match's projection (dead-letter row); add the 10^20 period test | one hand-built attestation halts the projector permanently and the cursor never advances |
-| 4 | OC-03 | Medium | S | add "user token quantity == 0" to `P5`, `Mk`, `A1`, `Md5` (the `Mp6` rule on the other four output checks) | closes a self-inflicted lock-in that makes a profile world-writable and impersonable |
-| 5 | OF-02 | High | S–M | default `deposit_to` to the address holding the user NFT; force an input from it; 400 otherwise | `Md8` rejects multi-address wallets and the error reads "Not enough ADA" |
-| 6 | OC-02 | Medium | S | `attestationOracleToken` field + `A7` pause gate on `AcceptAttestation`, or document the exception | the irreversible write is the one that is not pausable; format freezes at deployment |
-| 7 | OC-04 / OF-16 | Medium | S/M | role-tagged `ClaimedCredential`; render with the right CIP-129 prefix; refuse `cc_hot` | a committee cold key claim is currently published as `drep1…` |
-| 8 | OC-05 | Medium | M | per-kind CIP-67 labels so `Mg`/`Md4` can type an id; `subject /= issuer`; decide lineage | disputes can target profiles, issuers can attest themselves; label choice freezes at deployment |
-| 9 | OF-08 | Medium | S | lock reference scripts at an always-fail address; verify their hashes in `/ready` | today the operator (or a compromised key) can spend them and every protocol tx stops building |
-| 10 | GV-01 | High | M | hash-gated bootstrap + advisory lock + schema swap (or `WITH NO DATA` then refresh) | `DROP SCHEMA palmares CASCADE` on every boot is a read outage per restart with >1 replica |
-| 11 | GV-04 / CS-03 / TD-02 / TD-09 | High | S–M | compose: add `attest-sync`, require `BASIC_USER`/`BASIC_PASS`, run `apply-roles`, use `palmares_ro`/`palmares_owner` DSNs, bind ports to `127.0.0.1`; `PG_CONN_STR` fail-closed | the documented self-host path runs as superuser and cannot serve attestations |
-| 12 | TD-01 | High | S | `.dockerignore` `config/config_atlas.json` and the validators config; stop `COPY config` into runtime images | a local `scripts/build-images.sh` ships the Maestro token; ADR 0002 claims the opposite |
-| 13 | GV-02 | High | S | fetch `/dreps` without the status filter; re-record the snapshot pair; assert status coverage | the nightly parity gate reports 90 false divergences and the fixture hides it |
-| 14 | GV-03 / DC-01 | High | M | one source for the six formulas (generate the matview from the catalog, or publish the matview as the formula); run the 070 agreement in CI | "the SQL you see is the SQL that runs" is the README's first promise and is not true today |
-| 15 | CS-02 / CS-04 | High | M | verify the cursor's block hash via `/checkpoints/{slot}` each tick, walk back to the common point; treat `spent_at` above the rollback slot as unspent on replay | short forks leave orphaned projections in place |
-| 16 | OC-09 | Low | M/L | decide the upgrade stance now (`protocolVersion` field, multi-policy chain-sync, or "a fix is a new registry") | the first validator fix after deployment has no path |
-| 17 | TD-04 | Medium | M | pure valid/broken pairs for `Mp6`, `O6`, `P2`, `P5`, `N0`, `K3`, `Mg` | two security fixes from 2026-10-22 shipped untested, against the test rules |
-| 18 | OF-03 / OF-04 | Medium | S | pause guard in `resolveDisputeTX`; `getFeeSkeleton` returns `mempty` when `feeFor … <= 0` | disputers currently pay a hidden min-ADA "fee" when fees are configured |
-| 19 | TD-03 | High | S | stop caching `dist-newstyle` (or key it on `palmares.cabal` and the plugin flags) | `ghc-options` changes do not reliably recompile; CI is no longer the fresh checkout the trace-code commit assumed |
-| 20 | DC-43 | High | S | commit `docs/spec/` (the spec cited as §2/§3/§4.1/§4.3/§6) and resolve or delete the D-/F-/T- ids | the protocol's requirements are not reviewable from the repository |
-| 21 | CS-07 / GV-23 | Medium | M | `palmares_attest.sync_state`; `/status.attestation`; `X-Attest-*` headers; red on absence | `/ready` now sees attestation freshness, `/status` and the headers do not |
-| 22 | OF-05 | Medium | M | distinct error codes for script failure / shortfall / provider / await; catch `SomeException` at the handler | every build failure is `400 InsufficientFunds`; some provider errors are bare 500s |
+__THIS IS THE LIST THAT IS KEPT CURRENT.__ Reports 01-06 are a dated snapshot against `4eb9117` and
+report 07 is one against `2bf5bde`; editing either would destroy what makes them worth keeping, which
+is that they record what was seen on a given day. So the `Status` column lives here and nowhere else
+— twenty-two rows updated per closure, rather than a 189-row verdict table nobody reads twice.
+
+| # | ID | Sev. | Effort | Action | Why now | Status |
+|---|---|---|---|---|---|---|
+| 1 | OC-01 | High | S/M | `opAdminPkh :: PubKeyHash` → `opAdmin :: Credential`, proved with the same rule as `checkCredentialControl` at `O1`, `O5`, `D1`; multisig admin tooling | datum format freezes at deployment; key loss today freezes the protocol and every open deposit | **CLOSED** `93e12ac` — ADR 0005 |
+| 2 | OF-01 | High | M | two-step `rotate-admin`: build → `sign-tx` by the incoming admin → submit | rotation is impossible with the shipped CLI, so the single key cannot even be rotated | **CLOSED** `93e12ac` — ADR 0005 |
+| 3 | CS-01 | Critical | M | clamp datum-sourced timestamps before `timestamptz`; isolate each match's projection (dead-letter row); add the 10^20 period test | one hand-built attestation halts the projector permanently and the cursor never advances | **HALF** `8be51d9` — boundary clamp done; per-match isolation open |
+| 4 | OC-03 | Medium | S | add "user token quantity == 0" to `P5`, `Mk`, `A1`, `Md5` (the `Mp6` rule on the other four output checks) | closes a self-inflicted lock-in that makes a profile world-writable and impersonable | open |
+| 5 | OF-02 | High | S–M | default `deposit_to` to the address holding the user NFT; force an input from it; 400 otherwise | `Md8` rejects multi-address wallets and the error reads "Not enough ADA" | open |
+| 6 | OC-02 | Medium | S | `attestationOracleToken` field + `A7` pause gate on `AcceptAttestation`, or document the exception | the irreversible write is the one that is not pausable; format freezes at deployment | **CLOSED** — `A7` + `attestationOracleToken` |
+| 7 | OC-04 / OF-16 | Medium | S/M | role-tagged `ClaimedCredential`; render with the right CIP-129 prefix; refuse `cc_hot` | a committee cold key claim is currently published as `drep1…` | **CLOSED** — ADR 0006 |
+| 8 | OC-05 | Medium | M | per-kind CIP-67 labels so `Mg`/`Md4` can type an id; `subject /= issuer`; decide lineage | disputes can target profiles, issuers can attest themselves; label choice freezes at deployment | open — lineage dropped by owner decision 2026-10-24 |
+| 9 | OF-08 | Medium | S | lock reference scripts at an always-fail address; verify their hashes in `/ready` | today the operator (or a compromised key) can spend them and every protocol tx stops building | open |
+| 10 | GV-01 | High | M | hash-gated bootstrap + advisory lock + schema swap (or `WITH NO DATA` then refresh) | `DROP SCHEMA palmares CASCADE` on every boot is a read outage per restart with >1 replica | open |
+| 11 | GV-04 / CS-03 / TD-02 / TD-09 | High | S–M | compose: add `attest-sync`, require `BASIC_USER`/`BASIC_PASS`, run `apply-roles`, use `palmares_ro`/`palmares_owner` DSNs, bind ports to `127.0.0.1`; `PG_CONN_STR` fail-closed | the documented self-host path runs as superuser and cannot serve attestations | open |
+| 12 | TD-01 | High | S | `.dockerignore` `config/config_atlas.json` and the validators config; stop `COPY config` into runtime images | a local `scripts/build-images.sh` ships the Maestro token; ADR 0002 claims the opposite | open — severity fell with Maestro's exit, returns with a Blockfrost key |
+| 13 | GV-02 | High | S | fetch `/dreps` without the status filter; re-record the snapshot pair; assert status coverage | the nightly parity gate reports 90 false divergences and the fixture hides it | open |
+| 14 | GV-03 / DC-01 | High | M | one source for the six formulas (generate the matview from the catalog, or publish the matview as the formula); run the 070 agreement in CI | "the SQL you see is the SQL that runs" is the README's first promise and is not true today | open |
+| 15 | CS-02 / CS-04 | High | M | verify the cursor's block hash via `/checkpoints/{slot}` each tick, walk back to the common point; treat `spent_at` above the rollback slot as unspent on replay | short forks leave orphaned projections in place | open |
+| 16 | OC-09 | Low | M/L | decide the upgrade stance now (`protocolVersion` field, multi-policy chain-sync, or "a fix is a new registry") | the first validator fix after deployment has no path | open — stance (a) chosen, not yet written |
+| 17 | TD-04 | Medium | M | pure valid/broken pairs for `Mp6`, `O6`, `P2`, `P5`, `N0`, `K3`, `Mg` | two security fixes from 2026-10-22 shipped untested, against the test rules | open |
+| 18 | OF-03 / OF-04 | Medium | S | pause guard in `resolveDisputeTX`; `getFeeSkeleton` returns `mempty` when `feeFor … <= 0` | disputers currently pay a hidden min-ADA "fee" when fees are configured | open |
+| 19 | TD-03 | High | S | stop caching `dist-newstyle` (or key it on `palmares.cabal` and the plugin flags) | `ghc-options` changes do not reliably recompile; CI is no longer the fresh checkout the trace-code commit assumed | open |
+| 20 | DC-43 | High | S | commit `docs/spec/` (the spec cited as §2/§3/§4.1/§4.3/§6) and resolve or delete the D-/F-/T- ids | the protocol's requirements are not reviewable from the repository | open |
+| 21 | CS-07 / GV-23 | Medium | M | `palmares_attest.sync_state`; `/status.attestation`; `X-Attest-*` headers; red on absence | `/ready` now sees attestation freshness, `/status` and the headers do not | open |
+| 22 | OF-05 | Medium | M | distinct error codes for script failure / shortfall / provider / await; catch `SomeException` at the handler | every build failure is `400 InsufficientFunds`; some provider errors are bare 500s | open |
 
 The full ranked backlogs (103 code findings, 43 documentation items, 16 product gaps) are at the end of
 each report.

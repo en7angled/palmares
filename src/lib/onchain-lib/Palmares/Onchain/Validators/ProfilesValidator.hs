@@ -28,7 +28,7 @@ where
 
 import GHC.Generics (Generic)
 import Palmares.Onchain.CIP68 (CIP68Datum (CIP68Datum), MetadataFields (..), deriveUserFromRefAC, updateCIP68DatumMetadata, validateMetadataFields)
-import Palmares.Onchain.Protocol (OnchainProfile (..), OracleParams (opPaused), ProtocolParams (oracleToken), readOracleParams)
+import Palmares.Onchain.Protocol (OnchainProfile (..), OracleParams (opPaused), readOracleParams)
 import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Utils qualified as Utils
 import PlutusLedgerApi.V1 qualified as V1
@@ -113,7 +113,7 @@ profilesLambda (ScriptContext txInfo@TxInfo {..} (Redeemer bredeemer) scriptInfo
                     -- attacker's \"oracle\" has no Ref NFT, so the most a forged oracle can do is let
                     -- @P6@ pass for a spend @P2@ then refuses. `readOracleParams` traces @K1@ when no
                     -- reference input carries the token.
-                    oracle = readOracleParams (oracleToken (protocolParams profile)) txInfoReferenceInputs
+                    oracle = readOracleParams (profileOracleToken profile) txInfoReferenceInputs
                  in case redeemer of
                       (UpdateProfile newFields profileOutputIdx) ->
                         -- A PAUSE STOPS WRITES, NOT READS, and this redeemer is a write. @opPaused@

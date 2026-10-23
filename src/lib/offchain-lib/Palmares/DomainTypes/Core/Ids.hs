@@ -30,6 +30,9 @@ module Palmares.DomainTypes.Core.Ids
     anyVoterIdHex,
     parseDrepIdAny,
     parseCredentialCip129,
+    GovCredentialRole (..),
+    parseCredentialRoleCip129,
+    renderCredentialRoleCip129,
   )
 where
 
@@ -118,15 +121,53 @@ parseDrepIdAny t = case Bech32.decode t of
 -- a script, and the identity claim's rule turns on exactly that distinction. The read path can fill
 -- the flag in from @drep_hash.has_script@; the write path has no row to ask.
 parseCredentialCip129 :: Text -> Maybe (Bool, ByteString)
-parseCredentialCip129 t = case Bech32.decode t of
+parseCredentialCip129 t = (\(_, isScript, raw) -> (isScript, raw)) <$> parseCredentialRoleCip129 t
+
+-- | Which governance role a CIP-129 credential identifier names.
+--
+-- __It is the header byte and nothing else.__ CIP-129 encodes @(keyType \<\< 4) | kind@, so the role
+-- is carried in the identifier and the HRP agrees with it — @cc_hot@ with @0x0@, @cc_cold@ with
+-- @0x1@, @drep@ with @0x2@. The 28 bytes that follow are the same shape for all three, which is why
+-- a parser that returns only @(isScript, raw)@ is lossy and why
+-- 'Palmares.Onchain.Protocol.Types.ClaimedCredential' now keeps this.
+--
+-- Deliberately a plain enum here rather than the on-chain type: this module knows CIP-129 and
+-- nothing about the protocol's datums, and the mapping belongs at the boundary that already crosses
+-- both ('Palmares.TxBuilding.Conversions').
+data GovCredentialRole
+  = RoleDRep
+  | RoleCCCold
+  | RoleCCHot
+  deriving stock (Show, Eq)
+
+-- | The role, the script flag and the raw 28-byte hash behind any CIP-129 credential identifier.
+--
+-- Rejects an HRP whose header byte disagrees with it, which is the check that makes the role
+-- trustworthy rather than decorative: @drep1…@ carrying a @0x12@ header is not a DRep id with a
+-- typo, it is two different claims about the same bytes and there is no reason to prefer either.
+parseCredentialRoleCip129 :: Text -> Maybe (GovCredentialRole, Bool, ByteString)
+parseCredentialRoleCip129 t = case Bech32.decode t of
   Right (hrp, dp)
-    | Just keyType <- lookup (Bech32.humanReadablePartToText hrp) [("cc_hot", 0x0), ("cc_cold", 0x1), ("drep", 0x2)],
+    | Just (role, keyType) <- lookup (Bech32.humanReadablePartToText hrp) roles,
       Just bs <- Bech32.dataPartToBytes dp,
       BS.length bs == 29,
       Just (h, raw) <- BS.uncons bs,
       h == header keyType False || h == header keyType True ->
-        Just (h == header keyType True, raw)
+        Just (role, h == header keyType True, raw)
   _ -> Nothing
+  where
+    roles = [("cc_hot", (RoleCCHot, 0x0)), ("cc_cold", (RoleCCCold, 0x1)), ("drep", (RoleDRep, 0x2))]
+
+-- | Render a credential under the HRP its role actually calls for — the inverse of
+-- 'parseCredentialRoleCip129'.
+--
+-- The function whose absence was the bug: every claim used to be rendered with 'drepIdCip129', so a
+-- committee cold credential came back as @drep1…@ of the same bytes, which resolves to nothing in
+-- GovTool or db-sync.
+renderCredentialRoleCip129 :: GovCredentialRole -> Bool -> ByteString -> Text
+renderCredentialRoleCip129 RoleDRep = drepIdCip129
+renderCredentialRoleCip129 RoleCCCold = ccColdIdCip129
+renderCredentialRoleCip129 RoleCCHot = ccHotIdCip129
 
 -- | Decode a CIP-129 governance action id back to its hex transaction id and index.
 --

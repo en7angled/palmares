@@ -308,7 +308,9 @@ claimProfileTX kind metadata = do
         OnchainTypes.OnchainProfile
           { OnchainTypes.profileId = assetClassToPlutus gyProfileRefAC,
             OnchainTypes.profileKind = kind,
-            OnchainTypes.protocolParams = getProtocolParamsFromCtx ctx
+            -- ADR 0006: only the oracle token was ever read off a profile datum, so only it is
+            -- written. The three validator hashes that used to ride along were never read from here.
+            OnchainTypes.profileOracleToken = OnchainTypes.oracleToken (getProtocolParamsFromCtx ctx)
           }
   let profileDatum = mkCIP68Datum profileInfo metadata []
 
@@ -517,8 +519,9 @@ credentialAttestationTX ::
   OnchainTypes.AttestationKind ->
   -- | The profile binding itself, or ending its binding
   GYAssetClass ->
-  -- | The credential
-  Credential ->
+  -- | The credential and the governance role it is claimed under — ADR 0006. A bare 'Credential'
+  -- here is what threw CIP-129's header away and made every claim render as @drep1…@.
+  OnchainTypes.ClaimedCredential ->
   -- | How control of a SCRIPT credential is proven; ignored for a key credential
   Maybe ClaimWitness ->
   -- | CIP-68 metadata fields for the record itself
@@ -538,7 +541,7 @@ credentialAttestationTX kind gyProfileRefAC credential mWitness metadata ownAddr
   ensureSubjectProfileExists gyProfileRefAC
 
   -- Resolved first, so a binding that cannot be proven never reaches the balancer.
-  claimProof <- claimProofSkeleton credential mWitness
+  claimProof <- claimProofSkeleton (OnchainTypes.claimedCredentialOf credential) mWitness
 
   -- A claim is the profile speaking too, so it spends the profile's user NFT (@Mf@). A withdrawal is
   -- the credential alone, and @Mf@ exempts it.

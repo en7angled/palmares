@@ -63,6 +63,7 @@ import Palmares.Onchain.CIP68
   )
 import Palmares.Onchain.Protocol.Types
   ( AttestationKind (CredentialClaim, MilestoneDelivered),
+    ClaimedCredential (ClaimedDRep),
     FeeConfig (..),
     OnchainAttestation (..),
     OnchainDispute (..),
@@ -358,15 +359,18 @@ mcTests =
 boundPkh :: PubKeyHash
 boundPkh = PubKeyHash (b28 0x0d)
 
-boundCredential :: Credential
-boundCredential = PubKeyCredential boundPkh
+-- | Claimed as a DRep. ADR 0006 put the ROLE in the datum, so the type these rules read is
+-- 'ClaimedCredential' and not a bare 'Credential'; which role is immaterial to @Mc1@-@Mc4@, which
+-- ask the same question of all three, and that is exactly why one is enough here.
+boundCredential :: ClaimedCredential
+boundCredential = ClaimedDRep (PubKeyCredential boundPkh)
 
 -- | A credential-record mint, parameterised in the three things @Mc1@-@Mc4@ read, plus the
 -- signatories @Mc3@ reads.
 --
 -- The seed input carries the ISSUER's user token, so @Mf@ passes whichever profile is named as
 -- issuer — which is what lets the @Mc1@ case isolate @Mc1@ instead of tripping over @Mf@.
-credentialMintCtx :: AttestationKind -> V1.AssetClass -> Maybe Credential -> [PubKeyHash] -> ScriptContext
+credentialMintCtx :: AttestationKind -> V1.AssetClass -> Maybe ClaimedCredential -> [PubKeyHash] -> ScriptContext
 credentialMintCtx kind issuer mCredential signatories =
   ScriptContext
     (mkTxInfo [seedInput] [oracleRefInput False] [recordOut] issueMint)
@@ -512,7 +516,7 @@ profileDatum = mkCIP68Datum profileInfo profileFields []
       OnchainProfile
         { profileId = profileRefAC,
           profileKind = Community,
-          protocolParams = params
+          profileOracleToken = oracleToken params
         }
 
 -- | What @Mp5@ requires the mint to lock, and what the profile UTxO therefore holds afterwards.

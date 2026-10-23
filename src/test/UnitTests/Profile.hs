@@ -81,7 +81,7 @@ profileTests =
       ctx <- deployValidators (w1 testWallets)
       waitNSlots_ 1000
 
-      let claimed = V3.PubKeyCredential (userPlutusPkh (w1 testWallets))
+      let claimed = OnchainTypes.ClaimedDRep (V3.PubKeyCredential (userPlutusPkh (w1 testWallets)))
       (_txId, profileAC) <-
         profileInteraction
           ctx
@@ -128,7 +128,7 @@ profileTests =
       sendAdaToAddress (w1 testWallets) scriptAddr 5_000_000
       waitNSlots_ 1
 
-      let claimed = scriptCredential
+      let claimed = claimedScript
       (_txId, profileAC) <-
         profileInteraction ctx (w1 testWallets) (ClaimProfileAction Organization orgProfileData) Nothing
       waitNSlots_ 1
@@ -190,7 +190,7 @@ profileTests =
             ctx
             (w1 testWallets)
             profileAC
-            scriptCredential
+            claimedScript
             (profileDataToMetadataFields orgProfileData)
             (Just proofRef)
 
@@ -241,7 +241,7 @@ profileTests =
             ctx
             (w1 testWallets)
             profileAC
-            (V3.PubKeyCredential (userPlutusPkh (w2 testWallets)))
+            (OnchainTypes.ClaimedDRep (V3.PubKeyCredential (userPlutusPkh (w2 testWallets))))
             (profileDataToMetadataFields drepProfileData)
             Nothing
 
@@ -270,7 +270,7 @@ profileTests =
             ctx
             (w1 testWallets)
             profileAC
-            scriptCredential
+            claimedScript
             (profileDataToMetadataFields committeeProfileData)
             Nothing
 
@@ -350,7 +350,7 @@ profileTests =
       let bind pid pdata =
             ClaimCredentialAction
               pid
-              (claimCredentialToText scriptCredential)
+              (claimCredentialToText claimedScript)
               (Just (WitnessSimpleScript openScript))
               pdata
 
@@ -365,8 +365,8 @@ profileTests =
       assert (profileA /= profileB)
       (datumA, _) <- getAttestationDatumAndValue claimA
       (datumB, _) <- getAttestationDatumAndValue claimB
-      assert (OnchainTypes.attestationCredential (extra datumA) == Just scriptCredential)
-      assert (OnchainTypes.attestationCredential (extra datumB) == Just scriptCredential)
+      assert (OnchainTypes.attestationCredential (extra datumA) == Just claimedScript)
+      assert (OnchainTypes.attestationCredential (extra datumB) == Just claimedScript)
 
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "One credential, two profiles, both on chain."
 
@@ -398,7 +398,7 @@ profileTests =
             (w1 testWallets)
             ( ClaimCredentialAction
                 profileAC
-                (claimCredentialToText scriptCredential)
+                (claimCredentialToText claimedScript)
                 (Just (WitnessSimpleScript openScript))
                 committeeProfileData
             )
@@ -433,3 +433,8 @@ openScriptHash = hashSimpleScript openScript
 -- | 'openScript' as a claimable credential.
 scriptCredential :: V3.Credential
 scriptCredential = V3.ScriptCredential (scriptHashToPlutus openScriptHash)
+
+-- | The same credential as a CLAIM — ADR 0006 put the role in the datum, so a claim names one.
+-- Kept beside the bare form because the bare one is still what an address is derived from.
+claimedScript :: OnchainTypes.ClaimedCredential
+claimedScript = OnchainTypes.ClaimedDRep scriptCredential

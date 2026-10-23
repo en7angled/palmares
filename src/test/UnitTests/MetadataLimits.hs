@@ -381,7 +381,7 @@ profileMint fields outAddr =
         OnchainProfile
           { profileId = refAC,
             profileKind = Community,
-            protocolParams = protoParams
+            profileOracleToken = oracleToken protoParams
           }
         fields
         []
@@ -462,7 +462,7 @@ profileUpdate newFields =
         OnchainProfile
           { profileId = refAC,
             profileKind = Community,
-            protocolParams = protoParams
+            profileOracleToken = oracleToken protoParams
           }
         okFields
         []

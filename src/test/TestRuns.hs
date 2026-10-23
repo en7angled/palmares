@@ -501,8 +501,8 @@ maliciousClaimWithoutControl ::
   -- | The profile that is binding itself — it has to exist first, since ADR 0003 made the binding
   -- its own record rather than part of the profile mint.
   GYAssetClass ->
-  -- | The credential the record claims.
-  V3.Credential ->
+  -- | The credential the record claims, under the role it claims it as — ADR 0006.
+  OnchainTypes.ClaimedCredential ->
   MetadataFields ->
   -- | The input offered as proof of control, if any.
   Maybe GYTxOutRef ->
@@ -526,7 +526,7 @@ maliciousClaimWithoutControl ctx attacker profileRefAC credential metadata mProo
 maliciousClaimTX ::
   (HasCallStack, GYTxUserQueryMonad m, MonadReader DeployedScriptsContext m) =>
   GYAssetClass ->
-  V3.Credential ->
+  OnchainTypes.ClaimedCredential ->
   MetadataFields ->
   Maybe GYTxOutRef ->
   [GYAddress] ->

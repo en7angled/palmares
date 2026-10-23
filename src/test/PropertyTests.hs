@@ -42,6 +42,7 @@ import Palmares.Onchain.Protocol.Types
     OnchainProfile (..),
     OnchainProfileKind,
     OracleParams (..),
+    ProtocolParams (oracleToken),
     Verdict (..),
     applyOracleAdminAction,
     resolveDispute,
@@ -225,7 +226,7 @@ profileUnclaimed =
   OnchainProfile
     { profileId = fakeAC "profile",
       profileKind = minBound,
-      protocolParams = blueprintProtocolParams
+      profileOracleToken = oracleToken blueprintProtocolParams
     }
 
 -- ADR 0003 removed the profile's credential field, so "claimed" is no longer a profile shape at

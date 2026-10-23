@@ -28,7 +28,7 @@ import GeniusYield.Types
 import Palmares.Metrics.Catalog (metricCatalog)
 import Palmares.Metrics.Doc (renderMetricsDoc)
 import Palmares.Onchain.Blueprint (contractBlueprint)
-import Palmares.Onchain.Protocol.Types (FeeConfig (..), OracleParams (..))
+import Palmares.Onchain.Protocol.Types (ClaimedCredential (ClaimedDRep), FeeConfig (..), OracleParams (..))
 import Options.Applicative
 import PlutusLedgerApi.V3 hiding (Committee) -- ours is a profile kind; Plutus's is the CIP-1694 committee datum
 import System.Directory (doesFileExist)
@@ -1049,7 +1049,7 @@ printOperatorAddress signKey = do
   -- the operator mnemonic yields one key and the smoke flow signs with that one.
   printGreen
     ( "Operator DRep id (CIP-129, for ATTEST_SMOKE_DREP_ID): "
-        <> T.unpack (claimCredentialToText (PubKeyCredential (paymentKeyHashToPlutus pkh)))
+        <> T.unpack (claimCredentialToText (ClaimedDRep (PubKeyCredential (paymentKeyHashToPlutus pkh))))
     )
   atlasConfig <-
     maybe

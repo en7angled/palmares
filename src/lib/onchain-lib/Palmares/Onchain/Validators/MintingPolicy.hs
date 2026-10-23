@@ -35,6 +35,8 @@ import Palmares.Onchain.Protocol.Lookup (checkFee, readOracleParams)
 import Palmares.Onchain.Protocol.Types
   ( AttestationId,
     AttestationKind (CredentialClaim, CredentialWithdrawal),
+    ClaimedCredential,
+    claimedCredentialOf,
     MintAction (MintActionAttestation, MintActionDispute, MintActionProfile),
     OnchainAttestation
       ( OnchainAttestation,
@@ -52,7 +54,7 @@ import Palmares.Onchain.Protocol.Types
       ( OnchainProfile,
         profileId,
         profileKind,
-        protocolParams
+        profileOracleToken
       ),
     OnchainDispute
       ( OnchainDispute,
@@ -113,7 +115,7 @@ data MintingRedeemer
     -- control of this transaction, and 'Nothing' for the other five, where @Mc4@ requires its
     -- absence. It used to be an argument of @MintProfile@, checked by @Mp3@, in a field on the
     -- profile datum that a destructive redeemer could clear.
-    NewAttestation TxOutRef MetadataFields [(BuiltinByteString, BuiltinByteString)] ProfileId ProfileId AttestationKind POSIXTime (Maybe (POSIXTime, POSIXTime)) (Maybe Credential) Integer
+    NewAttestation TxOutRef MetadataFields [(BuiltinByteString, BuiltinByteString)] ProfileId ProfileId AttestationKind POSIXTime (Maybe (POSIXTime, POSIXTime)) (Maybe ClaimedCredential) Integer
   | -- | MintProfile seedTxOutRef kind metadata profileOutputIdx
     --
     -- __No credential argument — ADR 0003.__ Minting a profile no longer claims anything; a claim is
@@ -221,7 +223,7 @@ handleNewAttestation ::
   AttestationKind ->
   POSIXTime ->
   Maybe (POSIXTime, POSIXTime) ->
-  Maybe Credential ->
+  Maybe ClaimedCredential ->
   Integer ->
   Bool
 handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOutRef metadata otherMetadataEncoded subject issuer kind attestationDate claimedPeriod claimedCredential attestationOutputIdx =
@@ -276,9 +278,11 @@ handleNewAttestation txInfo@TxInfo {..} mintingPolicyCurrencySymbol ctx seedTxOu
       -- The same rule @Mp3@ was, moved to the record whose whole purpose is the binding. Its
       -- documented limit carries over: a script that ONLY ever votes or withdraws holds no UTxO at
       -- its own address, so it sends itself one first.
+      -- The INNER credential (ADR 0006): the role is for the record and the renderer, and all three
+      -- roles are asked the same question. Unwrapping here rather than per role keeps that single.
       credentialConsents = case claimedCredential of
         Nothing -> False
-        Just credential -> Utils.checkCredentialControl credential txInfoSignatories txInfoInputs
+        Just claimed -> Utils.checkCredentialControl (claimedCredentialOf claimed) txInfoSignatories txInfoInputs
    in -- RENAMED FROM `Ml` on 2026-10-22, and the reason is the terminal: a lowercase L is
       -- indistinguishable from a digit 1 in most monospace fonts, and `M1` is a different code on
       -- the same script ("invalid purpose"). An operator reading a failed transaction's log would
@@ -341,7 +345,7 @@ handleMintProfile TxInfo {..} mintingPolicyCurrencySymbol protocolParams ctx see
         OnchainProfile
           { profileId = profileRefAssetClass,
             profileKind = kind,
-            protocolParams = protocolParams
+            profileOracleToken = oracleToken protocolParams
           }
       profileDatum = mkCIP68Datum profileInfo metadata []
    in traceIfFalse "Mp1" (Utils.inputsSpendTxOutRef seedTxOutRef txInfoInputs) -- Must spend seed for uniqueness (Mp1)

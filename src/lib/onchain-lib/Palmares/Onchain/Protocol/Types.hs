@@ -6,7 +6,7 @@ module Palmares.Onchain.Protocol.Types where
 
 import GHC.Generics (Generic)
 import PlutusLedgerApi.V1.Value (AssetClass)
-import PlutusLedgerApi.V3 (Address, Credential, POSIXTime, PubKeyHash, ScriptHash)
+import PlutusLedgerApi.V3 (Address, Credential, POSIXTime, ScriptHash)
 import PlutusTx
 import PlutusTx.Blueprint
 import PlutusTx.Prelude
@@ -373,7 +373,24 @@ data OnchainProfile
   = OnchainProfile
   { profileId :: ProfileId,
     profileKind :: OnchainProfileKind,
-    protocolParams :: ProtocolParams
+    -- | The oracle NFT this profile's validator must read its parameters from — ADR 0006, closing
+    -- @OC-08@.
+    --
+    -- __This was the whole 'ProtocolParams' record__, and exactly one of its four fields was ever
+    -- read off a profile datum: 'ProfilesValidator' took @oracleToken (protocolParams profile)@ and
+    -- nothing else. The three validator script hashes rode along in every profile datum ever
+    -- minted, unread — and the minting policy already has them as its compile-time parameter, which
+    -- is where a validator address belongs.
+    --
+    -- The cost of carrying them was measured rather than guessed. ADR 0005 added one field to
+    -- 'OracleParams' and that alone cost +29 bytes in each of the two scripts that merely PARSE the
+    -- oracle datum, without a line of either changing: a datum's width is paid by every script that
+    -- reads it. Three unread script hashes are ~84 bytes of that tax in every profile.
+    --
+    -- Pinning the oracle token in the datum is still the right design and is not what changed: it
+    -- is what stops a forged oracle UTxO being substituted at spend time, the same reason
+    -- 'disputeOracleToken' and 'attestationOracleToken' exist.
+    profileOracleToken :: AssetClass
   }
   deriving stock (Generic, Prelude.Show, Prelude.Eq)
   deriving anyclass (HasBlueprintDefinition)
@@ -448,6 +465,54 @@ makeIsDataSchemaIndexed
     ('CredentialWithdrawal, 6)
   ]
 
+-- | A claimed governance credential, __with the role those bytes play__ — ADR 0006, closing @OC-04@.
+--
+-- __Why the role is on chain and not inferred.__ CIP-129 puts it in a header byte:
+-- @(keyType \<\< 4) | kind@, so DRep is @0x22@\/@0x23@, committee cold @0x12@\/@0x13@ and committee
+-- hot @0x02@\/@0x03@. A bare 'Credential' is 28 bytes plus the key-or-script flag and nothing else,
+-- so storing one threw the header away — and the renderer then had to guess. It guessed @drep@ for
+-- everything, which meant a committee profile claiming @cc_cold1…@ was __published as @drep1…@ of
+-- the same bytes__: an identifier that resolves to nothing in GovTool or db-sync, so a reader could
+-- not verify the claim they were shown. The proof rule was always sound; the record was lossy.
+--
+-- __And the profile's kind is not the role.__ That was the old justification — "which governance
+-- role those bytes play is the profile's @kind@" — and it does not hold: an @Organization@ may be a
+-- DRep, a @Committee@ may hold both a hot and a cold credential, and nothing on chain ties
+-- 'OnchainProfileKind' to either. One byte per claim buys the distinction outright.
+--
+-- __All three roles are claimable, including the hot one__, although it rotates. Without ADR 0003
+-- that would have been an argument against it: a record pointing at a hot key rotated last month is
+-- misinformation with a timestamp. With the claim/withdrawal chain it is already handled — withdraw
+-- the old, claim the new — so excluding it would remove a capability and fix nothing.
+--
+-- Stake credentials are __not__ claimable and never were, whatever
+-- 'Palmares.TxBuilding.Conversions.parseClaimCredential' used to be documented as accepting: they
+-- are not CIP-129, and control of one is proved by a withdrawal in @txInfoWdrl@ rather than by a
+-- spend, which is a different feature with its own cost.
+data ClaimedCredential
+  = ClaimedDRep Credential
+  | ClaimedCCCold Credential
+  | ClaimedCCHot Credential
+  deriving stock (Generic, Prelude.Show, Prelude.Eq)
+  deriving anyclass (HasBlueprintDefinition)
+
+makeIsDataSchemaIndexed
+  ''ClaimedCredential
+  [ ('ClaimedDRep, 0),
+    ('ClaimedCCCold, 1),
+    ('ClaimedCCHot, 2)
+  ]
+
+-- | The credential inside, which is what proof of control is about.
+--
+-- The role is for the record and for the renderer; @Mc3@ asks the same question of all three, and
+-- asking it of the wrapper instead would be a second place for the roles to drift apart.
+{-# INLINEABLE claimedCredentialOf #-}
+claimedCredentialOf :: ClaimedCredential -> Credential
+claimedCredentialOf (ClaimedDRep c) = c
+claimedCredentialOf (ClaimedCCCold c) = c
+claimedCredentialOf (ClaimedCCHot c) = c
+
 data OnchainAttestation = OnchainAttestation
   { attestationId :: AttestationId,
     attestationIssuer :: ProfileId,
@@ -491,7 +556,13 @@ data OnchainAttestation = OnchainAttestation
     -- audit found that irreversible and reachable with a weak proof, so ADR 0003 moved the binding
     -- into the append-only record type this protocol already has. 'Nothing' here on an ordinary
     -- attestation is not "unclaimed" — it simply is not a claim.
-    attestationCredential :: Maybe Credential,
+    --
+    -- __Carries the ROLE as of ADR 0006__ ('ClaimedCredential'), because a bare 'Credential' threw
+    -- away CIP-129's header byte and the renderer then published every claim as @drep1…@. A
+    -- withdrawal must therefore name the same role as the claim it supersedes, which is the right
+    -- rule rather than a side effect: withdrawing a DRep claim has no business cancelling a
+    -- committee-cold one over the same 28 bytes.
+    attestationCredential :: Maybe ClaimedCredential,
     -- | Which oracle UTxO governs this record, so that @AcceptAttestation@ can find it.
     --
     -- __The same field as 'disputeOracleToken', for the same reason, and decided as D-C.__ An

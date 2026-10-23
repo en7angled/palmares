@@ -299,10 +299,29 @@ getCursorValue = fmap entityVal <$> getBy (UniqueCursor True)
 putCursor :: (MonadIO m) => ChainCursor -> SqlPersistT m ()
 putCursor = upsertByUnique (const (UniqueCursor True))
 
--- | Upsert the singleton config row with the given policy hex and the current schema version.
-putStoredPolicyHexText :: (MonadIO m) => Text -> SqlPersistT m ()
-putStoredPolicyHexText policyHexText =
-  upsertByUnique (const (UniqueChainSyncConfig True)) (ChainSyncConfig True policyHexText currentSchemaVersion)
+-- | Upsert the singleton config row with a POLICY HISTORY and the current schema version.
+--
+-- __The column holds a history, newest first, as of ADR 0007__ — comma-separated, same column, same
+-- type, no migration. A pre-existing row holding a single policy id parses as a one-element history,
+-- which is what lets this land without the schema bump that would have wiped the very rows the
+-- stance exists to keep.
+--
+-- __Why a history at all.__ The minting policy's hash is a function of all three validator hashes
+-- plus the oracle token, so fixing ANY validator produces a new policy and therefore a new
+-- registry's worth of ids. Stance (a) of @OC-09@ says old records stay readable, and every
+-- projection row already carries its policy — each id is stored as a 'GYAssetClass', which is
+-- @policy.name@ — so the read layer unions deployments for free. What it cannot do for free is know
+-- WHICH registries the database holds, and that is this column.
+putStoredPolicyHistory :: (MonadIO m) => [Text] -> SqlPersistT m ()
+putStoredPolicyHistory history =
+  upsertByUnique
+    (const (UniqueChainSyncConfig True))
+    (ChainSyncConfig True (Text.intercalate "," history) currentSchemaVersion)
+
+-- | The policies a stored config row names, newest first. Tolerant of the single-id form written
+-- before ADR 0007 and of stray whitespace.
+parsePolicyHistory :: Text -> [Text]
+parsePolicyHistory = filter (not . Text.null) . map Text.strip . Text.splitOn ","
 
 -- | Table names for all entities in this persist block (persistLowerCase).
 -- When adding a new entity to this block, add its table name here so wipeChainSyncTablesRaw drops it.

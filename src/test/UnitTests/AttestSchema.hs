@@ -32,6 +32,9 @@ import Palmares.Storage
     chainSyncTableNames,
     currentSchemaVersion,
     ensureAttestSchema,
+    parsePolicyHistory,
+    putStoredPolicyHistory,
+    readSchemaProbe,
     putAttestationProjection,
     runAttest,
     runMigrations,
@@ -97,7 +100,44 @@ tests =
       -- runAttest is the only thing standing between the entities and the wrong schema, so what it
       -- sets is worth pinning. SET LOCAL, not SET: the pool reuses connections, and a path left
       -- behind would follow whatever ran next on that connection.
-      testCase "runAttest pins search_path to palmares_attest, and only for its own transaction" $
+      -- ADR 0007, stance (a) of `OC-09`. These four are about the sentence "a redeploy is a new
+      -- registry and the old records remain readable", which was FALSE in the one place that could
+      -- falsify it: `attest-sync` wiped every chain-sync table when the stored policy differed.
+      --
+      -- Pure first, because the column's new meaning is a parse and nothing else.
+      testCase "a pre-ADR-0007 row holding ONE policy id parses as a one-element history" $
+        parsePolicyHistory "beef" @?= ["beef"],
+      testCase "a history parses newest-first, and whitespace is not a policy" $
+        parsePolicyHistory " cafe , beef ,, " @?= ["cafe", "beef"],
+      -- The round trip, because the history is written by one function and read by another through
+      -- raw SQL — the two agreeing is the whole contract, and a comma is all that is between them.
+      testCase "a written history reads back in order, through readSchemaProbe's raw SQL" $
+        withScratchDb $ \pool -> do
+          runPg pool ensureAttestSchema
+          runAttest pool runMigrations
+          runAttest pool (putStoredPolicyHistory ["cafe", "beef"])
+          probe <- runAttest pool readSchemaProbe
+          case probe of
+            Nothing -> assertFailure "the config row should exist after a migration and a write"
+            Just (version, stored) -> do
+              version @?= currentSchemaVersion
+              parsePolicyHistory stored @?= ["cafe", "beef"],
+      -- And the behaviour the stance is about: writing a DIFFERENT policy must not cost the rows of
+      -- the previous one. `attest-sync` decides whether to wipe from the schema VERSION alone now,
+      -- so this pins that a second policy is an addition.
+      testCase "a second policy appends to the history and keeps the first" $
+        withScratchDb $ \pool -> do
+          runPg pool ensureAttestSchema
+          runAttest pool runMigrations
+          runAttest pool (putStoredPolicyHistory ["beef"])
+          Just (_, firstStored) <- runAttest pool readSchemaProbe
+          -- What Main.hs computes: the new policy at the head, the old ones after it, no duplicates.
+          let older = parsePolicyHistory firstStored
+              nextHistory = "cafe" : filter (/= "cafe") older
+          runAttest pool (putStoredPolicyHistory nextHistory)
+          Just (_, secondStored) <- runAttest pool readSchemaProbe
+          parsePolicyHistory secondStored @?= ["cafe", "beef"],
+            testCase "runAttest pins search_path to palmares_attest, and only for its own transaction" $
         withScratchDb $ \pool -> do
           runPg pool ensureAttestSchema
           [Single (inside :: T.Text)] <- runAttest pool (rawSql "SELECT current_schema()::text" [])

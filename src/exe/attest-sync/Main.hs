@@ -30,7 +30,8 @@ import Palmares.ChainSync.KupoClient (KupoCheckpoint (..))
 import Palmares.Storage
   ( currentSchemaVersion,
     ensureAttestSchema,
-    putStoredPolicyHexText,
+    putStoredPolicyHistory,
+    parsePolicyHistory,
     readSchemaProbe,
     rollbackTo,
     runAttest,
@@ -100,14 +101,46 @@ main = do
   -- unqualified, so without this they land in `palmares`, which query-api drops on every boot.
   runSqlPool ensureAttestSchema pool
   mProbe <- runAttest pool readSchemaProbe
+
+  -- A POLICY CHANGE NO LONGER WIPES — ADR 0007, stance (a) of `OC-09`.
+  --
+  -- It used to: `storedPolicy /= policyHexText` dropped every chain-sync table, so a redeploy
+  -- destroyed the previous registry's records. That is precisely what the stance promises not to do
+  -- — "a redeploy is a new registry and the old records remain readable" — and the promise would
+  -- have been false in the one place that could falsify it.
+  --
+  -- Nothing has to be migrated for the old rows to stay readable: every id is stored as a
+  -- `GYAssetClass`, which is @policy.name@, so each row already says which registry it belongs to
+  -- and a reader unions deployments for free. What changes is only that the table keeps them.
+  --
+  -- A SCHEMA VERSION BUMP STILL WIPES, and that is a different question: those tables would need an
+  -- in-place ALTER that Postgres rejects (varchar->bigint, ADD COLUMN NOT NULL), so a fresh CREATE
+  -- is the only safe path and the records are re-indexed from the chain afterwards.
   let needWipe = case mProbe of
         Nothing -> False
-        Just (storedVersion, storedPolicy) -> storedVersion < currentSchemaVersion || storedPolicy /= policyHexText
+        Just (storedVersion, _storedPolicies) -> storedVersion < currentSchemaVersion
   when needWipe $ do
-    putStrLn "Schema version or policy changed; dropping chain-sync tables before migration."
+    putStrLn "Schema version changed; dropping chain-sync tables before migration."
     runAttest pool wipeChainSyncTablesRaw
   runAttest pool runMigrations
-  runAttest pool (putStoredPolicyHexText policyHexText)
+
+  -- The history this database holds, newest first. The current policy goes to the head unless it is
+  -- already there, so a restart is idempotent and a redeploy appends.
+  let previousPolicies = if needWipe then [] else maybe [] (parsePolicyHistory . snd) mProbe
+      policyHistory = policyHexText : filter (/= policyHexText) previousPolicies
+  runAttest pool (putStoredPolicyHistory policyHistory)
+  case filter (/= policyHexText) previousPolicies of
+    [] -> return ()
+    older ->
+      putStrLn
+        ( "Policy history: indexing "
+            <> T.unpack policyHexText
+            <> " and KEEPING the records of "
+            <> show (length older)
+            <> " earlier registry/registries ("
+            <> T.unpack (T.intercalate ", " older)
+            <> "). Their records stay readable and stop being updated: a redeploy is a new registry."
+        )
 
   fetchBatchSize <- do
     mb <- lookupEnv "FETCH_BATCH_SIZE"

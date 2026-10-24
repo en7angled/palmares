@@ -341,8 +341,21 @@ SELECT
   b.time AS proposed_at,
   b.proto_major AS proposed_proto_major,
   g.expiration,
+  -- `expiration - 1`, NOT `expiration`. db-sync writes `expiration = proposed_epoch + lifetime + 1`
+  -- — measured: the delta is 7 on all 131 preprod actions while `gov_action_lifetime` is 6 — so the
+  -- ledger's last legal vote epoch is one BELOW it. `docs/spec/metrics.md` says exactly that in
+  -- words and then prints the formula with a bare `expiration`; this view implemented the formula.
+  --
+  -- The corpus settles it: over the 96 actions that ever received a DRep or SPO vote, 19 reach
+  -- exactly `expiration - 1` and **none** reaches `expiration`. And `expired_epoch` is always
+  -- `expiration`, never one less, so the COALESCE below never corrected it either.
+  --
+  -- What the off-by-one published: 4 of 131 actions were votable at epoch 321 with
+  -- `expired_epoch = 321`, so `/pages/dashboard.actions_in_flight` read 11 where 7 are open; and
+  -- 462 of 809 DReps carried a wrong participation denominator — worst case 6 eligible actions
+  -- against a true 2, a rate of 0.167 published for a true 0.500.
   LEAST(
-    g.expiration,
+    g.expiration - 1,
     COALESCE(g.ratified_epoch, g.expiration),
     COALESCE(g.expired_epoch, g.expiration),
     COALESCE(g.dropped_epoch - 1, g.expiration)
@@ -352,8 +365,10 @@ SELECT
     OR EXISTS (
       SELECT 1
       FROM public.epoch_param ep
+      -- The same window as `last_votable_epoch` above, including its `- 1`: a second spelling of
+      -- the same bound is how the two drifted apart in the first place.
       WHERE ep.epoch_no BETWEEN b.epoch_no AND LEAST(
-              g.expiration,
+              g.expiration - 1,
               COALESCE(g.ratified_epoch, g.expiration),
               COALESCE(g.expired_epoch, g.expiration),
               COALESCE(g.dropped_epoch - 1, g.expiration))

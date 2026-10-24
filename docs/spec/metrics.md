@@ -175,9 +175,16 @@ The view's arm order is therefore part of the definition, not a style choice.
 **Decision — state and votability are different questions.** An action whose `expired_epoch` equals
 the current epoch reads as `expired` while its window is still open, so `palmares.action_window` —
 never this value — decides whether a vote is still possible. `last_votable_epoch` is
-`LEAST(expiration, ratified, expired, dropped − 1)`, and the ledger's last legal vote epoch is
+`LEAST(expiration − 1, ratified, expired, dropped − 1)`: the ledger's last legal vote epoch is
 `expiration − 1`, because db-sync writes `expiration = proposed + lifetime + 1`. All three statements
 are asserted against the real corpus in `sql/checks/`.
+
+This paragraph said `LEAST(expiration, …)` while the sentence beside it said `expiration − 1`, and
+the view implemented the formula rather than the sentence. Measured before the fix: 4 of 131 actions
+were published as votable in the epoch they expired in, `actions_in_flight` read 11 against a true 7,
+and 462 of 809 DReps carried a wrong participation denominator. The corpus is unambiguous — of the 96
+actions that ever received a DRep or SPO vote, 19 reach exactly `expiration − 1` and none reaches
+`expiration`.
 
 ## tally_cast_votes_v1
 

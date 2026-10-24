@@ -27,10 +27,20 @@ voted AS (
   WHERE v.drep_voter_id = (SELECT drep_hash_id FROM p)
 ),
 open_unvoted AS (
+  -- The registration interval is required here, the same overlap test `elig` above applies through
+  -- palmares.eligible_actions. Without it every credential in the table reported every open action
+  -- as outstanding — including the 523 retired ones, which cannot legally vote on any of them, and
+  -- which were therefore served `eligible_actions: 0` beside `open_actions_unvoted: 11`.
   SELECT a.gov_action_id
   FROM palmares.action_window a
   WHERE a.last_votable_epoch >= (SELECT as_of_epoch FROM p)
     AND a.drep_votable
+    AND EXISTS (
+      SELECT 1 FROM palmares.drep_interval i
+      WHERE i.drep_hash_id = (SELECT drep_hash_id FROM p)
+        AND i.from_epoch <= a.last_votable_epoch
+        AND (i.to_epoch IS NULL OR i.to_epoch >= a.proposed_epoch)
+    )
     AND NOT EXISTS (
       SELECT 1 FROM palmares.vote v
       WHERE v.drep_voter_id = (SELECT drep_hash_id FROM p)

@@ -25,10 +25,18 @@ BEGIN
           WHERE proposed_epoch < 320 AND state = 'enacted') = 11;
   ASSERT (SELECT count(*) FROM palmares.gov_action
           WHERE proposed_epoch < 320 AND ratified_epoch IS NOT NULL) = 11;
-  ASSERT (SELECT count(*) FROM palmares.gov_action
-          WHERE proposed_epoch < 320 AND expired_epoch IS NOT NULL) = 103;
-  ASSERT (SELECT count(*) FROM palmares.gov_action
-          WHERE proposed_epoch < 320 AND dropped_epoch IS NOT NULL) = 108;
+  -- __THESE TWO ARE NOT PINNED, AND THE REASON IS THE CUT ABOVE.__ `proposed_epoch < 320` freezes
+  -- which actions are counted; it does not freeze a lifecycle column that the chain writes at
+  -- SETTLEMENT, which happens later. An action proposed in epoch 319 expires after 320, so both
+  -- counts climb with the chain: `expired_epoch` was pinned at 103 and measured 107, `dropped_epoch`
+  -- at 108 and measured 109. The assertion fails on a correct view, which is the shape of pin that
+  -- gets a gate switched off rather than fixed.
+  --
+  -- What IS invariant is the relation between them, and that is asserted below. The magnitudes are
+  -- reported so a reader still sees them move.
+  RAISE NOTICE 'lifecycle (proposed before 320, counts move with the chain): % expired, % dropped',
+    (SELECT count(*) FROM palmares.gov_action WHERE proposed_epoch < 320 AND expired_epoch IS NOT NULL),
+    (SELECT count(*) FROM palmares.gov_action WHERE proposed_epoch < 320 AND dropped_epoch IS NOT NULL);
   ASSERT (SELECT count(*) FROM palmares.gov_action
           WHERE proposed_epoch < 320 AND dropped_epoch IS NOT NULL
             AND expired_epoch IS NULL AND ratified_epoch IS NULL) = 6, 'dropped-only';
@@ -36,14 +44,28 @@ BEGIN
   ASSERT (SELECT count(*) FROM palmares.gov_action
           WHERE proposed_epoch < 320 AND state = 'ratified') = 0;
 
-  -- `state` and `last_votable_epoch` answer different questions, and here they disagree by one:
-  -- 131 - 11 enacted - 103 expired - 6 dropped-only = 11 'proposed', while 12 are still votable.
-  -- One action carries expired_epoch = 320, so it is 'expired' by state with its window open. A
-  -- UI that derives "can I still vote" from `state` is wrong on exactly that row.
+  -- `state` and `last_votable_epoch` answer different questions, and the INVARIANT is what is
+  -- asserted — not the magnitudes, which move with the chain for the reason given above (the
+  -- 'proposed' count was pinned at 11 and measured 7, because four of those actions have since
+  -- expired).
+  --
+  -- The relation: every action is either enacted, expired, dropped-only, or still 'proposed'.
+  ASSERT (SELECT count(*) FROM palmares.gov_action WHERE proposed_epoch < 320 AND state = 'proposed')
+       = (SELECT count(*) FROM palmares.gov_action WHERE proposed_epoch < 320)
+       - (SELECT count(*) FROM palmares.gov_action WHERE proposed_epoch < 320 AND state = 'enacted')
+       - (SELECT count(*) FROM palmares.gov_action WHERE proposed_epoch < 320 AND expired_epoch IS NOT NULL)
+       - (SELECT count(*) FROM palmares.gov_action WHERE proposed_epoch < 320 AND dropped_epoch IS NOT NULL
+            AND expired_epoch IS NULL AND ratified_epoch IS NULL),
+    'the four lifecycle outcomes must partition the proposals';
+  -- And `state` is not votability: an action whose `expired_epoch` is the current epoch reads as
+  -- `expired` while `last_votable_epoch` has already closed its window the epoch before. Since
+  -- `last_votable_epoch = expiration - 1`, no action can now be both 'expired' by state and still
+  -- votable — which is itself the invariant worth asserting, and it replaces the count.
   ASSERT (SELECT count(*) FROM palmares.gov_action
-          WHERE proposed_epoch < 320 AND state = 'proposed') = 11;
-  ASSERT (SELECT count(*) FROM palmares.gov_action
-          WHERE proposed_epoch < 320 AND last_votable_epoch >= 320) = 12, 'still votable';
+          WHERE expired_epoch IS NOT NULL AND last_votable_epoch >= expired_epoch) = 0,
+    'an expired action cannot still be votable in or after the epoch it expired';
+  RAISE NOTICE 'still votable now: %',
+    (SELECT count(*) FROM palmares.gov_action WHERE last_votable_epoch >= (SELECT epoch_no FROM palmares.sync_state));
 
   -- votes_cast counts FINAL votes, so it must equal the seq_last filter exactly. A mismatch means
   -- either the re-vote numbering or this subquery drifted.

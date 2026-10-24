@@ -120,10 +120,18 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-store-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
           restore-keys: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-store-
 
+      # `sql/**` and `resources/**` ARE IN THE KEY, and that is not an optimisation. Those files are
+      # compiled into the binaries with `embedFile`, and cabal does not track an `embedFile`
+      # dependency under this toolchain — measured: editing one line of `sql/030_metrics.sql`
+      # recompiles nothing. With them out of the key, a pull request touching only SQL got an exact
+      # cache hit, nothing rebuilt, and every Haskell gate ran the PREVIOUS version of the DDL —
+      # including the "metric documentation is not stale" diff, which then compared the old embed
+      # against the old document and passed. `UnitTests.Views` asserts the same thing from inside
+      # the binary; this line is what stops the cache from serving one that is already wrong.
       - uses: actions/cache@v4
         with:
           path: dist-newstyle
-          key: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-dist-${{ hashFiles('cabal.project.freeze', 'cabal.project', 'palmares.cabal') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-dist-${{ hashFiles('cabal.project.freeze', 'cabal.project', 'palmares.cabal', 'sql/**', 'resources/**') }}
 
       - run: cabal update
       - run: cabal build all --enable-tests

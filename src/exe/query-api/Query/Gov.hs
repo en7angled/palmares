@@ -1416,6 +1416,14 @@ voteSortSpec = \case
 -- The power join reads @palmares.drep_epoch_power@ at the action's LAST VOTABLE EPOCH, not at the
 -- vote's own epoch: that is the epoch the ledger weighs the vote in, and a DRep's stake moves
 -- between the two.
+--
+-- __The @palmares.drep@ join excludes @never_registered@, or it fans out.__ Two preprod credentials
+-- exist twice in @drep_hash@ — once as a key hash and once as a script hash over the same raw bytes
+-- — and @palmares.drep@ keeps both, so a vote by one of them matched two rows and the page served
+-- 832 items for 831 votes. Measured on the worst case: @\/votes?voter_id=763ef756…@ answered
+-- @"total": 1@ beside two byte-identical items, because the count joins by @drep_hash_id@ and the
+-- page joins by @drep_raw@. 'resolveDRepHex' already applies exactly this tie-break, for exactly
+-- this reason.
 voteFrom :: Text
 voteFrom =
   " FROM palmares.vote v \
@@ -1424,7 +1432,8 @@ voteFrom =
   \ LEFT JOIN palmares.drep_epoch_power p \
   \   ON p.target_kind = 'drep' AND p.drep_raw = v.voter_id_hash \
   \  AND p.epoch_no = w.last_votable_epoch \
-  \ LEFT JOIN palmares.drep d ON d.drep_raw = v.voter_id_hash "
+  \ LEFT JOIN palmares.drep d ON d.drep_raw = v.voter_id_hash \
+  \  AND d.registration_status <> 'never_registered' "
 
 -- | The @WHERE@ fragment and its parameters.
 voteWhere :: VoteFilter -> (Text, [PersistValue])

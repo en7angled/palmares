@@ -8,10 +8,13 @@
 module UnitTests.Views (tests) where
 
 import Control.Exception (SomeException, try)
+import Control.Monad (forM_)
+import Data.ByteString qualified as BS
 import Data.Either (isLeft)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
 import Database.Persist.Sql (ConnectionPool, Single (..), SqlPersistT, rawExecute, rawSql)
+import Palmares.Metrics.Catalog (catalogJson, metricSql)
 import Query.Views (applyPalmaresSchema, applySchemaSql, hasStatement, palmaresSqlFiles)
 import Test.Pg (runPg, withScratchDb)
 -- `after` is tasty's dependency-ordering combinator and nothing here uses it, while three cases
@@ -24,7 +27,33 @@ tests :: TestTree
 tests =
   testGroup
     "palmares schema bootstrap"
-    [ testCase "applies, and applies again (DROP SCHEMA CASCADE makes it idempotent)" $
+    [ -- __CABAL DOES NOT TRACK `embedFile` DEPENDENCIES under this toolchain, measured.__ Editing
+      -- one line of `sql/030_metrics.sql` recompiled nothing — `Query/Views.o` kept its old mtime
+      -- and the test binary kept the old bytes — so the whole SQL-backed half of the suite stayed
+      -- green against DDL that was no longer in the tree. `touch`ing the module does not help
+      -- either, because GHC hashes sources; only a real source change does.
+      --
+      -- CI is worse: its `dist-newstyle` cache key hashes `cabal.project`, `cabal.project.freeze`
+      -- and `palmares.cabal` and nothing else, so a pull request touching only `sql/**` or
+      -- `resources/**` gets an exact cache hit and every Haskell gate runs the previous version —
+      -- including `admin write-metrics-doc`, whose "docs are not stale" diff then compares the old
+      -- embed against the old document and passes.
+      --
+      -- This case closes it from the inside: the comparison happens at RUN time against the working
+      -- tree, so a binary built from stale embeds fails here with the two byte strings differing.
+      -- It cannot be defeated by the staleness it detects.
+      testCase "every embedded file is the file on disk (cabal does not track embedFile deps)" $ do
+        let embeds =
+              [("sql/" <> n, b) | (n, b) <- palmaresSqlFiles]
+                <> [("resources/metrics/" <> n, b) | (n, b) <- metricSql]
+                <> [("resources/metric-formulas.json", catalogJson)]
+        forM_ embeds $ \(path, embedded) -> do
+          onDisk <- BS.readFile path
+          assertEqual
+            (path <> ": the binary's embed is stale — rebuild the test suite (cabal did not notice this file changed)")
+            onDisk
+            embedded,
+      testCase "applies, and applies again (DROP SCHEMA CASCADE makes it idempotent)" $
         withScratchDb $ \pool -> do
           applyPalmaresSchema pool
           applyPalmaresSchema pool

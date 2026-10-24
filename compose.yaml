@@ -346,7 +346,14 @@ services:
       # It still OWNS the `palmares` schema bootstrap, which needs DDL, so the owner role is what the
       # schema work runs as; `palmares_ro` is what serves reads. Both are created by
       # `palmares-roles` above.
-      PG_CONN_STR: "host=postgres user=palmares_owner password=${PALMARES_OWNER_PASSWORD:-devonly} dbname=cexplorer port=5432"
+      #
+      # THE SPLIT IS NOW ACTUALLY WIRED. This file set one `palmares_owner` DSN and left
+      # `PALMARES_PG_OWNER_CONN_STR` unset, so the owner pool fell back to it and a single owner
+      # connection served both the DDL and every unauthenticated request — the comment above
+      # described a separation the configuration did not make. Two DSNs, two pools: requests on
+      # `palmares_ro`, the boot DDL and the matview refresh on `palmares_owner`.
+      PG_CONN_STR: "host=postgres user=palmares_ro password=${PALMARES_RO_PASSWORD:-devonly} dbname=cexplorer port=5432"
+      PALMARES_PG_OWNER_CONN_STR: "host=postgres user=palmares_owner password=${PALMARES_OWNER_PASSWORD:-devonly} dbname=cexplorer port=5432"
       PORT: "8083"
       # Empty allowlist denies all cross-origin: fail-closed. Set it for a local frontend.
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"

@@ -220,6 +220,31 @@ WITH final_votes AS (
   JOIN palmares.action_window a ON a.gov_action_id = v.gov_action_id
   WHERE v.seq_last = 1
 ),
+-- The epoch the power is read at, CLAMPED to the newest distribution the ledger has published.
+--
+-- `last_votable_epoch` is in the FUTURE for an action still in flight, and neither `drep_distr` nor
+-- `pool_stat` has a row for an epoch that has not happened — so the lookups below missed, the
+-- `COALESCE(…, 0)` turned "not yet known" into "zero stake", and every open action was published
+-- with zero power behind every vote and `ratio: null`. Measured: action 131, a live
+-- ParameterChange, served 40 DRep votes with `yes_power: 0`; 3 of 93 DRep tally rows and 1 of 17 SPO
+-- rows were in that state, which is precisely the set a governance dashboard exists to show.
+--
+-- Clamped rather than left NULL because the most recent distribution IS the best available estimate
+-- of the weight behind a vote cast today, and it is the number every other surface already uses.
+-- The clamped epoch is what the view publishes as `epoch`, so a reader is never told the power came
+-- from an epoch it did not.
+-- @last_votable_epoch + 1@, because THE RATIFICATION EPOCH IS NOT THE LAST VOTABLE ONE. The ledger
+-- weighs the votes at the boundary AFTER the window closes, which is the distribution written for
+-- that next epoch. This read `last_votable_epoch` directly, and that was right only while
+-- `last_votable_epoch` was itself one too high: correcting the eligibility bound moved the power
+-- lookup an epoch earlier with it, and 28 settled tallies that had carried power lost it. Measured:
+-- 4 zero-power tallies before, 32 after, 0 once the two questions were separated.
+clamped AS (
+  SELECT
+    f.*,
+    LEAST(f.last_votable_epoch + 1, (SELECT ss.drep_distr_epoch FROM palmares.sync_state ss)) AS power_epoch
+  FROM final_votes f
+),
 weighted AS (
   SELECT
     f.*,
@@ -228,20 +253,23 @@ weighted AS (
         SELECT p.amount FROM palmares.drep_epoch_power p
         WHERE p.target_kind = 'drep'
           AND p.drep_raw = f.voter_hot_hash
-          AND p.epoch_no = f.last_votable_epoch), 0)
+          AND p.epoch_no = f.power_epoch), 0)
       WHEN 'SPO' THEN COALESCE((
         SELECT ps.voting_power FROM public.pool_stat ps
         JOIN public.pool_hash ph ON ph.id = ps.pool_hash_id
         WHERE ph.hash_raw = f.voter_hot_hash
-          AND ps.epoch_no = f.last_votable_epoch), 0)
+          AND ps.epoch_no = f.power_epoch), 0)
       ELSE 0
     END AS power
-  FROM final_votes f
+  FROM clamped f
 )
 SELECT
   w.gov_action_id,
   w.voter_role,
-  w.last_votable_epoch AS epoch,
+  -- The epoch the POWER came from, which for a settled action is `last_votable_epoch` and for one
+  -- still in flight is the newest published distribution. Publishing the window's epoch here while
+  -- reading the power from another would be the same lie with the numbers swapped.
+  w.power_epoch AS epoch,
   sum(w.power) FILTER (WHERE w.vote = 'Yes') AS yes_power,
   sum(w.power) FILTER (WHERE w.vote = 'No') AS no_power,
   sum(w.power) FILTER (WHERE w.vote = 'Abstain') AS abstain_power,
@@ -284,8 +312,15 @@ SELECT
 FROM weighted w
 LEFT JOIN palmares.threshold_map m
   ON m.action_type = w.action_type AND m.voter_role = w.voter_role
-LEFT JOIN palmares.thresholds th ON th.epoch_no = w.last_votable_epoch
-GROUP BY w.gov_action_id, w.voter_role, w.last_votable_epoch, m.threshold_param,
+-- The threshold is clamped the same way the power is, and for the same reason: `epoch_param` has no
+-- row for an epoch that has not happened, so an action still in flight published
+-- `threshold_param: "dvt_treasury_withdrawal", threshold: null` — a named bar with no number, which
+-- reads as "no bar applies". Measured: 2 of 129 tally rows, and it would hit every open action that
+-- receives a vote. A protocol parameter rarely moves, so the newest published value is the honest
+-- estimate of the bar a vote cast today is measured against.
+LEFT JOIN palmares.thresholds th
+  ON th.epoch_no = LEAST(w.last_votable_epoch, (SELECT max(t2.epoch_no) FROM palmares.thresholds t2))
+GROUP BY w.gov_action_id, w.voter_role, w.last_votable_epoch, w.power_epoch, m.threshold_param,
          th.dvt_motion_no_confidence, th.dvt_committee_normal, th.dvt_committee_no_confidence,
          th.dvt_update_to_constitution, th.dvt_hard_fork_initiation, th.dvt_treasury_withdrawal,
          th.pvt_motion_no_confidence, th.pvt_committee_normal, th.pvt_committee_no_confidence,

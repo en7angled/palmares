@@ -180,7 +180,9 @@ deleg AS (
   GROUP BY l.drep_hash_id
 ),
 open_actions AS (
-  SELECT a.gov_action_id
+  -- The window bounds travel with the id, because `open_unvoted` below needs them for the same
+  -- registration-interval overlap test `palmares.eligible_actions` applies.
+  SELECT a.gov_action_id, a.proposed_epoch, a.last_votable_epoch
   FROM palmares.action_window a
   CROSS JOIN s
   WHERE a.last_votable_epoch >= s.epoch_no
@@ -189,14 +191,28 @@ open_actions AS (
 open_unvoted AS (
   -- Reported separately from participation, and deliberately NOT subtracted from it: a still-open
   -- action is not a missed vote, it is a vote not yet due.
+  --
+  -- __The registration interval is required here, exactly as `palmares.eligible_actions` requires
+  -- it.__ Without it this counted every open action for every credential in `palmares.drep`, so all
+  -- 824 reported 11 outstanding actions — including 523 retired and 7 never-registered ones, 64% of
+  -- the table, that cannot legally vote on any of them. A DRep that retired in epoch 163 was served
+  -- `eligible_actions: 0` beside `open_actions_unvoted: 11`, which reads as a DRep ignoring its
+  -- duties 158 epochs after it left. The same omission is in the published formula, so the two
+  -- agreed with each other and both were wrong.
   SELECT d.drep_hash_id, count(*) AS open_actions_unvoted
   FROM palmares.drep d
   CROSS JOIN open_actions o
-  WHERE NOT EXISTS (
-    SELECT 1 FROM dv v
-    WHERE v.drep_voter_id = d.drep_hash_id
-      AND v.gov_action_id = o.gov_action_id
-  )
+  WHERE EXISTS (
+      SELECT 1 FROM palmares.drep_interval i
+      WHERE i.drep_hash_id = d.drep_hash_id
+        AND i.from_epoch <= o.last_votable_epoch
+        AND (i.to_epoch IS NULL OR i.to_epoch >= o.proposed_epoch)
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM dv v
+      WHERE v.drep_voter_id = d.drep_hash_id
+        AND v.gov_action_id = o.gov_action_id
+    )
   GROUP BY d.drep_hash_id
 ),
 last_vote AS (

@@ -11,10 +11,13 @@ import Control.Exception (SomeException, try)
 import Data.Either (isLeft)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
-import Database.Persist.Sql (Single (..), SqlPersistT, rawExecute, rawSql)
+import Database.Persist.Sql (ConnectionPool, Single (..), SqlPersistT, rawExecute, rawSql)
 import Query.Views (applyPalmaresSchema, applySchemaSql, hasStatement, palmaresSqlFiles)
 import Test.Pg (runPg, withScratchDb)
-import Test.Tasty
+-- `after` is tasty's dependency-ordering combinator and nothing here uses it, while three cases
+-- below bind an oid snapshot called `after` beside a `before`. Hidden rather than renamed, the same
+-- choice `UnitTests.Projections` and `UnitTests.AttestSchema` make.
+import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
 
 tests :: TestTree
@@ -28,6 +31,42 @@ tests =
           [Single (n :: Int)] <-
             runPg pool $ rawSql "SELECT count(*)::int FROM pg_namespace WHERE nspname = 'palmares'" []
           n @?= 1,
+      -- `GV-01`. The rebuild is atomic, so the outage was never about visibility: @DROP@ takes an
+      -- AccessExclusiveLock on every object, so readers blocked for the duration — a read outage per
+      -- restart once there is more than one replica, and a rolling deploy is nothing but restarts.
+      --
+      -- What the fingerprint buys is that an ordinary restart does no DDL at all. Asserted by the
+      -- OBJECT IDENTITY of a view: a rebuild drops and recreates it, which gives it a new oid, so an
+      -- unchanged oid across a second boot is proof the DDL did not run. Counting schemas (the case
+      -- above) could not tell a skip from a rebuild — both leave exactly one.
+      testCase "a second boot with unchanged DDL does NOT rebuild (GV-01)" $
+        withScratchDb $ \pool -> do
+          applyPalmaresSchema pool
+          before <- someViewOid pool
+          applyPalmaresSchema pool
+          after <- someViewOid pool
+          assertEqual "the view was not dropped and recreated" before after,
+      -- And the converse, without which the gate could simply be "never rebuild": a fingerprint that
+      -- does not match the DDL must force the rebuild. Corrupting the stored value is the honest way
+      -- to simulate a DDL change, because editing `palmaresSqlFiles` is a compile-time matter.
+      testCase "a fingerprint that does not match forces the rebuild (GV-01)" $
+        withScratchDb $ \pool -> do
+          applyPalmaresSchema pool
+          before <- someViewOid pool
+          runPg pool $ rawExecute "UPDATE palmares.schema_fingerprint SET fingerprint = 'stale'" []
+          applyPalmaresSchema pool
+          after <- someViewOid pool
+          assertBool "the view WAS dropped and recreated" (before /= after),
+      -- A boot that finds no fingerprint table at all — the upgrade path from any database built
+      -- before this change — must rebuild rather than assume it is current.
+      testCase "a schema with no fingerprint table is rebuilt, not trusted (GV-01)" $
+        withScratchDb $ \pool -> do
+          applyPalmaresSchema pool
+          before <- someViewOid pool
+          runPg pool $ rawExecute "DROP TABLE palmares.schema_fingerprint" []
+          applyPalmaresSchema pool
+          after <- someViewOid pool
+          assertBool "the view WAS dropped and recreated" (before /= after),
       testCase "every file in palmaresSqlFiles is applied, in lexical order" $
         map fst palmaresSqlFiles
           @?= ["000_schema.sql", "010_gov_views.sql", "020_views.sql", "030_metrics.sql", "040_grants.sql"],
@@ -108,3 +147,17 @@ tests =
         "SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
         \WHERE n.nspname = 'palmares'"
         []
+
+-- | The oid of one object in the schema, as a rebuild detector: @DROP SCHEMA CASCADE@ gives every
+-- recreated object a new oid, so a stable oid means the DDL did not run.
+someViewOid :: ConnectionPool -> IO Int
+someViewOid pool = do
+  rows <-
+    runPg pool $
+      rawSql
+        "SELECT c.oid::int FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+        \WHERE n.nspname = 'palmares' ORDER BY c.relname LIMIT 1"
+        []
+  case rows of
+    [Single oid] -> pure oid
+    _ -> assertFailure "the palmares schema holds no objects at all" >> pure 0

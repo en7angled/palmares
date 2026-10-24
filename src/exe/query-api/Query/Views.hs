@@ -25,7 +25,8 @@ import Data.ByteString (ByteString)
 import Data.FileEmbed (embedFile, makeRelativeToProject)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Database.Persist.Sql (ConnectionPool, SqlPersistT, rawExecute, runSqlPool)
+import Control.Monad.IO.Class (liftIO)
+import Database.Persist.Sql (ConnectionPool, Single (..), SqlPersistT, rawExecute, rawSql, runSqlPool, toPersistValue)
 import System.Exit (die)
 
 -- | The schema DDL, in the order it must be applied.
@@ -83,10 +84,77 @@ applySchemaSql files = do
   rawExecute "SET LOCAL lock_timeout = '10s'" []
   mapM_ (\(_, sql) -> rawExecute (TE.decodeUtf8 sql) []) (filter (hasStatement . snd) files)
 
--- | Apply the whole schema in one transaction, or 'die'.
+-- | The DDL as one text, which is what the fingerprint is taken over.
+--
+-- Postgres computes the hash, not Haskell: the value is stored and compared by the same @md5()@, so
+-- the two cannot disagree about the algorithm, and no hashing dependency is added to a service whose
+-- whole point is that it boots with a Postgres DSN and nothing else.
+schemaFingerprintSource :: T.Text
+schemaFingerprintSource = T.concat (map (TE.decodeUtf8 . snd) palmaresSqlFiles)
+
+-- | Apply the whole schema in one transaction, or 'die' — and __only when it has changed__ (`GV-01`).
+--
+-- __What was wrong.__ `sql/000_schema.sql` opens with @DROP SCHEMA palmares CASCADE@, so every boot
+-- rebuilt every view and matview. The rebuild is atomic — Postgres DDL is transactional, so a reader
+-- sees the old schema or the new one and never a gap — but @DROP@ takes an AccessExclusiveLock on
+-- every object in the schema, so readers BLOCK for the duration and, with @lock_timeout = '10s'@,
+-- the boot itself fails if one is holding a lock. One replica makes that a hiccup per restart. More
+-- than one makes it a read outage per restart, and a rolling deploy is nothing but restarts.
+--
+-- __Two changes, and the gate is the one that matters.__ The advisory lock serialises two replicas
+-- booting at the same moment, which is a race the previous code simply lost. The FINGERPRINT is what
+-- removes the outage: an ordinary restart with unchanged DDL now does three cheap reads and no DDL at
+-- all, which is the common case and the one the finding is about.
+--
+-- __Written last, deliberately.__ The fingerprint table is created after the DDL it describes, so a
+-- bootstrap that dies half way leaves no fingerprint and the next boot rebuilds. There is no state
+-- in `palmares` to lose — every object in it is derived from db-sync — so redoing the work is always
+-- safe and claiming it was done is the only thing that would not be.
+--
+-- Matview CONTENT is not this function's business either way: the periodic refresh
+-- (@PALMARES_VIEW_REFRESH_SECONDS@) owns that, so skipping the rebuild does not skip a refresh.
 applyPalmaresSchema :: ConnectionPool -> IO ()
 applyPalmaresSchema pool = do
-  r <- try (runSqlPool (applySchemaSql palmaresSqlFiles) pool)
+  r <- try (runSqlPool bootstrap pool)
   case r of
     Left (e :: SomeException) -> die ("palmares schema DDL failed: " <> show e)
     Right () -> pure ()
+  where
+    bootstrap :: SqlPersistT IO ()
+    bootstrap = do
+      rawExecute "SET LOCAL lock_timeout = '10s'" []
+      -- Transaction-scoped, so it is released by the commit or the rollback and never leaks onto a
+      -- pooled connection. The key is an arbitrary constant; what matters is that both replicas pick
+      -- the same one.
+      -- Wrapped in DO/PERFORM because `rawExecute` refuses a statement that returns columns and
+      -- `pg_advisory_xact_lock` returns one. A DO block runs in the CURRENT transaction, so the lock
+      -- is still transaction-scoped and still released by the commit or the rollback.
+      rawExecute "DO $$ BEGIN PERFORM pg_advisory_xact_lock(871237); END $$" []
+      unchanged <- fingerprintMatches
+      if unchanged
+        then liftIO (putStrLn "palmares schema: DDL unchanged, skipping the rebuild (GV-01)")
+        else do
+          liftIO (putStrLn "palmares schema: DDL changed or absent, rebuilding")
+          applySchemaSql palmaresSqlFiles
+          rawExecute "CREATE TABLE palmares.schema_fingerprint (fingerprint text NOT NULL)" []
+          rawExecute
+            "INSERT INTO palmares.schema_fingerprint (fingerprint) VALUES (md5(?))"
+            [toPersistValue schemaFingerprintSource]
+
+    fingerprintMatches :: SqlPersistT IO Bool
+    fingerprintMatches = do
+      present <-
+        rawSql
+          "SELECT EXISTS (SELECT 1 FROM information_schema.tables \
+          \WHERE table_schema = 'palmares' AND table_name = 'schema_fingerprint')"
+          []
+      case present of
+        [Single True] -> do
+          rows <-
+            rawSql
+              "SELECT fingerprint = md5(?) FROM palmares.schema_fingerprint"
+              [toPersistValue schemaFingerprintSource]
+          pure $ case rows of
+            [Single (Just True)] -> True
+            _ -> False
+        _ -> pure False

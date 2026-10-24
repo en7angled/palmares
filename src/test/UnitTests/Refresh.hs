@@ -68,7 +68,13 @@ tests =
           [Single (rowsBefore :: Int)] <- runPg pool (rawSql "SELECT count(*)::int FROM palmares.drep_metrics" [])
           rowsBefore @?= 0
           runPg pool $ rawExecute seedTip []
-          applyPalmaresSchema pool -- rebuild, because the matview was populated when empty
+          -- `refreshDRepMetrics` and NOT `applyPalmaresSchema` again, as of `GV-01`. This line used
+          -- to re-bootstrap the whole schema to repopulate one matview — the bootstrap doubled as a
+          -- refresh because it dropped and recreated everything on every call. It no longer does
+          -- (the DDL is fingerprinted), and the two jobs are better apart anyway: refreshing a
+          -- matview is what the periodic refresh does in production, so the test now exercises the
+          -- production path instead of a side effect of the boot path.
+          refreshDRepMetrics pool >>= either (assertFailure . ("refresh failed: " <>) . show) pure
           readRefreshMark pool >>= (@?= Just (RefreshMark 7 320))
           -- One row per real DRep credential, with counters zeroed and rates left NULL: this DRep
           -- registered in epoch 320, so nothing has settled and there is no rate to publish.

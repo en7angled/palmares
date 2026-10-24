@@ -5,12 +5,20 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
--- | The metric catalog: what each published number means, and the SQL that produces it.
+-- | The metric catalog: what each published number means, and the SQL that defines it.
 --
--- The catalog is the single source of truth, and it is the executed SQL that makes that true
--- rather than a promise. @Query.Metrics@ looks a statement up by @formula_id@ and runs it, so
--- there is no second copy of the arithmetic to fall out of step with the published formula: if
--- you change the number, you changed the thing the API serves and the UI renders.
+-- The catalog is the single source of truth. For @delegator_retention_rate_v1@ that is literally
+-- the executed statement: 'Query.Gov.delegatorStatsQuery' runs these bytes. For the five DRep
+-- metrics it is a definition the server implements elsewhere — @palmares.drep_metrics@ computes
+-- them batched over every DRep, because a per-DRep statement run ~800 times pays a 3.2 M-row vote
+-- pass each time (@sql\/030_metrics.sql@'s header has the measurement).
+--
+-- __So the agreement is asserted, not assumed.__ There was a promise here that it could not
+-- disagree, and it did: the matview's @eligible_actions@ counted vote ROWS, which inflated the
+-- denominator of every DRep that re-voted on a settled action (@GV-03@). The gates that exist now
+-- are @UnitTests.MetricAgreement@, which compares the served response against every formula below
+-- for every DRep in a seeded corpus, and @sql\/checks\/070_drep_metrics.sql@, which repeats it
+-- against a synced preprod database.
 --
 -- Two mechanical rules keep it honest, both learned the hard way in this codebase:
 --

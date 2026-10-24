@@ -68,9 +68,13 @@ elig AS (
 part AS (
   SELECT
     e.drep_hash_id,
-    count(*) AS eligible_actions,
-    -- DISTINCT is mandatory: a DRep may vote several times on one action and each vote is a real
-    -- row. Counting rows would let a re-voter exceed 100% participation.
+    -- DISTINCT on BOTH aggregates, and the denominator is the one that was wrong (GV-03/DC-01).
+    -- The LEFT JOIN below fans out to one row per VOTE, so for an action with n re-votes this
+    -- group holds max(1, n) rows: `count(*)` published E + X, where X is the excess re-vote rows
+    -- (preprod: X >= 69, worst single action voted 20 times). participation_rate was therefore
+    -- understated and eligible_actions overstated for every DRep that ever changed a vote —
+    -- the rate was held under 100% by inflating its denominator rather than by deduplicating it.
+    count(DISTINCT e.gov_action_id) AS eligible_actions,
     count(DISTINCT v.gov_action_id) AS votes_cast
   FROM elig e
   LEFT JOIN dv v

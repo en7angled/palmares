@@ -234,9 +234,11 @@ type MetricsFormulasAPI =
          "Every number this API publishes carries the id of the formula that produced it, and this \
          \endpoint resolves those ids: what the formula means, what its denominator counts, when it \
          \is null rather than zero, which db-sync tables it reads, its edge cases, and - for the six \
-         \that have one - the exact SQL statement the server executes, inlined. Those statements \
-         \are read out of the same embed the query path runs, so the published formula and the \
-         \served number cannot disagree."
+         \that have one - the SQL statement that defines it, inlined. One of them is executed \
+         \verbatim (delegator_retention_rate_v1). The five DRep metrics are served from a \
+         \materialized view that implements the same arithmetic batched over every DRep, and its \
+         \agreement with these statements is asserted by a test over a seeded corpus and by a \
+         \check against a synced database - not assumed."
     :> "metrics"
     :> "formulas"
     :> Get '[JSON] [MetricFormula]
@@ -1739,11 +1741,16 @@ apiSwagger =
     -- 1.3.0, MINOR: `AttestationRow` gained `credential`. ADR 0003 stored the column and published
     -- nothing, so a `credential_claim` row was served with its entire content missing; adding an
     -- optional field breaks no 1.2.0 client.
-    & info . Data.Swagger.version .~ "1.3.0"
+    -- 1.3.1, PATCH: two descriptions stopped claiming something that was not true. "No second
+    -- derivation" was false — the five DRep metrics come from a materialized view, which is one —
+    -- and it was false in the direction that mattered: its denominator had drifted from the
+    -- published formula (GV-03). No schema, field or status code changed.
+    & info . Data.Swagger.version .~ "1.3.1"
     & info . Data.Swagger.description
       ?~ "Read-only queries over the Cardano governance record: DReps, governance actions, votes, \
          \delegations, the constitutional committee and treasury withdrawals. Every row comes from \
-         \a view over cardano-db-sync — there is no projection table and no second derivation — and \
+         \a view over cardano-db-sync — the only derived object is palmares.drep_metrics, a \
+         \materialized view whose agreement with the published formulas is asserted by a test — and \
          \every published metric carries the id of the formula that produced it, resolvable at \
          \/metrics/formulas."
     & info . license ?~ "Apache-2.0"

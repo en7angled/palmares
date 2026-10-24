@@ -16,6 +16,7 @@ DO $$
 DECLARE
   n_rows bigint;
   n_dreps bigint;
+  n_bad bigint;
   d bigint;
   m_part record;
   c_part record;
@@ -85,6 +86,32 @@ BEGIN
             AND indexname IN ('palmares_idx_drep_metrics_part',
                               'palmares_idx_drep_metrics_power',
                               'palmares_idx_drep_metrics_raw')) = 3;
+
+  -- -------------------------------------------------------------------------------------------
+  -- THE DENOMINATOR, FOR EVERY DREP. GV-03.
+  --
+  -- This is the assertion that was missing, and its absence is how a wrong denominator survived
+  -- in a published number: `part` in sql/030_metrics.sql counted `count(*)` AFTER a LEFT JOIN
+  -- onto every vote row, so a DRep that re-voted on a settled action had one extra row per extra
+  -- vote folded into its eligible_actions. Measured on preprod at epoch 321: 23 of 809 DReps
+  -- inflated, by up to 90 actions, and one credential's served participation_rate read 0.2452
+  -- where the published formula says 0.5846.
+  --
+  -- It is cheap — MEASURED at 736 ms over 812 rows — because palmares.eligible_actions touches
+  -- 131 action_window rows plus that DRep's intervals and NEVER references palmares.vote. The
+  -- full per-metric agreement below cannot be widened the same way: each metric does reference
+  -- palmares.vote, and a LATERAL per DRep re-pays its window pass 812 times, which measured in
+  -- MINUTES rather than seconds. The CI-side counterpart over a seeded corpus that contains a
+  -- re-vote is UnitTests.MetricAgreement, which compares all five formulas against what the
+  -- route serves.
+  SELECT count(*) INTO n_bad
+  FROM palmares.drep_metrics m
+  CROSS JOIN LATERAL (
+    SELECT count(*) AS n FROM palmares.eligible_actions(m.drep_hash_id, m.as_of_epoch)
+  ) e
+  WHERE m.eligible_actions <> e.n;
+  ASSERT n_bad = 0,
+    format('eligible_actions disagrees with palmares.eligible_actions for %s of %s DReps', n_bad, n_rows);
 
   -- -------------------------------------------------------------------------------------------
   -- AGREEMENT WITH THE PUBLISHED FORMULAS. The matview is a second implementation of the same

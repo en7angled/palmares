@@ -491,6 +491,7 @@ test-suite test
     Query.Thresholds
     Query.Views
     Test.Helpers
+    Test.Metrics
     Test.Pg
     TestRuns
     UnitTests
@@ -518,6 +519,7 @@ test-suite test
     UnitTests.MintInputs
     UnitTests.MutationGuards
     UnitTests.MetricDoc
+    UnitTests.MetricAgreement
     UnitTests.MetricFixture
     UnitTests.Projections
     UnitTests.QueryHardening

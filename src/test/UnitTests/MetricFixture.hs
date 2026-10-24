@@ -19,7 +19,6 @@
 -- moves every twenty seconds.
 module UnitTests.MetricFixture (tests) where
 
-import Control.Monad (unless)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Logger (runNoLoggingT)
 import Data.Aeson (FromJSON (..), eitherDecodeFileStrict', withObject, (.:))
@@ -30,10 +29,11 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Database.Persist (PersistValue (PersistInt64, PersistText))
 import Database.Persist.Postgresql (withPostgresqlPool)
-import Database.Persist.Sql (ConnectionPool, RawSql, Single (..), rawSql)
+import Database.Persist.Sql (ConnectionPool, Single (..), rawSql)
 import Palmares.Metrics.Catalog
 import System.Environment (lookupEnv)
 import System.IO (hPutStrLn, stderr)
+import Test.Metrics (runMetric)
 import Test.Pg (runPg)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -205,21 +205,6 @@ retentionNow pool fx d win = do
         )
       ] -> pure (now_, prev)
     _ -> fail "delegator_retention_rate_v1 returned an unexpected shape"
-
--- | Look the statement up by @formula_id@ and bind the catalog's parameters in order. The test
--- never carries its own copy of a formula.
-runMetric :: (RawSql r) => ConnectionPool -> Text -> [PersistValue] -> IO [r]
-runMetric pool fid params = do
-  formulas <- either (fail . ("metric catalog did not parse: " <>)) pure metricCatalog
-  f <- maybe (fail ("no catalog entry " <> T.unpack fid)) pure (lookupFormula fid formulas)
-  name <- maybe (fail (T.unpack fid <> " has no sql_file")) pure (mfSqlFile f)
-  sql <- maybe (fail (name <> " is not embedded")) pure (lookupMetricSql (T.pack name))
-  unless (length params == length (mfParams f)) $
-    fail (T.unpack fid <> ": the catalog declares " <> show (length (mfParams f)) <> " parameters")
-  runPg pool (rawSql (TE.decodeUtf8 sql) params)
-
-lookupFormula :: Text -> [MetricFormula] -> Maybe MetricFormula
-lookupFormula fid = foldr (\f acc -> if mfFormulaId f == fid then Just f else acc) Nothing
 
 -- | Resolve the fixture's hex credential to this database's @drep_hash.id@. Ids are per-database,
 -- so the fixture pins the credential and never the id.

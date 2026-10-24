@@ -18,9 +18,12 @@ views over it. Koios is used as an independent cross-check, never as a source.
 
 Two rules follow from that, and they are not negotiable:
 
-- **Published formulas.** Every metric ships with the exact SQL that computes it, served at
+- **Published formulas.** Every metric ships with the SQL that defines it, served at
   `/metrics/formulas` and rendered next to the number. `docs/metrics.md` is generated from that catalog,
-  so the documentation cannot drift from the code.
+  so the documentation cannot drift from the code. One statement is executed verbatim; the five DRep
+  metrics are served from a materialized view that computes the same arithmetic for every DRep at once,
+  and its agreement with the published statements is asserted by a test rather than claimed — see
+  `docs/metrics.md`.
 - **No opaque scores.** Palmares reports facts with pinned denominators. It does not rank DReps by a
   composite rating, does not infer intent, and does not tell you who to delegate to.
 

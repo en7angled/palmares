@@ -20,6 +20,7 @@ import UnitTests.DisputeRules qualified as DisputeRules
 import UnitTests.MetadataLimits qualified as MetadataLimits
 import UnitTests.MintInputs qualified as MintInputs
 import UnitTests.MutationGuards qualified as MutationGuards
+import UnitTests.MetricAgreement qualified as MetricAgreement
 import UnitTests.MetricCatalog qualified as MetricCatalog
 import UnitTests.MetricDoc qualified as MetricDoc
 import PropertyTests (propertyTests)
@@ -59,6 +60,7 @@ unitTests =
       govIdsTests,
       govThresholdsTests,
       interactionApiTests,
+      MetricAgreement.tests,
       MetricCatalog.tests,
       MetricDoc.tests,
       MetricFixture.tests,

@@ -40,6 +40,7 @@ import Palmares.TxBuilding.Lookups
 import Palmares.TxBuilding.Skeletons
 import Palmares.TxBuilding.Utils (pPOSIXTimeFromGYSlot, txOutRefToV3Plutus)
 import Palmares.TxBuilding.Validators
+import Text.Printf (printf)
 
 -- | Build a skeleton component that adds the oracle UTxO as a reference input.
 -- Also checks whether the protocol is paused and throws 'ProtocolPaused' if so.
@@ -156,22 +157,56 @@ spendUserNFTForProfileAt profileRefAC ownAddrs = do
 
 ------------------------------------------------------------------------------------------------
 
-refGetters :: DeployedScriptsContext -> [GYTxOutRef]
-refGetters ctx =
-  [ getMintingPolicyRef ctx,
-    getProfilesValidatorRef ctx,
-    getAttestationsValidatorRef ctx,
-    getDisputesValidatorRef ctx,
-    getOracleValidatorRef ctx
+-- | The five reference scripts: a name, the hash THIS BUILD compiles, and the configured pair.
+--
+-- The compiled hash belongs in here because the configured one is load-bearing and nothing used to
+-- check it: @attest-sync@ hands 'getMintingPolicyHash' to Kupo as its policy filter, while every
+-- validator ADDRESS the builder looks at is derived from the compiled script ('Lookups'). A config
+-- left behind by an earlier deployment therefore points the indexer at one policy and the builder
+-- at another, and each half looks healthy on its own.
+deployedRefScripts :: DeployedScriptsContext -> [(String, GYScriptHash, (GYScriptHash, GYTxOutRef))]
+deployedRefScripts ctx =
+  [ ("minting policy", scriptHash (getMintingPolicyFromCtx ctx), mintingPolicyHashAndRef ctx),
+    ("profiles validator", profilesValidatorHashGY, profilesValidatorHashAndRef ctx),
+    ("attestations validator", attestationsValidatorHashGY, attestationsValidatorHashAndRef ctx),
+    ("disputes validator", disputesValidatorHashGY, disputesValidatorHashAndRef ctx),
+    ("oracle validator", oracleValidatorHashGY, oracleValidatorHashAndRef ctx)
   ]
+
+-- | Everything wrong with the deployment, one line per script; @[]@ means ready.
+--
+-- Three things have to agree — what this build compiles, what the config recorded, and what is
+-- actually on chain — and the check used to be @all isJust@: any reference script at the right
+-- 'GYTxOutRef' passed, including one from a different deployment. That is the shape @OF-08@
+-- describes, and the failure surfaces much later as @GYInReference@ resolution errors on every
+-- write, with nothing in @\/ready@ or @\/status@ pointing at the cause.
+deployedScriptsProblems ::
+  (GYTxQueryMonad m, MonadReader DeployedScriptsContext m) =>
+  m [String]
+deployedScriptsProblems = do
+  ctx <- ask
+  concat <$> mapM check (deployedRefScripts ctx)
+  where
+    hex :: GYScriptHash -> String
+    hex = printf "%s"
+    check (name, compiled, (configured, ref))
+      -- No chain query in this branch: the config does not describe this build, so whatever is
+      -- deployed cannot answer the question either way.
+      | configured /= compiled =
+          return [name <> ": config says " <> hex configured <> ", this build compiles " <> hex compiled]
+      | otherwise = do
+          mScript <- (utxoRefScript =<<) <$> utxoAtTxOutRef ref
+          return $ case mScript of
+            Nothing -> [name <> ": no reference script at " <> show ref]
+            Just sc
+              | hashAnyScript sc /= compiled ->
+                  [name <> ": " <> show ref <> " carries " <> hex (hashAnyScript sc) <> ", expected " <> hex compiled]
+              | otherwise -> []
 
 verifyDeployedScriptsAreReady ::
   (GYTxQueryMonad m, MonadReader DeployedScriptsContext m) =>
   m Bool
-verifyDeployedScriptsAreReady = do
-  ctx <- ask
-  hasRefScripts <- mapM (fmap (utxoRefScript =<<) . utxoAtTxOutRef) (refGetters ctx)
-  return $ all isJust hasRefScripts
+verifyDeployedScriptsAreReady = Prelude.null <$> deployedScriptsProblems
 
 -- | Like 'verifyDeployedScriptsAreReady' but throws 'DeployedScriptsNotReady' when scripts are not ready.
 ensureDeployedScriptsAreReady ::

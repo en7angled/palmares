@@ -56,9 +56,11 @@ data InteractionStatusResponse = InteractionStatusResponse
     -- has no business publishing internal addresses.
     statusProvider :: Text,
     statusNetwork :: Text,
-    -- | Do all five reference scripts resolve on chain. @false@ also covers \"the provider could not
-    -- be reached to find out\", because for this flag the two have the same consequence: nothing can
-    -- be built. Which of the two it is shows in @oracle_paused@ being @null@.
+    -- | Do all five reference scripts resolve on chain __and carry the script this build expects__ —
+    -- compiled hash = configured hash = the hash of the script actually at that @TxOutRef@ (@OF-08@).
+    -- @false@ also covers \"the provider could not be reached to find out\", because for this flag the
+    -- two have the same consequence: nothing can be built. Which of the two it is shows in
+    -- @oracle_paused@ being @null@.
     statusDeployedScripts :: Bool,
     -- | The oracle's pause flag — @null@ when the oracle could not be read at all, which is a
     -- different fact from @false@ and must not be reported as it.

@@ -29,7 +29,9 @@ where
 
 import Control.Monad (void)
 import Control.Monad.Reader (runReaderT)
+import Data.Maybe (isJust)
 import GHC.Stack
+import GeniusYield.Examples.Limbo (limboValidatorV2)
 import GeniusYield.Test.Clb
 import GeniusYield.Test.Utils
 import GeniusYield.TxBuilder
@@ -37,7 +39,10 @@ import GeniusYield.TxBuilder.User qualified as User
 import GeniusYield.Types
 import Palmares.DomainTypes.Core.Actions
 import Palmares.Onchain.Protocol.Types (FeeConfig (..), OracleParams (..))
+import Palmares.TxBuilding.Context (DeployedScriptsContext (..), getMintingPolicyRef, getOracleValidatorRef)
 import Palmares.TxBuilding.Lookups (queryOracleParams)
+import Palmares.TxBuilding.Operations (deployedRefScripts, deployedScriptsProblems)
+import Palmares.TxBuilding.Validators (profilesValidatorHashGY)
 import PlutusLedgerApi.V3 (Credential (PubKeyCredential))
 import PlutusTx.Prelude (isNothing)
 import Test.Helpers (assert, failedWithTrace, queryOracle)
@@ -66,9 +71,49 @@ oracleDeploymentTests :: (HasCallStack) => TestTree
 oracleDeploymentTests =
   testGroup
     "Oracle Deployment Tests"
-    [ mkTestFor "Test Case 0.1: Deploy protocol with oracle and verify every oracle field is queryable" oracleDeployAndQuery
+    [ mkTestFor "Test Case 0.1: Deploy protocol with oracle and verify every oracle field is queryable" oracleDeployAndQuery,
+      mkTestFor "Test Case 0.1b: Reference scripts are unspendable and readiness compares hashes (OF-08)" refScriptsLockedAndVerified
     ]
   where
+    -- Two halves of @OF-08@, and the second is what makes the first safe to rely on: the five
+    -- reference UTxOs are at an always-fail address, and readiness refuses a deployment whose
+    -- hashes disagree instead of accepting any reference script that happens to resolve.
+    refScriptsLockedAndVerified :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    refScriptsLockedAndVerified TestInfo {..} = do
+      waitNSlots_ 1000
+      ctx <- deployValidators (w1 testWallets)
+      waitNSlots_ 1000
+
+      -- A fresh deployment is ready, by the same check @/ready@ runs.
+      problems <- runReaderT deployedScriptsProblems ctx
+      assert (null problems)
+
+      -- Every one of them sits at limbo, so no key — not even the deploy key — can sweep them.
+      limboAddr <- scriptAddress limboValidatorV2
+      deployed <- mapM utxoAtTxOutRef (refsOf ctx)
+      assert (all ((== Just limboAddr) . fmap utxoAddress) deployed)
+
+      -- A config naming a hash this build does not compile is refused with no chain query at all.
+      -- It has to be: @attest-sync@ hands the CONFIGURED policy hash to Kupo while the builder
+      -- derives addresses from the COMPILED script, so a config left over from an earlier
+      -- deployment sends the indexer and the write path to two different registries.
+      stale <- runReaderT deployedScriptsProblems ctx {mintingPolicyHashAndRef = (profilesValidatorHashGY, getMintingPolicyRef ctx)}
+      assert (length stale == 1)
+
+      -- And the on-chain half: a reference script that is present but is the WRONG script. This
+      -- is precisely what the old @all isJust@ check passed — asserted here, so the case cannot
+      -- quietly become one the old check also caught.
+      let swapped = ctx {profilesValidatorHashAndRef = (profilesValidatorHashGY, getOracleValidatorRef ctx)}
+      oldCheck <- mapM (fmap (utxoRefScript =<<) . utxoAtTxOutRef) (refsOf swapped)
+      assert (all isJust oldCheck)
+      swappedProblems <- runReaderT deployedScriptsProblems swapped
+      assert (length swappedProblems == 1)
+
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Reference scripts are locked at limbo and hash-verified."
+
+    refsOf :: DeployedScriptsContext -> [GYTxOutRef]
+    refsOf ctx = [ref | (_, _, (_, ref)) <- deployedRefScripts ctx]
+
     oracleDeployAndQuery :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     oracleDeployAndQuery TestInfo {..} = do
       waitNSlots_ 1000

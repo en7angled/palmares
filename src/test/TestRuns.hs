@@ -55,6 +55,7 @@ import Control.Monad.Reader
 import Data.Foldable.Extra
 import Data.Maybe (fromMaybe)
 import GHC.Stack
+import GeniusYield.Examples.Limbo (limboValidatorV2)
 import GeniusYield.Test.Clb (sendSkeleton')
 import GeniusYield.Test.Utils
 import GeniusYield.TxBuilder hiding (userAddresses)
@@ -97,9 +98,16 @@ import PlutusTx (ToData)
 
 ------------------------------------------------------------------------------------------------
 
-deployReferenceScriptRun :: (GYTxGameMonad m, HasCallStack) => GYScript PlutusV3 -> User -> User -> m (GYScriptHash, GYTxOutRef)
-deployReferenceScriptRun validator fromWallet toWallet = asUser fromWallet $ do
-  ref <- addRefScript (userChangeAddress toWallet) (validatorToScript validator)
+-- | Deploy one reference script the way production does: to the always-fail limbo address.
+--
+-- It used to land at a wallet's own address, which is what @OF-08@ fixed off chain — and keeping
+-- the emulator on the old shape would mean no test ever exercises a reference input read out of a
+-- SCRIPT address with an inline unit datum. That it is read-only and needs no redeemer is a ledger
+-- rule worth having a test behind, and every runner below now depends on it.
+deployReferenceScriptRun :: (GYTxGameMonad m, HasCallStack) => GYScript PlutusV3 -> User -> m (GYScriptHash, GYTxOutRef)
+deployReferenceScriptRun validator fromWallet = asUser fromWallet $ do
+  limboAddr <- scriptAddress limboValidatorV2
+  ref <- addRefScript limboAddr (validatorToScript validator)
   return (scriptHash validator, ref)
 
 ------------------------------------------------------------------------------------------------
@@ -116,17 +124,17 @@ deployReferenceScriptRun validator fromWallet toWallet = asUser fromWallet $ do
 deployValidators :: (GYTxGameMonad m, HasCallStack) => User -> m DeployedScriptsContext
 deployValidators w = do
   -- Step 1: Deploy spending validators as reference scripts
-  (pVhash, refProfilesValidator) <- deployReferenceScriptRun profilesValidatorGY w w
-  (aVhash, refAttestationsValidator) <- deployReferenceScriptRun attestationsValidatorGY w w
-  (dVhash, refDisputesValidator) <- deployReferenceScriptRun disputesValidatorGY w w
-  (ovHash, refOracleValidator) <- deployReferenceScriptRun oracleValidatorGY w w
+  (pVhash, refProfilesValidator) <- deployReferenceScriptRun profilesValidatorGY w
+  (aVhash, refAttestationsValidator) <- deployReferenceScriptRun attestationsValidatorGY w
+  (dVhash, refDisputesValidator) <- deployReferenceScriptRun disputesValidatorGY w
+  (ovHash, refOracleValidator) <- deployReferenceScriptRun oracleValidatorGY w
 
   -- Step 2: Mint oracle NFT and lock initial OracleParams at oracle validator
   oracleNFTAC <- mintTestOracleNFT w
 
   -- Step 3: Compile minting policy with the oracle NFT asset class and deploy
   let mpGY = compileMintingPolicy (assetClassToPlutus oracleNFTAC)
-  (mphash, refMintingPolicy) <- deployReferenceScriptRun mpGY w w
+  (mphash, refMintingPolicy) <- deployReferenceScriptRun mpGY w
 
   -- Log deployed script sizes for reporting. The gate that FAILS on a regression is
   -- 'UnitTests.ScriptSize'; this line is for reading the numbers off a test run.

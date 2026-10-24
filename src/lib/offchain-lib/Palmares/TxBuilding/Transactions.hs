@@ -6,7 +6,7 @@ module Palmares.TxBuilding.Transactions where
 import Cardano.Api.Ledger qualified as Ledger
 import Cardano.Api.Shelley qualified as Api
 import Control.Lens ((.~))
-import Control.Monad (when)
+import Control.Monad (unless, when)
 import Control.Monad.Reader
 import Data.Function ((&))
 import Data.Set qualified as Set
@@ -17,8 +17,10 @@ import Palmares.Onchain.Protocol.Types (OracleParams (..), oracleParamsAreWellFo
 import PlutusLedgerApi.V1 (Credential (PubKeyCredential))
 import Text.Printf (printf)
 import Text.Printf qualified as Printf
-import Palmares.TxBuilding.Context (DeployedScriptsContext (..), ProviderCtx (..), TxBuildingContext (..), ctxProviders, deployedScriptsCtx, getNetworkId, providerCtx, runTx, runTx')
+import GeniusYield.Examples.Limbo (limboValidatorV2)
+import Palmares.TxBuilding.Context (DeployedScriptsContext (..), ProviderCtx (..), TxBuildingContext (..), ctxProviders, deployedScriptsCtx, getNetworkId, providerCtx, runQuery, runTx, runTx')
 import Palmares.TxBuilding.Interactions
+import Palmares.TxBuilding.Operations (deployedScriptsProblems)
 import Palmares.TxBuilding.Skeletons
 import Palmares.TxBuilding.Utils
 import Palmares.TxBuilding.Validators
@@ -180,13 +182,24 @@ submitSignedTxWithWitnesses pCtx skey tx witnesses = do
 ------------------------------------------------------------------------------------------------
 
 -- | Deploy a single reference script and return its hash and the TxOutRef.
+--
+-- __The output goes to Atlas's limbo validator, not to the deploy key's own address.__ Limbo is
+-- @\\datum redeemer sc -> ERROR@, so nothing can ever spend what is sent there: the five reference
+-- UTxOs cannot be consumed by the operator, by a wallet restored from the same mnemonic, or by
+-- whoever obtains @operation.prv@ — and every protocol transaction keeps resolving its
+-- @GYInReference@ inputs. While they sat at @my_addr@, a single wallet sweep took the whole write
+-- path down until a redeploy and a config rollout to both services. @OF-08@.
+--
+-- The price is each output's min-ADA, and it is locked for good rather than recoverable: about
+-- 209 ADA for the set at today's script sizes. That is the trade the finding asked for explicitly.
 deployReferenceScript :: ProviderCtx -> GYScript 'PlutusV3 -> GYExtendedPaymentSigningKey -> IO (GYScriptHash, GYTxOutRef)
 deployReferenceScript providerCtx script skey = do
   let my_addr = addressFromSkey providerCtx skey
+  limboAddr <- runQuery providerCtx (scriptAddress limboValidatorV2)
   putStrLn $ yellowColorString "Deploying reference script"
   putStrLn $ yellowColorString $ "Deployed Script Hash: \n\t" <> Printf.printf "%s" (scriptHash script)
-  putStrLn $ yellowColorString $ "Deployed to Address: \n\t" <> Printf.printf "%s" (addressToText my_addr)
-  txBody <- runTx' providerCtx [my_addr] my_addr Nothing (addRefScriptToAddressSkeleton my_addr script)
+  putStrLn $ yellowColorString $ "Deployed to Address (always-fail, unspendable): \n\t" <> Data.Text.unpack (addressToText limboAddr)
+  txBody <- runTx' providerCtx [my_addr] my_addr Nothing (addRefScriptSkeleton script)
   let txSigned = signGYTxBody txBody [skey]
   putStrLn $ yellowColorString ("Built and signed by: \n\t" <> Data.Text.unpack (addressToText my_addr))
   gyTxId <- submitTxAndWaitForConfirmation True (ctxProviders providerCtx) txSigned
@@ -221,15 +234,27 @@ deployReferenceScripts providerCtx skey = do
   let mpGY = compileMintingPolicy (assetClassToPlutus oracleNFTAC)
   mp <- deployReferenceScript providerCtx mpGY skey
 
-  return
-    DeployedScriptsContext
-      { mintingPolicyHashAndRef = mp,
-        profilesValidatorHashAndRef = pv,
-        attestationsValidatorHashAndRef = av,
-        disputesValidatorHashAndRef = dv,
-        oracleValidatorHashAndRef = ov,
-        oracleNFTAssetClass = oracleNFTAC
-      }
+  let ctx =
+        DeployedScriptsContext
+          { mintingPolicyHashAndRef = mp,
+            profilesValidatorHashAndRef = pv,
+            attestationsValidatorHashAndRef = av,
+            disputesValidatorHashAndRef = dv,
+            oracleValidatorHashAndRef = ov,
+            oracleNFTAssetClass = oracleNFTAC
+          }
+
+  -- Read back what landed instead of reporting success because five submissions returned. This is
+  -- the same check `/ready` runs, and it fails BEFORE the caller writes a config file: a broken
+  -- deployment that still produces a plausible-looking config is how a stale policy id gets
+  -- committed and rolled out to both services.
+  putStrLn $ yellowColorString "=== Verifying deployed reference scripts ==="
+  problems <- runQuery providerCtx (runReaderT deployedScriptsProblems ctx)
+  unless (Prelude.null problems) $ do
+    mapM_ (putStrLn . orangeColorString) problems
+    fail "Reference scripts did not verify on chain; the deployment is not usable."
+  putStrLn $ greenColorString "All five reference scripts verified: configured hash = compiled hash = on-chain script."
+  return ctx
 
 -- | Mint the oracle NFT using a one-shot policy and lock the initial oracle datum.
 mintOracleNFTAndLockDatum :: ProviderCtx -> GYExtendedPaymentSigningKey -> GYPaymentKeyHash -> IO GYAssetClass

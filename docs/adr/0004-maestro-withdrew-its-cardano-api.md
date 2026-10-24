@@ -107,6 +107,10 @@ reference-script UTxOs, which is recoverable by spending them. The earlier "~210
 *balance you must hold*, not the price — a distinction worth keeping, because the deploy looks thirty
 times more expensive than it is.
 
+That "recoverable" applies to **this** deployment and not to later ones: it put the reference scripts
+at the deploy key's own address, which is exactly what `OF-08` found. They now go to an always-fail
+address, so the min-ADA is spent rather than parked — the price of reference scripts no key can sweep.
+
 The operational complexity is one platform quirk and nothing else. On a Linux host the node socket is
 a path and there is no bridge at all. On macOS the socket lives in a named Docker volume, so it takes
 two hops to reach a host-run CLI — a socat container publishing it on loopback TCP, and a small

@@ -65,6 +65,8 @@ import Palmares.Onchain.CIP68
   )
 import Palmares.Onchain.Protocol.Types
   ( AttestationKind (CredentialClaim, MilestoneDelivered),
+    OracleAdminAction (OracleSetMinUTxOValue),
+    applyOracleAdminAction,
     ClaimedCredential (ClaimedDRep),
     FeeConfig (..),
     OnchainAttestation (..),
@@ -88,6 +90,11 @@ import Palmares.Onchain.Validators.DisputesValidator
 import Palmares.Onchain.Validators.MintingPolicy
   ( MintingRedeemer (MintProfile, NewAttestation, OpenDispute),
     mintingPolicyLambda,
+  )
+import Palmares.Onchain.Validators.OracleNFTPolicy (oracleNFTPolicyLambda)
+import Palmares.Onchain.Validators.OracleValidator
+  ( OracleRedeemer (OracleUpdate),
+    oracleLambda,
   )
 import Palmares.Onchain.Validators.ProfilesValidator
   ( ProfilesRedeemer (UpdateProfile),
@@ -132,7 +139,8 @@ tests =
       k1Tests,
       k2Tests,
       d6Tests,
-      oc03Tests
+      oc03Tests,
+      td04Tests
     ]
 
 -------------------------------------------------------------------------------
@@ -793,18 +801,26 @@ datedAt = POSIXTime 1_700_000_000_000
 -- 'V1.AssetClass'es of 'protocolCS' with the CIP-67 reference prefix 'generateRefAndUserTN' puts
 -- there.
 issueAttestationCtx :: ScriptContext
-issueAttestationCtx =
+issueAttestationCtx = issueAttestationCtxFor profileRefAC
+
+-- | The same issue with the SUBJECT id chosen, which is the half @Mg@ reads here.
+--
+-- The subject goes into the redeemer AND into the output datum, because @Mk@ compares the whole
+-- datum: threading it into one and not the other would break @Mk@ and the pair would not isolate
+-- @Mg@.
+issueAttestationCtxFor :: V1.AssetClass -> ScriptContext
+issueAttestationCtxFor subject =
   ScriptContext
     (mkTxInfo [seedInput] [oracleRefInput False] [issuedOut] issueMint) {txInfoValidRange = datedRange}
     (Redeemer (toBuiltinData redeemer))
     (MintingScript protocolCS)
   where
     redeemer =
-      NewAttestation issueSeedRef profileFields [] profileRefAC issuerRefAC MilestoneDelivered datedAt Nothing Nothing 0
+      NewAttestation issueSeedRef profileFields [] subject issuerRefAC MilestoneDelivered datedAt Nothing Nothing 0
     seedInput =
       TxInInfo issueSeedRef (plainOut walletAddr (V1.assetClassValue issuerUserAC 1 <> lv 10_000_000))
     issuedOut =
-      inlineOut attestationsAddr (V1.assetClassValue issuedAC 1 <> lv minLovelace) (toBuiltinData issuedDatum)
+      inlineOut attestationsAddr (V1.assetClassValue issuedAC 1 <> lv minLovelace) (toBuiltinData (issuedDatumFor subject))
 
 issueSeedRef :: TxOutRef
 issueSeedRef = TxOutRef (TxId (b32 0xb3)) 0
@@ -822,13 +838,16 @@ issuerUserAC = deriveUserFromRefAC issuerRefAC
 -- | The datum @Mk@ requires at the index the redeemer names, built from the redeemer's own arguments
 -- with the protocol's own 'mkCIP68Datum' so the fixture cannot disagree with @handleNewAttestation@.
 issuedDatum :: CIP68Datum OnchainAttestation
-issuedDatum = mkCIP68Datum issued profileFields []
+issuedDatum = issuedDatumFor profileRefAC
+
+issuedDatumFor :: V1.AssetClass -> CIP68Datum OnchainAttestation
+issuedDatumFor subject = mkCIP68Datum issued profileFields []
   where
     issued =
       OnchainAttestation
         { attestationId = issuedAC,
           attestationIssuer = issuerRefAC,
-          attestationSubject = profileRefAC,
+          attestationSubject = subject,
           attestationKind = MilestoneDelivered,
           attestationDate = datedAt,
           attestationPeriod = Nothing,
@@ -1401,3 +1420,193 @@ oc03Tests =
       testCase "a refund address at the DISPUTES validator is refused (Mda, OC-06 part 4)" $
         mintingPolicyLambda params (openDisputeCtxPayingTo disputesAddr) @?= False
     ]
+
+-------------------------------------------------------------------------------
+
+-- * TD-04 — the six conjuncts that had no pair
+
+-------------------------------------------------------------------------------
+
+-- | @Mp6@, @Mg@, @O6@, @P2@, @P5@ and @N0@: codes the suite named nowhere.
+--
+-- The audit counted 22 trace codes with no validator-level test and listed seven to close. Six are
+-- here; the seventh, @K3@, no longer exists — it lived inside @unsafeGetProtocolParamsFromProfileRefInput@,
+-- which had no callers and was deleted, so the code was retired with it and there is nothing left to
+-- break. A test for a code the protocol cannot emit would be a test of the test.
+--
+-- Two of the six guard the same statement on two different paths, and both were untested: @Mp6@ says
+-- a profile MINT must not lock the user token with the state, and @Pa@ — which has a pair already —
+-- says the same of an UPDATE. @P2@ is what makes the profile datum trustworthy at all, and @P5@ is
+-- what keeps the state where it belongs; between them they are the whole of \"this UTxO is this
+-- profile\", and the suite asserted neither.
+td04Tests :: TestTree
+td04Tests =
+  testGroup
+    "Mp6, Mg, O6, P2, P5, N0: the codes with no pair (TD-04)"
+    [ testCase "Test Case 8.23: the profile mint must not lock the user token with the state (Mp6)" $
+        -- The attack the conjunct exists for, and it is not merely a stuck token. `P3` reads
+        -- `valueSpent`, which sums ALL inputs including the script one, so a profile whose own UTxO
+        -- holds its user token satisfies its own consent check: from that block on anyone can spend
+        -- it with `UpdateProfile`, and anyone can mint attestations in that identity for ever.
+        ( mintingPolicyLambda params (mintProfileCtx False),
+          mintingPolicyLambda params mintProfileCtxUserParked
+        )
+          @?= (True, False),
+      testCase "Test Case 8.24: the subject and issuer must be PROFILE ids of this protocol (Mg)" $
+        -- The break is the user half of a real profile's id — right policy, right profile, wrong
+        -- half. `isProfileId` asks for the CIP-67 reference label, so naming the authority token as
+        -- the subject of an attestation is refused. Nothing else on the path reads the subject: `Mf`
+        -- and `Ms` read the ISSUER's derived user token, and `Mk` compares the datum, which carries
+        -- the same subject as the redeemer.
+        ( mintingPolicyLambda params issueAttestationCtx,
+          mintingPolicyLambda params (issueAttestationCtxFor profileUserAC)
+        )
+          @?= (True, False),
+      testCase "Test Case 8.25: an oracle update may not leave a negative parameter behind (O6)" $
+        -- Checked on the RESULT, so one case covers all seven actions. The drain it closes is
+        -- specific: `geq`'s `These a b -> a >= b` arm is satisfied by anything when `b` is below
+        -- zero, so a negative `opMinUTxOValue` makes every state-output value check vacuous.
+        ( oracleLambda (oracleUpdateCtx (OracleSetMinUTxOValue 3_000_000)),
+          oracleLambda (oracleUpdateCtx (OracleSetMinUTxOValue (-1)))
+        )
+          @?= (True, False),
+      testCase "Test Case 8.26: the UTxO being spent must hold the profile's Ref NFT (P2)" $
+        -- Without it, a forged profile UTxO carrying a hand-written datum is a profile: the datum
+        -- names its own oracle token, so `P6` can be made to pass with a forged reference input, and
+        -- `P2` is the conjunct that stops the spend anyway. `P5` cannot stand in for it — it requires
+        -- the output to carry at least the OWN value, which is the forged one.
+        ( profilesLambda (updateCtxOwnValue profileStateValue),
+          profilesLambda (updateCtxOwnValue (lv minLovelace))
+        )
+          @?= (True, False),
+      testCase "Test Case 8.27: the updated profile must be re-locked at its own address (P5)" $
+        -- The break sends the state output to the owner's wallet instead. Every other conjunct still
+        -- passes: `P3`'s consent is in `valueSpent`, the datum is the one `updateCIP68DatumMetadata`
+        -- computes, and the value is unchanged — so an update that walks the profile out of its
+        -- validator is refused by `P5` alone.
+        ( profilesLambda (updateCtxOutAddr profilesAddr),
+          profilesLambda (updateCtxOutAddr walletAddr)
+        )
+          @?= (True, False),
+      testCase "Test Case 8.28: the one-shot oracle NFT must spend the seed it was parameterised with (N0)" $
+        -- The whole of \"one-shot\": the policy is compiled against a `TxOutRef`, and a `TxOutRef` is
+        -- consumable exactly once in the chain's history. Without this conjunct the oracle NFT is
+        -- mintable again — and the oracle NFT is what every validator authenticates the protocol's
+        -- parameters by, so a second one is a second protocol with the same name. `N2` cannot catch
+        -- it: it compares the minted value against the policy's own symbol, which is satisfied by
+        -- construction whatever the transaction spends.
+        ( oracleNFTPolicyLambda oracleNFTSeedRef (oracleNFTCtx oracleNFTSeedRef),
+          oracleNFTPolicyLambda oracleNFTSeedRef (oracleNFTCtx otherSeedRef)
+        )
+          @?= (True, False)
+    ]
+
+-- | 'mintProfileCtx' with the user NFT MOVED into the state output at index 0.
+--
+-- Moved and not duplicated: the change output gives it up, so @Mp2@ still sees exactly the two
+-- tokens the mint produces and the only difference between the two halves is which output holds one
+-- of them.
+mintProfileCtxUserParked :: ScriptContext
+mintProfileCtxUserParked =
+  ScriptContext
+    (mkTxInfo [seedInput] [oracleRefInput False] [stateOut, changeOut] profileMint)
+    (Redeemer (toBuiltinData redeemer))
+    (MintingScript protocolCS)
+  where
+    redeemer = MintProfile profileSeedRef Community profileFields 0
+    seedInput = TxInInfo profileSeedRef (plainOut walletAddr (lv 10_000_000))
+    stateOut =
+      inlineOut
+        profilesAddr
+        (profileStateValue <> V1.assetClassValue profileUserAC 1)
+        (toBuiltinData profileDatum)
+    changeOut = plainOut walletAddr (lv 5_000_000)
+
+-- | An oracle update the validator accepts, parameterised only by the action it applies.
+--
+-- The new datum is computed with the protocol's own 'applyOracleAdminAction', which is what @O2@
+-- compares against, so the fixture cannot disagree with the validator about what an action does —
+-- and that is also what makes the broken half reach @O6@: the malformed params are the params the
+-- action really produces, not a datum the test invented.
+--
+-- @O1@ is satisfied by signing as the admin key in 'oracleParamsWith', and @O5@ is vacuous for every
+-- action except a handover.
+oracleUpdateCtx :: OracleAdminAction -> ScriptContext
+oracleUpdateCtx action =
+  ScriptContext
+    (mkTxInfo [ownInput] [] [oracleOut] emptyMintValue) {txInfoSignatories = [PubKeyHash (b28 0x01)]}
+    (Redeemer (toBuiltinData (OracleUpdate 0 action)))
+    (SpendingScript oracleOwnRef (Just (Datum (toBuiltinData current))))
+  where
+    current = oracleParamsWith False
+    ownInput = TxInInfo oracleOwnRef (inlineOut oracleAddr oracleStateValue (toBuiltinData current))
+    oracleOut =
+      inlineOut oracleAddr oracleStateValue (toBuiltinData (applyOracleAdminAction action current))
+
+oracleOwnRef :: TxOutRef
+oracleOwnRef = TxOutRef (TxId (b32 0x0e)) 0
+
+-- | What the oracle UTxO holds: its NFT and the min-ADA the deployment locked with it.
+oracleStateValue :: Value
+oracleStateValue = V1.assetClassValue oracleAC 1 <> lv 3_500_000
+
+-- | 'updateCtx' with the profile's OWN value chosen, in the input and in the re-locked output alike.
+--
+-- Both, deliberately: @P5@ requires the output to carry at least the own value, so changing only the
+-- input would break two conjuncts and the pair would not isolate @P2@.
+updateCtxOwnValue :: Value -> ScriptContext
+updateCtxOwnValue ownValue =
+  ScriptContext
+    (mkTxInfo [ownInput, userConsentInput] [oracleRefInput False] [stateOut] emptyMintValue)
+    (Redeemer (toBuiltinData (UpdateProfile updatedProfileFields 0)))
+    (SpendingScript profileOwnRef (Just (Datum (toBuiltinData profileDatum))))
+  where
+    ownInput = TxInInfo profileOwnRef (inlineOut profilesAddr ownValue (toBuiltinData profileDatum))
+    stateOut =
+      inlineOut
+        profilesAddr
+        ownValue
+        (toBuiltinData (updateCIP68DatumMetadata updatedProfileFields profileDatum))
+
+-- | 'updateCtx' with the address of the re-locked state output chosen.
+updateCtxOutAddr :: Address -> ScriptContext
+updateCtxOutAddr outAddr =
+  ScriptContext
+    (mkTxInfo [ownInput, userConsentInput] [oracleRefInput False] [stateOut] emptyMintValue)
+    (Redeemer (toBuiltinData (UpdateProfile updatedProfileFields 0)))
+    (SpendingScript profileOwnRef (Just (Datum (toBuiltinData profileDatum))))
+  where
+    ownInput = TxInInfo profileOwnRef (inlineOut profilesAddr profileStateValue (toBuiltinData profileDatum))
+    stateOut =
+      inlineOut
+        outAddr
+        profileStateValue
+        (toBuiltinData (updateCIP68DatumMetadata updatedProfileFields profileDatum))
+
+-- | The seed the one-shot policy is compiled against, and one it is not.
+oracleNFTSeedRef :: TxOutRef
+oracleNFTSeedRef = TxOutRef (TxId (b32 0x0c)) 0
+
+otherSeedRef :: TxOutRef
+otherSeedRef = TxOutRef (TxId (b32 0x0b)) 0
+
+-- | A one-shot oracle NFT mint, parameterised by the 'TxOutRef' the transaction actually spends.
+--
+-- The minted value uses 'oracleAC''s own symbol, which is the symbol the script info carries, so
+-- @N2@ holds in both halves and @N0@ is the only conjunct the seed can reach.
+oracleNFTCtx :: TxOutRef -> ScriptContext
+oracleNFTCtx spent =
+  ScriptContext
+    (mkTxInfo [spentInput] [] [nftOut] oracleNFTMint)
+    (Redeemer (toBuiltinData ()))
+    (MintingScript oracleNFTCS)
+  where
+    spentInput = TxInInfo spent (plainOut walletAddr (lv 10_000_000))
+    nftOut = plainOut walletAddr (V1.assetClassValue oracleAC 1 <> lv 3_500_000)
+
+oracleNFTCS :: V1.CurrencySymbol
+oracleNFTCS = case oracleAC of V1.AssetClass (cs, _) -> cs
+
+oracleNFTMint :: MintValue
+oracleNFTMint =
+  UnsafeMintValue (AssocMap.singleton oracleNFTCS (AssocMap.singleton (V1.TokenName "") 1))

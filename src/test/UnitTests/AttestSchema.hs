@@ -248,9 +248,15 @@ tests =
           let shownDispute = show disputeCols
           assertBool ("verdict missing: " <> shownDispute) ("verdict" `elem` disputeCols)
           assertBool ("target_attestation_id missing: " <> shownDispute) ("target_attestation_id" `elem` disputeCols)
+          -- `stale_after` is asserted BY NAME and not only by the count: it is the dispute's own
+          -- deadline, it is absolute (a later oracle reprice cannot move it), and before v6 it was
+          -- in the datum and published nowhere — so a client could only compute
+          -- `opened_at + the oracle's CURRENT timeout` and be wrong about every dispute opened
+          -- before a retiming. A count alone would let it be swapped for something else.
+          assertBool ("stale_after missing: " <> shownDispute) ("stale_after" `elem` disputeCols)
           assertEqual
             ("dispute_projection column count changed — bump currentSchemaVersion with it: " <> shownDispute)
-            12
+            13
             (length disputeCols)
 
           -- v5 did not change any of the three column sets above: it ADDED a table,
@@ -267,7 +273,12 @@ tests =
             7
             (length deadCols)
 
-          assertEqual "currentSchemaVersion is the version this column set belongs to" 5 currentSchemaVersion,
+          -- v6 moved a column set, which is the other combination: `dispute_projection` gained
+          -- `stale_after`, the dispute's own deadline, which was in the datum and published nowhere.
+          -- The NOT NULL column is why the version had to move at all — existing rows have no value
+          -- for it, so ADR 0007's wipe-and-re-index is the migration, and that same wipe is what
+          -- re-reads the block holding the attestation the old authentication gate dropped.
+          assertEqual "currentSchemaVersion is the version this column set belongs to" 6 currentSchemaVersion,
       -- The index that must NOT be unique. A credential may be claimed by two profiles (Review
       -- Focus item 2) and the read layer reports that as `contested`; a unique index here would
       -- make ingestion drop the second claim instead, which is the opposite behaviour and would

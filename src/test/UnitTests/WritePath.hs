@@ -192,6 +192,12 @@ publishedErrorTable =
     (AttestationNotFound, 404, "AttestationNotFound"),
     (AttestationAlreadyAccepted, 400, "AttestationAlreadyAccepted"),
     (AttestationOtherMetadataReservedKeys, 400, "AttestationOtherMetadataReservedKeys"),
+    -- Carries its reason, and the CODE must still be the bare constructor name: a client branching
+    -- on `code` cannot be handed a different string per message. That holds because
+    -- `txBuildingExceptionCode` is `takeWhile (/= ' ') . show`, the same mechanism that keeps
+    -- `ScriptCredentialHasNoUtxo` stable — asserted here with a payload containing a space, which is
+    -- what would break it.
+    (AttestationAnchorMalformed "an address with no action", 400, "AttestationAnchorMalformed"),
     (AttestationPeriodInverted, 400, "AttestationPeriodInverted"),
     (DepositAddressNotSpendable, 400, "DepositAddressNotSpendable"),
     (DepositAddressIsScript, 400, "DepositAddressIsScript"),

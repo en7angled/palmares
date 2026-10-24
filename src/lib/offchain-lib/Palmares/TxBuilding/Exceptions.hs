@@ -1,6 +1,8 @@
 module Palmares.TxBuilding.Exceptions where
 
 import Control.Exception
+import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Typeable (cast)
 import GHC.Generics (Generic)
 import GeniusYield.HTTP.Errors (IsGYApiError)
@@ -25,6 +27,18 @@ data TxBuildingException
   | AttestationAlreadyAccepted
   | -- | @other_metadata@ keys must not duplicate CIP-68 standard keys @name@, @description@, or @image@.
     AttestationOtherMetadataReservedKeys
+  | -- | The level-1 anchor keys are present in @other_metadata@ and do not parse — __ADR 0008__.
+    --
+    -- Carries the reason, because there are three distinguishable mistakes and a client that cannot
+    -- tell them apart will retry the same body: the action id is not CIP-129, the stake address is
+    -- not bech32, or an address was given with no action (there is nothing to resolve — the
+    -- withdrawal table is keyed by the PAIR, and one address can be paid under many actions).
+    --
+    -- __Refused here because the pointer is permanent.__ Nothing on chain validates the anchor — by
+    -- the specification's own decision, since a treasury withdrawal is not an addressable UTxO — so
+    -- a malformed one would sit in the datum for ever, and the read layer would have to publish it
+    -- as @malformed@ to anyone who asked. This is the only place it can still be a 400 instead.
+    AttestationAnchorMalformed Text
   | -- | The claimed period ends before it begins.
     --
     -- The ONLY check the claimed period gets, and it is off-chain only. The minting policy carries
@@ -158,6 +172,13 @@ instance Exception TxBuildingException where
     \entirely — a period must have both bounds or neither."
   displayException AttestationOtherMetadataReservedKeys =
     "other_metadata must not use reserved keys: name, description, image (CIP-68 standard fields)"
+  displayException (AttestationAnchorMalformed why) =
+    "The level-1 anchor in other_metadata is not valid: "
+      <> T.unpack why
+      <> ". palmares:level1_gov_action takes a CIP-129 governance action id (gov_action1…) and \
+         \palmares:level1_stake_address takes a bech32 stake address; the action alone anchors to an \
+         \action, both together to the treasury withdrawal that pair names, and the address alone is \
+         \not an anchor. Omit both keys to issue an unanchored attestation."
   displayException DisputeNotFound = "Dispute not found"
   displayException DisputeAlreadyOpen =
     "A dispute is already open against this attestation. Wait for it to be resolved before opening \
@@ -228,6 +249,7 @@ txBuildingExceptionToHttpStatus DatumParseError = 500
 --     introducing one on three constructors would be a new status a client must learn for no new
 --     decision — the @code@ is what distinguishes them and it always has been.
 txBuildingExceptionToHttpStatus WrongProfileType = 400
+txBuildingExceptionToHttpStatus (AttestationAnchorMalformed _) = 400
 txBuildingExceptionToHttpStatus AttestationKindIsCredentialBinding = 400
 txBuildingExceptionToHttpStatus CredentialMalformed = 400
 txBuildingExceptionToHttpStatus (ScriptCredentialHasNoUtxo _) = 400

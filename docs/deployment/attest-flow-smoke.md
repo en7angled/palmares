@@ -126,7 +126,7 @@ Exit codes:
 
 | code | meaning |
 |---|---|
-| 0 | all six steps passed |
+| 0 | all seven steps passed |
 | 1 | the flow completed and an **assertion** failed — the API answered with a wrong value |
 | 2 | the flow could not be driven: preflight refused, a write failed, a projection never appeared |
 
@@ -156,9 +156,33 @@ deliberately NOT on `syncing`: a projector mid-backfill is a healthy service ser
 attestation pages, and taking the governance routes out of rotation for the hours a backfill takes
 would be the worse answer. The old `attest_lag_seconds` field stays beside the new block.
 
+## Step 7 — the level-1 anchor
+
+The last step is the other half of F1 check 11: *"issuing an attestation … with and without a
+treasury anchor … the anchored attestation shows the corresponding treasury withdrawal from
+`palmares.treasury_withdrawal` in the API, and one with an unresolvable anchor is marked as such
+rather than hidden."*
+
+The anchor is **two reserved `other_metadata` keys**, not a datum field — ADR 0008, because the
+specification itself decided the anchor is unvalidated on chain, so a typed field would carry the
+same zero guarantee at the price of a new registry. The step issues three attestations and makes two
+refused requests:
+
+| case | what it proves |
+|---|---|
+| a resolvable pair, **read out of the live index** | `status: "resolved"` and the withdrawal's own amount beside it. The pair is fetched from `/treasury-withdrawals` rather than pinned, because a hard-coded `(gov_action_id, stake_address)` rots the first time preprod is re-synced from a later snapshot |
+| no anchor at all (step 3's attestation) | `level1_anchor` is `null`, not an empty object. Most attestations are unanchored and that is not a defect: a vendor paid out of an organization's budget has no on-chain payment fact |
+| a **crossed** pair — one withdrawal's action, another's address | `status: "unresolved"` with `withdrawal: null`, and the pointer still published. The action exists and the PAIR does not, which is the case that must not read `resolved` |
+| a malformed action id, and an address with no action | `400` before a signature. Neither can be asserted from a projection, because there is nothing to project |
+
+The crossed pair is deliberate: corrupting a bech32 id breaks its checksum, so the write API would
+refuse it as *malformed* — a different case — and there is no way to mint a valid-but-nonexistent
+bech32 id from a shell script. Crossing two real withdrawals is also the mistake a real client makes.
+
 ## What it leaves behind
 
-Two profiles, one accepted attestation and one upheld dispute, all named `palmares-<tag>-*`, and
+Two profiles, one accepted attestation, one upheld dispute and up to two anchored attestations, all
+named `palmares-<tag>-*`, and
 the script prints their URLs. Nothing is cleaned up: an attestation is a permanent historical fact,
 which is also why the admin CLI has no `delete-profile`. Re-running is safe — every name carries a
 fresh run tag — except that a second claim of the same DRep credential makes

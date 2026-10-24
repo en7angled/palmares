@@ -227,6 +227,7 @@ DisputeProjection
     targetAttestationId  GYAssetClass
     openedByProfileId    GYAssetClass
     openedAt             GYTime
+    staleAfter           GYTime
     deposit              Integer
     verdict              (Maybe DisputeVerdict)
     disputeName          Text
@@ -338,7 +339,17 @@ currentSchemaVersion :: Int
 -- POLICY change from wiping and deliberately leaves a SCHEMA change wiping, because these tables
 -- would otherwise need an in-place ALTER Postgres rejects. Harmless here: the only deployment this
 -- precedes is a fresh one, where `needWipe` is False because there is no probe to compare against.
-currentSchemaVersion = 5
+--
+-- 6: `dispute_projection.stale_after`. The dispute's own deadline was in the datum and published
+-- nowhere, so a client could only compute `opened_at + the oracle's current timeout` — wrong for any
+-- dispute opened before a retiming, because the datum's deadline is absolute. The column is NOT NULL
+-- and existing rows have no value for it, which is precisely what this bump exists to handle.
+--
+-- __This bump is also the re-index that was needed anyway.__ The authentication gate that dropped
+-- every attestation (`5ae17bf`) was fixed after the projector's cursor had already passed the block
+-- holding the one attestation on chain, so the record was correct in the code and absent from the
+-- database with nothing to trigger a re-read. A wipe re-indexes from the chain, which fixes both.
+currentSchemaVersion = 6
 
 -- | Upsert a record by its unique key: insert if absent, replace if present.
 upsertByUnique ::
@@ -662,6 +673,7 @@ putDisputeProjection createdSlot createdHash d = do
             disputeProjectionTargetAttestationId = pdTarget d,
             disputeProjectionOpenedByProfileId = pdOpenedBy d,
             disputeProjectionOpenedAt = pdOpenedAt d,
+            disputeProjectionStaleAfter = pdStaleAfter d,
             disputeProjectionDeposit = pdDeposit d,
             disputeProjectionVerdict = pdVerdict d,
             disputeProjectionDisputeName = pdName d,

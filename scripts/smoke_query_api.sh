@@ -805,7 +805,19 @@ if [ -n "$DID" ]; then
 else
   echo "  --   no dispute projected yet, /disputes/{id} content not asserted"
 fi
-check "a well-formed id that names no dispute is 404" "$(code '/disputes/aa.bb')" "404"
+# A WELL-FORMED id that names nothing, which is the only way to reach `dispute_not_found`. `aa.bb`
+# is not one — it is refused by the capture's own asset-class parser with a 400, measured — so
+# asserting 404 on it would have passed for the wrong reason and left the 404 path unexercised.
+# The policy is the live one from /status; the token name is the dispute label plus bytes nobody minted.
+POL=$(j /status '.attestation.policy_id // empty' | tr -d '"' || true)
+if [ -n "$POL" ]; then
+  check "a well-formed id that names no dispute is 404" "$(code "/disputes/$POL.000020e0deadbeef")" "404"
+  check "  and it answers dispute_not_found" \
+    "$(curl -s "$API/disputes/$POL.000020e0deadbeef" | jq -r '.code // "none"')" "dispute_not_found"
+else
+  echo "  --   /status carries no policy_id, dispute 404 not asserted"
+fi
+check "a malformed id is refused by the capture, not by the lookup" "$(code '/disputes/aa.bb')" "400"
 check "a user token that is not an asset class is 400" "$(code '/profiles/by-user-token/not-an-asset-class')" "400"
 check "  and it answers invalid_asset_class, not invalid_parameter" \
   "$(curl -s "$API/profiles/by-user-token/not-an-asset-class" | jq -r '.code // "none"')" "invalid_asset_class"

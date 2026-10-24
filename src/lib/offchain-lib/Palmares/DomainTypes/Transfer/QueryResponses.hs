@@ -81,6 +81,8 @@ module Palmares.DomainTypes.Transfer.QueryResponses
     AttestationRow (..),
     DisputeRow (..),
     AttestationDetailResponse (..),
+    ResolvedLevelOneAnchor (..),
+    AnchorWithdrawal (..),
   )
 where
 
@@ -1931,6 +1933,15 @@ data DisputeRow = DisputeRow
     disputeRowTarget :: Core.AttestationAC,
     disputeRowOpenedBy :: Core.ProfileRefAC,
     disputeRowOpenedAt :: GYTime,
+    -- | After this, ANYONE may close the dispute as @expired@ with no signature and no oracle read
+    -- (@D9@) — the exit that keeps a deposit from depending on the arbiter staying available.
+    --
+    -- __Do not compute this from the oracle's current timeout.__ @opDisputeTimeoutMs@ is copied into
+    -- the dispute's datum when it opens, so this date is absolute and a later reprice cannot move
+    -- it: @opened_at + /status.oracle.dispute_timeout_ms@ is the right answer only for a dispute
+    -- opened under the parameters in force right now. Read the oracle's figure to tell a user what
+    -- opening a NEW dispute will cost them in waiting; read this one for a dispute that exists.
+    disputeRowStaleAfter :: GYTime,
     -- | Lovelace, returned to the opener whichever way the dispute goes: there is no punitive
     -- verdict, so losing one costs network fees and nothing else.
     disputeRowDeposit :: Integer,
@@ -1954,9 +1965,52 @@ instance ToSchema DisputeRow where
 -- inlines its tallies: a client that has to fetch the challenges separately is a client that will
 -- render the attestation before they arrive, and an undisputed-looking attestation is exactly the
 -- wrong thing to show for a disputed one.
+-- | The treasury withdrawal an anchor resolved to, as @palmares.treasury_withdrawal@ holds it.
+data AnchorWithdrawal = AnchorWithdrawal
+  { anchorWithdrawalAmount :: Integer,
+    -- | @null@ while the action has not been enacted, which is most of them.
+    anchorWithdrawalEnactedEpoch :: Maybe Int,
+    -- | __A display hint, never an accounting fact, and nothing may sum it.__ db-sync records
+    -- treasury payouts per (address, epoch) with NO governance-action key, so matching a payout to a
+    -- withdrawal is inference: when one address receives two withdrawals in the same epoch the match
+    -- is ambiguous and this column claims both were paid (@sql\/020_views.sql@).
+    anchorWithdrawalPaidHeuristic :: Bool
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "anchorWithdrawal", CamelToSnake]] AnchorWithdrawal
+
+instance ToSchema AnchorWithdrawal where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "anchorWithdrawal")
+
+-- | An attestation's level-1 anchor, confronted with the index at read time — __ADR 0008__.
+--
+-- The two ids come back as the datum holds them, lowercased when they parsed, so a client can feed
+-- @gov_action_id@ straight into @\/gov-action\/{id}@. When @status@ is @malformed@ they are whatever
+-- the datum said, which is the only useful thing to show for a pointer nobody can read.
+--
+-- @withdrawal@ is present only when an address was given AND the pair resolved. An action-only
+-- anchor resolves to @resolved@ with no withdrawal — it points at the action, not at a payment.
+data ResolvedLevelOneAnchor = ResolvedLevelOneAnchor
+  { resolvedAnchorGovActionId :: Maybe Text,
+    resolvedAnchorStakeAddress :: Maybe Text,
+    resolvedAnchorStatus :: Core.LevelOneAnchorStatus,
+    resolvedAnchorWithdrawal :: Maybe AnchorWithdrawal
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "resolvedAnchor", CamelToSnake]] ResolvedLevelOneAnchor
+
+instance ToSchema ResolvedLevelOneAnchor where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "resolvedAnchor")
+
 data AttestationDetailResponse = AttestationDetailResponse
   { attestationDetailAttestation :: AttestationRow,
-    attestationDetailDisputes :: [DisputeRow]
+    attestationDetailDisputes :: [DisputeRow],
+    -- | @null@ when the attestation carries no anchor keys at all, which is most of them: a vendor
+    -- paid out of an organization's budget has no on-chain payment fact and belongs in the registry
+    -- anyway (spec §2). A malformed anchor is NOT @null@ — see 'ResolvedLevelOneAnchor'.
+    attestationDetailLevel1Anchor :: Maybe ResolvedLevelOneAnchor
   }
   deriving stock (Show, Eq, Generic)
   deriving (FromJSON, ToJSON)

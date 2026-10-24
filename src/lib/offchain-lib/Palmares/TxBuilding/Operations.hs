@@ -461,6 +461,11 @@ issueAttestationTX gySubjectProfileId gyIssuerProfileId kind metadata otherMetad
           throwError (GYApplicationException AttestationOtherMetadataReservedKeys)
     )
     otherMetadata
+  -- The level-1 anchor is validated one layer OUT, in 'Palmares.TxBuilding.Interactions', because
+  -- by the time the metadata arrives here it is already @BuiltinByteString@ and the anchor's two
+  -- values are bech32 text. Converting back to validate what was text a moment ago would also be
+  -- lossy — invalid UTF-8 would be mangled rather than refused. `interactionToTxSkeleton` is the
+  -- same shared root this function is, so `/issue-attestation` and `/build-tx` are both covered.
   mpGY <- asks getMintingPolicyFromCtx
   mpRef <- asks getMintingPolicyRef
   attestationProtocolParams <- asks getProtocolParamsFromCtx

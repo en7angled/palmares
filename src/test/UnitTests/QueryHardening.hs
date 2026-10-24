@@ -31,6 +31,7 @@ import Palmares.DomainTypes.Core.Types
     AttestationType (..),
     DRepStatus (..),
     GovActionId (..),
+    LevelOneAnchorStatus (..),
     ProfileRefAC,
     VoterRole (..),
   )
@@ -50,7 +51,7 @@ import Palmares.WebAPI.Envelope (ApiError (..), ErrorCode (..), Page (..), error
 import Palmares.WebAPI.Errors (errorCodeFromParserMessage, genericErrorMessage, refusedRequestMiddleware)
 import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.Utils (escapeLikePattern, markNullableFields)
-import Query.Attest (attestationWhere, canonicalGovCredential, credentialIsScript, profileRefOfUserToken)
+import Query.Attest (anchorStatusOf, attestationWhere, canonicalGovCredential, credentialIsScript, profileRefOfUserToken)
 import Query.Common
 import Servant (FromHttpApiData (..))
 import Palmares.DomainTypes.Transfer.QueryResponses (ActivityCursor (..), renderCursor)
@@ -102,7 +103,8 @@ queryHardeningTests =
       userTokenTests,
       issuerAttributionTests,
       nullabilityTests,
-      refusalTests
+      refusalTests,
+      anchorVerdictTests
     ]
 
 boundsTests :: TestTree
@@ -869,3 +871,62 @@ refusalTests =
         acc <- newIORef mempty
         sb (\b -> modifyIORef' acc (<> b)) (pure ())
         toLazyByteString <$> readIORef acc
+
+-- | The level-1 anchor's verdict, over all eight combinations — __ADR 0008__.
+--
+-- Pure, because the defect was in the DECISION and not in the join: resolving an anchor needs
+-- `palmares.gov_action` and `palmares.treasury_withdrawal`, which would mean seeding four db-sync
+-- tables to manufacture a withdrawal, and none of that would have caught the line that was wrong.
+--
+-- __What was wrong.__ The verdict read `resolved` off `actionFound` alone. So an anchor that gives
+-- BOTH keys and names a payment nobody made — a real governance action beside an address that
+-- action never paid, which is exactly the mistake a client makes pasting from two rows — came back
+-- `resolved` with `withdrawal: null`, indistinguishable from an anchor that only ever pointed at an
+-- action. A UI would have rendered "this payment happened" about a payment that did not.
+--
+-- The rule: `resolved` means __what the caller asked__ resolved. An address in the anchor is a
+-- question about a withdrawal, and an unanswered question is not a yes.
+anchorVerdictTests :: TestTree
+anchorVerdictTests =
+  testGroup
+    "the level-1 anchor's verdict asks what the caller asked"
+    [ -- Action-only anchors: the address is absent, so the withdrawal join is not a question and
+      -- whatever it found is irrelevant. Both rows of the truth table, so "ignored" is pinned
+      -- rather than assumed.
+      testCase "an action-only anchor resolves on the action alone" $
+        ( anchorStatusOf True False Nothing,
+          anchorStatusOf True True Nothing
+        )
+          @?= (L1Resolved, L1Resolved),
+      testCase "an action-only anchor whose action is absent is unresolved" $
+        ( anchorStatusOf False False Nothing,
+          anchorStatusOf False True Nothing
+        )
+          @?= (L1Unresolved, L1Unresolved),
+      -- THE CASE THAT WAS WRONG. Both keys given, the action real, the pair not.
+      testCase "a pair whose action exists and whose withdrawal does not is UNRESOLVED" $
+        anchorStatusOf True False (Just addr) @?= L1Unresolved,
+      testCase "a pair that resolves is resolved" $
+        anchorStatusOf True True (Just addr) @?= L1Resolved,
+      -- The two remaining rows. `withdrawalFound` without `actionFound` cannot arise from the
+      -- statement — the withdrawal join hangs off the action join — but the function is total and
+      -- says so rather than leaving it to the SQL to be the only thing that knows.
+      testCase "a pair whose action is absent is unresolved either way" $
+        ( anchorStatusOf False False (Just addr),
+          anchorStatusOf False True (Just addr)
+        )
+          @?= (L1Unresolved, L1Unresolved),
+      -- A reader should be able to tell the three statuses apart; `malformed` is produced before
+      -- any join runs, so it is not this function's to return.
+      testCase "the verdict never invents malformed — that is decided before the joins" $
+        notElem
+          L1Malformed
+          [ anchorStatusOf a w ad
+            | a <- [True, False],
+              w <- [True, False],
+              ad <- [Nothing, Just addr]
+          ]
+          @?= True
+    ]
+  where
+    addr = "stake_test1uppy2gm2hqzkwc80em4mlat73j4jyqvzhclrvsu72g9xg4q2yweet"

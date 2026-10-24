@@ -364,6 +364,33 @@ parseLevelOneAnchor entries =
 levelOneAnchorKeys :: [Text]
 levelOneAnchorKeys = [levelOneAnchorActionKey, levelOneAnchorAddressKey]
 
+-- | What became of an attestation's level-1 anchor when the read layer confronted it with the data
+-- — __ADR 0008__.
+--
+-- Three values, and a UI must distinguish them because they mean three different things to a reader:
+--
+--   * @resolved@ — the action, and the withdrawal if an address was given, exist in the index. Show
+--     the link, and the amount when a withdrawal came back.
+--   * @unresolved@ — the pointer parses and names nothing the index holds. Show the pointer with a
+--     plain "not found" marker. __Never hide it__: the datum permanently says this attestation is
+--     about that payment, and an attestation rendered as unanchored is a different claim.
+--   * @malformed@ — the keys are there and do not parse. Show them as unreadable. Only a hand-built
+--     transaction can produce this, because the write API refuses it.
+--
+-- Deliberately NOT a boolean. "Did it resolve" collapses the second and third cases, and they have
+-- different causes: one is a pointer at something that is not there, the other is not a pointer.
+data LevelOneAnchorStatus
+  = L1Resolved
+  | L1Unresolved
+  | L1Malformed
+  deriving stock (Show, Eq, Ord, Enum, Bounded, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[ConstructorTagModifier '[StripPrefix "L1", CamelToSnake]] LevelOneAnchorStatus
+
+instance ToSchema LevelOneAnchorStatus where
+  declareNamedSchema _ =
+    pure (NamedSchema (Just "LevelOneAnchorStatus") (jsonEnumSchema (Proxy :: Proxy LevelOneAnchorStatus)))
+
 -- | How a dispute ended — the off-chain mirror of
 -- 'Palmares.Onchain.Protocol.Types.Verdict', the same three constructors in the same order.
 --

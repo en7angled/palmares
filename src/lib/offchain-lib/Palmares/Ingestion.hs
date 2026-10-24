@@ -37,6 +37,14 @@ data ProjectedDispute = ProjectedDispute
     pdTarget :: GYAssetClass,
     pdOpenedBy :: GYAssetClass,
     pdOpenedAt :: GYTime,
+    -- | The dispute's own deadline, after which ANYONE may close it as @expired@ — @D9@.
+    --
+    -- __It is absolute and it is history.__ The oracle's @opDisputeTimeoutMs@ is copied into the
+    -- datum when the dispute opens, so a later reprice cannot move this, and a client that computes
+    -- @opened_at + the oracle's CURRENT timeout@ gets the wrong date for any dispute opened before a
+    -- retiming. That is why the projection carries it instead of leaving it to be re-derived: it
+    -- cannot be re-derived correctly from anything else the API publishes.
+    pdStaleAfter :: GYTime,
     pdDeposit :: Integer,
     -- | 'Nothing' while the dispute is open. Set once, and never unset.
     pdVerdict :: Maybe DisputeVerdict,
@@ -136,6 +144,7 @@ projectDispute datum = do
         pdTarget = gyTarget,
         pdOpenedBy = gyOpenedBy,
         pdOpenedAt = timeFromPlutus disputeOpenedAt,
+        pdStaleAfter = timeFromPlutus disputeStaleAfter,
         pdDeposit = disputeDeposit,
         pdVerdict = onchainVerdictToDisputeVerdict <$> disputeVerdict,
         pdName = profileDataName,

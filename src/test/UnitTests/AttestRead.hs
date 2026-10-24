@@ -185,6 +185,12 @@ disputeFx slot did target verdict =
       disputeProjectionTargetAttestationId = target,
       disputeProjectionOpenedByProfileId = acBob,
       disputeProjectionOpenedAt = at slot,
+      -- The oracle's deployed timeout is 30 days and `at` is a slot-derived instant, so the fixture
+      -- deadline is `opened_at` plus 30 days' worth of preprod slots (one slot, one second). A
+      -- fixture is free to pick any instant, but a deadline BEFORE its own opening would be a shape
+      -- the chain cannot produce — `Md6` forces `openedAt` into the opening transaction's range and
+      -- `staleAfter` is computed from it.
+      disputeProjectionStaleAfter = at (slot + 2592000),
       disputeProjectionDeposit = 5_000_000,
       disputeProjectionVerdict = verdict,
       disputeProjectionDisputeName = "a dispute",

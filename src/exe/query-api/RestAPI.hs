@@ -1955,7 +1955,15 @@ apiSwagger =
     -- and costs 2.4 ms. Also additive: `GET /disputes/{id}`, `GET /profiles/by-user-token/{id}`,
     -- `x-nullable` on every nullable field, the real `limit`/`offset` bounds, and a `{code, message}`
     -- body on the 405 and 406 the router used to answer empty.
-    & info . Data.Swagger.version .~ "1.6.0"
+    --
+    -- 1.7.0, MINOR: `DisputeRow` gains `stale_after` — the dispute's own deadline, which was in the
+    -- datum and published nowhere, so a client could only compute it from the oracle's CURRENT
+    -- timeout and get the wrong date for any dispute opened before a retiming. And
+    -- `/attestations/{id}` gains `level1_anchor` (ADR 0008): the treasury withdrawal or governance
+    -- action an attestation points at, resolved at read time, with a `status` of `resolved`,
+    -- `unresolved` or `malformed` — never hidden, because the datum permanently says the attestation
+    -- is about that payment.
+    & info . Data.Swagger.version .~ "1.7.0"
     & info . Data.Swagger.description
       ?~ "Read-only queries over the Cardano governance record: DReps, governance actions, votes, \
          \delegations, the constitutional committee and treasury withdrawals. Every row comes from \

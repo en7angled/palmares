@@ -120,6 +120,27 @@
             ],
             "type": "string"
         },
+        "AnchorWithdrawal": {
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "enacted_epoch": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "paid_heuristic": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "amount",
+                "paid_heuristic"
+            ],
+            "type": "object"
+        },
         "ApiError": {
             "description": "The body of every non-2xx response.",
             "properties": {
@@ -191,6 +212,10 @@
                         "$ref": "#/definitions/DisputeRow"
                     },
                     "type": "array"
+                },
+                "level1_anchor": {
+                    "$ref": "#/definitions/ResolvedLevelOneAnchor",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1200,6 +1225,12 @@
                 "slot": {
                     "type": "integer"
                 },
+                "stale_after": {
+                    "description": "This is the posix time in ISO8601 format.",
+                    "example": "1970-01-01T00:00:00Z",
+                    "format": "ISO8601",
+                    "type": "string"
+                },
                 "target": {
                     "$ref": "#/definitions/GYAssetClass"
                 },
@@ -1213,6 +1244,7 @@
                 "target",
                 "opened_by",
                 "opened_at",
+                "stale_after",
                 "deposit",
                 "name",
                 "description",
@@ -1607,6 +1639,14 @@
                 "new_committee",
                 "new_constitution",
                 "info_action"
+            ],
+            "type": "string"
+        },
+        "LevelOneAnchorStatus": {
+            "enum": [
+                "resolved",
+                "unresolved",
+                "malformed"
             ],
             "type": "string"
         },
@@ -2218,6 +2258,29 @@
             ],
             "type": "object"
         },
+        "ResolvedLevelOneAnchor": {
+            "properties": {
+                "gov_action_id": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "stake_address": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "status": {
+                    "$ref": "#/definitions/LevelOneAnchorStatus"
+                },
+                "withdrawal": {
+                    "$ref": "#/definitions/AnchorWithdrawal",
+                    "x-nullable": true
+                }
+            },
+            "required": [
+                "status"
+            ],
+            "type": "object"
+        },
         "SPOSummary": {
             "description": "One stake pool in the current voting-power distribution. `ticker` and `participation_rate` are null throughout F1 -- the first because db-sync's pool-metadata fetcher is disabled, the second because no spo_participation_rate_v1 exists in the metric catalog yet.",
             "properties": {
@@ -2826,7 +2889,7 @@
             "name": "Apache-2.0"
         },
         "title": "Palmares Query API",
-        "version": "1.6.0"
+        "version": "1.7.0"
     },
     "paths": {
         "/activity": {

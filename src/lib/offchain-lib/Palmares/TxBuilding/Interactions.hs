@@ -11,12 +11,13 @@ import Data.Swagger (NamedSchema (..), Schema (..), ToSchema (..), defaultSchema
 import Data.Swagger.Schema (SchemaOptions, fromAesonOptions)
 import Deriving.Aeson
 import Palmares.DomainTypes.Core.Actions
-import Palmares.DomainTypes.Core.Types (AttestationType (CredentialClaim, CredentialWithdrawal))
+import Palmares.DomainTypes.Core.Types (AttestationType (CredentialClaim, CredentialWithdrawal), parseLevelOneAnchor)
 import GHC.Stack (HasCallStack)
 import GeniusYield.TxBuilder
 import GeniusYield.Types
 import Palmares.TxBuilding.Context (DeployedScriptsContext)
 import Palmares.TxBuilding.Conversions
+import Palmares.TxBuilding.Exceptions (TxBuildingException (AttestationAnchorMalformed))
 import Palmares.TxBuilding.Operations
 
 ------------------------------------------------------------------------------------------------
@@ -151,6 +152,17 @@ interactionToTxSkeleton Interaction {..} = do
             (profileDataToMetadataFields profileData)
             usedAddrs
         IssueAttestationAction subjectId issuerId kind profileData otherMeta claimedPeriod -> do
+          -- The level-1 anchor — __ADR 0008__. Checked HERE, before the metadata becomes
+          -- `BuiltinByteString`, because the anchor's two values are bech32 TEXT and validating them
+          -- after the conversion would mean decoding bytes back into text that was text a moment
+          -- ago. This is the shared root for `/issue-attestation` and `/build-tx` alike, which is why
+          -- it is not in a handler: nothing on chain validates the anchor — by the specification's
+          -- own decision, since a treasury withdrawal is not an addressable UTxO — so this is the
+          -- last point at which a bad pointer is a 400 instead of a permanent record the read layer
+          -- has to publish as `malformed`.
+          case parseLevelOneAnchor otherMeta of
+            Left why -> throwError (GYApplicationException (AttestationAnchorMalformed why))
+            Right _ -> return ()
           let otherMetadataPlutus = map (Data.Bifunctor.bimap textToBuiltinByteString textToBuiltinByteString) otherMeta
           issueAttestationTX
             subjectId

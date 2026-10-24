@@ -30,9 +30,9 @@ check() {
 echo "== swagger metadata"
 # Pinned so a version bump arrives as a reviewed diff rather than as nothing. 1.6.0 adds `is_final`
 # on `/votes` — the parameter that turns 3,244,723 rows into 931 — plus `GET /disputes/{id}`,
-# `GET /profiles/by-user-token/{id}`, `x-nullable` on all 127 nullable properties, the real
+# `GET /profiles/by-user-token/{id}`, `x-nullable` on all nullable properties, the real
 # `limit`/`offset` bounds, and a `{code, message}` body on the 405 and 406 the router answered empty.
-check "version is 1.6.0" '.info.version == "1.6.0"'
+check "version is 1.7.0" '.info.version == "1.7.0"'
 # D-A. A client that SWITCHES on the verdict gains a case here, and one that renders `expired` as a
 # finding is wrong — which is the whole reason the value is in the published enum rather than left
 # to a null and a comment.
@@ -249,16 +249,17 @@ echo "== nullability"
 #
 # What this fixed: the document had NO `x-nullable` at all, so a generated TypeScript client typed
 # 127 properties across 61 definitions as non-null and threw on the first row that carried a `null`.
+# (132 now: `level1_anchor` and the four nullable fields of the two anchor schemas behind it.)
 # The encoders always emit the key (`UnitTests.GovDto` pins that), so every one of those fields is
 # reachable as `null` by a client that did nothing wrong.
 check "every property absent from required carries x-nullable" \
   '[.definitions | to_entries[] | (.value.required // []) as $req | (.value.properties // {}) | to_entries[] | .key as $k | select(($req | index($k)) == null) | (.value["x-nullable"] == true)] | all'
 check "and no required property carries it" \
   '[.definitions | to_entries[] | (.value.required // []) as $req | (.value.properties // {}) | to_entries[] | .key as $k | select(($req | index($k)) != null) | (.value | has("x-nullable") | not)] | all'
-# The COUNT, for the same reason the path count is here: 127 is what was measured, and a change to
+# The COUNT, for the same reason the path count is here: 132 is what is measured today, and a change to
 # it is a wire-contract change that should arrive as a reviewed diff rather than as nothing.
-check "127 nullable properties" \
-  '[.definitions | to_entries[] | (.value.required // []) as $req | (.value.properties // {}) | to_entries[] | .key as $k | select(($req | index($k)) == null)] | length == 127'
+check "132 nullable properties" \
+  '[.definitions | to_entries[] | (.value.required // []) as $req | (.value.properties // {}) | to_entries[] | .key as $k | select(($req | index($k)) == null)] | length == 132'
 # Three by name, because they are the ones a client meets first: the envelope's own `total` (null on
 # the cursor-paged feed and nowhere else), a scalar inside a row, and a whole nested object behind a
 # `$ref` — the case a strict Swagger 2.0 reader may ignore and the reason the document says so.

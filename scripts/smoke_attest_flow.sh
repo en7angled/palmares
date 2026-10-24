@@ -9,8 +9,9 @@
 # notice; so `subject`, `issuer`, `credential`, `accepted`, `deposit` and `verdict` are each read
 # back out of the read surface and compared with what went in.
 #
-# What it leaves behind, on purpose: two profiles, one accepted attestation and one resolved
-# dispute, all tagged with $ATTEST_SMOKE_TAG, so a human can open them in the API or the UI after
+# What it leaves behind, on purpose: two profiles, three attestations (one accepted, two anchored by
+# step 7) and one resolved dispute, all tagged with $ATTEST_SMOKE_TAG, so a human can open them in
+# the API or the UI after
 # the run. Nothing is cleaned up — an attestation is a permanent historical fact (the admin CLI
 # has no delete-profile for the same reason).
 #
@@ -493,6 +494,128 @@ assert "/attestations/$ATT" '.attestation.accepted' 'true'
 assert "/profiles/$SUBJECT/attestations" '.total' '2'
 
 # ---------------------------------------------------------------------------------------------
+step 7 "the level-1 anchor — money linked to delivery, and a pointer that resolves to nothing"
+# ---------------------------------------------------------------------------------------------
+# F1 check 11's remaining half: "with and without a treasury anchor … the anchored attestation shows
+# the corresponding treasury withdrawal from palmares.treasury_withdrawal in the API, and one with an
+# unresolvable anchor is marked as such rather than hidden."
+#
+# ADR 0008: the anchor is two reserved `other_metadata` keys, not a datum field, because the
+# specification itself decided the anchor is unvalidated on chain — so a typed field would carry the
+# same zero guarantee at the price of a new registry. The consequence this step exists to prove is
+# that resolution happens at READ time and the API says which of three things happened.
+#
+# The resolvable pair is read out of the live index rather than hard-coded: a pinned
+# (gov_action_id, stake_address) would rot the first time preprod is re-synced from a later snapshot.
+WD=$(curl -fsS -H 'Accept: application/json' "$QAPI/treasury-withdrawals?limit=1" | jq -c '.items[0] // empty') || true
+if [ -z "$WD" ]; then
+  echo "  --   no treasury withdrawal in the index, anchor resolution not asserted"
+else
+  WD_ACTION=$(echo "$WD" | jq -re '.gov_action_id')
+  WD_ADDR=$(echo "$WD" | jq -re '.stake_address')
+  echo "  ..   anchoring to $WD_ACTION / $WD_ADDR"
+
+  # (a) WITH a resolvable anchor.
+  ANCHORED_NAME="$TAG-anchored"
+  ANCHORED_TX=$(submit /issue-attestation "$(jq -nc \
+    --arg s "$SUBJECT" --arg b "$ISSUER" --arg n "$ANCHORED_NAME" \
+    --arg d "anchored attestation for $TAG" --arg i "$IMG" --arg t "$TAG" \
+    --arg ga "$WD_ACTION" --arg sa "$WD_ADDR" --argjson ua "$(addrs)" \
+    '{subject_profile_id:$s,issuer_profile_id:$b,kind:"milestone_delivered",
+      name:$n,description:$d,image_uri:$i,
+      other_metadata:[["smoke_run",$t],
+                      ["palmares:level1_gov_action",$ga],
+                      ["palmares:level1_stake_address",$sa]],
+      user_addresses:$ua}')" "anchored attestation")
+
+  wait_for "/attestations?subject=$SUBJECT&issuer=$ISSUER&kind=milestone_delivered" '.total' '1' \
+    "the anchored attestation is projected"
+  ANCHORED=$(jr "/attestations?subject=$SUBJECT&issuer=$ISSUER&kind=milestone_delivered" '.items[0].id') \
+    || die "the anchored attestation projection carries no id"
+  echo "  ..   anchored=$ANCHORED  tx=$ANCHORED_TX"
+
+  # The pointer resolved, and the API publishes the withdrawal it names. `amount` is asserted
+  # present and positive rather than against a literal: it is a chain fact and pinning it would
+  # make this script fail when preprod moves.
+  assert "/attestations/$ANCHORED" '.level1_anchor.status' '"resolved"'
+  assert "/attestations/$ANCHORED" '.level1_anchor.gov_action_id' "\"$WD_ACTION\""
+  assert "/attestations/$ANCHORED" '.level1_anchor.stake_address' "\"$WD_ADDR\""
+  assert "/attestations/$ANCHORED" '.level1_anchor.withdrawal != null' 'true'
+  assert "/attestations/$ANCHORED" '.level1_anchor.withdrawal.amount > 0' 'true'
+  # The two keys stay in `other_metadata` as well, because removing them would make the API
+  # disagree with the datum. A client rendering raw metadata filters them.
+  assert "/attestations/$ANCHORED" \
+    '[.attestation.other_metadata[]|select(.[0]=="palmares:level1_gov_action")]|length' '1'
+
+  # (b) WITHOUT an anchor — the attestation from step 3, which must read `null` and not an empty
+  # object. Most attestations are unanchored: a vendor paid out of an organization's budget has no
+  # on-chain payment fact and belongs in the registry anyway (spec §2).
+  assert "/attestations/$ATT" '.level1_anchor' 'null'
+
+  # (c) WITH an anchor that resolves to NOTHING, built by CROSSING two real withdrawals: action from
+  # one, paid address from another. Both halves are well-formed, so the write API accepts it — the
+  # pair simply names a payment nobody made.
+  #
+  # Crossed rather than corrupted, because corrupting a bech32 id breaks its checksum and the write
+  # API would refuse it as MALFORMED, which is case (d) and a different assertion. There is no way to
+  # mint a valid-but-nonexistent bech32 id from shell, and this case is the better test anyway: it is
+  # the mistake a real client makes, pasting the right action beside the wrong address.
+  #
+  # It must read `unresolved`, never hidden: the datum permanently says this attestation is about
+  # that payment, so publishing it as unanchored would be a different claim about a record nobody
+  # can change.
+  WD2=$(curl -fsS -H 'Accept: application/json' "$QAPI/treasury-withdrawals?limit=2" \
+    | jq -c '[.items[]|select(.stake_address != "'"$WD_ADDR"'")][0] // empty') || true
+  if [ -z "$WD2" ]; then
+    echo "  --   only one distinct withdrawal address in the index, `unresolved` not asserted live"
+  else
+    OTHER_ADDR=$(echo "$WD2" | jq -re '.stake_address')
+    UNRES_TX=$(submit /issue-attestation "$(jq -nc \
+      --arg s "$SUBJECT" --arg b "$ISSUER" --arg n "$TAG-unresolvable" \
+      --arg d "unresolvable anchor for $TAG" --arg i "$IMG" --arg t "$TAG" \
+      --arg ga "$WD_ACTION" --arg sa "$OTHER_ADDR" --argjson ua "$(addrs)" \
+      '{subject_profile_id:$s,issuer_profile_id:$b,kind:"audit_passed",
+        name:$n,description:$d,image_uri:$i,
+        other_metadata:[["smoke_run",$t],
+                        ["palmares:level1_gov_action",$ga],
+                        ["palmares:level1_stake_address",$sa]],
+        user_addresses:$ua}')" "unresolvable-anchor attestation")
+    wait_for "/attestations?subject=$SUBJECT&issuer=$ISSUER&kind=audit_passed" '.total' '1' \
+      "the unresolvable-anchor attestation is projected"
+    UNRES=$(jr "/attestations?subject=$SUBJECT&issuer=$ISSUER&kind=audit_passed" '.items[0].id') \
+      || die "the unresolvable-anchor projection carries no id"
+    # The ACTION exists here and the PAIR does not, which is exactly the case that must not read
+    # `resolved`: "resolved" means what the client asked resolved, not that something did.
+    assert "/attestations/$UNRES" '.level1_anchor.status' '"unresolved"'
+    assert "/attestations/$UNRES" '.level1_anchor.withdrawal' 'null'
+    assert "/attestations/$UNRES" '.level1_anchor.gov_action_id' "\"$WD_ACTION\""
+    assert "/attestations/$UNRES" '.level1_anchor.stake_address' "\"$OTHER_ADDR\""
+  fi
+
+  # (d) A MALFORMED anchor never reaches the chain: the write API refuses it before a signature.
+  # This is the half that cannot be asserted from a projection, because there is nothing to project.
+  code=$(curl -s -o /dev/null -w '%{http_code}' -u "$BASIC_USER:$BASIC_PASS" \
+    -H 'Content-Type: application/json' -X POST "$IAPI/issue-attestation" \
+    -d "$(jq -nc --arg s "$SUBJECT" --arg b "$ISSUER" --arg i "$IMG" --argjson ua "$(addrs)" \
+      '{subject_profile_id:$s,issuer_profile_id:$b,kind:"endorsement",
+        name:"malformed-anchor",description:"not a gov action id",image_uri:$i,
+        other_metadata:[["palmares:level1_gov_action","gov_action1nope"]],
+        user_addresses:$ua}')")
+  if [ "$code" = 400 ]; then echo "  ok   a malformed anchor is refused before a signature (400)"
+  else echo "  FAIL a malformed anchor should be a 400, got $code"; fail=1; fi
+  # An address with no action is not half an anchor: the withdrawal table is keyed by the PAIR.
+  code=$(curl -s -o /dev/null -w '%{http_code}' -u "$BASIC_USER:$BASIC_PASS" \
+    -H 'Content-Type: application/json' -X POST "$IAPI/issue-attestation" \
+    -d "$(jq -nc --arg s "$SUBJECT" --arg b "$ISSUER" --arg i "$IMG" --arg sa "$WD_ADDR" --argjson ua "$(addrs)" \
+      '{subject_profile_id:$s,issuer_profile_id:$b,kind:"endorsement",
+        name:"half-anchor",description:"an address with no action",image_uri:$i,
+        other_metadata:[["palmares:level1_stake_address",$sa]],
+        user_addresses:$ua}')")
+  if [ "$code" = 400 ]; then echo "  ok   an address with no action is refused (400)"
+  else echo "  FAIL an address with no action should be a 400, got $code"; fail=1; fi
+fi
+
+# ---------------------------------------------------------------------------------------------
 echo
 echo "the chain, for the record:"
 echo "  issuer profile      $ISSUER_TX"
@@ -508,4 +631,4 @@ echo "  $QAPI/profiles/$SUBJECT/attestations"
 echo "  $QAPI/attestations/$ATT"
 echo "  $QAPI/profiles/by-credential/$ATTEST_SMOKE_DREP_ID"
 echo
-if [ "$fail" = 0 ]; then echo "smoke OK — all six steps passed"; else echo "FAILURES above"; exit 1; fi
+if [ "$fail" = 0 ]; then echo "smoke OK — all seven steps passed"; else echo "FAILURES above"; exit 1; fi

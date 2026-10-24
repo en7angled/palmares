@@ -62,6 +62,13 @@ module Query.Attest
     listAttestations,
     attestationById,
 
+    -- * The level-1 anchor, confronted with the index — ADR 0008
+    resolveLevelOneAnchor,
+    -- | Exported for the same reason: the verdict is a decision about what the two joins found, and
+    -- it is the line that was wrong first — @resolved@ off @actionFound@ alone would publish "this
+    -- payment happened" for a real action paired with an address it never paid.
+    anchorStatusOf,
+
     -- * Disputes
     inlineDisputeLimit,
     listDisputes,
@@ -69,11 +76,12 @@ module Query.Attest
   )
 where
 
+import Data.Maybe (fromMaybe, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Database.Persist (Entity (..), PersistField, PersistValue, entityVal, toPersistValue)
 import Database.Persist.Sql (Single (..), SqlPersistT, rawSql)
-import Palmares.DomainTypes.Core.Ids (parseCredentialRoleCip129, renderCredentialRoleCip129)
+import Palmares.DomainTypes.Core.Ids (parseCredentialRoleCip129, parseGovActionIdCip129, renderCredentialRoleCip129)
 import Palmares.DomainTypes.Core.Types qualified as Core
 import Palmares.DomainTypes.Transfer.Filters
   ( AttestProfileFilter (..),
@@ -86,10 +94,12 @@ import Palmares.DomainTypes.Transfer.OrderBy
     SortOrder (..),
   )
 import Palmares.DomainTypes.Transfer.QueryResponses
-  ( AttestProfileRow (..),
+  ( AnchorWithdrawal (..),
+    AttestProfileRow (..),
     AttestationDetailResponse (..),
     AttestationRow (..),
     DisputeRow (..),
+    ResolvedLevelOneAnchor (..),
   )
 import Palmares.Storage
   ( AttestationProjection (..),
@@ -504,7 +514,95 @@ attestationById aid = do
     [] -> pure Nothing
     (r : _) -> do
       ds <- disputesFor aid
-      pure (Just (AttestationDetailResponse (toAttestationRow (entityVal r)) ds))
+      anchor <- resolveLevelOneAnchor (otherMetadataOf (entityVal r))
+      pure (Just (AttestationDetailResponse (toAttestationRow (entityVal r)) ds anchor))
+
+-- | The caller-supplied metadata of a projected attestation, as a plain association list.
+otherMetadataOf :: AttestationProjection -> [(Text, Text)]
+otherMetadataOf =
+  maybe [] Core.fromAttestationOtherMetadataJson . attestationProjectionOtherMetadata
+
+-- | Confront an attestation's level-1 anchor with the index — __ADR 0008__.
+--
+-- __Why the read layer resolves it at all.__ Nothing on chain checks that the fact exists, by the
+-- specification's own decision: a treasury withdrawal is not an addressable UTxO, so there is no
+-- reference input to verify against. The pointer is therefore only ever as good as the moment it is
+-- read, and the requirement is phrased as "the API marks explicitly whether the pointer resolves"
+-- rather than "the API shows resolved anchors".
+--
+-- __Four outcomes, and the parse happens TWICE on purpose.__ The write API refuses a malformed
+-- anchor, but a hand-built transaction skips the write API entirely, so the shape is checked again
+-- here. A malformed anchor is published as @malformed@ with the raw keys rather than dropped: the
+-- datum permanently says this attestation is about that payment, and publishing @null@ would make
+-- the API claim the attestation is unanchored — the one answer that is a lie about a record nobody
+-- can change.
+--
+-- One statement serves both anchor kinds. An action-only anchor binds @NULL@ for the address, and
+-- @stake_address = NULL@ is never true, so the withdrawal join simply finds nothing — which is the
+-- right answer, not a special case: that anchor points at an action, not at a payment.
+resolveLevelOneAnchor :: [(Text, Text)] -> SqlPersistT IO (Maybe ResolvedLevelOneAnchor)
+resolveLevelOneAnchor entries = case Core.parseLevelOneAnchor entries of
+  Left _ -> pure (Just (malformed (raw Core.levelOneAnchorActionKey) (raw Core.levelOneAnchorAddressKey)))
+  Right Nothing -> pure Nothing
+  Right (Just a) -> case parseGovActionIdCip129 (Core.anchorGovActionId a) of
+    -- Unreachable through 'Core.parseLevelOneAnchor', which already accepted this id. Written as
+    -- `malformed` rather than as an `error` so that a future change to either parser degrades to a
+    -- published verdict instead of a 500 on an attestation detail page.
+    Left _ -> pure (Just (malformed (Just (Core.anchorGovActionId a)) (Core.anchorStakeAddress a)))
+    Right (txHashHex, ix) -> do
+      rows <-
+        rawSql
+          "SELECT ga.gov_action_id IS NOT NULL, tw.stake_address IS NOT NULL, \
+          \       tw.amount, tw.enacted_epoch, tw.paid_heuristic \
+          \FROM (SELECT 1) one \
+          \LEFT JOIN palmares.gov_action ga \
+          \       ON ga.tx_hash = decode(?, 'hex') AND ga.index = ? \
+          \LEFT JOIN palmares.treasury_withdrawal tw \
+          \       ON tw.gov_action_id = ga.gov_action_id AND tw.stake_address = ?"
+          [ toPersistValue txHashHex,
+            toPersistValue (fromIntegral ix :: Int),
+            toPersistValue (Core.anchorStakeAddress a)
+          ]
+      -- The LEFT JOIN over `(SELECT 1)` always returns exactly one row, so the empty case cannot
+      -- arise from the data — only from a connection that died mid-statement, where `unresolved` is
+      -- the honest answer and a crash on an attestation page is not.
+      let (actionFound, withdrawalFound, amount, epoch, paid) = case rows of
+            (Single af, Single wf, Single am, Single ep, Single pd) : _ -> (af, wf, am, ep, pd)
+            [] -> (False, False, Nothing, Nothing, Nothing)
+      pure . Just $
+        ResolvedLevelOneAnchor
+          { resolvedAnchorGovActionId = Just (Core.anchorGovActionId a),
+            resolvedAnchorStakeAddress = Core.anchorStakeAddress a,
+            resolvedAnchorStatus = anchorStatusOf actionFound withdrawalFound (Core.anchorStakeAddress a),
+            resolvedAnchorWithdrawal =
+              if withdrawalFound
+                then
+                  Just
+                    AnchorWithdrawal
+                      { anchorWithdrawalAmount = fromMaybe 0 amount,
+                        anchorWithdrawalEnactedEpoch = epoch,
+                        anchorWithdrawalPaidHeuristic = fromMaybe False paid
+                      }
+                else Nothing
+          }
+  where
+    raw k = lookup k entries
+    malformed ga addr = ResolvedLevelOneAnchor ga addr Core.L1Malformed Nothing
+
+-- | The verdict, as a function of what the two joins found and whether an address was asked about.
+--
+-- __Extracted because this is the line that was wrong.__ The first version read @resolved@ off
+-- @actionFound@ alone, which published @resolved@ for an anchor that gives BOTH keys and names a
+-- payment nobody made: a real governance action paired with an address that action never paid. That
+-- reads identically to an action-only anchor, so a UI would show "this payment happened" about a
+-- payment that did not. @resolved@ means __what the client asked__ resolved, not that something did.
+--
+-- Pure and exported so the eight combinations can be pinned without seeding four db-sync tables to
+-- manufacture a withdrawal — the defect was in the decision, not in the join.
+anchorStatusOf :: Bool -> Bool -> Maybe Text -> Core.LevelOneAnchorStatus
+anchorStatusOf actionFound withdrawalFound addr
+  | actionFound && (isNothing addr || withdrawalFound) = Core.L1Resolved
+  | otherwise = Core.L1Unresolved
 
 toAttestationRow :: AttestationProjection -> AttestationRow
 toAttestationRow a =
@@ -631,6 +729,7 @@ toDisputeRow d =
       disputeRowTarget = disputeProjectionTargetAttestationId d,
       disputeRowOpenedBy = disputeProjectionOpenedByProfileId d,
       disputeRowOpenedAt = disputeProjectionOpenedAt d,
+      disputeRowStaleAfter = disputeProjectionStaleAfter d,
       disputeRowDeposit = disputeProjectionDeposit d,
       disputeRowVerdict = disputeProjectionVerdict d,
       disputeRowName = disputeProjectionDisputeName d,

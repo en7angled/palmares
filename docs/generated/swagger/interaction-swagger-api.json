@@ -7,7 +7,8 @@
                     "$ref": "#/definitions/GYAssetClass"
                 },
                 "recipient": {
-                    "$ref": "#/definitions/GYAddress"
+                    "$ref": "#/definitions/GYAddress",
+                    "x-nullable": true
                 },
                 "user_addresses": {
                     "$ref": "#/definitions/UserAddresses"
@@ -94,13 +95,15 @@
                     "$ref": "#/definitions/GYAssetClass"
                 },
                 "recipient": {
-                    "$ref": "#/definitions/GYAddress"
+                    "$ref": "#/definitions/GYAddress",
+                    "x-nullable": true
                 },
                 "user_addresses": {
                     "$ref": "#/definitions/UserAddresses"
                 },
                 "witness": {
-                    "$ref": "#/definitions/ClaimWitness"
+                    "$ref": "#/definitions/ClaimWitness",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -132,7 +135,8 @@
                     "type": "string"
                 },
                 "recipient": {
-                    "$ref": "#/definitions/GYAddress"
+                    "$ref": "#/definitions/GYAddress",
+                    "x-nullable": true
                 },
                 "user_addresses": {
                     "$ref": "#/definitions/UserAddresses"
@@ -151,29 +155,51 @@
             "description": "How control of the claimed credential is proven. One of {\"tag\": \"key\"}, {\"tag\": \"simple_script\", \"script\": <native script>}, or {\"tag\": \"plutus_script\", \"script\": \"<script CBOR hex>\", \"redeemer\": <script data>}.",
             "type": "object"
         },
+        "CredentialRef": {
+            "properties": {
+                "hash": {
+                    "type": "string"
+                },
+                "is_script": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "hash",
+                "is_script"
+            ],
+            "type": "object"
+        },
         "DisputeActionType": {
             "description": "A TAGGED object, not a constructor-keyed one: the arm's name is in \"tag\" and its own fields sit beside it. Shapes: OpenDisputeAction: od_attestation_id, od_opened_by_profile_id, od_deposit_to, od_profile_data; ResolveDisputeAction: rd_dispute_id, rd_verdict; ExpireDisputeAction: ed_dispute_id.",
             "properties": {
                 "ed_dispute_id": {
-                    "$ref": "#/definitions/GYAssetClass"
+                    "$ref": "#/definitions/GYAssetClass",
+                    "x-nullable": true
                 },
                 "od_attestation_id": {
-                    "$ref": "#/definitions/GYAssetClass"
+                    "$ref": "#/definitions/GYAssetClass",
+                    "x-nullable": true
                 },
                 "od_deposit_to": {
-                    "$ref": "#/definitions/GYAddress"
+                    "$ref": "#/definitions/GYAddress",
+                    "x-nullable": true
                 },
                 "od_opened_by_profile_id": {
-                    "$ref": "#/definitions/GYAssetClass"
+                    "$ref": "#/definitions/GYAssetClass",
+                    "x-nullable": true
                 },
                 "od_profile_data": {
-                    "$ref": "#/definitions/ProfileData"
+                    "$ref": "#/definitions/ProfileData",
+                    "x-nullable": true
                 },
                 "rd_dispute_id": {
-                    "$ref": "#/definitions/GYAssetClass"
+                    "$ref": "#/definitions/GYAssetClass",
+                    "x-nullable": true
                 },
                 "rd_verdict": {
-                    "$ref": "#/definitions/DisputeVerdict"
+                    "$ref": "#/definitions/DisputeVerdict",
+                    "x-nullable": true
                 },
                 "tag": {
                     "description": "Which arm of the union this object is.",
@@ -205,7 +231,8 @@
                     "$ref": "#/definitions/GYAssetClass"
                 },
                 "recipient": {
-                    "$ref": "#/definitions/GYAddress"
+                    "$ref": "#/definitions/GYAddress",
+                    "x-nullable": true
                 },
                 "user_addresses": {
                     "$ref": "#/definitions/UserAddresses"
@@ -249,7 +276,8 @@
                     "$ref": "#/definitions/ActionType"
                 },
                 "recipient": {
-                    "$ref": "#/definitions/GYAddress"
+                    "$ref": "#/definitions/GYAddress",
+                    "x-nullable": true
                 },
                 "userAddresses": {
                     "$ref": "#/definitions/UserAddresses"
@@ -262,7 +290,7 @@
             "type": "object"
         },
         "InteractionStatusResponse": {
-            "description": "Which provider and network this service is configured against, whether its reference scripts resolve, and whether the protocol is paused. Always 200: /ready is the route that fails.",
+            "description": "Which provider and network this service is configured against, whether its reference scripts resolve, whether the protocol is paused, and the oracle's mutable parameters. `oracle` is the ONLY published source of the registry's own deposit, dispute timeout, minimum UTxO, fees and admin/arbiter credentials — query-api's `epoch_params` is the LEDGER's protocol parameters and a different thing. Always 200: /ready is the route that fails.",
             "properties": {
                 "deployed_scripts": {
                     "type": "boolean"
@@ -270,8 +298,13 @@
                 "network": {
                     "type": "string"
                 },
+                "oracle": {
+                    "$ref": "#/definitions/OracleParamsResponse",
+                    "x-nullable": true
+                },
                 "oracle_paused": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "x-nullable": true
                 },
                 "provider": {
                     "type": "string"
@@ -309,7 +342,8 @@
                     ],
                     "maxItems": 2,
                     "minItems": 2,
-                    "type": "array"
+                    "type": "array",
+                    "x-nullable": true
                 },
                 "description": {
                     "description": "Attestation description",
@@ -347,7 +381,8 @@
                     "type": "array"
                 },
                 "recipient": {
-                    "$ref": "#/definitions/GYAddress"
+                    "$ref": "#/definitions/GYAddress",
+                    "x-nullable": true
                 },
                 "subject_profile_id": {
                     "$ref": "#/definitions/GYAssetClass"
@@ -375,7 +410,8 @@
                     "$ref": "#/definitions/GYAssetClass"
                 },
                 "deposit_to": {
-                    "$ref": "#/definitions/GYAddress"
+                    "$ref": "#/definitions/GYAddress",
+                    "x-nullable": true
                 },
                 "description": {
                     "description": "What is being contested, and why",
@@ -393,7 +429,8 @@
                     "$ref": "#/definitions/GYAssetClass"
                 },
                 "recipient": {
-                    "$ref": "#/definitions/GYAddress"
+                    "$ref": "#/definitions/GYAddress",
+                    "x-nullable": true
                 },
                 "user_addresses": {
                     "$ref": "#/definitions/UserAddresses"
@@ -406,6 +443,41 @@
                 "description",
                 "image_uri",
                 "user_addresses"
+            ],
+            "type": "object"
+        },
+        "OracleParamsResponse": {
+            "properties": {
+                "admin": {
+                    "$ref": "#/definitions/CredentialRef"
+                },
+                "arbiter": {
+                    "$ref": "#/definitions/CredentialRef"
+                },
+                "attestation_fee_lovelace": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "dispute_deposit_lovelace": {
+                    "type": "integer"
+                },
+                "dispute_timeout_ms": {
+                    "type": "integer"
+                },
+                "min_utxo_lovelace": {
+                    "type": "integer"
+                },
+                "profile_creation_fee_lovelace": {
+                    "type": "integer",
+                    "x-nullable": true
+                }
+            },
+            "required": [
+                "dispute_deposit_lovelace",
+                "dispute_timeout_ms",
+                "min_utxo_lovelace",
+                "arbiter",
+                "admin"
             ],
             "type": "object"
         },
@@ -429,13 +501,16 @@
                     ],
                     "maxItems": 2,
                     "minItems": 2,
-                    "type": "array"
+                    "type": "array",
+                    "x-nullable": true
                 },
                 "aa_issuer_profile_id": {
-                    "$ref": "#/definitions/GYAssetClass"
+                    "$ref": "#/definitions/GYAssetClass",
+                    "x-nullable": true
                 },
                 "aa_kind": {
-                    "$ref": "#/definitions/AttestationType"
+                    "$ref": "#/definitions/AttestationType",
+                    "x-nullable": true
                 },
                 "aa_other_metadata": {
                     "items": {
@@ -451,43 +526,56 @@
                         "minItems": 2,
                         "type": "array"
                     },
-                    "type": "array"
+                    "type": "array",
+                    "x-nullable": true
                 },
                 "aa_profile_data": {
-                    "$ref": "#/definitions/ProfileData"
+                    "$ref": "#/definitions/ProfileData",
+                    "x-nullable": true
                 },
                 "aa_subject_profile_id": {
-                    "$ref": "#/definitions/GYAssetClass"
+                    "$ref": "#/definitions/GYAssetClass",
+                    "x-nullable": true
                 },
                 "aca_attestation_id": {
-                    "$ref": "#/definitions/GYAssetClass"
+                    "$ref": "#/definitions/GYAssetClass",
+                    "x-nullable": true
                 },
                 "cc_credential": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "cc_profile_data": {
-                    "$ref": "#/definitions/ProfileData"
+                    "$ref": "#/definitions/ProfileData",
+                    "x-nullable": true
                 },
                 "cc_profile_id": {
-                    "$ref": "#/definitions/GYAssetClass"
+                    "$ref": "#/definitions/GYAssetClass",
+                    "x-nullable": true
                 },
                 "cc_witness": {
-                    "$ref": "#/definitions/ClaimWitness"
+                    "$ref": "#/definitions/ClaimWitness",
+                    "x-nullable": true
                 },
                 "cp_kind": {
-                    "$ref": "#/definitions/ProfileType"
+                    "$ref": "#/definitions/ProfileType",
+                    "x-nullable": true
                 },
                 "cp_profile_data": {
-                    "$ref": "#/definitions/ProfileData"
+                    "$ref": "#/definitions/ProfileData",
+                    "x-nullable": true
                 },
                 "image_uri": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "new_desc": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "profile_id": {
-                    "$ref": "#/definitions/GYAssetClass"
+                    "$ref": "#/definitions/GYAssetClass",
+                    "x-nullable": true
                 },
                 "tag": {
                     "description": "Which arm of the union this object is.",
@@ -502,16 +590,20 @@
                     "type": "string"
                 },
                 "wc_credential": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "wc_profile_data": {
-                    "$ref": "#/definitions/ProfileData"
+                    "$ref": "#/definitions/ProfileData",
+                    "x-nullable": true
                 },
                 "wc_profile_id": {
-                    "$ref": "#/definitions/GYAssetClass"
+                    "$ref": "#/definitions/GYAssetClass",
+                    "x-nullable": true
                 },
                 "wc_witness": {
-                    "$ref": "#/definitions/ClaimWitness"
+                    "$ref": "#/definitions/ClaimWitness",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -562,7 +654,8 @@
                     "$ref": "#/definitions/GYAssetClass"
                 },
                 "recipient": {
-                    "$ref": "#/definitions/GYAddress"
+                    "$ref": "#/definitions/GYAddress",
+                    "x-nullable": true
                 },
                 "user_addresses": {
                     "$ref": "#/definitions/UserAddresses"
@@ -621,7 +714,8 @@
             "properties": {
                 "description": {
                     "description": "New profile description (omit to keep current)",
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "image_uri": {
                     "description": "URI of the profile image (the client hosts it; the protocol stores the URI)",
@@ -631,7 +725,8 @@
                     "$ref": "#/definitions/GYAssetClass"
                 },
                 "recipient": {
-                    "$ref": "#/definitions/GYAddress"
+                    "$ref": "#/definitions/GYAddress",
+                    "x-nullable": true
                 },
                 "user_addresses": {
                     "$ref": "#/definitions/UserAddresses"
@@ -654,7 +749,8 @@
                     "example": "8282582004ffecdf5f3ced5c5c788833415bcbef26e3e21290fcebcf8216327e21569e420082583900e1cbb80db89e292269aeb93ec15eb963dda5176b66949fe1c2a6a38d1b930e9f7add78a174a21000e989ff551366dcd127028cb2aa39f6161a004c4b40",
                     "format": "cbor hex",
                     "pattern": "[0-9a-fA-F]+",
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "usedAddresses": {
                     "items": {
@@ -689,13 +785,15 @@
                     "$ref": "#/definitions/GYAssetClass"
                 },
                 "recipient": {
-                    "$ref": "#/definitions/GYAddress"
+                    "$ref": "#/definitions/GYAddress",
+                    "x-nullable": true
                 },
                 "user_addresses": {
                     "$ref": "#/definitions/UserAddresses"
                 },
                 "witness": {
-                    "$ref": "#/definitions/ClaimWitness"
+                    "$ref": "#/definitions/ClaimWitness",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -715,7 +813,7 @@
             "name": "Apache-2.0"
         },
         "title": "Palmares Interaction API",
-        "version": "3.3.0"
+        "version": "3.5.0"
     },
     "paths": {
         "/accept-attestation": {
@@ -748,7 +846,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -787,7 +900,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -826,7 +954,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -865,7 +1008,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -904,7 +1062,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -930,7 +1103,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -969,7 +1157,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -1008,7 +1211,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -1034,7 +1252,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -1073,7 +1306,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -1099,7 +1347,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -1138,7 +1401,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -1173,7 +1451,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -1212,7 +1505,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"
@@ -1251,7 +1559,22 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT)"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                    },
+                    "405": {
+                        "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
+                    },
+                    "406": {
+                        "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
+                    },
+                    "415": {
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                    },
+                    "500": {
+                        "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
+                    },
+                    "502": {
+                        "description": "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."
                     },
                     "503": {
                         "description": "Protocol is paused or deployed validator scripts are not yet available"

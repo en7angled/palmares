@@ -47,11 +47,11 @@ resolves.
 | F2 | **open** | `src/exe/admin/Main.hs:617` + `Transactions.hs:127-137` vs `Operations.hs:1000-1002` / `OracleValidator.hs:86,111` | `admin rotate-admin` builds a transaction that requires the **incoming** admin's signature (`O5`) and then signs with the single key in `operation.prv`. The CLI collects no second witness, so a real handover cannot complete through the CLI; the emulator needs its own two-key runner (`src/test/TestRuns.hs`, `adminRotateInteraction`). See §3.9, §5.3. |
 | F3 | **open** | `Operations.hs:833-891` vs `DisputesValidator.hs:146` | `resolveDisputeTX` does not consult `opPaused`; a paused protocol refuses it on chain (`D7`) and the route reports the failure as a misleading `400 InsufficientFunds`. The builder's own Haddock now names this a defect rather than a decision and says the fix is routing through `getOracleRefInputSkeleton` (`Operations.hs:823-828`). See §8. |
 | F4 | **open** | `Operations.hs:693-830` vs `MintingPolicy.hs:468` | No off-chain mirror of `Md8`: the builder never checks that `deposit_to` is an address this transaction spends from. With a single-address wallet it always is; with a multi-address wallet it may not be. See §3.7. |
-| F5 | **open** | `Lookups.hs:148-156` vs `Utils.hs:399-405` | The dust sweep's off-chain selector is narrower than the on-chain `Cleanup` rule: a UTxO holding some *other* protocol token with a hand-written datum is sweepable on chain but never offered by `getDustUTxOs`. See §3.10. |
+| F5 | **CLOSED** 2026-10-24 | `Lookups.hs` vs `Utils.hs:470-473` | The dust sweep's off-chain selector disagreed with the on-chain `Cleanup` rule **in both directions**, and this row recorded only the harmless one. Narrower: a UTxO holding some *other* protocol token with a hand-written datum is sweepable on chain and was never offered. Wider, and the real defect: a UTxO the validator REFUSES was offered, and because the sweep is one all-or-nothing transaction, one such plant bricks `cleanupDustTX` for everyone, for ever, for one min-ADA output. `getDustUTxOs` now takes the kind's label predicate, datum parser and id field and applies `isUnbackedDatum`'s own test. See §3.10. |
 | F6 | **CLOSED** by `26d53f7` (D-C) | `AttestationsValidator.hs:127,139` | Acceptance was the one write the pause did not reach. `OnchainAttestation` now carries `attestationOracleToken`, written by the minting policy from its own compile-time parameter, and `A7` is the **first** conjunct of the acceptance chain — so a hand-built acceptance during a pause now fails on chain, and one built without the oracle reference input fails closed as `K1`. The off-chain `503` (`Operations.hs:616-618`) is now a courtesy ahead of a real rule, not a substitute for one. |
 | F7 | **open** | `Transactions.hs:146-156` vs `Skeletons.hs:177-180` | Reference scripts are deployed to the **operator's own key address**, spendable by `operation.prv`. The always-fail "limbo" variant (`addRefScriptSkeleton`) exists and is unused. See §2.3. |
 | F8 | **open** | `Interactions.hs:85,95-175` | The `recipient` field accepted by every write route is never read by any operation. `ServiceRequests.hs:91,130,152` still documents it to clients as "Address to receive unlocked funds". |
-| F9 | **new**, opened by `6d0a76a` (ADR 0003) | `Interactions.hs:136-144` + `Operations.hs:438,460` vs `MintingPolicy.hs:309` | `AttestationKind` gained `CredentialClaim` and `CredentialWithdrawal`, and `AttestationType`'s `FromJSON` accepts both wire strings, but `/issue-attestation` passes whatever `kind` it is given to `issueAttestationTX`, which hardcodes the credential to `Nothing`. So `POST /issue-attestation {"kind":"credential_claim", …}` builds a transaction that `Mc2` ("a credential record must name a credential") refuses, and the route answers `400 InsufficientFunds` — the same misleading mapping as F3. The two kinds have their own routes (`/claim-credential`, `/withdraw-credential`, §3.11) and should be refused on this one. See §3.5, §9. |
+| F9 | **CLOSED** by `bf3e1b6`; measured live 2026-10-24 and pinned by `publishedErrorTable` row 16 plus an emulator case. The refusal is `issueAttestationTX`'s FIRST statement, so `/build-tx`'s `IssueAttestationAction` arm is covered by the same line, and it answers `400 AttestationKindIsCredentialBinding` rather than the misleading `InsufficientFunds` below. Two conjuncts were unsatisfiable, not one: `Mc2` because the builder names no credential, and `Mc3` because it supplies no proof of control | `Interactions.hs:136-144` + `Operations.hs:438,460` vs `MintingPolicy.hs:309` | `AttestationKind` gained `CredentialClaim` and `CredentialWithdrawal`, and `AttestationType`'s `FromJSON` accepts both wire strings, but `/issue-attestation` passes whatever `kind` it is given to `issueAttestationTX`, which hardcodes the credential to `Nothing`. So `POST /issue-attestation {"kind":"credential_claim", …}` builds a transaction that `Mc2` ("a credential record must name a credential") refuses, and the route answers `400 InsufficientFunds` — the same misleading mapping as F3. The two kinds have their own routes (`/claim-credential`, `/withdraw-credential`, §3.11) and should be refused on this one. See §3.5, §9. |
 
 ## 2. Bootstrap / deployment sequence
 
@@ -299,14 +299,21 @@ flowchart LR
 
 Not checked on chain: that the subject EXISTS. `Mg` requires policy + the profile label, so since ADR 0006 it does rule out an attestation id, a dispute id and a user token — but not a profile id nobody minted. Nothing about `claimedPeriod` is checked either (`MintingPolicy.hs:244-251`).
 
-**Finding F9 — a credential kind can be asked for here and cannot be built here.** `kind` is passed
-straight through (`Interactions.hs:136-144`) and `AttestationType`'s `FromJSON` accepts
-`credential_claim` and `credential_withdrawal` (`DomainTypes/Core/Types.hs:143-165`), so both are
-reachable on this route; the builder then sets the credential to `Nothing` and `Mc2` refuses the mint
-during script evaluation, which the route now reports as `400 ScriptRefused` naming `Mc2`
-(`OF-05`) rather than as a shortfall. Nothing off chain refuses the combination. Fix: reject the two
-credential kinds in `issueAttestationTX` (or in `IssueAttestationAction`) with a 400 that names them,
-and point the caller at §3.11.
+**Finding F9 — CLOSED.** `kind` is passed straight through (`Interactions.hs:136-144`) and
+`AttestationType`'s `FromJSON` accepts `credential_claim` and `credential_withdrawal`
+(`DomainTypes/Core/Types.hs:143-165`), so both are still reachable on this route — and both are now
+refused off chain, by the FIRST statement of `issueAttestationTX`, with
+`400 AttestationKindIsCredentialBinding` naming the two routes that do take a credential (§3.11).
+
+The fix went to the shared builder rather than the route handler deliberately: `/build-tx`'s
+`IssueAttestationAction` arm reaches the same function, so a guard in the handler would have left it
+behind and created a second place to keep in step.
+
+Two conjuncts were unsatisfiable, not one. The builder sets the credential to `Nothing`, so `Mc2`
+("a credential record must name a credential") cannot hold; and `Mc3` ("the named credential must
+control the transaction") has no claim proof to check, because this route collects neither a
+credential nor a witness. Measured live: a credential kind answers the 400 before any chain read,
+while `kind: endorsement` on the same body gets as far as `404 SubjectProfileNotFound`.
 
 ### 3.6 (d) AcceptAttestation — countersign
 
@@ -557,10 +564,29 @@ required. Expect in-flight user transactions to bounce around each update.
 
 Not pausable, by design (`ProfilesValidator.hs:130-133`; `Pause` test 7.3). The OracleValidator has no
 `Cleanup` arm: a datum-less UTxO parked at the oracle address hits `O3` and stays forever
-(`OracleValidator.hs:72, 94`). **Finding F5:** on chain, a UTxO holding a protocol token other than the NFT its
-datum names is sweepable (`Utils.hs:399-405`), but `getDustUTxOs` excludes any UTxO with any protocol-policy
-token, so it is never offered. The comment at `TestRuns.hs:439-445` ("the validator must refuse, because its
-datum parses") predates `isUnbackedDatum`; `Cleanup` test 3.5 asserts the opposite and is right.
+(`OracleValidator.hs:72, 94`). **Finding F5 — CLOSED 2026-10-24, and it was two defects, not one.**
+
+The off-chain selector used to be "any UTxO at this address with no token of our policy", which
+disagreed with the arm in both directions. The direction this section used to describe was the benign
+one: a UTxO holding a protocol token other than the NFT its datum names is sweepable on chain
+(`Utils.hs:470-473`) and was never offered, so real dust accumulated. The direction it missed was the
+dangerous one: a UTxO the validator REFUSES was offered. Since `cleanupDustTX` builds **one
+all-or-nothing transaction**, a single such UTxO makes every sweep fail on `P7`/`A4`/`D8` — so for the
+price of one min-ADA output carrying a token whose name starts with this address's CIP-67 label plus a
+hand-written datum naming it, anybody can brick the protocol's only cleanup path permanently. The
+redeemer is permissionless and deliberately not pause-gated, so there is no administrative recovery.
+
+`getDustUTxOs` now takes the address's own label predicate, datum parser and id field and applies
+`isUnbackedDatum`'s own test, so the selector and the arm agree by construction, and each call site
+names the validator, its redeemer and its datum together. It deviates from the arm in exactly one
+place, deliberately: a UTxO with a datum **hash** rather than an inline datum is skipped, because
+`txMustSpendUTxOFromRefScript` witnesses with `Nothing` and the ledger refuses the transaction before
+any validator runs — the same brick by a different door, and one an address scan cannot supply a
+preimage for.
+
+The comment at `TestRuns.hs:447-453` ("the validator must refuse, because its datum parses") predates
+`isUnbackedDatum`; `Cleanup` test 3.5 asserts the opposite and is right, and test 3.8 now pins the
+griefing case from both sides — the sweep skips the plant, and a hand-built sweep of it fails `D8`.
 
 ### 3.11 (i) CredentialClaim and CredentialWithdrawal — bind a credential, and end that binding
 
@@ -1068,11 +1094,15 @@ Test suites, by section of this document:
 
 Gaps that would let this document drift unnoticed, as of this revision: no emulator mint under a configured
 `FeeConfig` (F1); no test of `admin rotate-admin` as the CLI runs it (F2); no test of `resolveDisputeTX` while
-paused through the HTTP error mapping (F3); no multi-address-wallet test for `Md8` (F4); no test that
-`/issue-attestation` refuses a credential kind (F9 — it cannot pass, because nothing refuses it);
-`allAdminActions` not covering `SetDisputeTimeoutAction` (§3.9); no emulator run of `ExpireDisputeAction`
-through the production pipeline, so `expireDisputeTX`'s own two 400s and its output layout are unpinned
-(§3.12); and the stale comment at `TestRuns.hs:439-445` (test 3.5 itself is correct).
+paused through the HTTP error mapping (F3); no multi-address-wallet test for `Md8` (F4). **Four of
+these gaps are now closed:** `/issue-attestation`'s credential-kind refusal is pinned by
+`publishedErrorTable` row 16 and by an emulator case (F9); `SetDisputeTimeoutAction` is covered, and
+the exhaustiveness of that list is now structural rather than asserted in prose, derived from the
+type's `Generic` representation — which is how a THIRD incomplete list was found, `profileArms` at 4
+of 6 constructors, missing both ADR 0003 credential actions; `ExpireDisputeAction` now runs through
+the production pipeline in three emulator cases, including a stranger closing a stale dispute and
+both of `expireDisputeTX`'s own 400s; and the stale comment at `TestRuns.hs:447-453` is corrected
+along with the `Cleanup` codes it named wrong (test 3.5 itself was always right).
 
 Rules of thumb: a new `mustHaveOutput` before an indexed output moves every redeemer index after it; a new date
 in a datum needs `checkDateInRange` on chain and a tip-derived value off chain, unless it is a *deadline*, in

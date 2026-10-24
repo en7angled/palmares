@@ -14,9 +14,10 @@ import Data.Either (isLeft)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
 import Database.Persist.Sql (ConnectionPool, Single (..), SqlPersistT, rawExecute, rawSql)
+import Palmares.Admin.ApplySql (indexesSql, rolesSql)
 import Palmares.Metrics.Catalog (catalogJson, metricSql)
 import Query.Views (applyPalmaresSchema, applySchemaSql, hasStatement, palmaresSqlFiles)
-import Test.Pg (runPg, withScratchDb)
+import Test.Pg (dbsyncSkeletonSql, runPg, withScratchDb)
 -- `after` is tasty's dependency-ordering combinator and nothing here uses it, while three cases
 -- below bind an oid snapshot called `after` beside a `before`. Hidden rather than renamed, the same
 -- choice `UnitTests.Projections` and `UnitTests.AttestSchema` make.
@@ -42,11 +43,30 @@ tests =
       -- This case closes it from the inside: the comparison happens at RUN time against the working
       -- tree, so a binary built from stale embeds fails here with the two byte strings differing.
       -- It cannot be defeated by the staleness it detects.
+      --
+      -- __The list below must name EVERY `embedFile` in the repository__, and that is not left to
+      -- this comment: `scripts/check_packaging.sh` greps every `makeRelativeToProject` path out of
+      -- `src/**`, fails unless each one is matched by a glob in the `dist-newstyle` cache key and
+      -- by `extra-source-files`, and fails unless the count asserted below equals how many it
+      -- found. It was three short when written — `sql/050_roles.sql` and `sql/indexes/001_gov_indexes.sql`
+      -- (`Palmares.Admin.ApplySql`, the admin image's index and role DDL) and
+      -- `test/fixtures/dbsync-skeleton.sql` (`Test.Pg`, the shape every database test is built on,
+      -- and the one embed that was also missing from the cache key). A stale skeleton is the worst
+      -- of the three to lose: it would make 35 database cases assert against db-sync's OLD shape.
       testCase "every embedded file is the file on disk (cabal does not track embedFile deps)" $ do
         let embeds =
               [("sql/" <> n, b) | (n, b) <- palmaresSqlFiles]
                 <> [("resources/metrics/" <> n, b) | (n, b) <- metricSql]
-                <> [("resources/metric-formulas.json", catalogJson)]
+                <> [ ("resources/metric-formulas.json", catalogJson),
+                     ("sql/050_roles.sql", rolesSql),
+                     ("sql/indexes/001_gov_indexes.sql", indexesSql),
+                     ("test/fixtures/dbsync-skeleton.sql", dbsyncSkeletonSql)
+                   ]
+        -- The lock, not decoration: `check_packaging.sh` greps the embed paths out of `src/**` and
+        -- fails unless this number equals how many it found, so neither side can gain an embed
+        -- without the other saying so. A comment claiming the list is complete is exactly what let
+        -- three of them go missing.
+        length embeds @?= 15
         forM_ embeds $ \(path, embedded) -> do
           onDisk <- BS.readFile path
           assertEqual

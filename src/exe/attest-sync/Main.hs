@@ -146,6 +146,11 @@ main = do
     mb <- lookupEnv "ROLLBACK_MARGIN"
     pure $ max 1 (maybe defaultRollbackMargin id (mb >>= readMaybe))
 
+  -- The one number `/ready` turns red on, read once here and used in BOTH halves of the verdict:
+  -- the tip comparison below computes `is_way_behind` with it, and `readyVerdict` measures the
+  -- tick's age against it. Read it twice and a client could see `is_way_behind: false` beside a 503.
+  maxLagSlots <- readyMaxLagSlotsFromEnv
+
   initialTip <- getLocalTip pool
 
   now <- getCurrentTime
@@ -155,25 +160,40 @@ main = do
         { smLocalTip = ck_slot_no initialTip,
           smBlockchainTip = ck_slot_no initialTip,
           smLastSyncTime = now,
-          smDbReady = True,
-          smMigrationsComplete = True,
+          -- PLACEHOLDERS, and no longer the answer: every probe measures these two itself
+          -- (`ChainsyncAPI.probeDatabase`) and overwrites them before serving. They used to be
+          -- `True` here and that was the whole of the claim — a boot-time literal reported for the
+          -- life of the process, which is how this service's probe reported a healthy database
+          -- while the postmaster it needed had restarted underneath it. `False` because nothing has
+          -- been measured yet at this point.
+          smDbReady = False,
+          smMigrationsComplete = False,
           smChainSyncState = Behind True -- by default we are way behind
         }
 
   -- Start probe server
-  void $ forkIO $ startProbeServer corsCfg port metricsVar
+  void $ forkIO $ startProbeServer corsCfg port pool maxLagSlots metricsVar
 
   let matchPattern = policyHexText <> ".*"
   putStrLn "Starting chain-sync ..."
   putStrLn "Kupo: configured"
   putStrLn ("Pattern: " <> T.unpack matchPattern)
   putStrLn ("Postgres: " <> redactConnStr connStr)
+  putStrLn ("Ready when within: " <> show maxLagSlots <> " slots (READY_MAX_LAG_SLOTS)")
 
   forever $ do
     blockchainTip <- getBlockchainTip pool ourPolicy kupoUrl
     localTip <- getLocalTip pool
-    let chainSyncState = evaluateChainSyncState localTip blockchainTip
-    modifyMVar_ metricsVar $ \m -> pure m {smLocalTip = ck_slot_no localTip, smBlockchainTip = ck_slot_no blockchainTip, smChainSyncState = chainSyncState}
+    -- `getBlockchainTip` has just returned, so Kupo answered: THIS is the moment the projector last
+    -- had evidence about the chain, and `smLastSyncTime` is what `/ready` measures the tick's age
+    -- against. It used to be written only per applied fetch window, which is why the field could
+    -- not be used as a liveness signal: on preprod a block arrives about every twenty seconds, so
+    -- an idle tick left it standing still while the service was perfectly healthy. Written here it
+    -- advances every ten seconds whatever the chain is doing, and freezes exactly when Kupo stops
+    -- answering — because then the retry loop above never returns and nothing below it runs.
+    tickTime <- getCurrentTime
+    let chainSyncState = evaluateChainSyncStateWith maxLagSlots localTip blockchainTip
+    modifyMVar_ metricsVar $ \m -> pure m {smLocalTip = ck_slot_no localTip, smBlockchainTip = ck_slot_no blockchainTip, smLastSyncTime = tickTime, smChainSyncState = chainSyncState}
     liftIO $ putStrLn ("Local tip      : " <> show (ck_slot_no localTip))
     liftIO $ putStrLn ("Blockchain tip : " <> show (ck_slot_no blockchainTip))
 

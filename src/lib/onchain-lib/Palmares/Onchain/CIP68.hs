@@ -42,7 +42,6 @@ module Palmares.Onchain.CIP68
     isDisputeTokenName,
     isProfileId,
     isAttestationId,
-    isDisputeId,
     attestationTokenPrefixBS,
     disputeTokenPrefixBS,
     deriveUserFromRefAC,
@@ -279,10 +278,22 @@ isProfileId (AssetClass (cs, tn)) cs' = cs == cs' && isRefTokenName tn
 isAttestationId :: AssetClass -> CurrencySymbol -> Bool
 isAttestationId (AssetClass (cs, tn)) cs' = cs == cs' && isAttestationTokenName tn
 
--- | Right policy AND a dispute id.
-{-# INLINEABLE isDisputeId #-}
-isDisputeId :: AssetClass -> CurrencySymbol -> Bool
-isDisputeId (AssetClass (cs, tn)) cs' = cs == cs' && isDisputeTokenName tn
+-- @isDisputeId@ — \"right policy AND a dispute id\" — was the third member of this trio and is gone.
+-- It had no caller, and the asymmetry is a fact about the protocol rather than an oversight: @Mg@ asks
+-- 'isProfileId' of an attestation's subject and issuer, and @Md4@ asks 'isAttestationId' of a
+-- dispute's target and 'isProfileId' of its opener, so an id of the DISPUTE class is never named by
+-- any redeemer field anywhere. Nothing points at a dispute; a dispute points at things.
+--
+-- 'isDisputeTokenName' stays, and it is the half that is actually load-bearing: @D8@ passes it to
+-- 'Palmares.Onchain.Utils.isUnbackedDatum' as the Disputes Validator's own kind predicate, and
+-- @Ingestion@ passes it to the read layer's authenticator. The currency-symbol conjunct is the part
+-- those two cannot use — the three state validators are unparameterised on purpose, so they cannot
+-- know the policy that minted a token.
+--
+-- Hash-neutral for the reason it was dead: @INLINEABLE@ makes an unfolding available to the PlutusTx
+-- plugin, it does not make the plugin take it, and no @compile@ splice's call graph reached this
+-- binding. The day a redeemer does name a dispute id, this is three lines to write back — and
+-- writing it back is cheaper than leaving a predicate exported that documents a rule nothing applies.
 
 -- All UTF-8 encoded keys and values need to be converted into their respective byte's representation when creating the datum on-chain.
 {-# INLINEABLE mkCIP68Datum #-}

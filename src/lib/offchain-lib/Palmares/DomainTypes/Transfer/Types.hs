@@ -88,3 +88,53 @@ data ScriptHashesDTO = ScriptHashesDTO
 instance ToSchema ScriptHashesDTO where
   declareNamedSchema = genericDeclareNamedSchema $
     fromAesonOptions AesonTypes.defaultOptions {AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "scriptHashes"}
+
+-- | A credential as the registry holds it: 28 bytes, and whether they are a key or a script.
+--
+-- Hex and deliberately NOT CIP-129: the oracle's admin and arbiter carry no governance __role__, and
+-- CIP-129's header byte encodes exactly that, so rendering one would mean inventing a role the datum
+-- does not have. A client that wants to compare these against a wallet compares the 28 bytes.
+--
+-- @is_script@ is not decoration: the two kinds take different proofs of control — a key credential
+-- proves itself with a signature, a script credential by being spent at its own address — so a UI
+-- that offers \"sign as admin\" to a script credential is offering something that cannot work.
+data CredentialRef = CredentialRef
+  { credHash :: Text,
+    credIsScript :: Bool
+  }
+  deriving (Generic, Show)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "cred", CamelToSnake]] CredentialRef
+
+instance ToSchema CredentialRef where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "cred")
+
+-- | The oracle's mutable parameters, read-only.
+--
+-- __Why this exists.__ Three separate frontend gaps were one missing route: a client could not show
+-- the deposit it was about to ask for a signature on, could not show a dispute's deadline, and could
+-- not name the arbiter who decides it. All three are fields of one datum nobody published.
+--
+-- __@dispute_deposit_lovelace@ and @dispute_timeout_ms@ are the price and the clock for a NEW
+-- dispute.__ An OPEN dispute's are history: both are copied into its own datum when it opens, so
+-- repricing the protocol never moves an existing deadline or reprices an existing deposit. To show
+-- what a dispute cost, read that dispute's own @deposit@ from query-api; to show what opening one
+-- will cost, read these.
+--
+-- The two fee fields are @null@ TOGETHER — they come from one optional @FeeConfig@, and the deployed
+-- default carries none, which means both fees are zero rather than unknown. The fee ADDRESS is
+-- deliberately not published: rendering it needs a network id this layer does not have, and no
+-- screen needs it.
+data OracleParamsResponse = OracleParamsResponse
+  { oracleDisputeDepositLovelace :: Integer,
+    oracleDisputeTimeoutMs :: Integer,
+    oracleMinUtxoLovelace :: Integer,
+    oracleArbiter :: CredentialRef,
+    oracleAdmin :: CredentialRef,
+    oracleProfileCreationFeeLovelace :: Maybe Integer,
+    oracleAttestationFeeLovelace :: Maybe Integer
+  }
+  deriving (Generic, Show)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "oracle", CamelToSnake]] OracleParamsResponse
+
+instance ToSchema OracleParamsResponse where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "oracle")

@@ -847,17 +847,20 @@ Not enforced on chain (by design):
 |---|---|---|---|
 | `U0` | `Utils.hs:60` (`parseData c "U0"`) | all six scripts | `ScriptContext` does not parse |
 | `U1` | `Utils.hs:370` | every spending path that resolves its own input, and `isUnbackedDatum` on `Cleanup` | own input not found by `TxOutRef` |
-| `U2` | `Utils.hs:449` | **unreachable** — its only site is `checkAndGetCurrentStateDatumAndValue`, which has no caller anywhere in `src`: only its own definition, the export list and comments mention it. `3654f57` deleted the three profile lookups that used to call it and left the function itself in place | state NFT not found at expected address |
-| `U3` | `Utils.hs:455` | **unreachable** by the same chain; `checkAndGetInlineDatum` is called only from `checkAndGetCurrentStateDatumAndValue` | non-inline datum |
+| `U2` | — | **RETIRED.** Its only site was `checkAndGetCurrentStateDatumAndValue`, which had no caller anywhere in `src` — only its own definition, the export list and comments. The function is now deleted, so the code is retired rather than reassigned, exactly as `K3` was | (was: state NFT not found at expected address) |
+| `U3` | — | **RETIRED** by the same chain: `checkAndGetInlineDatum` was called only from the function above, so the two died together | (was: non-inline datum) |
 | `K1` | `Lookup.hs:41-43` | MintingPolicy, ProfilesValidator (`UpdateProfile`), AttestationsValidator (`AcceptAttestation`, since D-C), DisputesValidator (`ResolveDispute`) — **four of the six scripts** | oracle reference input missing, non-inline, or undecodable |
 | `K2` | `Lookup.hs:94` | MintingPolicy, all three redeemers | fee output missing |
 
-The Haddock at `Lookup.hs:7-9` is wrong about this, and it is the one place in the library that is:
-it says the deleted lookups were redundant because "every validator reads a profile through
-`Utils.checkAndGetCurrentStateDatumAndValue` directly". None does — that function has no caller at
-all, which is exactly why `U2` and `U3` are unreachable.
+The Haddock at `Lookup.hs:7-9` used to be wrong about this, and it was the one place in the library
+that was: it said the deleted lookups were redundant because "every validator reads a profile through
+`Utils.checkAndGetCurrentStateDatumAndValue` directly". None did — that function had no caller at
+all, which is exactly why `U2` and `U3` were unreachable and why both the function and the comment
+are now gone. Each state validator resolves its own input with `unsafeFindOwnInputByTxOutRef`
+instead, and the comment now records the refutation rather than the claim.
 
-Inventory at `2bf5bde`, **70 distinct codes**, all described above:
+Inventory at `2bf5bde`, **70 distinct codes**, all described above — of which `U2` and `U3` are now
+retired, leaving 68 a transaction can actually be refused with:
 
 ```
 A0 A1 A2 A3 A4 A5 A6 A7   D0 D1 D2 D3 D4 D5 D6 D7 D8 D9 Da   K1 K2

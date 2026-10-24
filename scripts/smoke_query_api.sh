@@ -790,5 +790,39 @@ assert '/activity?actor=81378d3ea89b68f0fc09944b1f93f2feb851318f196f98ba4029d8a8
   && echo "  ok   /activity accepts a stake address as an actor" \
   || { echo "  FAIL /activity should accept a stake address as an actor"; fail=1; }
 
+echo
+# The two routes a verification UI could not be built without, and the two refusals the router
+# answers before any handler exists.
+#
+# `/disputes/{id}` makes `dispute_not_found` reachable — it was a published code with no site, which
+# is a branch a generated client carries for a response it can never receive. `by-user-token` is the
+# other direction of the same screen: a wallet holds a CIP-68 USER token and had no way to find the
+# profile it owns, because the registry's ids are the REFERENCE form.
+echo "== the single-record routes"
+DID=$(j '/disputes?limit=1' '.items[0].id // empty' | tr -d '"' || true)
+if [ -n "$DID" ]; then
+  assert "/disputes/$DID" '.dispute.id' "\"$DID\""
+else
+  echo "  --   no dispute projected yet, /disputes/{id} content not asserted"
+fi
+check "a well-formed id that names no dispute is 404" "$(code '/disputes/aa.bb')" "404"
+check "a user token that is not an asset class is 400" "$(code '/profiles/by-user-token/not-an-asset-class')" "400"
+check "  and it answers invalid_asset_class, not invalid_parameter" \
+  "$(curl -s "$API/profiles/by-user-token/not-an-asset-class" | jq -r '.code // "none"')" "invalid_asset_class"
+
+echo "== the router's refusals carry a code, not an empty body"
+# Measured before the fix: both answered with ZERO bytes and no content type at all. Neither is
+# reachable through servant's `ErrorFormatters` — the router raises them as `FailFatal` before a
+# handler exists and offers no hook for either — so they are rewritten by a WAI middleware, and the
+# only thing that proves the middleware is installed in the right place is a live request.
+check "POST on a read-only route is 405" "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/dreps")" "405"
+check "  and the 405 body names method_not_allowed" \
+  "$(curl -s -X POST "$API/dreps" | jq -r '.code // "none"')" "method_not_allowed"
+check "an Accept this API cannot satisfy is 406" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: text/csv' "$API/profiles?limit=1")" "406"
+check "  and the 406 body names not_acceptable" \
+  "$(curl -s -H 'Accept: text/csv' "$API/profiles?limit=1" | jq -r '.code // "none"')" "not_acceptable"
+
+echo
 if [ "$fail" = 0 ]; then echo "smoke OK"; else echo "smoke FAILED" >&2; fi
 exit $fail

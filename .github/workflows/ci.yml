@@ -28,7 +28,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # FIRST, because it costs under a second and the failure it catches otherwise costs an hour.
+      # FIRST, because it costs under a second and the failures it catches otherwise cost an hour
+      # each — or stay invisible, which is worse.
       #
       # A path in `extra-source-files` with no matching COPY in the service Dockerfiles breaks the
       # IMAGE build and nothing else — `cabal build` and `cabal test` stay green, because the file is
@@ -36,8 +37,15 @@ jobs:
       # before all four services die on `cabal: sdist … filepath wildcard`. That is measured, not
       # hypothetical: it is how `resources/` landed.
       #
+      # The script's second half derives the `embedFile` path set from `src/**` and requires every
+      # path to be in the `dist-newstyle` cache key below, in `extra-source-files`, and counted by
+      # the embed-vs-disk case in `UnitTests.Views`. That is the structural version of the comment
+      # on that cache step: the key was repaired by hand and was still missing
+      # `test/fixtures/dbsync-skeleton.sql`, so the completeness of the list is now derived rather
+      # than asserted.
+      #
       # Placed before the apt and blst steps so it reports in seconds rather than after the build.
-      - name: Everything packaged is in the image build context
+      - name: Everything packaged, and every embedFile input, is registered
         run: bash scripts/check_packaging.sh
 
       # The -dev packages below are not a wish list: every pkg-config dependency the frozen plan
@@ -120,26 +128,80 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-store-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
           restore-keys: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-store-
 
-      # `sql/**` and `resources/**` ARE IN THE KEY, and that is not an optimisation. Those files are
-      # compiled into the binaries with `embedFile`, and cabal does not track an `embedFile`
-      # dependency under this toolchain — measured: editing one line of `sql/030_metrics.sql`
-      # recompiles nothing. With them out of the key, a pull request touching only SQL got an exact
-      # cache hit, nothing rebuilt, and every Haskell gate ran the PREVIOUS version of the DDL —
-      # including the "metric documentation is not stale" diff, which then compared the old embed
-      # against the old document and passed. `UnitTests.Views` asserts the same thing from inside
-      # the binary; this line is what stops the cache from serving one that is already wrong.
+      # `sql/**`, `resources/**` and `test/fixtures/*.sql` ARE IN THE KEY, and that is not an
+      # optimisation. Those files are compiled into the binaries with `embedFile`, and cabal does not
+      # track an `embedFile` dependency under this toolchain — measured: editing one line of
+      # `sql/030_metrics.sql` recompiles nothing. With them out of the key, a pull request touching
+      # only SQL got an exact cache hit, nothing rebuilt, and every Haskell gate ran the PREVIOUS
+      # version of the DDL — including the "metric documentation is not stale" diff, which then
+      # compared the old embed against the old document and passed. `UnitTests.Views` asserts the
+      # same thing from inside the binary; this line is what stops the cache from serving one that is
+      # already wrong.
+      #
+      # `test/fixtures/*.sql` was the one still missing, and it is the worst of the set to lose:
+      # `test/fixtures/dbsync-skeleton.sql` is `Test.Pg`'s embed, the db-sync shape that all 35
+      # database cases are built on, so a stale copy would have them assert against the OLD shape
+      # — a renamed db-sync column would pass. The glob matches `extra-source-files`' own spelling,
+      # and `scripts/check_packaging.sh` now derives this list from the sources rather than trusting
+      # this comment, which is what let the gap exist.
       - uses: actions/cache@v4
         with:
           path: dist-newstyle
-          key: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-dist-${{ hashFiles('cabal.project.freeze', 'cabal.project', 'palmares.cabal', 'sql/**', 'resources/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-dist-${{ hashFiles('cabal.project.freeze', 'cabal.project', 'palmares.cabal', 'sql/**', 'resources/**', 'test/fixtures/*.sql') }}
 
       - run: cabal update
       - run: cabal build all --enable-tests
-      - run: cabal test all --test-show-details=direct
+
+      # PALMARES_REQUIRE_FIXTURE_GATE is deliberately NOT set on this step. The eight epoch-319
+      # cases need a caught-up preprod db-sync — about seven hours to build — which this runner
+      # cannot have, so under the gate they would fail every run. Here they skip, loudly, on stderr;
+      # the third of these test steps is what stops that skip from ever reading as a pass again.
+      - name: cabal test (serial)
+        run: cabal test all --test-show-details=direct
         env:
           # Test.Pg dies naming this variable when it is unset, so a database test can never
           # read as a pass just because the server was missing.
           PALMARES_TEST_PG_CONN_STR: host=localhost user=postgres password=devonly dbname=postgres port=5432
+
+      # AND at -j4, because `src/test/Test/Pg.hs` claims both work and only the serial run was ever
+      # executed. The claim has teeth: the scratch database name used to be per PROCESS, so two
+      # concurrent cases shared one database and each one's `DROP … WITH (FORCE)` killed the other's
+      # pool — measured at 84 failures of 706 under `-j4` against none serially. The per-CALL name
+      # is the fix, and a fix whose only evidence is a comment is a hope. This step is the evidence.
+      #
+      # It re-uses the binary the step above built, so it costs one more test run and no rebuild.
+      # The one piece of cluster-wide state left in the suite is `palmares_ro` in UnitTests.Views,
+      # created by a single case, so there is no second creator to race it.
+      - name: cabal test (-j4, so the per-call scratch database name stays proven)
+        run: cabal test all --test-show-details=direct --test-options='-j4'
+        env:
+          PALMARES_TEST_PG_CONN_STR: host=localhost user=postgres password=devonly dbname=postgres port=5432
+
+      # TD-14, asserted by its own failure. All eight epoch-319 cases reported `OK` with
+      # PALMARES_FIXTURE_PG_CONN_STR unset, so every CI run above read as "the fixture gate passed"
+      # while the gate had executed no statement at all. CI cannot supply that database, so what it
+      # CAN gate is the property that was broken: a skip must never be a pass. With
+      # PALMARES_REQUIRE_FIXTURE_GATE set and the connection string absent, the group must fail, it
+      # must fail naming the gate, and NO case in it may report OK.
+      #
+      # TASTY_PATTERN rather than `--test-options`, which cabal splits on whitespace: the group's
+      # name has spaces in it, and every shorter pattern ("fixture", "epoch") also selects cases in
+      # other modules that legitimately pass. Filtered this way the step runs eight cases in
+      # seconds and no emulator.
+      - name: a skipped fixture case is a failure, not a green tick
+        run: |
+          set -uo pipefail
+          out=$(cabal test all --test-show-details=direct 2>&1) && rc=0 || rc=$?
+          echo "$out"
+          [ "$rc" != 0 ] || { echo "the gate did not fire: a skipped fixture case still passes"; exit 1; }
+          grep -q PALMARES_REQUIRE_FIXTURE_GATE <<<"$out" \
+            || { echo "it failed, but for something other than the gate"; exit 1; }
+          ok=$(grep -cE ': +OK' <<<"$out" || true)
+          [ "$ok" = 0 ] || { echo "$ok fixture case(s) still reported OK under the gate"; exit 1; }
+        env:
+          PALMARES_TEST_PG_CONN_STR: host=localhost user=postgres password=devonly dbname=postgres port=5432
+          PALMARES_REQUIRE_FIXTURE_GATE: "1"
+          TASTY_PATTERN: /preprod epoch-320 fixture/
 
       # docs/metrics.md is generated from the metric catalog and committed. Regenerate and diff:
       # the published prose and the SQL the API runs come out of the same files, so a formula
@@ -253,6 +315,23 @@ jobs:
 
       - name: every metric statement gives the same answer twice
         run: scripts/check_determinism.sh
+        env:
+          PGPASSWORD: devonly
+          PG_CONN_STR: host=localhost user=postgres dbname=postgres port=5432
+
+      # GV-25. The seven files in sql/checks/ are the authority on view correctness — 135 ASSERTs —
+      # and NOTHING ran them, so a column renamed in sql/020_views.sql left a check file that no
+      # longer resolved and nobody knew until the next by-hand `psql -f`. They go here rather than in
+      # a job of their own because the step above has already seeded this database with exactly what
+      # they need: the db-sync skeleton and sql/000..030. MEASURED at about 7 seconds for all seven.
+      #
+      # What it proves: every file executes end to end and every identifier in all 135 conditions
+      # resolves against the real schema. What it cannot: anything that needs rows — a wrong number,
+      # a join that fans out, a partition that is no longer total. The script's header explains the
+      # rewrite that makes a magnitude assertion non-fatal here without making it unchecked, and
+      # carries the preprod command that SIGNS these checks (7/7 at tip epoch 321, 2026-10-24).
+      - name: every sql/checks file resolves against the schema (GV-25)
+        run: scripts/check_sql_checks.sh
         env:
           PGPASSWORD: devonly
           PG_CONN_STR: host=localhost user=postgres dbname=postgres port=5432

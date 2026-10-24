@@ -11,13 +11,14 @@ import GeniusYield.GYConfig
 import GeniusYield.Types
 import InteractionAppMonad (InteractionAppContext (..))
 import Network.Wai.Handler.Warp
-import RestAPI (apiSwagger, mkWebApp)
+import RestAPI (apiSwaggerDoc, mkWebApp)
 import System.Environment (getArgs)
 import System.Exit (die, exitSuccess)
 import Palmares.TxBuilding.Context
 import Palmares.Utils (decodeConfigEnvOrFile)
 import Palmares.WebAPI.Auth (getBasicAuthFromEnv)
 import Palmares.WebAPI.CORS (getCorsConfigFromEnv)
+import Palmares.WebAPI.Errors (internalErrorResponse)
 import Palmares.WebAPI.Utils (getPortFromEnvOrDefault)
 import System.IO (BufferMode (LineBuffering), hSetBuffering, stdout)
 
@@ -35,10 +36,10 @@ swaggerPath = "docs/generated/swagger/interaction-swagger-api.json"
 -- | @--write-swagger-only@: write the document and exit.
 --
 -- Touches nothing else — no Atlas config, no deployed-validators config, no port — because
--- 'apiSwagger' is a pure value derived from the served API type.
+-- 'apiSwaggerDoc' is a pure value derived from the served API type.
 writeSwagger :: IO ()
 writeSwagger = do
-  BL8.writeFile swaggerPath (encodePretty apiSwagger)
+  BL8.writeFile swaggerPath (encodePretty apiSwaggerDoc)
   putStrLn ("Wrote " <> swaggerPath)
 
 main :: IO ()
@@ -68,7 +69,17 @@ serve = do
     let host = "0.0.0.0"
     port <- getPortFromEnvOrDefault 8082
 
-    let settings = setHost (fromString host :: HostPreference) $ setPort port defaultSettings
+    -- 'setOnExceptionResponse' is the last resort, and it is why this document can declare a 500 and
+    -- mean it. Warp's own default is `text/plain` with the words "Something went wrong", produced
+    -- OUTSIDE the middleware stack — when the application throws, the continuation
+    -- 'refusedRequestMiddleware' wraps is never called, so no WAI layer can reshape it. Almost every
+    -- 500 on this service already carries `{code, message}`, because 'runWithTxErrorHandling' catches
+    -- 'SomeException' and classifies it; this covers the rest, so "every non-2xx body on this API is
+    -- JSON with a code" has no exception left for a client to special-case.
+    let settings =
+          setOnExceptionResponse (const internalErrorResponse) $
+            setHost (fromString host :: HostPreference) $
+              setPort port defaultSettings
     let webApp = mkWebApp corsCfg appContext
 
     putStrLn $ "Started Interaction API server at " <> host <> " " <> show port

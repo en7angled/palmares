@@ -14,6 +14,19 @@
 -- from "Test.Pg dies when its variable is missing": the schema tests need any PostgreSQL and a
 -- developer always has one.
 --
+-- __But a notice on stderr is not a result__ (@TD-14@). All eight cases below reported @OK@ with
+-- the variable unset, so every run that forgot it — every CI run, and any by-hand signing run
+-- where the export was missed — read as "the epoch-319 gate passed" when the gate had not
+-- executed a single statement. A skipped test that reports green is worse than a missing one,
+-- because the suite's green then asserts something nobody checked.
+--
+-- @PALMARES_REQUIRE_FIXTURE_GATE@ closes that. Set to any non-empty value, a skip becomes a
+-- FAILURE naming the variable that is missing; unset, the permissive behaviour above stays, so a
+-- developer with no synced db-sync can still run the suite. The signing run sets both variables,
+-- which is what makes "the gate passed" mean the comparison happened. CI sets the require
+-- variable ALONE, on a run filtered to this group, and asserts the suite fails — it cannot
+-- provide the database, so what it gates is that the skip can never silently go back to green.
+--
 -- The fixture pins epoch 319 and not the tip. An open epoch has no stable cursor: @age_days_v1@
 -- takes @max(block.time)@ over epochs <= as_of_epoch, which inside an open epoch is "now" and
 -- moves every twenty seconds.
@@ -220,17 +233,33 @@ drepId pool fx = do
 roundTo :: Int -> Double -> Double
 roundTo n x = fromIntegral (round (x * 10 ^ n) :: Integer) / 10 ^ n
 
--- | One case against the fixture database, or a loud skip.
+-- | One case against the fixture database, or a skip — loud on stderr, or fatal under the gate.
+--
+-- Every case in this module routes through here, so the gate is one branch rather than eight.
 withFixture :: TestName -> (ConnectionPool -> Fixture -> IO ()) -> TestTree
 withFixture name body = testCase name $ do
   mConn <- lookupEnv "PALMARES_FIXTURE_PG_CONN_STR"
   case mConn of
-    Nothing ->
-      hPutStrLn
-        stderr
-        ( "SKIPPED (PALMARES_FIXTURE_PG_CONN_STR unset, so the epoch-319 gate did not run): "
-            <> name
-        )
+    Nothing -> do
+      -- Non-empty, matching 'Test.Pg.adminConnStr': an empty export is how a shell says "unset",
+      -- and a gate that read `PALMARES_REQUIRE_FIXTURE_GATE=` as "on" would fail for nothing.
+      required <- lookupEnv "PALMARES_REQUIRE_FIXTURE_GATE"
+      case required of
+        Just g
+          | not (null g) ->
+              assertFailure
+                ( "PALMARES_REQUIRE_FIXTURE_GATE is set, so a skipped epoch-319 gate is a failure \
+                  \rather than a pass: "
+                    <> name
+                    <> ". Set PALMARES_FIXTURE_PG_CONN_STR to a caught-up preprod db-sync, or unset \
+                       \PALMARES_REQUIRE_FIXTURE_GATE to run the suite without one."
+                )
+        _ ->
+          hPutStrLn
+            stderr
+            ( "SKIPPED (PALMARES_FIXTURE_PG_CONN_STR unset, so the epoch-319 gate did not run): "
+                <> name
+            )
     Just conn -> do
       parsed <- eitherDecodeFileStrict' "test/fixtures/preprod-epoch-320-metrics.json"
       fx <- either (fail . ("the fixture did not parse: " <>)) pure parsed

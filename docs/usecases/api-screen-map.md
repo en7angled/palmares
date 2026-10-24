@@ -1579,7 +1579,13 @@ Ordered by how much it blocks.
 > build the 4-call workaround**; it may already be unnecessary:
 > `curl -s -o /dev/null -w '%{http_code} %{time_total}\n' http://127.0.0.1:8083/drep/<a-cip129-id>`
 
-## 5.2 BLOCKER — no way to find the connected wallet's own profile
+## 5.2 ~~BLOCKER~~ CLOSED — no way to find the connected wallet's own profile
+
+> **Closed 2026-10-24: `GET /profiles/by-user-token/{asset-class}`.** The wallet holds the CIP-68
+> **user** token and the registry's ids are the **reference** form; the route does the label swap
+> and re-parses through Atlas's own codec, so it cannot produce an id the `{profile-id}` capture
+> would refuse. The policy id to filter the wallet's assets by was already at
+> `/status.attestation.policy_id`.
 
 | | |
 | --- | --- |
@@ -1589,7 +1595,13 @@ Ordered by how much it blocks.
 | **Workaround** | Client-side: `wallet.getAssets()`, filter on `policy_id` from `/status`, reconstruct `policy.assetName`, then `GET /profiles/{that}`. Workable but it puts protocol knowledge in the browser and breaks for a profile whose token has moved. |
 | **Backend change** | One route: `GET /profiles?owner_address=<addr>` or `GET /profiles/by-owner/{address}`. Needs the projection to carry the holding address — check whether it already does. **Small-to-medium.** |
 
-## 5.3 BLOCKER for the dispute flow — the deposit amount is not published
+## 5.3 ~~BLOCKER~~ CLOSED for the dispute flow — the deposit amount is not published
+
+> **Closed 2026-10-24, by this section's own prescription:** the oracle's parameters went onto
+> **interaction-api**'s `/status`, where the oracle UTxO is already read. `oracle` carries the
+> deposit, the dispute timeout, the minimum UTxO, both fees and the admin and arbiter credentials.
+> query-api cannot publish them — it has no Cardano provider by a documented boot contract, and
+> its db-sync is indexed without UTxOs, so the oracle UTxO is not in that database at all.
 
 | | |
 | --- | --- |
@@ -1599,7 +1611,12 @@ Ordered by how much it blocks.
 | **Workaround** | None honest. You can build the transaction and read the locked value out of the returned CBOR before asking the user to sign — which means decoding a transaction in the browser to discover a price. |
 | **Backend change** | Add the oracle's fee fields to `interaction-api` `/status`; the oracle UTxO is already read there for `oracle_paused`. **Small.** |
 
-## 5.4 A committee credential can be claimed but not verified
+## 5.4 ~~A committee credential can be claimed but not verified~~ CLOSED
+
+> **Closed 2026-10-24.** `/profiles/by-credential/` canonicalises all three roles, key and script;
+> a malformed credential answers the new `invalid_credential` instead of `invalid_drep_id`. The
+> same DRep-only parser also fed `credential_is_script`, which published `null` for every committee
+> credential — the field a verification UI is promised it never has to guess.
 
 | | |
 | --- | --- |
@@ -1609,7 +1626,10 @@ Ordered by how much it blocks.
 | **Workaround** | `GET /profiles?claimed=true` and filter on `credential` client-side. Fine at 1 profile, not at 10,000. |
 | **Backend change** | Swap `canonicalDrepCredential` for the role-aware parser in that one handler, and widen the error code (or keep `invalid_drep_id` and fix the message). **Small** — the parser and its tests already exist. Worth confirming the projection stores committee claims in the same column first. |
 
-## 5.5 No single-dispute route
+## 5.5 ~~No single-dispute route~~ CLOSED
+
+> **Closed 2026-10-24: `GET /disputes/{dispute-id}`.** It also makes `dispute_not_found` reachable,
+> which until now was a published error code with no site anywhere in the service.
 
 | | |
 | --- | --- |
@@ -1619,7 +1639,12 @@ Ordered by how much it blocks.
 | **Workaround** | Fetch `/attestations/{attestation-id}` and select the dispute client-side — so a dispute URL must carry the attestation id too. |
 | **Backend change** | One route; `dispute_not_found` already exists. **Small.** |
 
-## 5.6 `/gov-actions` is too slow to build on
+## 5.6 ~~`/gov-actions` is too slow to build on~~ CLOSED
+
+> **Closed 2026-10-24: ~2.45 s → ~0.09 s.** The cost was a correlated `votes_cast` subselect over
+> 3.2 M rows, of which 2.05 s was five epoch-187 stress actions with ~648,750 votes each. It now
+> reads a 931-row pre-aggregation refreshed with the other matviews. Verified against the whole
+> population, not a sample: 131 actions, 0 disagreements.
 
 | | |
 | --- | --- |

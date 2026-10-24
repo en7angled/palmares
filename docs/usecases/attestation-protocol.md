@@ -304,7 +304,7 @@ remove it (`Exceptions.hs:56-64`).
 | `name` | string | yes | |
 | `description` | string | yes | |
 | `image_uri` | string | yes | |
-| `other_metadata` | array of `[key, value]` string pairs | **yes** (send `[]`) | free-form metadata. Keys `name`, `description`, `image` are reserved. Capped at 16 entries of 64/256 bytes (`CIP68.hs:129-139`). |
+| `other_metadata` | array of `[key, value]` string pairs | **yes** (send `[]`) | free-form metadata. Keys `name`, `description`, `image` are reserved on chain; `palmares:level1_*` are reserved by this protocol (see the anchor below). Capped at 16 entries of 64/256 bytes (`CIP68.hs:129-139`). |
 | `claimed_period` | `[from, to]`, ISO-8601 | no | both bounds or neither. See the warning below. |
 | `user_addresses` | object | yes | |
 
@@ -321,6 +321,53 @@ is off-chain only. The UI must not render it alongside `date` as though both wer
 is bounded by the transaction's validity interval, `claimed_period` is bounded by nothing. The read
 surface deliberately offers no filter and no sort on it, because "a range query over it would read as
 though the chain had checked it" (`query-api/RestAPI.hs:1477-1480`).
+
+**The level-1 anchor — linking a statement to the money that paid for it.** An attestation may point
+at the on-chain fact it comments on. There is no `anchor` field: the pointer travels as **two
+reserved `other_metadata` keys** (ADR 0008), because the datum format is frozen by the live
+deployment and the specification already decided the anchor is not verified on chain.
+
+| key | value | meaning |
+|---|---|---|
+| `palmares:level1_gov_action` | CIP-129 `gov_action1…` | the governance action this attestation concerns |
+| `palmares:level1_stake_address` | bech32 `stake…`/`stake_test…` | the address paid by that action's withdrawal |
+
+The action key alone anchors to an **action**. Both keys together anchor to a **treasury
+withdrawal**, which is the pair `palmares.treasury_withdrawal` is keyed by — this is what links money
+to delivery: the chain says "address X received N ADA under action G" and the attestation says "the
+paying committee confirms milestone 2". The address key alone is refused (400): one address can be
+paid under many actions, so there is nothing to resolve.
+
+**Nothing on chain checks that the fact exists.** The write API refuses a *malformed* anchor, which
+is as far as off-chain validation can go; a hand-built transaction skips even that. So the read
+surface resolves the pointer at read time and publishes a verdict — `GET /attestations/{id}` carries
+`level1_anchor`, which is `null` when there is no anchor and otherwise:
+
+```json
+"level1_anchor": {
+  "gov_action_id": "gov_action1…",
+  "stake_address": "stake_test1…",
+  "status": "resolved",
+  "withdrawal": { "amount": "1000000000000", "enacted_epoch": null, "paid_heuristic": false }
+}
+```
+
+`status` is one of three, and the UI must distinguish them:
+
+| status | what it means | what the UI should show |
+|---|---|---|
+| `resolved` | the action — and the withdrawal, if an address was given — exists in the index | the link, and the amount when `withdrawal` is present |
+| `unresolved` | the pointer parses but names nothing the index holds | the pointer, with a plain "not found" marker — never hidden |
+| `malformed` | the keys are present and do not parse | the raw keys, marked as unreadable |
+
+`withdrawal.paid_heuristic` is a **display hint, never an accounting fact**: db-sync records treasury
+payouts per (address, epoch) with no governance-action key, so when one address receives two
+withdrawals in the same epoch the match is ambiguous and both read as paid (`sql/020_views.sql:483`).
+Nothing may sum it.
+
+The two anchor keys stay in `other_metadata` as well as appearing in `level1_anchor`, because
+removing them would make the API disagree with the datum — a client rendering raw metadata should
+filter them out to avoid showing the pointer twice.
 
 From `smoke_attest_flow.sh:350-357`:
 
@@ -756,7 +803,7 @@ message (`Exceptions.hs:258-266`).
 | resolved or expired an already-decided dispute | 400 | `DisputeAlreadyResolved` | "Dispute already carries a verdict and cannot be resolved twice" | "Already decided." Refresh. |
 | resolved with `verdict: "expired"` | 400 | `DisputeVerdictNotAFinding` | "A resolution must be a finding: only a passed deadline writes 'expired'" | don't offer `expired` in the verdict picker. |
 | expired a dispute before its deadline | 400 | `DisputeNotStaleYet` | "Dispute cannot be expired yet: its deadline has not passed" | "Not yet — this dispute can be closed after <date>." **The UI cannot compute that date today**; see §6, gap G4. |
-| sent `kind: credential_claim` to `/claim-credential`'s *wrong* route | 400 | `AttestationKindIsCredentialBinding` | "A credential binding is not issued here: use /claim-credential or /withdraw-credential, which take the credential and the witness that proves control of it" | **not currently reachable** — see §6, gap G7. |
+| sent `kind: credential_claim` to `/claim-credential`'s *wrong* route | 400 | `AttestationKindIsCredentialBinding` | "A credential binding is not issued here: use /claim-credential or /withdraw-credential, which take the credential and the witness that proves control of it" | reachable, measured: `POST /issue-attestation` with `kind: credential_claim` answers this 400 before any chain read. Route the user to §2.2 / §2.3. |
 | anything, while the protocol is paused | 503 | `ProtocolPaused` | "Protocol is paused" | a banner, not a form error. Poll `GET /status.oracle_paused`. |
 | anything, while the reference scripts do not resolve | 503 | `DeployedScriptsNotReady` | "Deployed scripts are not ready" | "The registry is not accepting writes." |
 | the oracle cannot be read | 404 / 500 | `OracleNotFound` / `OracleDatumInvalid` | "Oracle UTxO not found" / "Oracle datum invalid or unparseable" | a service-level error, not the user's. |
@@ -857,7 +904,19 @@ HRPs (`DomainTypes/Core/Ids.hs:148-159`).
 
 Each gap: what a screen needs, what exists, what is missing.
 
-### G1. No way to answer "which profiles do I own"
+### G1. No way to answer "which profiles do I own" — CLOSED
+
+> **Closed 2026-10-24 by `GET /profiles/by-user-token/{asset-class}`.** A wallet holds the CIP-68
+> **user** token and the registry's ids are the **reference** form, which is why possession could not
+> be turned into an id: the route does the CIP-67 label swap (`000de140` → `000643b0`) and then
+> re-parses the result through Atlas's own asset-class codec, so it cannot manufacture an id the
+> `{profile-id}` capture would have refused. A malformed input is `400 invalid_asset_class` and an
+> unminted one is `404 profile_not_found`.
+>
+> The policy id a wallet filters its own assets by first was **already** published, at
+> `/status.attestation.policy_id`. The flow is: read the policy id from `/status`, filter the wallet's
+> assets to that policy and the `000de140` prefix, call this route for each.
+
 
 **The screen needs** a "my profiles" view, and every write form needs to know which profile the
 connected wallet can act for. This is the entry point to the entire wallet-side product.
@@ -907,7 +966,22 @@ profile card requires the frontend to carry preprod's and mainnet's slot-to-time
 conversion — the exact duplication the API declined to do. And `order_by=registered_at` sorts by a
 value the UI cannot display.
 
-### G4. A dispute's deadline is not published
+### G4. A dispute's deadline is not published — HALF CLOSED, and the open half is named
+
+> **2026-10-24.** `oracle.dispute_timeout_ms` is now published on interaction-api's `GET /status`, so
+> a client can compute the deadline of a dispute it is **about to open**: `now + dispute_timeout_ms`.
+> `GET /disputes/{id}` also exists now, so a dispute has a detail route at all.
+>
+> **What is still missing, exactly.** `disputeStaleAfter` is in the dispute's datum and the
+> **projection drops it** — `DisputeProjection` has `openedAt`, `deposit` and `verdict` and no
+> deadline column. So for an EXISTING dispute the client has to compute `opened_at + timeout`, which
+> is wrong for any dispute opened before a retiming: the datum's deadline is absolute and a reprice
+> cannot move it, which is the very property that makes the computed value unreliable.
+>
+> Closing it is a projection column plus a row field, and it costs a **schema-version bump**, which
+> wipes and re-indexes the chain-sync tables (ADR 0007). That is why it is not folded into the batch
+> above: it is worth doing on a re-index that is happening anyway, and not worth one of its own.
+
 
 **The screen needs** "this dispute can be closed by anyone after <date>", and an enabled/disabled state
 for the "close it" button.
@@ -923,7 +997,18 @@ only way to read it is the admin CLI's `query-oracle`, which is what the smoke s
 (`:448-451`). So a UI can show "open" and nothing more, and the expire button is a blind retry
 against a 400.
 
-### G5. Nothing says who the arbiter is
+### G5. Nothing says who the arbiter is — CLOSED
+
+> **Closed 2026-10-24 by `oracle.arbiter` on interaction-api's `GET /status`.** Published as 28 bytes
+> of hex plus `is_script`, deliberately not CIP-129: the arbiter carries no governance **role**, and
+> CIP-129's header byte encodes exactly that, so rendering one would mean inventing a role the datum
+> does not have. `is_script` is part of the contract rather than decoration — a key credential proves
+> itself with a signature and a script credential by being spent at its own address, so a UI that
+> offers "sign as arbiter" to a script credential is offering something that cannot work.
+>
+> `oracle.admin` is published beside it, which is a different power (repricing, not verdicts) and was
+> conflated in several screens.
+
 
 **The screen needs** to decide whether to show the "resolve this dispute" form to the connected wallet,
 and to tell a reader who holds that power.
@@ -934,7 +1019,16 @@ and to tell a reader who holds that power.
 **What is missing.** No endpoint publishes either credential. A UI either shows the resolve form to
 everyone and lets the node refuse, or hides it from everyone and the arbiter uses the CLI.
 
-### G6. The dispute deposit amount is not published
+### G6. The dispute deposit amount is not published — CLOSED
+
+> **Closed 2026-10-24 by `oracle.dispute_deposit_lovelace` on interaction-api's `GET /status`.** The
+> screen can now name the cost before asking for a signature, which is the whole requirement.
+>
+> **Read it from `oracle` for a dispute you are ABOUT to open, and from the dispute's own `deposit`
+> for one that exists.** They can differ legitimately: the deposit is copied into the dispute's datum
+> when it opens, so a later reprice never reprices an open dispute. A UI that shows the oracle's
+> current figure on an existing dispute's page will eventually show the wrong number.
+
 
 **The screen needs** "opening a dispute locks N ADA, refunded on any outcome" **before** the user
 commits.
@@ -948,20 +1042,28 @@ this cost me" on every mint. The honest UI today either omits the number or read
 from somewhere else. This is the same missing object as G4 and G5: **an oracle-parameters read route
 would close all three.**
 
-### G7. `/issue-attestation` accepts two kinds it cannot build
+### G7. `/issue-attestation` accepts two kinds it cannot build — CLOSED
 
 **The screen needs** a `kind` picker whose values all work.
 
-**What exists.** `AttestationType`'s wire enum has seven values and the Swagger `enum` lists all seven
-on `/issue-attestation`. `credential_claim` and `credential_withdrawal` parse, reach the builder, and
-get a transaction the chain refuses at `Mc2` — surfacing as `400 ScriptRefused` naming `Mc2`. This is
-finding **F9** (`onchain-flows.md:54, 302-309`), open.
+**CLOSED, and it was closed before this document described it as open.** `AttestationType`'s wire enum
+has seven values and the Swagger `enum` lists all seven on `/issue-attestation`, but
+`credential_claim` and `credential_withdrawal` are now refused **off chain, before any protocol read**:
+`issueAttestationTX`'s first statement throws `AttestationKindIsCredentialBinding` (400), landed in
+`bf3e1b6`. Measured live on 8082 — a credential kind answers that 400 while the control
+(`kind: endorsement`) gets as far as a chain read and answers `404 SubjectProfileNotFound`, which is
+what proves the guard fires first.
 
-**What is missing.** An off-chain refusal. The error constructor for it exists and is documented
-(`AttestationKindIsCredentialBinding`, `Exceptions.hs:97-106`) but has **no throw site on this route**.
-**Frontend action:** offer only the five presentational kinds in the picker —
+The refusal sits at the shared root rather than in the route handler, so `/build-tx`'s
+`IssueAttestationAction` arm is covered by the same line. Two conjuncts, not one, made these kinds
+unbuildable: the builder hardcodes the redeemer's credential field to `Nothing`, so `Mc2` (a credential
+kind must name its credential) can never hold, and `Mc3` (the named credential must control the
+transaction) has no proof to check either.
+
+**Frontend action, unchanged:** offer only the five presentational kinds in the picker —
 `milestone_delivered`, `audit_passed`, `affiliation`, `role_held`, `endorsement` — and route the other
-two to §2.2 / §2.3.
+two to §2.2 / §2.3. The difference is that sending one anyway is now a clean 400 with a code, not a
+signed transaction the chain throws away.
 
 ### G8. The published `GYAddress` description is wrong
 
@@ -990,7 +1092,19 @@ action:** the browser must never hold these credentials — put the interaction-
 adds them server-side, which is also what spec §4.5 requires ("no provider keys in the bundle, a BFF
 with a rate limit").
 
-### G10. A committee credential cannot be verified in reverse
+### G10. A committee credential cannot be verified in reverse — CLOSED
+
+> **Closed 2026-10-24.** `/profiles/by-credential/{credential}` now canonicalises through
+> `parseCredentialRoleCip129`/`renderCredentialRoleCip129` — all three roles, key and script — so
+> `cc_cold1…` and `cc_hot1…` resolve like a `drep1…`. A malformed credential answers the new
+> `400 invalid_credential` rather than `invalid_drep_id`, which was literally true and completely
+> misleading.
+>
+> **The same parser fed a second, silent defect:** `credential_is_script` also went through the
+> DRep-only parser, so every committee credential in the column published `null` — the one field
+> `AttestProfileRow`'s own Haddock promises a verification UI never has to guess. One parser, two
+> symptoms, one fix.
+
 
 **The screen needs** the verify direction for a `Committee` profile: "given `cc_cold1…`, which profiles
 claim it". This is the same screen as for a DRep, and committees are a named target audience (spec §2).

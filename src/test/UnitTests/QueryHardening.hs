@@ -9,15 +9,36 @@
 -- 400 belonged, a spreadsheet that runs a formula out of exported data.
 module UnitTests.QueryHardening (queryHardeningTests) where
 
+import Data.Aeson (Value (Bool, Object, String), encode)
+import Data.Aeson qualified as Aeson
+import Data.Aeson.Key qualified as Key
+import Data.Aeson.KeyMap qualified as KM
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
+import Data.ByteString.Builder (toLazyByteString)
 import Data.Csv (DefaultOrdered (..), FromNamedRecord (..), ToNamedRecord (..), decodeByName, header, namedRecord, (.:), (.=))
+import Data.IORef (modifyIORef', newIORef, readIORef, writeIORef)
 import Data.List (nub)
 import Data.Proxy (Proxy (..))
 import Data.Text qualified as T
 import Data.Vector qualified as V
-import Palmares.DomainTypes.Core.Types (AnchorStatus (..), DRepStatus (..), GovActionId (..), VoterRole (..))
+import Network.HTTP.Types (hContentType, methodNotAllowed405, notAcceptable406, ok200, statusCode)
+import Network.Wai (defaultRequest, responseHeaders, responseLBS, responseStatus, responseToStream)
+import Network.Wai.Internal (ResponseReceived (..))
+import Palmares.DomainTypes.Core.Ids (ccColdIdCip129, ccHotIdCip129, drepIdCip105, drepIdCip129)
+import Palmares.DomainTypes.Core.Types
+  ( AnchorStatus (..),
+    AttestationType (..),
+    DRepStatus (..),
+    GovActionId (..),
+    ProfileRefAC,
+    VoterRole (..),
+  )
 import Palmares.DomainTypes.Transfer.Filters
-  ( DRepFilter (..),
+  ( AttestationRecordFilter (..),
+    DRepFilter (..),
     VoteFilter (..),
+    emptyAttestationRecordFilter,
     emptyVoteFilter,
     GovActivityFilter (..),
     emptyDRepFilter,
@@ -25,11 +46,13 @@ import Palmares.DomainTypes.Transfer.Filters
   )
 import Palmares.DomainTypes.Transfer.OrderBy (DRepsOrderBy (..), SortOrder (..), VotesOrderBy (..))
 import Palmares.WebAPI.CSV (CSV, safeCell)
-import Palmares.WebAPI.Envelope (ErrorCode (..), Page (..), errorCodeFromText)
-import Palmares.WebAPI.Errors (errorCodeFromParserMessage, genericErrorMessage)
+import Palmares.WebAPI.Envelope (ApiError (..), ErrorCode (..), Page (..), errorCodeFromText, errorCodeToHttpStatus)
+import Palmares.WebAPI.Errors (errorCodeFromParserMessage, genericErrorMessage, refusedRequestMiddleware)
 import Palmares.Utils (jsonTag)
-import Palmares.WebAPI.Utils (escapeLikePattern)
+import Palmares.WebAPI.Utils (escapeLikePattern, markNullableFields)
+import Query.Attest (attestationWhere, canonicalGovCredential, credentialIsScript, profileRefOfUserToken)
 import Query.Common
+import Servant (FromHttpApiData (..))
 import Palmares.DomainTypes.Transfer.QueryResponses (ActivityCursor (..), renderCursor)
 import Query.Gov
   ( FeedDir (..),
@@ -68,7 +91,19 @@ instance FromNamedRecord Row where
 
 queryHardeningTests :: TestTree
 queryHardeningTests =
-  testGroup "query hardening" [boundsTests, csvTests, cursorTests, errorCodeTests, voteStageTests]
+  testGroup
+    "query hardening"
+    [ boundsTests,
+      csvTests,
+      cursorTests,
+      errorCodeTests,
+      voteStageTests,
+      credentialRoleTests,
+      userTokenTests,
+      issuerAttributionTests,
+      nullabilityTests,
+      refusalTests
+    ]
 
 boundsTests :: TestTree
 boundsTests =
@@ -482,3 +517,355 @@ voteStageTests =
         )
           @?= (True, 1)
     ]
+
+------------------------------------------------------------------------------------------------
+
+-- * The credential lookup's three roles (ADR 0006)
+
+------------------------------------------------------------------------------------------------
+
+-- | 28 bytes, the shape every governance credential's hash has. The SAME bytes are rendered under
+-- all three roles below, which is the whole point: the role is in the header byte and nowhere else,
+-- so a codec that dropped it would make these identifiers equal and every assertion vacuous.
+credentialRaw :: ByteString
+credentialRaw = BS.replicate 28 0x7a
+
+credentialRoleTests :: TestTree
+credentialRoleTests =
+  testGroup
+    "/profiles/by-credential accepts every claimable role"
+    [ -- The measured defect: the lookup went through `parseDrepIdAny`, whose HRP table is `drep`
+      -- alone, so a committee credential the registry already held a claim for was answered
+      -- `400 invalid_drep_id` — "Not a DRep identifier", which is true of the input and useless to
+      -- the caller. ADR 0006 settles that all three roles are claimable and the write side has
+      -- always accepted all three.
+      testCase "all three roles canonicalise to themselves, in key and script form" $
+        map canonicalGovCredential allSix @?= map Just allSix,
+      -- Six DIFFERENT identifiers over ONE hash. If any pair collided the test above would pass
+      -- while the lookup matched the wrong profile.
+      testCase "the six renderings of one hash are six distinct identifiers" $
+        length (nub allSix) @?= 6,
+      -- Unchanged, and the reason is unchanged: neither carries a header byte, and `drep` is the
+      -- HRP for both credential kinds, so accepting one would mean choosing a byte — and choosing
+      -- the key byte reports every script credential as a key credential.
+      testCase "CIP-105 and 56 bare hex characters are still REFUSED" $
+        map canonicalGovCredential [drepIdCip105 credentialRaw, T.replicate 56 "a"]
+          @?= [Nothing, Nothing],
+      testCase "garbage is refused" $
+        map canonicalGovCredential ["", "drep_always_abstain", "pool1xyz", "cc_cold1xyz"]
+          @?= replicate 4 Nothing,
+      -- All-upper-case is a VALID bech32 spelling of the same id (BIP-173 forbids only mixed
+      -- case), and going through the parse and back out is what makes it match a stored
+      -- lower-case one. Asserted for a COMMITTEE id, because that is the half that was unreachable.
+      testCase "an upper-case committee spelling canonicalises to the stored lower-case form" $
+        canonicalGovCredential (T.toUpper (ccColdIdCip129 False credentialRaw))
+          @?= Just (ccColdIdCip129 False credentialRaw),
+      -- This was the silent half of the same bug: over `parseDrepIdAny` a committee claim's
+      -- `credential_is_script` was published as null — "unknown" — which is the one field
+      -- `AttestProfileRow` promises a verification UI will never have to guess.
+      testCase "credentialIsScript reads the header byte for all three roles" $
+        map credentialIsScript allSix
+          @?= [Just False, Just True, Just False, Just True, Just False, Just True],
+      testCase "and still never guesses for an identifier that carries no header byte" $
+        map credentialIsScript [drepIdCip105 credentialRaw, "not a credential"] @?= [Nothing, Nothing]
+    ]
+  where
+    allSix =
+      [ drepIdCip129 False credentialRaw,
+        drepIdCip129 True credentialRaw,
+        ccColdIdCip129 False credentialRaw,
+        ccColdIdCip129 True credentialRaw,
+        ccHotIdCip129 False credentialRaw,
+        ccHotIdCip129 True credentialRaw
+      ]
+
+------------------------------------------------------------------------------------------------
+
+-- * The wallet lookup: a CIP-68 user token's profile
+
+------------------------------------------------------------------------------------------------
+
+-- | The deployed minting policy, and a 28-byte name body. The two asset classes below differ in
+-- their four-byte CIP-67 label and in nothing else, which is the entire derivation.
+profilePolicy, nameBody, userTokenAc, refTokenAc :: T.Text
+profilePolicy = "648c6a732aa55efec29815bdd25cf65c565cf92619aadde1d31496d3"
+nameBody = T.replicate 56 "a"
+userTokenAc = profilePolicy <> ".000de140" <> nameBody
+refTokenAc = profilePolicy <> ".000643b0" <> nameBody
+
+-- | @refTokenAc@ through Atlas's own codec — the one the @{profile-id}@ capture uses.
+parsedRefToken :: Maybe ProfileRefAC
+parsedRefToken = either (const Nothing) Just (parseUrlPiece refTokenAc)
+
+userTokenTests :: TestTree
+userTokenTests =
+  testGroup
+    "/profiles/by-user-token derives the reference id a wallet cannot"
+    [ -- Guards the whole group: if the right-hand side were Nothing, the first case below would
+      -- pass by comparing two Nothings and prove nothing at all.
+      testCase "the expected reference asset class really parses" $
+        assertBool "refTokenAc did not parse through Atlas's codec" (parsedRefToken /= Nothing),
+      testCase "a user token resolves to its reference half" $
+        profileRefOfUserToken userTokenAc @?= parsedRefToken,
+      -- Hex is case-insensitive and Atlas renders it lower-case, so a wallet that hands back an
+      -- upper-case spelling must still find its profile rather than a 400.
+      testCase "upper-case hex and surrounding space are accepted" $
+        map profileRefOfUserToken ["  " <> T.toUpper userTokenAc <> "  ", T.toUpper userTokenAc]
+          @?= [parsedRefToken, parsedRefToken],
+      -- THE FOUR REFUSALS, and they are refusals rather than empty results on purpose: "no
+      -- profile" for an identifier that could not name one reads as "you own no profile".
+      --
+      -- The reference token is the interesting one. It is a perfectly good asset class and it IS a
+      -- profile id, so a lenient derivation would have answered the right profile for the wrong
+      -- reason and taught a client that either half works — which breaks the moment the two labels
+      -- are the only thing telling a wallet's token from the registry's.
+      testCase "the reference half, an attestation id, a dispute id and lovelace are all refused" $
+        map
+          profileRefOfUserToken
+          [ refTokenAc,
+            profilePolicy <> ".00001070" <> nameBody,
+            profilePolicy <> ".000020e0" <> nameBody,
+            "lovelace"
+          ]
+          @?= replicate 4 Nothing,
+      testCase "so is anything that is not <policy>.<name>" $
+        map profileRefOfUserToken ["", ".", profilePolicy, profilePolicy <> ".000de140" <> nameBody <> ".x"]
+          @?= replicate 4 Nothing,
+      -- The two labels are copied into "Query.Attest" rather than imported, because importing them
+      -- would put `plutus-ledger-api` on a public read path (query-api's cabal stanza says so in a
+      -- comment). This is the price of that copy: the labels are pinned to CIP-67's published
+      -- values, so a divergence from `Palmares.Onchain.CIP68` fails here rather than returning
+      -- somebody else's profile.
+      testCase "the two CIP-67 labels are the published ones, 100 and 222" $
+        (T.take 8 (T.drop 57 refTokenAc), T.take 8 (T.drop 57 userTokenAc))
+          @?= ("000643b0", "000de140")
+    ]
+
+------------------------------------------------------------------------------------------------
+
+-- * issuer= is an issuance history, so an unconsented withdrawal is not in it
+
+------------------------------------------------------------------------------------------------
+
+issuerAttributionTests :: TestTree
+issuerAttributionTests =
+  testGroup
+    "issuer= excludes an unaccepted credential_withdrawal"
+    [ -- `Mf` — spend the issuer's user NFT — is CONDITIONAL, and `CredentialWithdrawal` is its one
+      -- exemption (ADR 0003), deliberately: the case a withdrawal exists for is a profile that
+      -- claimed somebody else's credential, and that profile's token is held by whoever did it. So
+      -- a withdrawal is minted on the named CREDENTIAL's proof alone, while `Mc1` forces its
+      -- `issuer` to equal its `subject` — the minting policy's own comment says that makes `issuer`
+      -- structural and "makes no claim about who acted". The read layer was serving it as the
+      -- named profile's issuance anyway, and the chain cannot be changed (frozen hashes), so the
+      -- clause lives here.
+      testCase "the issuer clause carries the kind guard, bound not spliced" $
+        let (sql, ps) = attestationWhere emptyAttestationRecordFilter {attestationRecordFilterIssuer = issuer}
+         in ( T.isInfixOf "issuer_profile_id = ?" sql,
+              T.isInfixOf "attestation_kind = ?" sql,
+              T.isInfixOf "is_accepted = false" sql,
+              T.count "?" sql == length ps,
+              length ps
+            )
+              @?= (True, True, True, True, 2),
+      -- The SUBJECT direction must NOT be narrowed: on a credential record the subject is the
+      -- profile the record is about, which is exactly where a withdrawal belongs. Narrowing both
+      -- would make an unaccepted withdrawal invisible, and ADR 0003's rule is that nothing is ever
+      -- hidden or deleted.
+      testCase "the subject clause is a plain equality, with no guard" $
+        let (sql, ps) = attestationWhere emptyAttestationRecordFilter {attestationRecordFilterSubject = issuer}
+         in (T.isInfixOf "subject_profile_id = ?" sql, T.isInfixOf "attestation_kind" sql, length ps)
+              @?= (True, False, 1),
+      -- postgresql-simple counts placeholders lexically and complains only at run time, with a
+      -- count rather than a name. Same check every other *Where in this suite carries.
+      testCase "every filter shape binds as many values as it has placeholders" $
+        mapM_
+          ( \f ->
+              let (sql, ps) = attestationWhere f
+               in assertEqual (T.unpack sql) (T.count "?" sql) (length ps)
+          )
+          [ emptyAttestationRecordFilter,
+            emptyAttestationRecordFilter {attestationRecordFilterIssuer = issuer},
+            emptyAttestationRecordFilter {attestationRecordFilterSubject = issuer, attestationRecordFilterIssuer = issuer},
+            emptyAttestationRecordFilter {attestationRecordFilterKinds = [CredentialClaim, CredentialWithdrawal]},
+            emptyAttestationRecordFilter {attestationRecordFilterAccepted = Just True},
+            emptyAttestationRecordFilter
+              { attestationRecordFilterIssuer = issuer,
+                attestationRecordFilterKinds = [Endorsement],
+                attestationRecordFilterAccepted = Just False
+              }
+          ]
+    ]
+  where
+    issuer = parsedRefToken
+
+------------------------------------------------------------------------------------------------
+
+-- * x-nullable
+
+------------------------------------------------------------------------------------------------
+
+nullabilityTests :: TestTree
+nullabilityTests =
+  testGroup
+    "markNullableFields publishes every Maybe field as nullable"
+    [ -- swagger2 omits a record field from `required` exactly when its type is `Maybe a`, so
+      -- "absent from required" IS the Maybe and this pass copies that distinction into the one key
+      -- a client codegen reads. Both directions, because a pass that marked everything would
+      -- satisfy the first half alone.
+      testCase "an optional scalar gains the key and a required one does not" $
+        let out = markNullableFields oneSchema
+         in ( nullableAt out ["definitions", "Row", "properties", "maybe_field"],
+              nullableAt out ["definitions", "Row", "properties", "required_field"]
+            )
+              @?= (Just (Bool True), Nothing),
+      -- 15 of the 127 are a bare $ref. The key is written beside the reference, which a strict
+      -- Swagger 2.0 reader may ignore — stated in the document itself rather than papered over —
+      -- and the $ref must survive untouched either way.
+      testCase "a $ref property keeps its reference and gains the key beside it" $
+        let out = markNullableFields oneSchema
+         in ( nullableAt out ["definitions", "Row", "properties", "maybe_object"],
+              refAt out ["definitions", "Row", "properties", "maybe_object"]
+            )
+              @?= (Just (Bool True), Just (String "#/definitions/Other")),
+      -- The `type: "object"` guard. Without it, a DTO with a field NAMED `properties` would be
+      -- read as schema structure and every sibling field marked nullable — this is the case that
+      -- makes the guard load-bearing rather than decorative.
+      testCase "a DTO field named properties is data, not structure" $
+        let out = markNullableFields trapSchema
+         in ( nullableAt out ["definitions", "Trap", "properties", "properties"],
+              nullableAt out ["definitions", "Trap", "properties", "sibling"]
+            )
+              @?= (Just (Bool True), Nothing),
+      -- An enum definition has no `properties` at all and must come back byte-identical: the pass
+      -- must never be the thing that invents a schema.
+      testCase "a schema with no properties is returned unchanged" $
+        markNullableFields enumSchema @?= enumSchema,
+      -- Idempotent, because the document is regenerated on every boot and re-running a pass over
+      -- its own output is the cheapest thing that can go wrong.
+      testCase "running it twice changes nothing the first run did not" $
+        markNullableFields (markNullableFields oneSchema) @?= markNullableFields oneSchema
+    ]
+  where
+    oneSchema =
+      Aeson.object
+        [ "definitions"
+            Aeson..= Aeson.object
+              [ "Row"
+                  Aeson..= Aeson.object
+                    [ "type" Aeson..= String "object",
+                      "required" Aeson..= [String "required_field"],
+                      "properties"
+                        Aeson..= Aeson.object
+                          [ "required_field" Aeson..= Aeson.object ["type" Aeson..= String "string"],
+                            "maybe_field" Aeson..= Aeson.object ["type" Aeson..= String "integer"],
+                            "maybe_object" Aeson..= Aeson.object ["$ref" Aeson..= String "#/definitions/Other"]
+                          ]
+                    ]
+              ]
+        ]
+    trapSchema =
+      Aeson.object
+        [ "definitions"
+            Aeson..= Aeson.object
+              [ "Trap"
+                  Aeson..= Aeson.object
+                    [ "type" Aeson..= String "object",
+                      "required" Aeson..= [String "sibling"],
+                      "properties"
+                        Aeson..= Aeson.object
+                          [ "sibling" Aeson..= Aeson.object ["type" Aeson..= String "string"],
+                            "properties" Aeson..= Aeson.object ["type" Aeson..= String "string"]
+                          ]
+                    ]
+              ]
+        ]
+    enumSchema =
+      Aeson.object
+        [ "definitions"
+            Aeson..= Aeson.object
+              [ "Verdict"
+                  Aeson..= Aeson.object
+                    [ "type" Aeson..= String "string",
+                      "enum" Aeson..= [String "upheld", String "rejected", String "expired"]
+                    ]
+              ]
+        ]
+
+-- | Follow a path of object keys, then read @x-nullable@ off whatever is there.
+nullableAt :: Value -> [T.Text] -> Maybe Value
+nullableAt v path = at' v (path <> ["x-nullable"])
+
+-- | The same, for @$ref@ — so a case can assert that the reference survived the pass.
+refAt :: Value -> [T.Text] -> Maybe Value
+refAt v path = at' v (path <> ["$ref"])
+
+at' :: Value -> [T.Text] -> Maybe Value
+at' v [] = Just v
+at' (Object o) (k : ks) = KM.lookup (Key.fromText k) o >>= \v -> at' v ks
+at' _ _ = Nothing
+
+------------------------------------------------------------------------------------------------
+
+-- * The refusals servant's router produces
+
+------------------------------------------------------------------------------------------------
+
+refusalTests :: TestTree
+refusalTests =
+  testGroup
+    "405 and 406 carry the documented body"
+    [ -- Measured against the deployed binary before the middleware: POST /dreps answered 405 and
+      -- GET /profiles with `Accept: text/csv` answered 406, each with ZERO bytes and no content
+      -- type — so a browser client doing res.json() on a failure path threw a parse error instead
+      -- of reading a code. Neither is reachable through `ErrorFormatters`: servant's router decides
+      -- both before a handler exists and offers no formatter hook for either.
+      testCase "an empty 405 becomes {code: method_not_allowed}" $ do
+        res <- through (responseLBS methodNotAllowed405 [] "")
+        body <- bodyOf res
+        (statusCode (responseStatus res), lookup hContentType (responseHeaders res), body)
+          @?= (405, Just "application/json", encode (ApiError MethodNotAllowed (genericErrorMessage MethodNotAllowed))),
+      testCase "an empty 406 becomes {code: not_acceptable}" $ do
+        res <- through (responseLBS notAcceptable406 [] "")
+        body <- bodyOf res
+        (statusCode (responseStatus res), body)
+          @?= (406, encode (ApiError NotAcceptable (genericErrorMessage NotAcceptable))),
+      -- THE ABSENCE OF A CONTENT TYPE IS THE TEST, not the status. A handler's own 4xx goes through
+      -- `mkServantErr`, which sets application/json, so rewriting only the content-type-less
+      -- responses cannot touch a body a handler built — which a bare `status == 405` test could.
+      testCase "a 405 that already carries a body is left exactly as it was" $ do
+        let mine = responseLBS methodNotAllowed405 [(hContentType, "application/json")] "{\"code\":\"mine\"}"
+        res <- through mine
+        body <- bodyOf res
+        body @?= "{\"code\":\"mine\"}",
+      testCase "a success is untouched" $ do
+        res <- through (responseLBS ok200 [(hContentType, "application/json")] "{\"items\":[]}")
+        body <- bodyOf res
+        (statusCode (responseStatus res), body) @?= (200, "{\"items\":[]}"),
+      -- The statuses the two codes are served with, which is what the Swagger document declares
+      -- and what `mkServantErrBody` has to have an arm for: without one it would have fallen
+      -- through to err500 and served a 405 as a 500.
+      testCase "the two router codes map to 405 and 406" $
+        map errorCodeToHttpStatus [MethodNotAllowed, NotAcceptable] @?= [405, 406],
+      testCase "and invalid_credential is a 400, like the rest of its group" $
+        errorCodeToHttpStatus InvalidCredential @?= 400
+    ]
+  where
+    -- Run the middleware over an application that answers exactly this response, and hand back
+    -- whatever reached the responder. `ResponseReceived` has no public constructor outside
+    -- Network.Wai.Internal, which is why that module is imported here and nowhere else.
+    through res = do
+      ref <- newIORef res
+      ResponseReceived <-
+        refusedRequestMiddleware
+          (\_ k -> k res)
+          defaultRequest
+          (\r -> writeIORef ref r >> pure ResponseReceived)
+      readIORef ref
+
+    bodyOf res = do
+      let (_, _, withBody) = responseToStream res
+      withBody $ \sb -> do
+        acc <- newIORef mempty
+        sb (\b -> modifyIORef' acc (<> b)) (pure ())
+        toLazyByteString <$> readIORef acc

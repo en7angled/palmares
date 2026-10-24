@@ -27,6 +27,18 @@
 -- state output at the right script carrying a stake credential fails the mint. Whether it should is
 -- undecided in this project; these cases record that it does, because a case asserting the arguable
 -- future behaviour would be red against correct code and would be deleted rather than read.
+--
+-- __Group 3 is a TRIPWIRE on a deployed script hash, and that is why it asserts the bug.__ @P4@
+-- length-checks @metadataName@ and 'Palmares.Onchain.CIP68.updateCIP68DatumMetadata' then writes only
+-- @description@ and @image@, so the name a client puts in an @UpdateProfile@ redeemer is validated and
+-- discarded. That mismatch is real and it is NOT fixable off chain: @P5@ requires the output datum to
+-- equal @updateCIP68DatumMetadata newFields oldDatum@ as the VALIDATOR computes it, so a builder that
+-- inserted the name would produce a datum @P5@ refuses. The fix is one @AssocMap.insert@ inside a
+-- function the Profiles Validator compiles, which moves that validator's script hash — frozen at
+-- @5954df64…@ on preprod, with its reference script at an unspendable address. So the mismatch stays,
+-- and these cases pin it: they go RED the day somebody makes the name settable, which is precisely the
+-- day a coordinated redeploy is required. A test asserting the name DOES change would be red today,
+-- and a red test gets deleted rather than read.
 module UnitTests.MetadataLimits (tests) where
 
 import Palmares.Onchain.CIP68
@@ -36,6 +48,7 @@ import Palmares.Onchain.CIP68
     generateRefAndUserTN,
     generateAttestationTN,
     generateDisputeTN,
+    getMetadataFields,
     mkCIP68Datum,
     updateCIP68DatumMetadata,
   )
@@ -84,9 +97,10 @@ import Test.Tasty.HUnit
 tests :: TestTree
 tests =
   testGroup
-    "metadata limits and output address"
+    "metadata limits, name immutability and output address"
     [ metadataFieldTests,
-      outputAddressTests
+      outputAddressTests,
+      nameImmutabilityTests
     ]
 
 -------------------------------------------------------------------------------
@@ -175,6 +189,64 @@ outputAddressTests =
       testCase "Md5: a dispute locked at the disputes script WITH a stake credential is refused" $
         mintingPolicyLambda protoParams (disputeOpen okFields (staked disputesAddr)) @?= False
     ]
+
+-------------------------------------------------------------------------------
+
+-- * Group 3: @P4@ validates a name that @updateCIP68DatumMetadata@ discards
+
+-------------------------------------------------------------------------------
+
+-- | A profile's name is set at mint and never changes, and the @UpdateProfile@ redeemer carries a
+-- @metadataName@ field anyway. See the module Haddock for why this group asserts that rather than
+-- fixing it; the short version is that the fix is inside a function the Profiles Validator compiles.
+--
+-- __Three cases, because the one-case version of this is a trap.__ "The name did not change" is also
+-- what you observe when the update wrote NOTHING, which is a completely different bug with the same
+-- symptom — and a renaming redeemer that the validator REFUSED would satisfy it too. So the first case
+-- asserts the whole resulting field triple at once (old name, new description, new image), the second
+-- asserts the validator accepts that very transaction, and the third asserts the redeemer field is not
+-- merely ignored but actively carried as far as @P4@ before being dropped.
+--
+-- The third case is the one that names the finding precisely: 128 bytes of name is accepted and 129 is
+-- refused, on a field whose value provably cannot reach a datum. That is ExUnits spent per update on a
+-- bound for nothing — worth recording, not worth a redeploy on its own.
+nameImmutabilityTests :: TestTree
+nameImmutabilityTests =
+  testGroup
+    "a profile's name is immutable and the redeemer field that would change it is inert"
+    [ -- The pure half. `updateCIP68DatumMetadata` is polymorphic in the datum's `extra` and touches
+      -- only the metadata map, so this needs no profile in there — which is also what makes the
+      -- assertion about the FUNCTION rather than about one caller's datum shape.
+      testCase "updateCIP68DatumMetadata keeps the old name and takes the new description and image" $
+        getMetadataFields (updateCIP68DatumMetadata renamed baseDatum) @?= nameKept,
+      -- The validator half, on the complete context `profileUpdate` builds. A rename is a transaction
+      -- the chain ACCEPTS: nothing refuses it, and `P5` is satisfied because the output datum is the
+      -- one the validator itself computed — name unchanged. So the rename is not rejected, it is
+      -- absorbed, which is the half of the finding a pure assertion cannot state.
+      --
+      -- This case STAYS GREEN if the name is ever made settable — `profileUpdate` builds its output
+      -- with the same function the validator uses, so the two move together and `P5` keeps matching.
+      -- The one above is the tripwire; this one is what stops the tripwire being read as "the chain
+      -- refuses a rename", which it does not.
+      testCase "a spend whose redeemer renames the profile is accepted — the rename just does not land" $
+        profilesLambda (profileUpdate renamed) @?= True,
+      -- And `P4` still bounds it. 128 bytes of a field that cannot reach the datum is accepted, 129 is
+      -- refused by the existing Group 1 case. Pinning the accepting side here is what distinguishes
+      -- "the field is validated and discarded" from "the field is not looked at".
+      testCase "P4 length-checks the inert name: 128 bytes of it is accepted" $
+        profilesLambda (profileUpdate (fieldsWith (bytes 128) "d" "i")) @?= True
+    ]
+  where
+    -- A different name AND a changed description and image, so the first case's single assertion
+    -- separates "kept the name" from "wrote nothing".
+    renamed = fieldsWith "A Different Name" "a new description" "ipfs://QmNewImage"
+
+    -- What `renamed` actually produces: the OLD name, taken from the fixture rather than written out,
+    -- so this stays true if `drepProfileData` is ever renamed.
+    nameKept = fieldsWith (metadataName okFields) "a new description" "ipfs://QmNewImage"
+
+    baseDatum :: CIP68Datum ()
+    baseDatum = mkCIP68Datum () okFields []
 
 -------------------------------------------------------------------------------
 

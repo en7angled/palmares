@@ -69,7 +69,8 @@ import Test.Tasty
 -- cannot be meant here is cheaper than qualifying eleven call sites.
 import Test.Tasty.HUnit hiding (assert)
 import TestRuns
-  ( deployValidators,
+  ( adminInteraction,
+    deployValidators,
     disputeInteraction,
     maliciousResolveDispute,
     maliciousResolveTwoDisputes,
@@ -217,7 +218,16 @@ disputeEmulatorTests =
       mkTestFor "Test Case 6.8: a payout address this tx does not spend from FAILS (Md8)" foreignDepositToFails,
       mkTestFor "Test Case 6.8b: the DEFAULT deposit address is one this tx spends from (OF-02)" defaultDepositToIsSpendable,
       mkTestFor "Test Case 6.9: an opener id under a FOREIGN policy FAILS (Md4)" foreignOpenerFails,
-      mkTestFor "Test Case 6.10: two disputes resolved with ONE returned deposit FAILS (D6)" twoDisputesOneDepositFails
+      mkTestFor "Test Case 6.10: two disputes resolved with ONE returned deposit FAILS (D6)" twoDisputesOneDepositFails,
+      -- 6.11 to 6.13: @\/expire-dispute@, whose off-chain half had NO coverage at all. D-A's
+      -- on-chain rules are pinned by @UnitTests.DisputeRules@ against hand-built script contexts,
+      -- and that is a test of the validator; nothing exercised the route — the action arm in
+      -- 'Palmares.TxBuilding.Interactions.interactionToTxSkeleton', the dispute lookup, the two
+      -- off-chain refusals, or the skeleton 'Palmares.TxBuilding.Operations.expireDisputeTX' builds.
+      -- These three go through 'disputeInteraction', which is the same pipeline the HTTP route uses.
+      mkTestFor "Test Case 6.11: after the deadline a STRANGER expires it and the opener's deposit returns (D-A)" strangerExpiresStaleDispute,
+      mkTestFor "Test Case 6.12: expiring before the deadline is refused off-chain (DisputeNotStaleYet)" expireTooEarlyRefused,
+      mkTestFor "Test Case 6.13: expiring a decided dispute is refused off-chain (DisputeAlreadyResolved)" expireResolvedRefused
     ]
   where
     -- Test Case 6.1. The deposit is part of the LOCKED value, not a payment to anyone, which is the
@@ -445,6 +455,83 @@ disputeEmulatorTests =
         void $
           maliciousResolveTwoDisputes ctx (w1 testWallets) disputeA disputeB Domain.VerdictUpheld
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Resolving two disputes with one returned deposit was rejected (D6)."
+
+    -- Test Case 6.11. __The guarantee D-A exists for, end to end, through the production path.__
+    -- Nobody with any authority takes part: w3 holds no profile, is not the oracle admin and is not
+    -- the arbiter, and what it builds returns w2's five ADA to w2. That is the whole claim — an
+    -- undecided dispute's deposit does not depend on anybody staying available — and it had no test
+    -- on the off-chain side, which is the side that decides whether the transaction can be BUILT.
+    --
+    -- The oracle's timeout is shortened first, to 60 seconds, because the deployed default is 30
+    -- days and this ledger would have to advance 2.6 million slots to pass it. Shortening it is also
+    -- the only emulator coverage 'SetDisputeTimeoutAction' has, and it must happen BEFORE the open:
+    -- the deadline is copied into the dispute's own datum at open time, precisely so that an admin
+    -- cannot move it afterwards (which is also why this test cannot shorten it later).
+    strangerExpiresStaleDispute :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    strangerExpiresStaleDispute info@TestInfo {..} = do
+      (ctx, _issuerAC, disputerAC, attestationAC) <- deployWithAcceptedAttestation info
+      _ <- adminInteraction ctx (w1 testWallets) (SetDisputeTimeoutAction 60_000)
+      waitNSlots_ 1
+
+      (_txId, disputeAC) <- open ctx (w2 testWallets) attestationAC disputerAC
+      -- Comfortably past 60 seconds whatever this ledger's slot length is, and far short of anything
+      -- that would leave the era the validity interval is built from.
+      waitNSlots_ 2_000
+
+      -- w2 opened the dispute and takes no part in closing it, so its balance moves by exactly the
+      -- deposit: w3 pays the fee. An assertion on the datum alone would pass even if the lovelace
+      -- went nowhere, which is the half that matters here.
+      (_, delta) <- withBalance "expiredDepositReturn" (w2 testWallets) $ do
+        void $ disputeInteraction ctx (w3 testWallets) (ExpireDisputeAction disputeAC)
+        waitNSlots_ 1
+      assert (valueAda delta == 5_000_000)
+
+      (datum, plutusValue) <- getDisputeDatumAndValue disputeAC
+      -- `expired` and NOT one of the two findings: the record says the clock ran out, which is the
+      -- distinction the read layer presents and `Da` keeps an admin from asserting by hand.
+      assert (disputeVerdict (extra datum) == Just VerdictExpired)
+      gyValue <- valueFromPlutus' plutusValue
+      assert (valueAda gyValue < 5_000_000)
+
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "A stale dispute was closed by a stranger and the deposit came back."
+
+    -- Test Case 6.12. `D9`'s off-chain half. Plain 'mustFail' and no trace code, for the reason 6.7
+    -- and 6.8 give: `expireDisputeTX` compares the tip against the dispute's own `disputeStaleAfter`
+    -- and throws @DisputeNotStaleYet@ before anything is built, so there is no script log to name —
+    -- and asserting WHICH layer says no first is the point. The chain still refuses it as well.
+    expireTooEarlyRefused :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    expireTooEarlyRefused info@TestInfo {..} = do
+      (ctx, _issuerAC, disputerAC, attestationAC) <- deployWithAcceptedAttestation info
+      -- The deployed default of 30 days is left in place: a dispute opened one slot ago is as early
+      -- as it gets, which is exactly the request a client makes by mistake.
+      (_txId, disputeAC) <- open ctx (w2 testWallets) attestationAC disputerAC
+      waitNSlots_ 1
+
+      mustFail $ void $ disputeInteraction ctx (w3 testWallets) (ExpireDisputeAction disputeAC)
+
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Expiring a dispute before its deadline was refused off-chain (DisputeNotStaleYet)."
+
+    -- Test Case 6.13. `D3`'s other half, and not a duplicate of 6.5: that one resolves twice, this
+    -- one EXPIRES something already decided. Without the guard the clock would be a delete button
+    -- for a settled finding rather than a bound on inaction — the validator says so in as many
+    -- words — and the refusal belongs off chain so that a client is told rather than charged.
+    expireResolvedRefused :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    expireResolvedRefused info@TestInfo {..} = do
+      (ctx, _issuerAC, disputerAC, attestationAC) <- deployWithAcceptedAttestation info
+      _ <- adminInteraction ctx (w1 testWallets) (SetDisputeTimeoutAction 60_000)
+      waitNSlots_ 1
+
+      (_txId, disputeAC) <- open ctx (w2 testWallets) attestationAC disputerAC
+      waitNSlots_ 1
+      void $ disputeInteraction ctx (w1 testWallets) (ResolveDisputeAction disputeAC Domain.VerdictUpheld)
+      -- Past the deadline as well, so that the ONLY thing left refusing this is the verdict already
+      -- written. Without the wait the case would pass on `DisputeNotStaleYet` — 6.12's refusal — and
+      -- say nothing about a decided dispute.
+      waitNSlots_ 2_000
+
+      mustFail $ void $ disputeInteraction ctx (w3 testWallets) (ExpireDisputeAction disputeAC)
+
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Expiring an already-decided dispute was refused off-chain (DisputeAlreadyResolved)."
 
     -- CIP-67 prefixes, as hex, because the whole trick is which four bytes a token name starts with:
     -- `000de140` is the user half and `000643b0` the reference half. The fake-coin policy is derived

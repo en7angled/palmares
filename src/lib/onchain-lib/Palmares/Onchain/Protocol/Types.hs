@@ -335,6 +335,19 @@ makeIsDataSchemaIndexed
     ('MintActionDispute, 2)
   ]
 
+-- | What kind of actor a profile stands for, frozen into the profile's datum at mint time.
+--
+-- __Six kinds, and the constructor ORDER is wire format__: @makeIsDataSchemaIndexed@ below pins each
+-- to its index, so reordering them would silently reinterpret every profile already on chain. The
+-- off-chain mirror is 'Palmares.DomainTypes.Core.Types.ProfileType' — same six, same order — and the
+-- two are kept in step by 'Palmares.TxBuilding.Conversions'.
+--
+-- __Nothing on chain checks that a kind is TRUE.__ The kind is a self-declaration: minting a
+-- @Committee@ profile requires no committee credential, because a credential binding is a separate
+-- record issued in a second transaction (__ADR 0003__) and four of the six kinds — Organization,
+-- Community, Vendor, Auditor — correspond to no on-chain credential at all. A reader that renders the
+-- kind as verified is claiming something the chain never said; what IS verifiable is
+-- @profile_credential@, derived by replaying the claims.
 data OnchainProfileKind
   = PersonDRep
   | Organization

@@ -10,14 +10,14 @@ import Palmares.DomainTypes.Core.Types
 import Palmares.DomainTypes.Transfer.Types
 import GeniusYield.TxBuilder
 import GeniusYield.TxBuilder.Errors ()
-import GeniusYield.Types (GYTxOutRef, GYUTxO, filterUTxOs, mintingPolicyIdFromCurrencySymbol, utxoRef, utxoValue, utxosToList)
+import GeniusYield.Types (GYOutDatum (..), GYTxOutRef, GYUTxO, filterUTxOs, mintingPolicyIdFromCurrencySymbol, utxoOutDatum, utxoRef, utxoValue, utxosToList)
 import GeniusYield.Types.Address
 import GeniusYield.Types.Value
 import Palmares.Onchain.CIP68 (CIP68Datum (..), deriveRefFromUserAC, userTokenPrefixBS)
 import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Protocol.Types (checkNoOpenDispute)
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
-import PlutusLedgerApi.V1.Value (CurrencySymbol, Value, adaSymbol, flattenValue)
+import PlutusLedgerApi.V1.Value (Value, adaSymbol, flattenValue)
 import PlutusTx.Builtins (sliceByteString, lengthOfByteString)
 import PlutusLedgerApi.V1.Value qualified as PlutusValue
 import Palmares.TxBuilding.Context (DeployedScriptsContext (..))
@@ -142,18 +142,78 @@ queryOracleParams = do
 
 ------------------------------------------------------------------------------------------------
 
--- | Find dust UTxOs at a validator address: those that contain no token
--- with the protocol's 'CurrencySymbol'. These are griefing/dust UTxOs
--- that can be cleaned up via the permissionless 'Cleanup' redeemer.
+-- | The UTxOs at one state validator address that that validator's @Cleanup@ arm will let anyone
+-- spend — dust wearing a datum, rather than protocol state.
+--
+-- __This is 'Palmares.Onchain.Utils.isUnbackedDatum' off chain, and it has to be the same predicate
+-- in both directions.__ It used to select on \"the value holds no token of the protocol's policy\",
+-- which agrees with no validator and disagrees with all three:
+--
+--   * __False positives, and they BRICK the sweep.__ 'Palmares.TxBuilding.Operations.cleanupDustTX'
+--     builds ONE all-or-nothing transaction over all three addresses, so a single UTxO in this list
+--     that the validator then refuses fails the whole sweep — for ever, since nothing in this
+--     protocol burns and the refusal is deterministic. Planting one cost about 1.3 ADA: mint a token
+--     under your OWN policy whose name starts with a state label (@0x00001070@ for an attestation),
+--     and pay it to that address with a hand-written @CIP68Datum OnchainAttestation@ naming it as
+--     @attestationId@. Foreign policy, so the old filter saw no protocol token and offered it;
+--     the datum parses, the label matches and the value holds exactly 1 of the named token, so @A4@
+--     refused it and every later sweep died with it. Permissionless griefing of a permissionless
+--     redeemer.
+--   * __False negatives, so real dust accumulated.__ Any protocol token other than the state NFT the
+--     datum names made the old filter skip the UTxO, and the validators sweep exactly that: a
+--     profile's USER token mis-sent to a state address, with or without a datum, is sweepable
+--     ('Palmares.Onchain.Utils.isUnbackedDatum' documents the case), and nothing offered it.
+--
+-- __Deliberately NOT policy-scoped__, which is where this differs from its read-layer twin
+-- 'Palmares.TxBuilding.Utils.authenticateStateUTxO'. That one is the same shape — it takes the
+-- kind's own CIP-67 name predicate for the reason @OC-05@ gave both of them — and it adds
+-- @pid == ourPolicy@, because the read layer knows the protocol's policy and must not serve a
+-- foreign token as state. The three state validators are unparameterised on purpose and cannot know
+-- it, so adding that conjunct here would re-create the first bullet exactly: a ref-prefixed token of
+-- the attacker's own policy would read as \"not authentic, therefore dust\" off chain and \"backed,
+-- therefore state\" on chain. A sweep selector must mirror the validator, not the registry.
+--
+-- __A datum HASH is skipped, and that is the one place this is knowingly weaker than the arm.__
+-- 'Palmares.TxBuilding.Skeletons.txMustSpendUTxOFromRefScript' witnesses the spend with the inline
+-- datum or with 'Nothing', and a Conway script input whose output carries a datum hash must supply
+-- the preimage — which an address scan does not have. Offering such a UTxO therefore produces a
+-- transaction the ledger rejects before any validator runs: the same permanent brick as the first
+-- bullet, through a second door at the same price. The arm would sweep it for anyone who knows the
+-- preimage; this list is what the builder can actually spend.
 getDustUTxOs ::
   (GYTxQueryMonad m) =>
-  GYAddress -> CurrencySymbol -> m [GYUTxO]
-getDustUTxOs addr protocolCS = do
+  -- | The address's own CIP-67 label predicate: 'Palmares.Onchain.CIP68.isRefTokenName',
+  -- @isAttestationTokenName@ or @isDisputeTokenName@. Must be the one the validator at @addr@ passes
+  -- to 'Palmares.Onchain.Utils.isUnbackedDatum' — profiles wear label 100, attestations label 1 and
+  -- disputes label 2, so a shared one would mean \"every attestation and every dispute is dust\".
+  (PlutusValue.TokenName -> Bool) ->
+  -- | The address's own datum parser: 'Palmares.TxBuilding.Utils.profileAndValueFromUTxO',
+  -- @attestationAndValueFromUTxO@ or @disputeAndValueFromUTxO@. 'Nothing' is the validator's two
+  -- sweepable arms at once — no datum and a datum that is not this kind's.
+  (GYUTxO -> Maybe (CIP68Datum a, Value)) ->
+  -- | The NFT that kind's datum names: @profileId@, @attestationId@ or @disputeId@. All three are an
+  -- 'PlutusValue.AssetClass', so a mix-up type-checks — the reason each caller names it beside its
+  -- own validator and redeemer.
+  (a -> PlutusValue.AssetClass) ->
+  GYAddress ->
+  m [GYUTxO]
+getDustUTxOs isOwnKindName parseStateDatum stateIdOf addr = do
   allUtxos <- utxosAtAddresses [addr]
-  return $ filter (not . hasProtocolToken) (utxosToList allUtxos)
+  return $ filter isSweepable (utxosToList allUtxos)
   where
-    hasProtocolToken utxo =
-      any (\(cs, _, _) -> cs == protocolCS) $ flattenValue $ valueToPlutus $ utxoValue utxo
+    isSweepable utxo = case utxoOutDatum utxo of
+      GYOutDatumHash _ -> False
+      _ -> case parseStateDatum utxo of
+        -- The arm's own first two cases: @Nothing -> True@ for an absent datum, and again for one
+        -- that is not this kind's state. Neither reaches a trace code — @P0@\/@A0@\/@D0@ are the
+        -- no-datum codes on the OTHER redeemers, and @Cleanup@ simply allows the spend.
+        Nothing -> True
+        -- And the last line is 'Palmares.Onchain.Utils.isUnbackedDatum' itself, on the value the
+        -- parse already handed back, which is this UTxO's own — the same @txOutValue ownInput@ the
+        -- arm reads.
+        Just (parkedDatum, parkedValue) ->
+          let stateNFT@(PlutusValue.AssetClass (_, tn)) = stateIdOf (extra parkedDatum)
+           in not (isOwnKindName tn) || PlutusValue.assetClassValueOf parkedValue stateNFT == 0
 
 ------------------------------------------------------------------------------------------------
 

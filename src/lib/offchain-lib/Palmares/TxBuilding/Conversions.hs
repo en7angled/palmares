@@ -2,6 +2,7 @@
 module Palmares.TxBuilding.Conversions where
 
 import Data.Bifunctor qualified
+import Data.ByteString.Base16 qualified as B16
 import Data.List (sortOn)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -9,11 +10,13 @@ import Data.Text.Encoding.Error qualified as TEE
 import Palmares.DomainTypes.Core.Actions
 import Palmares.DomainTypes.Core.Ids (GovCredentialRole (..), parseCredentialRoleCip129, renderCredentialRoleCip129)
 import Palmares.DomainTypes.Core.Types
+import Palmares.DomainTypes.Transfer.Types (CredentialRef (..), OracleParamsResponse (..))
 import GeniusYield.TxBuilder
 import GeniusYield.Types
 import Palmares.TxBuilding.Exceptions (TxBuildingException (..))
 import Palmares.Onchain.CIP68 (CIP68Datum (..), MetadataFields (..), extra, getMetadataFields)
 import Palmares.Onchain.Protocol qualified as Onchain
+import Palmares.Onchain.Protocol.Lookup qualified as Lookup
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import PlutusLedgerApi.V3 hiding (Committee) -- ours is a profile kind; Plutus's is the CIP-1694 committee datum
 import PlutusTx.AssocMap qualified as AssocMap
@@ -142,6 +145,40 @@ claimCredentialToText claimed = renderCredentialRoleCip129 (roleOf claimed) isSc
 isScriptCredential :: Credential -> Bool
 isScriptCredential (ScriptCredential _) = True
 isScriptCredential (PubKeyCredential _) = False
+
+-- | A 'Credential' as the read surface publishes it — 28 bytes of hex plus which kind it is.
+credentialRef :: Credential -> CredentialRef
+credentialRef c = CredentialRef (hexOf c) (isScriptCredential c)
+  where
+    hexOf (PubKeyCredential (PubKeyHash bs)) = TE.decodeUtf8 (B16.encode (fromBuiltin bs))
+    hexOf (ScriptCredential (ScriptHash bs)) = TE.decodeUtf8 (B16.encode (fromBuiltin bs))
+
+-- | The oracle datum as @interaction-api@'s @\/status@ publishes it.
+--
+-- Here rather than in the service because this is the only layer that has both sides: the Plutus
+-- types are on-chain and the DTO is a transfer type, and a service that converted between them
+-- directly would be the second place in the tree that knows how a 'Credential' is rendered.
+--
+-- Total over the record on purpose: a new oracle parameter has to be named here before it can be
+-- published, which is the opposite of the failure that put @opDisputeTimeoutMs@ in the datum and
+-- nowhere else for a month.
+oracleParamsResponse :: OnchainTypes.OracleParams -> OracleParamsResponse
+oracleParamsResponse p =
+  OracleParamsResponse
+    { oracleDisputeDepositLovelace = OnchainTypes.opDisputeDeposit p,
+      oracleDisputeTimeoutMs = OnchainTypes.opDisputeTimeoutMs p,
+      oracleMinUtxoLovelace = OnchainTypes.opMinUTxOValue p,
+      oracleArbiter = credentialRef (OnchainTypes.opArbiter p),
+      oracleAdmin = credentialRef (OnchainTypes.opAdmin p),
+      -- Through `feeFor` and NOT by selecting the two fields, for the reason `check_vocabulary.sh`
+      -- enforces: a `FeeConfig` field is named where the record is defined and in `feeFor`, and
+      -- nowhere else, because a second naming site is how the Belt System's interval fee came to
+      -- charge the wrong field. It is also the better number — the published figure is produced by
+      -- the same total function that decides what a mint is charged, so the two cannot drift, and a
+      -- new mint action that forgets its fee is a compile error there rather than a wrong number here.
+      oracleProfileCreationFeeLovelace = Lookup.feeFor OnchainTypes.MintActionProfile <$> OnchainTypes.opFeeConfig p,
+      oracleAttestationFeeLovelace = Lookup.feeFor OnchainTypes.MintActionAttestation <$> OnchainTypes.opFeeConfig p
+    }
 
 -- | The ledger witness a 'ClaimWitness' asks for.
 --

@@ -30,6 +30,7 @@ import Data.Text (Text)
 import Network.Wai.Middleware.Servant.Options (provideOptions)
 import Data.Either (partitionEithers)
 import Data.Int (Int64)
+import Data.List (foldl')
 import Data.Maybe (fromMaybe)
 import Data.Time (UTCTime)
 import Palmares.DomainTypes.Core.Types
@@ -118,15 +119,18 @@ import Palmares.Metrics.Catalog (MetricFormula, resolvedMetricCatalog, retention
 import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.CSV (CSV)
 import Data.Text qualified as T
+import Data.Aeson (Value, toJSON)
 import Palmares.WebAPI.Envelope (ApiError, ErrorCode (..), Page (..))
-import Palmares.WebAPI.Errors (palmaresErrorFormatters)
-import Palmares.WebAPI.Utils (addSharedSwaggerDescriptions)
+import Palmares.WebAPI.Errors (palmaresErrorFormatters, refusedRequestMiddleware)
+import Palmares.WebAPI.Utils (addSharedSwaggerDescriptions, markNullableFields)
 import Query.Common
   ( PageBounds (..),
     activityBounds,
     boundsFor,
     checkRanges,
+    csvBounds,
     epochSeriesBounds,
+    hardOffsetCeiling,
     jsonBounds,
     normalizeLimitOffset,
     normalizeQ,
@@ -135,11 +139,13 @@ import Query.Common
 import Query.Attest
   ( attestationById,
     attestationSortSpec,
-    canonicalDrepCredential,
+    canonicalGovCredential,
+    disputeById,
     listAttestations,
     listDisputes,
     listProfiles,
     profileById,
+    profileRefOfUserToken,
     subjectTrackRecordSortSpec,
   )
 import Query.Csv ()
@@ -216,7 +222,19 @@ type StatusAPI =
          "What this instance serves, how far behind the chain its index is, and the protocol \
          \parameters its published numbers mean something against. `governance.is_ready` is the \
          \same verdict /ready gives, so a client needs one request rather than two that can \
-         \disagree."
+         \disagree. \
+         \\n`epoch_params` is the LEDGER's parameters, not the attestation protocol's. The \
+         \registry's own oracle parameters -- the dispute deposit a client is about to lock, the \
+         \dispute timeout its deadline is computed from, and the arbiter who may write a verdict -- \
+         \live in the oracle UTxO's datum, which only a service with a Cardano provider can read: \
+         \this one has none by design (it reads `palmares` views over db-sync and never queries \
+         \the chain), and db-sync is indexed here without `tx_out`, `datum` or `multi_asset`, so \
+         \the UTxO is not reachable from this database either. interaction-api's /status already \
+         \reads that datum for `oracle_paused` and is where those numbers are published. \
+         \\n`attestation.policy_id` is the minting policy every profile, attestation and dispute \
+         \id in this API is scoped to -- the one a wallet filters its own assets by before calling \
+         \/profiles/by-user-token. It is null on a governance-only deployment, where the whole \
+         \`attestation` block is absent."
     :> "status"
     :> Get '[JSON] StatusResponse
 
@@ -724,6 +742,11 @@ type VotesAPI =
          \(voter, action) pair and `is_final` / `is_first` mark which one a verdict or a latency is \
          \measured from. preprod's worst pair has 21,626 rows, from the epoch-187 committee stress \
          \test. \
+         \\n`is_final=true` is the parameter most clients want and the one that makes this endpoint \
+         \usable: it keeps one row per (voter, action) -- the vote that counts -- which on preprod \
+         \turns 3,244,723 rows into 931, and 65,000 pages into 19. `is_final=false` returns only the \
+         \superseded votes, which is the audit question \"who changed their mind\". Omit it and you \
+         \get every row, including every re-vote. \
          \\nThere is no `has_rationale` parameter: it is `anchor_status=valid`, which makes the \
          \caller say which of the five anchor outcomes they mean instead of collapsing an \
          \unreachable IPFS document into \"no rationale\"."
@@ -742,6 +765,7 @@ type VotesAPI =
     :> QueryParam "from_epoch" Int
     :> QueryParam "to_epoch" Int
     :> QueryParam "q" Text
+    :> QueryParam "is_final" Bool
     :> QueryParam "order_by" VotesOrderBy
     :> QueryParam "sort_order" SortOrder
     :> Get '[JSON, CSV] (Page VoteRecord)
@@ -761,10 +785,11 @@ handleGetVotes ::
   Maybe Int ->
   Maybe Int ->
   Maybe Text ->
+  Maybe Bool ->
   Maybe VotesOrderBy ->
   Maybe SortOrder ->
   QueryAppMonad (Page VoteRecord)
-handleGetVotes accept limit offset roles voterIds gaIds verdicts gaTypes anchorStatus fromTime toTime fromEpoch toEpoch q orderBy sortOrder = do
+handleGetVotes accept limit offset roles voterIds gaIds verdicts gaTypes anchorStatus fromTime toTime fromEpoch toEpoch q isFinal orderBy sortOrder = do
   q' <- either throwApi pure (normalizeQ q)
   _ <- either throwApi pure (checkRanges fromTime toTime fromEpoch toEpoch)
   bounds <- either throwApi pure (normalizeLimitOffset (boundsFor accept) limit offset)
@@ -783,7 +808,8 @@ handleGetVotes accept limit offset roles voterIds gaIds verdicts gaTypes anchorS
             voteFilterTo = toTime,
             voteFilterFromEpoch = fromEpoch,
             voteFilterToEpoch = toEpoch,
-            voteFilterQ = q'
+            voteFilterQ = q',
+            voteFilterIsFinal = isFinal
           }
   runRead (listVotes filt (fromMaybe VotesOrderByCastAt orderBy, fromMaybe Desc sortOrder) bounds)
 
@@ -1309,14 +1335,26 @@ type DashboardPageAPI =
     :> QueryParam "epochs" Int
     :> Get '[JSON] DashboardPageResponse
 
+-- | @\/pages\/dashboard@'s three sizes.
+--
+-- Named rather than spelled at the call site, which is 'PageBounds'' own stated reason to exist —
+-- and here it became load-bearing: 'publishPageBounds' has to publish the same three pairs in the
+-- Swagger document, and a second copy of @PageBounds 50 10@ in a table forty lines away is exactly
+-- the shape where the documented ceiling and the applied one drift apart with nothing to notice it.
+-- One definition, read by the handler and by the document.
+dashboardTopBounds, dashboardClosingSoonBounds, dashboardEpochsBounds :: PageBounds
+dashboardTopBounds = PageBounds 50 10
+dashboardClosingSoonBounds = PageBounds 20 5
+dashboardEpochsBounds = PageBounds 100 20
+
 handleGetDashboardPage ::
   Maybe Int -> Maybe Int -> Maybe Int -> QueryAppMonad DashboardPageResponse
 handleGetDashboardPage topLimit closingSoonLimit epochsParam = do
   -- The three sizes are clamped by the SAME helper every page uses, so they clamp silently rather
   -- than refusing, and the applied value is the one the response was built from.
-  (topLim, _) <- either throwApi pure (normalizeLimitOffset (PageBounds 50 10) topLimit Nothing)
-  (soonLim, _) <- either throwApi pure (normalizeLimitOffset (PageBounds 20 5) closingSoonLimit Nothing)
-  (epochs, _) <- either throwApi pure (normalizeLimitOffset (PageBounds 100 20) epochsParam Nothing)
+  (topLim, _) <- either throwApi pure (normalizeLimitOffset dashboardTopBounds topLimit Nothing)
+  (soonLim, _) <- either throwApi pure (normalizeLimitOffset dashboardClosingSoonBounds closingSoonLimit Nothing)
+  (epochs, _) <- either throwApi pure (normalizeLimitOffset dashboardEpochsBounds epochsParam Nothing)
   r <- runRead $ do
     mf <- freshnessQuery
     -- The DRep counts come from the EXPLORER's facet statement, with no filter: one derivation of
@@ -1429,18 +1467,28 @@ type ProfileDetailAPI =
 type ProfilesByCredentialAPI =
   Summary "Profiles claiming a governance credential"
     :> Description
-         "The verify direction: given a DRep credential, which profiles claim it. \
-         \\n**CIP-129 ONLY.** `drep1y...` (key) and `drep1yw...` (script) are accepted; the \
-         \CIP-105 form `drep1...` and 56 bare hex characters are REFUSED with 400 \
-         \`invalid_drep_id`, although every other route here accepts all three. The reason is \
-         \that neither of those two carries a header byte and `drep` is the HRP for both \
-         \credential kinds, so neither can say whether the credential is a key or a script -- and \
-         \the projection stores the full CIP-129 string the datum claimed. Accepting one would \
-         \mean choosing a header byte to compare against, and choosing the key byte (which the \
-         \governance routes do, then resolve the row by its 28-byte hash and re-render from \
-         \db-sync's own has_script) would silently report every script DRep as a key DRep and \
+         "The verify direction: given a governance credential, which profiles claim it. \
+         \\n**ALL THREE CLAIMABLE ROLES.** `drep1y...`, `cc_cold1z...` and `cc_hot1q...` are \
+         \accepted, each in its key and script form. ADR 0006 makes all three claimable -- the \
+         \role lives in the CIP-129 header byte rather than in the profile's `kind`, because an \
+         \Organization may be a DRep and a Committee may hold both committee credentials -- and \
+         \the write side has always accepted all three. This route accepted only `drep`, so a \
+         \committee credential the registry already held a claim for answered 400 \
+         \`invalid_drep_id` (\"Not a DRep identifier\"), which is true of the input and useless to \
+         \the caller. \
+         \\n**CIP-129 ONLY.** The CIP-105 form `drep1...` and 56 bare hex characters are REFUSED \
+         \with 400 `invalid_credential`, although every other route here accepts all three DRep \
+         \forms. The reason is that neither of those two carries a header byte and `drep` is the \
+         \HRP for both credential kinds, so neither can say whether the credential is a key or a \
+         \script -- and the projection stores the full CIP-129 string the datum claimed. Accepting \
+         \one would mean choosing a header byte to compare against, and choosing the key byte \
+         \(which the governance routes do, then resolve the row by its 28-byte hash and re-render \
+         \from db-sync's own has_script) would silently report every script DRep as a key DRep and \
          \find no claim for the script profile that exists. There is no row to ask here, so the \
          \caller is asked instead. \
+         \\nAn identifier whose header byte disagrees with its HRP -- a `drep1...` carrying a \
+         \committee header -- is also refused, rather than being read as either: two different \
+         \claims about the same 28 bytes give no reason to prefer one. \
          \\nA non-canonical bech32 spelling of an accepted form still matches: the id is decoded \
          \and re-encoded before it reaches the query. \
          \\nPAGED, and `total` is the answer to \"is this contested\": 0 is an unclaimed \
@@ -1454,6 +1502,52 @@ type ProfilesByCredentialAPI =
     :> QueryParam "limit" Int
     :> QueryParam "offset" Int
     :> Get '[JSON] (Page AttestProfileRow)
+
+-- | @GET \/profiles\/by-user-token\/{asset-class}@ — the wallet lookup.
+--
+-- Declared BEFORE 'ProfileDetailAPI' in 'CoreFunctionAPI', for the reason
+-- 'ProfilesByCredentialAPI' gives: a failing @Capture@ is @FailFatal@, so a static segment that
+-- came after the capture would be answered by the asset-class parser's 400 rather than falling
+-- through to this route.
+--
+-- __It takes a 'Text' and not a 'ProfileRefAC', and that is the point.__ The capture is the asset
+-- class of the token the WALLET holds — the CIP-68 user half — which is a well-formed asset class
+-- that is not a profile id, so typing it as @ProfileRefAC@ would let Atlas's parser accept it and
+-- then look up a row that cannot exist. 'profileRefOfUserToken' is the derivation, and a value it
+-- refuses is @400 invalid_asset_class@.
+type ProfilesByUserTokenAPI =
+  Summary "The profile a wallet-held user token owns"
+    :> Description
+         "The wallet direction: given the CIP-68 USER token a wallet holds, the profile it owns. \
+         \\nThis is the only question a connected wallet can ask on its own. A profile is \
+         \identified everywhere else here by its REFERENCE token \
+         \(`<policy_id>.000643b0<hash>`, the one locked at the profiles validator with the \
+         \datum), and the token that lands in the owner's wallet is the user half \
+         \(`<policy_id>.000de140<hash>`). The two differ in their four-byte CIP-67 label and in \
+         \nothing else. \
+         \\nBefore this route a client had to do that swap in the browser -- enumerate \
+         \`wallet.getAssets()`, filter on the policy id from `/status.attestation.policy_id`, \
+         \rebuild the reference name, then call `/profiles/{id}` -- which is protocol knowledge no \
+         \frontend should carry. Pass the wallet's asset class as it comes and this does the \
+         \derivation. \
+         \\nThe asset class must be `<policy_id_hex>.<token_name_hex>` whose name begins with the \
+         \user label `000de140`. Anything else -- a reference token, an attestation id (CIP-67 \
+         \private-use label 1), a dispute id (label 2), `lovelace`, or any unrelated asset -- is \
+         \400 `invalid_asset_class`, never an empty result: \"no profile\" for an identifier that \
+         \could not name one reads as \"you own no profile\". \
+         \\n404 `profile_not_found` when the derivation succeeds and no projection carries the \
+         \resulting id. That is the honest answer to \"this wallet holds a token of this policy \
+         \that the registry has not projected yet\" and to \"this is not a profile token of this \
+         \registry\" alike -- the policy id is not checked here, because the projection holds only \
+         \one policy's rows and a foreign policy's token simply finds nothing. \
+         \\nThe ANSWER IS THE CURRENT OWNER'S ONLY IN THE SENSE THAT THE TOKEN IS: the projection \
+         \records no holding address (it is built from the registry's own UTxOs, not from wallet \
+         \balances), so this says \"the profile whose user token this is\", which is what a wallet \
+         \that just read its own assets already knows to be in its own hands."
+    :> "profiles"
+    :> "by-user-token"
+    :> Capture "asset-class" Text
+    :> Get '[JSON] AttestProfileRow
 
 type ProfileAttestationsAPI =
   Summary "A profile's track record"
@@ -1480,6 +1574,22 @@ type AttestationsAPI =
          "Every attestation one profile has issued about another. One endpoint rather than a route \
          \per direction: `subject` is a track record, `issuer` is an issuance history, and both \
          \together is one actor's statements about another. \
+         \\n`issuer` IS AN ISSUANCE HISTORY, so it excludes an unaccepted `credential_withdrawal`, \
+         \and that is the one place the two directions are not symmetric. On the two credential \
+         \kinds the issuer column is structural rather than authorial: the protocol forces issuer \
+         \== subject on a binding record (`Mc1`), and it EXEMPTS a withdrawal from the rule that \
+         \the issuer's user token be spent (`Mf`) -- deliberately, because the case a withdrawal \
+         \exists for is a profile that claimed somebody else's credential, and that profile's \
+         \token is held by whoever did it. So a withdrawal is minted on the named CREDENTIAL's \
+         \proof alone and the profile it names never consented to it. Attributing it to that \
+         \profile's issuance history would be this API asserting something the chain explicitly \
+         \does not. \
+         \\nConsent is `accepted`, the same signal every other kind uses: accepting requires the \
+         \subject to spend its own user token, and subject == issuer here, so an ACCEPTED \
+         \withdrawal is one the profile put its token behind and it stays in `issuer`. Nothing is \
+         \hidden either way -- every withdrawal is reachable by `subject`, on \
+         \/profiles/{id}/attestations and on /attestations/{id}, where the profile is the thing \
+         \the record is about rather than its author. \
          \\n`date` is the ISSUANCE time and IS bounded by the minting transaction's validity \
          \interval. `claimed_period` is SELF-REPORTED and never chain-verified, which is why it is \
          \not a filter and not a sort key -- a range query over it would read as though the chain \
@@ -1541,6 +1651,39 @@ type DisputesAPI =
     :> QueryParam "sort_order" SortOrder
     :> Get '[JSON] (Page DisputeRow)
 
+-- | @GET \/disputes\/{dispute-id}@ — one dispute, by itself.
+--
+-- The list route above answers \"what is contested\", and @GET \/attestations\/{id}@ answers \"is
+-- this attestation contested\". Neither answers \"show me THIS dispute\", which is what a
+-- notification, a shared URL and a refresh button all need — and the two workarounds were
+-- @\/disputes?target=…@ (which needs the attestation id as well, so a dispute URL had to carry
+-- two) and the inline list on the attestation, which is capped at 50 rows and therefore cannot
+-- address a dispute past the cap at all.
+--
+-- A bare 'DisputeRow' and not an envelope: it is one record, like @\/profiles\/{id}@. The
+-- attestation it contests is @target@, so a client renders this beside a second request for the
+-- attestation rather than having it inlined here — the inlining goes the other way round on
+-- purpose, because an attestation shown without its challenges is the misleading direction and a
+-- dispute shown without its target is merely incomplete.
+type DisputeDetailAPI =
+  Summary "Dispute"
+    :> Description
+         "One dispute by its asset class, `<policy_id>.<token_name_hex>`. \
+         \\n`verdict` is null while the dispute is OPEN, and three values when it is closed: \
+         \`upheld` and `rejected` are the oracle admin's findings, `expired` means the deadline in \
+         \this dispute's own datum passed with nobody deciding it, at which point anyone was free \
+         \to close it. `expired` is NOT a finding and must not be rendered as one. \
+         \\n`deposit` is the lovelace the opener locked, returned on every outcome -- there is no \
+         \punitive verdict, so losing a dispute costs network fees and nothing else. It is the \
+         \amount THIS dispute recorded when it was opened, not the oracle's current price: \
+         \repricing the protocol never moves an open dispute's deposit or its deadline. \
+         \\n404 `dispute_not_found` when no projection carries that id, which includes an \
+         \attestation id (the two wear different CIP-67 labels) and an id that exists on chain but \
+         \has not been projected yet."
+    :> "disputes"
+    :> Capture "dispute-id" AttestationAC
+    :> Get '[JSON] DisputeRow
+
 handleGetProfiles ::
   Maybe Int ->
   Maybe Int ->
@@ -1573,8 +1716,14 @@ handleGetProfilesByCredential :: Text -> Maybe Int -> Maybe Int -> QueryAppMonad
 handleGetProfilesByCredential raw limit offset = do
   -- A 400 and not a 404: a CIP-105 id or a bare hash is a well-formed DRep identifier that this
   -- route cannot answer about, and answering "no profile claims it" would be a false negative
-  -- dressed as a result. See 'canonicalDrepCredential'.
-  credential <- maybe (throwApi InvalidDrepId) pure (canonicalDrepCredential raw)
+  -- dressed as a result. See 'canonicalGovCredential'.
+  --
+  -- `InvalidCredential` and no longer `InvalidDrepId`. The old pair was the measured defect: a
+  -- perfectly good `cc_cold1…` was refused with "Not a DRep identifier", which is literally true
+  -- and tells the caller nothing about what this route wanted. The new code's message names all
+  -- three accepted HRPs, and `invalid_drep_id` keeps its own meaning on the governance routes,
+  -- where a DRep identifier really is what was asked for.
+  credential <- maybe (throwApi InvalidCredential) pure (canonicalGovCredential raw)
   bounds <- either throwApi pure (normalizeLimitOffset jsonBounds limit offset)
   runRead
     ( listProfiles
@@ -1582,6 +1731,16 @@ handleGetProfilesByCredential raw limit offset = do
         (ProfilesOrderByRegisteredAt, Asc)
         bounds
     )
+
+-- | The profile a wallet-held CIP-68 user token owns.
+--
+-- Two refusals and they are different facts, which is why they are different statuses: an asset
+-- class that is not a user token of a CIP-68 pair cannot name a profile at all (400), while one
+-- that is may still name a profile this registry has no projection for (404).
+handleGetProfileByUserToken :: Text -> QueryAppMonad AttestProfileRow
+handleGetProfileByUserToken raw = do
+  refAC <- maybe (throwApi InvalidAssetClass) pure (profileRefOfUserToken raw)
+  runRead (profileById refAC) >>= maybe (throwApi ProfileNotFound) pure
 
 handleGetProfileAttestations ::
   ProfileRefAC -> Maybe Int -> Maybe Int -> Maybe SortOrder -> QueryAppMonad (Page AttestationRow)
@@ -1650,6 +1809,9 @@ handleGetDisputes limit offset target resolved sortOrder = do
   let filt = emptyDisputeFilter {disputeFilterTarget = target, disputeFilterResolved = resolved}
   runRead (listDisputes filt (fromMaybe Desc sortOrder) bounds)
 
+handleGetDispute :: AttestationAC -> QueryAppMonad DisputeRow
+handleGetDispute did = runRead (disputeById did) >>= maybe (throwApi DisputeNotFound) pure
+
 ------------------------------------------------------------------------------------------------
 
 --  Core Function API
@@ -1678,15 +1840,19 @@ type CoreFunctionAPI =
     :<|> CommitteeAPI
     :<|> SPOsAPI
     :<|> TreasuryWithdrawalsAPI
-    -- The attestation surface. `by-credential` precedes the `{profile-id}` capture: see
-    -- 'ProfilesByCredentialAPI'.
+    -- The attestation surface. `by-credential` and `by-user-token` precede the `{profile-id}`
+    -- capture: see 'ProfilesByCredentialAPI'.
     :<|> ProfilesAPI
     :<|> ProfilesByCredentialAPI
+    :<|> ProfilesByUserTokenAPI
     :<|> ProfileAttestationsAPI
     :<|> ProfileDetailAPI
     :<|> AttestationsAPI
     :<|> AttestationDetailAPI
+    -- The list before the capture, for the same reason, although `/disputes` has no static
+    -- sub-segment to collide with today.
     :<|> DisputesAPI
+    :<|> DisputeDetailAPI
 
 coreFunctionServer :: ServerT CoreFunctionAPI QueryAppMonad
 -- Spelled out flat rather than grouped into a drepProfileServer: `:<|>` is right-associative,
@@ -1715,11 +1881,13 @@ coreFunctionServer =
     :<|> treasuryWithdrawalsServer
     :<|> handleGetProfiles
     :<|> handleGetProfilesByCredential
+    :<|> handleGetProfileByUserToken
     :<|> handleGetProfileAttestations
     :<|> handleGetProfile
     :<|> handleGetAttestations
     :<|> handleGetAttestation
     :<|> handleGetDisputes
+    :<|> handleGetDispute
 
 ------------------------------------------------------------------------------------------------
 
@@ -1759,14 +1927,56 @@ apiSwagger =
     -- derivation" was false — the five DRep metrics come from a materialized view, which is one —
     -- and it was false in the direction that mattered: its denominator had drifted from the
     -- published formula (GV-03). No schema, field or status code changed.
-    & info . Data.Swagger.version .~ "1.4.0"
+    --
+    -- 1.5.0, MINOR, and it is the largest of these bumps although nothing was removed:
+    --
+    --   * TWO ROUTES: `/profiles/by-user-token/{asset-class}` (the only question a connected wallet
+    --     can ask — "which profile does this token I hold own") and `/disputes/{dispute-id}` (a
+    --     dispute had no URL of its own, so a notification could not link to one).
+    --   * `/profiles/by-credential/{credential}` ACCEPTS MORE: all three CIP-129 roles, not `drep`
+    --     alone. Additive for every 1.4.x caller; its 400 changes code, from `invalid_drep_id` to
+    --     the new `invalid_credential`, on inputs that were already 400s.
+    --   * THREE NEW ERROR CODES — `invalid_credential`, `method_not_allowed`, `not_acceptable` —
+    --     and three newly DECLARED statuses, 405, 406 and 500. The two router refusals were already
+    --     being served; what is new is that they carry the documented `{code, message}` body
+    --     instead of zero bytes.
+    --   * `x-nullable` ON EVERY NULLABLE FIELD. The one change a generated client will notice
+    --     most: 127 properties across 61 definitions were typed non-null and threw on the first
+    --     `null`. No field was added, removed or renamed by it.
+    --   * REAL `limit`/`offset` BOUNDS, per endpoint, in place of the Int64 range.
+    --   * `issuer=` on `/attestations` no longer returns an unaccepted `credential_withdrawal`.
+    --     The only behaviour change a 1.4.x client could see as a removal, and it is the fix: that
+    --     row was the chain's statement about a profile, published as the profile's own.
+    --
+    -- 1.6.0, MINOR: `/votes` gains `is_final`, which is the parameter that makes the endpoint
+    -- usable rather than a convenience — it keeps one row per (voter, action) and on preprod turns
+    -- 3,244,723 rows into 931. Expressed the obvious way, `WHERE seq_last = 1`, that filter costs
+    -- 7,058 ms, because a window column is not pushdown-safe; it reads the pre-aggregation instead
+    -- and costs 2.4 ms. Also additive: `GET /disputes/{id}`, `GET /profiles/by-user-token/{id}`,
+    -- `x-nullable` on every nullable field, the real `limit`/`offset` bounds, and a `{code, message}`
+    -- body on the 405 and 406 the router used to answer empty.
+    & info . Data.Swagger.version .~ "1.6.0"
     & info . Data.Swagger.description
       ?~ "Read-only queries over the Cardano governance record: DReps, governance actions, votes, \
          \delegations, the constitutional committee and treasury withdrawals. Every row comes from \
          \a view over cardano-db-sync — the only derived object is palmares.drep_metrics, a \
          \materialized view whose agreement with the published formulas is asserted by a test — and \
          \every published metric carries the id of the formula that produced it, resolvable at \
-         \/metrics/formulas."
+         \/metrics/formulas. \
+         \\n\n**Paging.** Every `limit` and `offset` in this document carries the bound the server \
+         \actually enforces. A `limit` outside its range is clamped silently and the applied value \
+         \comes back in the response envelope; an `offset` above its maximum is refused with 400 \
+         \`offset_too_large`. The one exception to the published `limit` ceiling is a CSV export: a \
+         \request whose `Accept` is `text/csv` and nothing else raises the ceiling to "
+      <> T.pack (show (boundMax csvBounds))
+      <> " on the endpoints that produce it (see each route's `produces`), because the point of an \
+         \export is to leave in one request. \
+         \\n\n**Nullability.** A field absent from a definition's `required` list is a field this \
+         \API sends as `null`, not one it omits, and it carries `x-nullable: true` so a generated \
+         \client types it that way. The 15 such fields that are a bare `$ref` carry the key \
+         \beside the reference, which a strict Swagger 2.0 reader is entitled to ignore; those are \
+         \whole nested objects (`attestation` on /status, `verdict` on a dispute, `anchor` on a \
+         \vote) rather than scalars inside a row."
     & info . license ?~ "Apache-2.0"
     & host .~ Nothing
     -- `addSharedSwaggerDescriptions`'s own Haddock says "call this in both interaction-api and
@@ -1796,6 +2006,21 @@ apiSwagger =
               _responseSchema = Just apiErrorRef
             }
         )
+    & allOperations . responses . at 405
+      ?~ Inline
+        ( mempty
+            { _responseDescription = "That method is not served on this path",
+              _responseSchema = Just apiErrorRef
+            }
+        )
+    & allOperations . responses . at 406
+      ?~ Inline
+        ( mempty
+            { _responseDescription =
+                "No media type in `Accept` is one this route produces; compare `produces`",
+              _responseSchema = Just apiErrorRef
+            }
+        )
     & allOperations . responses . at 503
       ?~ Inline
         ( mempty
@@ -1803,12 +2028,49 @@ apiSwagger =
               _responseSchema = Just apiErrorRef
             }
         )
+    -- 500 is DECLARED and 502 is NOT, which is a decision rather than an omission on either side.
+    --
+    -- A 500 is reachable here: it is the last resort warp installs for an uncaught exception
+    -- (`Main` points that at 'Palmares.WebAPI.Errors.internalErrorResponse', so it carries this
+    -- body like everything else). It is a bug and never a condition a client can fix — an
+    -- unreachable database or a view a db-sync migration dropped is caught in
+    -- 'QueryAppMonad.runRead' and served as 503 `db_unavailable`.
+    --
+    -- A 502 cannot come from this service. No `ErrorCode` maps to it and no handler raises one; a
+    -- 502 reaching a client was produced by whatever proxy sits in front, with that proxy's own
+    -- body, which this document has no business describing. Declaring it would repeat exactly the
+    -- mistake `invalid_asset_class` was — publishing a case nothing can produce, which a client
+    -- then writes a branch for and never exercises.
+    & allOperations . responses . at 500
+      ?~ Inline
+        ( mempty
+            { _responseDescription = "A bug here. `internal_error`, and never a condition the request can fix",
+              _responseSchema = Just apiErrorRef
+            }
+        )
+    -- The real paging bounds, per endpoint. See 'publishPageBounds'.
+    & publishPageBounds
     & definitions . at "ErrorCode" . mapped . description
       ?~ "Every reason this API refuses or fails a request, as a stable snake_case tag. Branch on \
          \this, never on the message: the message is for people and may be reworded, the code is \
          \the contract. The status each one is served with is fixed -- the 400 group is a bad \
-         \request, the 404 group a well-formed request naming nothing, 429 a rate limit, the 503 \
-         \group an index that is not ready yet, and internal_error a bug here."
+         \request, `method_not_allowed` is 405 and `not_acceptable` 406, the 404 group a \
+         \well-formed request naming nothing, 429 a rate limit, the 503 group an index that is not \
+         \ready yet, and internal_error a bug here. \
+         \\n`method_not_allowed` and `not_acceptable` are the two that come out of the ROUTER \
+         \rather than a handler, and both used to be served with an empty body and no content \
+         \type -- so a client calling `.json()` on a failure path threw a parse error instead of \
+         \reading a code. `not_acceptable` is the reachable one in practice: six list routes \
+         \produce `text/csv` and seven do not, and asking the wrong one for it is a real mistake \
+         \with a real answer. \
+         \\n`invalid_credential` is /profiles/by-credential's own 400: a CIP-105 id, a bare hex \
+         \hash, or an identifier whose header byte disagrees with its HRP. `invalid_drep_id` keeps \
+         \its narrower meaning on the governance routes, where a DRep identifier is what was \
+         \asked for. \
+         \\n`invalid_asset_class` is /profiles/by-user-token's own 400 -- an asset class that is \
+         \not the CIP-68 user half of a profile. The three asset-class CAPTURES \
+         \(/profiles/{profile-id}, /attestations/{attestation-id}, /disputes/{dispute-id}) parse \
+         \through Atlas's codec and answer `invalid_parameter` instead."
     & definitions . at "ApiError" . mapped . description
       ?~ "The body of every non-2xx response."
     & definitions . at "SyncStatus" . mapped . description
@@ -1879,8 +2141,118 @@ apiSwagger =
       ?~ "One attestation with its disputes inline, read in a single transaction so they are the \
          \same snapshot. At most 50 disputes travel; GET /disputes?target=<id> is the paged view."
 
+-- | The page-size bounds each endpoint actually applies, by path and parameter name.
+--
+-- __Every entry is a reference to the same value the handler clamps with__, never a repeated
+-- literal: @jsonBounds@, @activityBounds@, @epochSeriesBounds@, @searchGroupBounds@ and the three
+-- dashboard pairs are the definitions in "Query.Common" and above, so a re-priced endpoint changes
+-- one number and the document follows. That is the whole reason this is a table of names and not of
+-- integers — the defect being fixed is a document whose numbers were not the server's.
+--
+-- The seven CSV-capable list routes are listed with their JSON bounds and not their CSV ones. A
+-- @limit@ of 10,000 is reachable on them, but only for a request that asks for @text\/csv@ and
+-- nothing else ('Query.Common.boundsFor'), and a generated client validating a JSON call against a
+-- 10,000 ceiling would be told its request is fine and then silently served 200 rows. The higher
+-- ceiling is stated once, in the document's own description, where \"which endpoints export CSV\"
+-- is already answered by @produces@.
+pageSizeBounds :: [(FilePath, Text, PageBounds)]
+pageSizeBounds =
+  -- The governance lists. All seven also export CSV; see the note above.
+  [ ("/dreps", "limit", jsonBounds),
+    ("/gov-actions", "limit", jsonBounds),
+    ("/votes", "limit", jsonBounds),
+    ("/delegations", "limit", jsonBounds),
+    ("/spos", "limit", jsonBounds),
+    ("/treasury-withdrawals", "limit", jsonBounds),
+    ("/drep/{drep-id}/delegators", "limit", jsonBounds),
+    -- JSON-only list routes.
+    ("/drep/{drep-id}/updates", "limit", jsonBounds),
+    ("/pages/drep-explorer", "limit", jsonBounds),
+    ("/profiles", "limit", jsonBounds),
+    ("/profiles/by-credential/{credential}", "limit", jsonBounds),
+    ("/profiles/{profile-id}/attestations", "limit", jsonBounds),
+    ("/attestations", "limit", jsonBounds),
+    ("/disputes", "limit", jsonBounds),
+    -- The four endpoints whose size is NOT the list default, which is the reason the table is
+    -- per-endpoint rather than one global pair.
+    ("/activity", "limit", activityBounds),
+    ("/drep/{drep-id}/power", "limit", epochSeriesBounds),
+    ("/search", "limit_per_group", searchGroupBounds),
+    ("/pages/dashboard", "top_limit", dashboardTopBounds),
+    ("/pages/dashboard", "closing_soon_limit", dashboardClosingSoonBounds),
+    ("/pages/dashboard", "epochs", dashboardEpochsBounds)
+  ]
+
+-- | Replace the published @limit@\/@offset@ ranges with the ones the server enforces.
+--
+-- __What was there instead:__ @limit@ and @offset@ are declared @Int@, so swagger2 derived
+-- @minimum: -9223372036854775808, maximum: 9223372036854775807@ for every one of them — the
+-- @Int64@ range, on a parameter that is clamped to 200 and on an offset that is REFUSED above
+-- 10,000. @docs\/usecases\/api-screen-map.md@ §5.11 records the consequence as a warning to the
+-- frontend: \"Do not generate client validation from the schema\", which is a published contract
+-- telling its only consumer not to read it.
+--
+-- __@limit@ clamps and @offset@ refuses, and the document now says which.__
+-- 'Query.Common.normalizeLimitOffset' silently clamps a limit into range — both @0@ and @999@ have
+-- an obvious intended meaning, and the APPLIED value travels back in the envelope — while an offset
+-- past 'Query.Common.hardOffsetCeiling' is a 400, because clamping it would serve the wrong page to
+-- a client with no way to notice. Two different behaviours at the edge, so two different
+-- descriptions; the numbers themselves are the same values the handlers use.
+--
+-- The offset pass goes through @allOperations@ rather than the table, because the ceiling is one
+-- number for the whole API and @\/activity@ — the one cursor-paged endpoint — declares no @offset@
+-- at all, so there is nothing for it to match.
+publishPageBounds :: Swagger -> Swagger
+publishPageBounds s0 = foldl' withSize (s0 & allOperations . parameters . traversed . _Inline %~ withOffset) pageSizeBounds
+  where
+    withSize s (path_, pname, b) =
+      s & paths . ix path_ . Data.Swagger.get . _Just . parameters . traversed . _Inline %~ sizeParam pname b
+
+    sizeParam pname (PageBounds mx dflt) prm
+      | prm ^. name == pname =
+          prm
+            & schema . _ParamOther . paramSchema . minimum_ ?~ 1
+            & schema . _ParamOther . paramSchema . maximum_ ?~ fromIntegral mx
+            & schema . _ParamOther . paramSchema . default_ ?~ toJSON dflt
+            & description
+              ?~ "Page size, "
+                <> T.pack (show dflt)
+                <> " when omitted. A value outside [1, "
+                <> T.pack (show mx)
+                <> "] is CLAMPED and never refused; the applied value comes back as `limit` in the \
+                   \response envelope, so a clamp is visible rather than silent."
+      | otherwise = prm
+
+    withOffset prm
+      | prm ^. name == "offset" =
+          prm
+            & schema . _ParamOther . paramSchema . minimum_ ?~ 0
+            & schema . _ParamOther . paramSchema . maximum_ ?~ fromIntegral hardOffsetCeiling
+            & schema . _ParamOther . paramSchema . default_ ?~ toJSON (0 :: Int)
+            & description
+              ?~ "Rows to skip. A negative value clamps to 0; above "
+                <> T.pack (show hardOffsetCeiling)
+                <> " the request is REFUSED with 400 `offset_too_large` rather than clamped, \
+                   \because a clamped deep offset would serve a different page than the one asked \
+                   \for. Use the cursor-paged /activity feed for a deep walk."
+      | otherwise = prm
+
+-- | The document as it is served and as it is written to disk.
+--
+-- __A 'Value' and not a 'Swagger', because @x-nullable@ is not expressible in swagger2's types__ —
+-- see 'markNullableFields', which is the whole of the difference between this and 'apiSwagger'.
+-- Both consumers go through it: @swaggerSchemaUIServerT@ takes any @ToJSON a@ (the schema endpoint's
+-- own type is @Get '[JSON] Value@), and @Main@'s @--write-swagger-only@ encodes it. One producer, so
+-- the committed file and the served document cannot differ — which is what the CI parity step
+-- compares and what @scripts\/check_swagger.sh@ asserts against.
+--
+-- 'apiSwagger' stays a 'Swagger' and stays exported: it is the value the lens chain builds and the
+-- one a @ToSchema@-level test can inspect.
+apiSwaggerDoc :: Value
+apiSwaggerDoc = markNullableFields (toJSON apiSwagger)
+
 swaggerServer :: ServerT (SwaggerSchemaUI "swagger-ui" "swagger-api.json") QueryAppMonad
-swaggerServer = swaggerSchemaUIServerT apiSwagger
+swaggerServer = swaggerSchemaUIServerT apiSwaggerDoc
 
 -- | A @$ref@ to the 'ApiError' definition the swagger above declares.
 apiErrorRef :: Referenced Schema
@@ -1908,12 +2280,21 @@ fullServer = swaggerServer :<|> serviceProbeServer :<|> coreFunctionServer
 -- 'freshnessMiddleware' is applied INSIDE the CORS middleware so the chain-point headers are
 -- present on the response that CORS then decides to expose; the other way round and the exposed
 -- header list would name headers that are not there yet.
+--
+-- 'refusedRequestMiddleware' is applied INNERMOST, immediately around @serveWithContext@, for the
+-- mirror-image reason: it has to see the router's own 405 and 406 while they still carry no
+-- content type — which is the only thing that tells them from a 4xx a handler built — and the JSON
+-- body it substitutes then travels back out through 'freshnessMiddleware' and CORS like any other
+-- response, so a browser gets the chain-point headers and the @Access-Control-Allow-Origin@ on a
+-- refusal too. interaction-api wraps @provideOptions@ instead of sitting inside it; the two are
+-- equivalent in effect, because every response @provideOptions@ produces itself is a 200.
 mkWebApp :: CorsConfig -> IO (Maybe Freshness, Maybe AttestationStatus) -> QueryAppContext -> Application
 mkWebApp corsCfg readFresh ctx =
   mkCorsMiddleware corsCfg $
     freshnessMiddleware readFresh $
       provideOptions proxyPublicAPI $
-        serveWithContext proxyFullAPI (palmaresErrorFormatters :. EmptyContext) hoistedServer
+        refusedRequestMiddleware $
+          serveWithContext proxyFullAPI (palmaresErrorFormatters :. EmptyContext) hoistedServer
   where
     hoistedServer =
       hoistServerWithContext

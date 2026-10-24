@@ -50,13 +50,16 @@ PlutusTx on-chain code. No off-chain imports (no Aeson, Servant, Swagger). Plutu
 - Oracle UTxO as **reference input** in every minting tx. Check `opPaused` and `checkFee`.
 - Min lovelace from oracle (`opMinUTxOValue`) only, not fixed constants.
 - One-off tokens: require spending a **seed TxOutRef**, derive token name from it.
-- Validate referenced AssetClasses with the TYPED predicate for the kind you mean: `isProfileId`,
-  `isAttestationId` or `isDisputeId` from `Palmares.Onchain.CIP68` — symbol AND that kind's CIP-67
-  label. `isProtocolRefToken` is the untyped ancestor and now means only "is a profile id"; it is kept
-  because `isRefTokenName` is still what `P7` asks of a profile datum. `hasCurrencySymbol` checks only
-  the symbol, which a profile's USER
-  token also satisfies — that is the hole `isProtocolRefToken` closed, and `UnitTests.MintInputs` pins
-  it. The helper still exists in `Utils.hs` and has no caller; this line used to prescribe it.
+- Validate referenced AssetClasses with the TYPED predicate for the kind you mean: `isProfileId` or
+  `isAttestationId` from `Palmares.Onchain.CIP68` — symbol AND that kind's CIP-67 label.
+  `isProtocolRefToken` is the untyped ancestor and now means only "is a profile id"; it is kept
+  because `isRefTokenName` is still what `P7` asks of a profile datum. There is no `isDisputeId`: it
+  had no caller, because no redeemer field anywhere names an id of the DISPUTE class — a dispute
+  points at things and nothing points at a dispute. Write it back if that changes;
+  `isDisputeTokenName` (the half `D8` and `Ingestion` use) is still there.
+  A symbol-only check is what `isProtocolRefToken` closed a hole over: a profile's USER token
+  satisfies the symbol alone, and `UnitTests.MintInputs` pins that. `Utils.hasCurrencySymbol` was
+  that check, this line used to prescribe it, and it is now deleted rather than left as an invitation.
 - **Authorization**: every redeemer names the credential it requires, and the requirement is token
   possession, not a signature list — that is what makes an organization or committee acting through a
   script a first-class issuer. Use `deriveUserFromRefAC` from `Palmares.Onchain.CIP68`: profile creation
@@ -90,11 +93,14 @@ PlutusTx on-chain code. No off-chain imports (no Aeson, Servant, Swagger). Plutu
   value (use min-value check).
 - **Time**: any date carried in a datum is validated against the transaction's validity interval — never
   trusted as supplied (inherited fix #4).
-- **Lookups**: `Palmares.Onchain.Protocol.Lookup` holds exactly two live readers, `readOracleParams`
-  and `feeFor`. The `unsafeGet*` profile helpers it used to export were deleted with `Protocol/Id.hs`;
-  there has never been an `unsafeGetAttestation`. `Utils.checkAndGetCurrentStateDatumAndValue` is also
-  uncalled — the Haddock at `Lookup.hs:7` says validators read a profile through it and that is false
-  (audit `NEW-OC-5`), which is why its trace codes `U2`/`U3` can never be emitted.
+- **Lookups**: `Palmares.Onchain.Protocol.Lookup` holds exactly three live readers —
+  `readOracleParams`, `feeFor` and `checkFee`. The `unsafeGet*` profile helpers it used to export were deleted with `Protocol/Id.hs`;
+  there has never been an `unsafeGetAttestation`. `Utils.checkAndGetCurrentStateDatumAndValue` and its
+  helper `checkAndGetInlineDatum` are gone too, for the same reason: the Haddock at `Lookup.hs:7` said
+  validators read a profile through the first and that was false (audit `NEW-OC-5`), so its trace
+  codes `U2`/`U3` could never be emitted and are now retired rather than reassigned. A validator reads
+  its own input with `Utils.unsafeFindOwnInputByTxOutRef` and parses the datum `SpendingScript` hands
+  it; the oracle comes in as a reference input via `readOracleParams`.
 
 ### Deployment
 

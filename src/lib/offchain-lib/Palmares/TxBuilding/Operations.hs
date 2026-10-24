@@ -9,7 +9,7 @@ import GHC.Stack (HasCallStack)
 import GeniusYield.TxBuilder
 import GeniusYield.Types
 import GeniusYield.Types.Script.ScriptHash (scriptHashFromPlutus)
-import Palmares.Onchain.CIP68 (CIP68Datum (..), ImageURI, MetadataFields (..), extra, getMetadataFields, mkCIP68Datum, updateCIP68DatumMetadata)
+import Palmares.Onchain.CIP68 (CIP68Datum (..), ImageURI, MetadataFields (..), extra, getMetadataFields, isAttestationTokenName, isDisputeTokenName, isRefTokenName, mkCIP68Datum, updateCIP68DatumMetadata)
 import Palmares.Onchain.Utils (isKeyAddress)
 import Palmares.Onchain.Protocol.Types (OracleAdminAction (OraclePause, OracleSetAdmin, OracleSetArbiter, OracleSetDisputeDeposit, OracleSetDisputeTimeout, OracleSetFees, OracleSetMinUTxOValue, OracleUnpause))
 import Palmares.Onchain.Protocol.Lookup qualified as Lookup
@@ -38,7 +38,7 @@ import Palmares.TxBuilding.Lookups
     queryOracleParams,
   )
 import Palmares.TxBuilding.Skeletons
-import Palmares.TxBuilding.Utils (pPOSIXTimeFromGYSlot, txOutRefToV3Plutus)
+import Palmares.TxBuilding.Utils (attestationAndValueFromUTxO, disputeAndValueFromUTxO, pPOSIXTimeFromGYSlot, profileAndValueFromUTxO, txOutRefToV3Plutus)
 import Palmares.TxBuilding.Validators
 import Text.Printf (printf)
 
@@ -1188,13 +1188,16 @@ dustSpendsForValidatorSkeleton ::
   (DeployedScriptsContext -> GYTxOutRef) ->
   GYScript 'PlutusV3 ->
   GYRedeemer ->
+  -- | This address's dust finder: 'getDustUTxOs' pre-applied to the kind's CIP-67 label predicate,
+  -- datum parser and id field. Per-kind rather than derived here, because the thing that must be
+  -- right is the correspondence between the validator, its redeemer and its datum — and the three
+  -- call sites below are where all three are named together.
+  (GYAddress -> m [GYUTxO]) ->
   m [GYTxSkeleton 'PlutusV3]
-dustSpendsForValidatorSkeleton getRef validatorGY cleanupRedeemer = do
+dustSpendsForValidatorSkeleton getRef validatorGY cleanupRedeemer findDust = do
   ref <- asks getRef
   addr <- scriptAddress validatorGY
-  ctx <- ask
-  let protocolCS = mintingPolicyCurrencySymbol (getMintingPolicyFromCtx ctx)
-  dust <- getDustUTxOs addr protocolCS
+  dust <- findDust addr
   return $ map (\utxo -> txMustSpendUTxOFromRefScript ref utxo cleanupRedeemer validatorGY) dust
 
 -- | Sweep dust UTxOs from all deployed validator addresses.
@@ -1207,12 +1210,39 @@ cleanupDustTX ::
 cleanupDustTX = do
   configs <-
     sequence
-      [ dustSpendsForValidatorSkeleton getProfilesValidatorRef profilesValidatorGY (redeemerFromPlutusData ProfilesValidator.Cleanup),
-        dustSpendsForValidatorSkeleton getAttestationsValidatorRef attestationsValidatorGY (redeemerFromPlutusData Cleanup),
-        dustSpendsForValidatorSkeleton getDisputesValidatorRef disputesValidatorGY (redeemerFromPlutusData DisputesValidator.Cleanup)
+      [ dustSpendsForValidatorSkeleton
+          getProfilesValidatorRef
+          profilesValidatorGY
+          (redeemerFromPlutusData ProfilesValidator.Cleanup)
+          (getDustUTxOs isRefTokenName profileAndValueFromUTxO OnchainTypes.profileId),
+        dustSpendsForValidatorSkeleton
+          getAttestationsValidatorRef
+          attestationsValidatorGY
+          (redeemerFromPlutusData Cleanup)
+          (getDustUTxOs isAttestationTokenName attestationAndValueFromUTxO OnchainTypes.attestationId),
+        dustSpendsForValidatorSkeleton
+          getDisputesValidatorRef
+          disputesValidatorGY
+          (redeemerFromPlutusData DisputesValidator.Cleanup)
+          (getDustUTxOs isDisputeTokenName disputeAndValueFromUTxO OnchainTypes.disputeId)
       ]
-  let allSpends = concat configs
-      dustCount = sum (map length configs)
+  -- BOUNDED, and the bound is the other half of `OF-20`. Every dust UTxO is a script input with its
+  -- own `Cleanup` evaluation, and this is ONE transaction: an unbounded sweep grows until it exceeds
+  -- the transaction size limit or the per-transaction ExUnits budget, at which point it fails
+  -- entirely and sweeps nothing — the same all-or-nothing failure mode the selector fix just closed,
+  -- reached by volume instead of by a plant.
+  --
+  -- __The ceiling is conservative, not measured.__ Fifteen script inputs is comfortably inside both
+  -- limits for an arm this cheap, and nothing here needs the true maximum: the sweep is idempotent,
+  -- so the remedy for more dust than one transaction holds is to run it again. If that ever becomes
+  -- tedious, the upgrade path is to measure the real per-input cost and raise this one number.
+  let allSpends = Prelude.take maxDustPerSweep (concat configs)
+      dustCount = length allSpends
   when (dustCount == 0) $
     throwError (GYApplicationException NoDustFound)
   return (mconcat allSpends, dustCount)
+
+-- | How many dust UTxOs one sweep transaction will spend. See 'cleanupDustTX' for why there is a
+-- ceiling at all and why this value is conservative rather than measured.
+maxDustPerSweep :: Int
+maxDustPerSweep = 15

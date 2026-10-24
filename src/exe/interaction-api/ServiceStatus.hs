@@ -18,8 +18,16 @@
 -- you nothing, which is the defect it was written against. @\/ready@ is the route that 503s.
 --
 -- __It is public, beside the probes.__ Everything here is either an on-chain fact or the provider's
--- family name; nothing is a secret and nothing needs the operator's credentials. It does cost two
--- provider round trips per request, which @\/ready@ already costs today.
+-- family name; nothing is a secret and nothing needs the operator's credentials. It costs THREE
+-- provider round trips per request — the third reads the oracle datum, which is what @oracle@
+-- publishes and which this service is the only one able to read: query-api carries no Cardano
+-- provider at all, by a documented boot contract of \"nothing but a Postgres DSN\", and the db-sync
+-- behind it is indexed without UTxOs, so the oracle UTxO is not in that database either.
+--
+-- @oracle@ and @oracle_paused@ come from two separate reads on purpose. @opPaused@ lives in the very
+-- datum @oracle@ returns, so one read could serve both — but @oracle_paused@ is read off
+-- 'getOracleRefInputSkeleton', the gate every WRITE goes through, precisely so it cannot disagree
+-- with the production check. Deriving it from the datum would trade that guarantee for a round trip.
 module ServiceStatus (InteractionStatusResponse (..), getStatus) where
 
 import Control.Exception (SomeException, fromException, try)
@@ -38,8 +46,11 @@ import GeniusYield.TxBuilder.Errors (GYTxMonadException (..))
 import GeniusYield.Types (GYNetworkId (..))
 import InteractionAppMonad (InteractionAppContext (..), InteractionAppMonad)
 import Palmares.Constants (appVersion)
+import Palmares.DomainTypes.Transfer.Types (OracleParamsResponse)
 import Palmares.TxBuilding.Context (DeployedScriptsContext, ProviderCtx (..), TxBuildingContext (..), runQuery)
+import Palmares.TxBuilding.Conversions (oracleParamsResponse)
 import Palmares.TxBuilding.Exceptions (TxBuildingException (ProtocolPaused))
+import Palmares.TxBuilding.Lookups (queryOracleParams)
 import Palmares.TxBuilding.Operations (getOracleRefInputSkeleton, verifyDeployedScriptsAreReady)
 import Palmares.Utils (mkStripPrefixSchemaOptions)
 
@@ -65,6 +76,15 @@ data InteractionStatusResponse = InteractionStatusResponse
     -- | The oracle's pause flag — @null@ when the oracle could not be read at all, which is a
     -- different fact from @false@ and must not be reported as it.
     statusOraclePaused :: Maybe Bool,
+    -- | The oracle's mutable parameters — the dispute deposit and timeout, the minimum UTxO, the
+    -- admin and arbiter credentials, and the two fees. @null@ when the oracle could not be read,
+    -- the same distinction @oracle_paused@ makes and for the same reason.
+    --
+    -- This is the only place the registry's own parameters are published. @\/status@ on query-api
+    -- carries @epoch_params@, which is the LEDGER's protocol parameters and a different thing
+    -- entirely; a client that reads a deposit from there is reading Cardano's numbers, not this
+    -- protocol's.
+    statusOracle :: Maybe OracleParamsResponse,
     statusVersion :: Text
   }
   deriving (Show, Generic)
@@ -77,7 +97,10 @@ instance ToSchema InteractionStatusResponse where
       s
         & Swagger.schema . description
           ?~ "Which provider and network this service is configured against, whether its reference \
-             \scripts resolve, and whether the protocol is paused. Always 200: /ready is the route \
+             \scripts resolve, whether the protocol is paused, and the oracle's mutable parameters. \
+             \`oracle` is the ONLY published source of the registry's own deposit, dispute timeout, \
+             \minimum UTxO, fees and admin/arbiter credentials — query-api's `epoch_params` is the \
+             \LEDGER's protocol parameters and a different thing. Always 200: /ready is the route \
              \that fails."
 
 -------------------------------------------------------------------------------
@@ -86,21 +109,25 @@ instance ToSchema InteractionStatusResponse where
 
 -------------------------------------------------------------------------------
 
--- | Two chain reads, each allowed to fail without failing the response.
+-- | Three chain reads, each allowed to fail without failing the response.
 getStatus :: InteractionAppMonad InteractionStatusResponse
 getStatus = do
   InteractionAppContext {..} <- ask
   let cfg = ctxCoreCfg (providerCtx txBuildingContext)
   scripts <- liftIO (probe txBuildingContext verifyDeployedScriptsAreReady)
   oracle <- liftIO (probe txBuildingContext (void getOracleRefInputSkeleton))
+  params <- liftIO (probe txBuildingContext (paramsOf <$> queryOracleParams))
   return
     InteractionStatusResponse
       { statusProvider = providerFamily (cfgCoreProvider cfg),
         statusNetwork = networkName (cfgNetworkId cfg),
         statusDeployedScripts = either (const False) id scripts,
         statusOraclePaused = pausedFrom oracle,
+        statusOracle = either (const Nothing) (Just . oracleParamsResponse) params,
         statusVersion = pack appVersion
       }
+  where
+    paramsOf (p, _ref, _value) = p
 
 -- | Run a deployed-scripts query, reporting any failure — a refusal, a dead provider, a timeout —
 -- as the failure itself rather than propagating it.

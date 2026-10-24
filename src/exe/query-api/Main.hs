@@ -12,6 +12,7 @@ import Database.Persist.Postgresql (createPostgresqlPool)
 import Network.Wai.Handler.Warp
 import Palmares.Metrics.Catalog (resolvedMetricCatalog)
 import Palmares.WebAPI.CORS (getCorsConfigFromEnv)
+import Palmares.WebAPI.Errors (internalErrorResponse)
 import Palmares.WebAPI.Utils (requirePgConnStr, getPortFromEnvOrDefault)
 import Query.Gov
   ( amberLagFromEnv,
@@ -23,7 +24,7 @@ import Query.Gov
 import Query.Refresh (runRefreshThread)
 import Query.Views (applyPalmaresSchema)
 import QueryAppMonad (QueryAppContext (..))
-import RestAPI (apiSwagger, mkWebApp)
+import RestAPI (apiSwaggerDoc, mkWebApp)
 import System.Environment (getArgs, lookupEnv)
 import System.Exit (die, exitSuccess)
 import System.IO (BufferMode (LineBuffering), hSetBuffering, stdout)
@@ -44,12 +45,17 @@ swaggerPath = "docs/generated/swagger/query-swagger-api.json"
 -- | @--write-swagger-only@: write the document and exit.
 --
 -- It runs before anything else and touches NOTHING — no @PG_CONN_STR@, no pool, no @palmares@
--- schema, no port, not even the metric catalog — because 'apiSwagger' is a pure value derived from
--- the served API type. That is exactly what makes the CI parity guard runnable: no Postgres
+-- schema, no port, not even the metric catalog — because 'apiSwaggerDoc' is a pure value derived
+-- from the served API type. That is exactly what makes the CI parity guard runnable: no Postgres
 -- service, no secrets, no listening socket.
+--
+-- 'RestAPI.apiSwaggerDoc' and not @apiSwagger@: the served @\/swagger-api.json@ is built from the
+-- same value, so this file and the document a client fetches are the same bytes. It is a 'Value'
+-- rather than a 'Data.Swagger.Swagger' because @x-nullable@ has no representation in swagger2's
+-- record types — see 'Palmares.WebAPI.Utils.markNullableFields'.
 writeSwagger :: IO ()
 writeSwagger = do
-  BL8.writeFile swaggerPath (encodePretty apiSwagger)
+  BL8.writeFile swaggerPath (encodePretty apiSwaggerDoc)
   putStrLn ("Wrote " <> swaggerPath)
 
 -- | Boot order is the contract, and every step before 'runSettings' is fail-closed.
@@ -123,7 +129,18 @@ serve = do
       host = "0.0.0.0"
   port <- getPortFromEnvOrDefault 8083
 
-  let settings = setHost (fromString host :: HostPreference) $ setPort port defaultSettings
+  let settings =
+        setHost (fromString host :: HostPreference) $
+          setPort port $
+            -- Warp's own last resort, which is produced OUTSIDE the WAI stack: when the application
+            -- throws, the continuation every middleware wraps is never called, so nothing in
+            -- `mkWebApp` can reshape it. Its default is `text/plain` with the words "Something went
+            -- wrong", which is the one non-2xx body on this service that is not the documented
+            -- `{code, message}` — and a client that has to special-case one status because it is the
+            -- only one that is not JSON has to be told which. A 500 here is a bug and never a
+            -- condition a request can fix: an unreachable database or a view a db-sync migration
+            -- dropped is caught in `QueryAppMonad.runRead` and served as 503 `db_unavailable`.
+            setOnExceptionResponse (const internalErrorResponse) defaultSettings
       -- Both caches, because the response headers now carry the attestation projector's state
       -- too (`CS-07`): a client scrolling an attestation page sees `X-Attest-State` on the page it is
       -- reading rather than on a second request.

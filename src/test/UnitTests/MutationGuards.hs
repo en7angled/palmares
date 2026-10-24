@@ -967,7 +967,7 @@ openMint = UnsafeMintValue (AssocMap.singleton protocolCS (AssocMap.singleton op
 -- than a weakness of the fixture: @error@ ignores its argument, so @trace \"K1\"@ is never forced and
 -- the exception carries the generic @\"PlutusTx.Builtins.Internal.error\"@. It does not need to here.
 -- With no reference inputs there is exactly one failure the context can reach: @M1@ needs a
--- non-'MintingScript' purpose, @U0@-@U3@ are not on this path, and the oracle read happens before
+-- non-'MintingScript' purpose, @U0@-@U1@ are not on this path (@U2@/@U3@ are retired), and the oracle read happens before
 -- any conjunct — @minLv@ is a bang pattern over it. So a throw from THIS context is @K1@ and nothing
 -- else.
 --

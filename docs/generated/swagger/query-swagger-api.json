@@ -21,7 +21,8 @@
         "ActivityRow": {
             "properties": {
                 "actor_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "at": {
                     "$ref": "#/definitions/ChainPoint"
@@ -36,7 +37,8 @@
                     "$ref": "#/definitions/ActivitySource"
                 },
                 "target_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -56,22 +58,28 @@
         "AnchorContent": {
             "properties": {
                 "given_name": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "image_url": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "motivations": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "objectives": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "payment_address": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "qualifications": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "references": {
                     "items": {
@@ -88,7 +96,8 @@
         "AnchorReference": {
             "properties": {
                 "label": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "uri": {
                     "type": "string"
@@ -134,10 +143,12 @@
                     "type": "string"
                 },
                 "credential": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "credential_is_script": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "x-nullable": true
                 },
                 "description": {
                     "type": "string"
@@ -214,10 +225,12 @@
                     ],
                     "maxItems": 2,
                     "minItems": 2,
-                    "type": "array"
+                    "type": "array",
+                    "x-nullable": true
                 },
                 "credential": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "date": {
                     "description": "This is the posix time in ISO8601 format.",
@@ -306,7 +319,8 @@
                     "type": "integer"
                 },
                 "last_error": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "last_sync_at": {
                     "$ref": "#/definitions/UTCTime"
@@ -357,13 +371,15 @@
                     "type": "integer"
                 },
                 "slot": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "time": {
                     "$ref": "#/definitions/UTCTime"
                 },
                 "tx_hash": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -380,13 +396,15 @@
                     "type": "integer"
                 },
                 "slot": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "time": {
                     "$ref": "#/definitions/UTCTime"
                 },
                 "tx_hash": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -406,7 +424,8 @@
         "CommitteeMemberSummary": {
             "properties": {
                 "authorized_at": {
-                    "$ref": "#/definitions/ChainPoint"
+                    "$ref": "#/definitions/ChainPoint",
+                    "x-nullable": true
                 },
                 "cold_bech32": {
                     "type": "string"
@@ -420,10 +439,12 @@
                     "type": "integer"
                 },
                 "hot_hash": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "resigned_at": {
-                    "$ref": "#/definitions/ChainPoint"
+                    "$ref": "#/definitions/ChainPoint",
+                    "x-nullable": true
                 },
                 "status": {
                     "$ref": "#/definitions/CommitteeMemberStatus"
@@ -451,7 +472,8 @@
                     "type": "integer"
                 },
                 "established_by": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "members": {
                     "items": {
@@ -481,7 +503,8 @@
         "DRepDetailResponse": {
             "properties": {
                 "anchor_content": {
-                    "$ref": "#/definitions/AnchorContent"
+                    "$ref": "#/definitions/AnchorContent",
+                    "x-nullable": true
                 },
                 "delegator_stats": {
                     "$ref": "#/definitions/DelegatorStats"
@@ -628,7 +651,8 @@
                 "age_days": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "as_of_epoch": {
                     "maximum": 9223372036854775807,
@@ -656,7 +680,8 @@
                 },
                 "participation_rate": {
                     "format": "double",
-                    "type": "number"
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "rationale_absent": {
                     "maximum": 9223372036854775807,
@@ -680,7 +705,8 @@
                 },
                 "rationale_rate": {
                     "format": "double",
-                    "type": "number"
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "rationale_unverified": {
                     "maximum": 9223372036854775807,
@@ -694,11 +720,13 @@
                 },
                 "vote_latency_median_hours": {
                     "format": "double",
-                    "type": "number"
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "vote_latency_p90_hours": {
                     "format": "double",
-                    "type": "number"
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "vote_latency_sample": {
                     "maximum": 9223372036854775807,
@@ -760,15 +788,18 @@
                 "active_until_epoch": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "age_days": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "anchor_status": {
-                    "$ref": "#/definitions/AnchorStatus"
+                    "$ref": "#/definitions/AnchorStatus",
+                    "x-nullable": true
                 },
                 "as_of_epoch": {
                     "maximum": 9223372036854775807,
@@ -786,7 +817,8 @@
                     "type": "integer"
                 },
                 "given_name": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "has_script": {
                     "type": "boolean"
@@ -798,16 +830,19 @@
                     "type": "string"
                 },
                 "image_url": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "is_active": {
                     "type": "boolean"
                 },
                 "language": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "last_vote_at": {
-                    "$ref": "#/definitions/UTCTime"
+                    "$ref": "#/definitions/UTCTime",
+                    "x-nullable": true
                 },
                 "open_actions_unvoted": {
                     "maximum": 9223372036854775807,
@@ -816,14 +851,17 @@
                 },
                 "participation_rate": {
                     "format": "double",
-                    "type": "number"
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "rationale_rate": {
                     "format": "double",
-                    "type": "number"
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "registered_at": {
-                    "$ref": "#/definitions/UTCTime"
+                    "$ref": "#/definitions/UTCTime",
+                    "x-nullable": true
                 },
                 "status": {
                     "$ref": "#/definitions/DRepStatus"
@@ -839,7 +877,8 @@
                 "voting_power_epoch": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -868,16 +907,19 @@
         "DRepUpdateRow": {
             "properties": {
                 "anchor_status": {
-                    "$ref": "#/definitions/AnchorStatus"
+                    "$ref": "#/definitions/AnchorStatus",
+                    "x-nullable": true
                 },
                 "anchor_url": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "at": {
                     "$ref": "#/definitions/ChainPoint"
                 },
                 "deposit": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "kind": {
                     "$ref": "#/definitions/DRepUpdateKind"
@@ -971,7 +1013,8 @@
                 "power_epoch": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "retired_dreps": {
                     "maximum": 9223372036854775807,
@@ -1031,7 +1074,8 @@
                     "type": "boolean"
                 },
                 "lovelace": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "stake_address": {
                     "type": "string"
@@ -1040,7 +1084,8 @@
                     "type": "string"
                 },
                 "target_name": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1060,7 +1105,8 @@
                     "type": "boolean"
                 },
                 "lovelace": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "stake_address": {
                     "type": "string"
@@ -1087,7 +1133,8 @@
                 },
                 "delegator_retention_rate": {
                     "format": "double",
-                    "type": "number"
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "delegators_joined": {
                     "maximum": 9223372036854775807,
@@ -1157,7 +1204,8 @@
                     "$ref": "#/definitions/GYAssetClass"
                 },
                 "verdict": {
-                    "$ref": "#/definitions/DisputeVerdict"
+                    "$ref": "#/definitions/DisputeVerdict",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1284,7 +1332,8 @@
                 },
                 "participation_rate": {
                     "format": "double",
-                    "type": "number"
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "votes_cast": {
                     "maximum": 9223372036854775807,
@@ -1305,7 +1354,8 @@
                 "delegator_count": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "epoch": {
                     "maximum": 9223372036854775807,
@@ -1323,7 +1373,7 @@
             "type": "object"
         },
         "ErrorCode": {
-            "description": "Every reason this API refuses or fails a request, as a stable snake_case tag. Branch on this, never on the message: the message is for people and may be reworded, the code is the contract. The status each one is served with is fixed -- the 400 group is a bad request, the 404 group a well-formed request naming nothing, 429 a rate limit, the 503 group an index that is not ready yet, and internal_error a bug here.",
+            "description": "Every reason this API refuses or fails a request, as a stable snake_case tag. Branch on this, never on the message: the message is for people and may be reworded, the code is the contract. The status each one is served with is fixed -- the 400 group is a bad request, `method_not_allowed` is 405 and `not_acceptable` 406, the 404 group a well-formed request naming nothing, 429 a rate limit, the 503 group an index that is not ready yet, and internal_error a bug here. \n`method_not_allowed` and `not_acceptable` are the two that come out of the ROUTER rather than a handler, and both used to be served with an empty body and no content type -- so a client calling `.json()` on a failure path threw a parse error instead of reading a code. `not_acceptable` is the reachable one in practice: six list routes produce `text/csv` and seven do not, and asking the wrong one for it is a real mistake with a real answer. \n`invalid_credential` is /profiles/by-credential's own 400: a CIP-105 id, a bare hex hash, or an identifier whose header byte disagrees with its HRP. `invalid_drep_id` keeps its narrower meaning on the governance routes, where a DRep identifier is what was asked for. \n`invalid_asset_class` is /profiles/by-user-token's own 400 -- an asset class that is not the CIP-68 user half of a profile. The three asset-class CAPTURES (/profiles/{profile-id}, /attestations/{attestation-id}, /disputes/{dispute-id}) parse through Atlas's codec and answer `invalid_parameter` instead.",
             "enum": [
                 "invalid_parameter",
                 "query_too_short",
@@ -1335,8 +1385,11 @@
                 "invalid_drep_id",
                 "invalid_gov_action_id",
                 "invalid_asset_class",
+                "invalid_credential",
                 "invalid_time_range",
                 "invalid_epoch_range",
+                "method_not_allowed",
+                "not_acceptable",
                 "drep_not_found",
                 "gov_action_not_found",
                 "spo_not_found",
@@ -1360,13 +1413,16 @@
         "GovActionAnchorContent": {
             "properties": {
                 "abstract": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "motivation": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "rationale": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "references": {
                     "items": {
@@ -1375,7 +1431,8 @@
                     "type": "array"
                 },
                 "title": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1389,7 +1446,8 @@
                     "$ref": "#/definitions/GovActionSummary"
                 },
                 "anchor_content": {
-                    "$ref": "#/definitions/GovActionAnchorContent"
+                    "$ref": "#/definitions/GovActionAnchorContent",
+                    "x-nullable": true
                 },
                 "param_changes": {
                     "items": {
@@ -1398,7 +1456,8 @@
                     "type": "array"
                 },
                 "proposer": {
-                    "$ref": "#/definitions/ProposerSummary"
+                    "$ref": "#/definitions/ProposerSummary",
+                    "x-nullable": true
                 },
                 "tallies": {
                     "items": {
@@ -1426,17 +1485,20 @@
                 "dropped_epoch": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "enacted_epoch": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "expired_epoch": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "formula_id": {
                     "type": "string"
@@ -1444,7 +1506,8 @@
                 "ratified_epoch": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "state": {
                     "$ref": "#/definitions/GovActionState"
@@ -1469,21 +1532,25 @@
         "GovActionSummary": {
             "properties": {
                 "abstract": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "anchor_status": {
-                    "$ref": "#/definitions/AnchorStatus"
+                    "$ref": "#/definitions/AnchorStatus",
+                    "x-nullable": true
                 },
                 "bech32": {
                     "type": "string"
                 },
                 "deposit": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "expires_epoch": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "id": {
                     "type": "string"
@@ -1491,7 +1558,8 @@
                 "last_votable_epoch": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "lifecycle": {
                     "$ref": "#/definitions/GovActionLifecycle"
@@ -1500,13 +1568,16 @@
                     "$ref": "#/definitions/ChainPoint"
                 },
                 "return_address": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "title": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "treasury_amount": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "type": {
                     "$ref": "#/definitions/GovActionType"
@@ -1543,7 +1614,8 @@
             "description": "One published formula. `sql` is the statement the server actually executes, inlined from the same embed the query path reads, so the documented formula cannot drift from the served number. Exactly one of `sql_file` and `sql_object` is set, so every formula_id resolves to something a reader can go and look at. `params` names the positional placeholders in bind order.",
             "properties": {
                 "denominator": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "edge_cases": {
                     "items": {
@@ -1570,7 +1642,8 @@
                     "type": "string"
                 },
                 "null_when": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "params": {
                     "items": {
@@ -1582,13 +1655,16 @@
                     "type": "string"
                 },
                 "sql": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "sql_file": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "sql_object": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "version": {
                     "maximum": 9223372036854775807,
@@ -1623,7 +1699,8 @@
                     "type": "integer"
                 },
                 "next_cursor": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "offset": {
                     "maximum": 9223372036854775807,
@@ -1633,7 +1710,8 @@
                 "total": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1657,7 +1735,8 @@
                     "type": "integer"
                 },
                 "next_cursor": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "offset": {
                     "maximum": 9223372036854775807,
@@ -1667,7 +1746,8 @@
                 "total": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1691,7 +1771,8 @@
                     "type": "integer"
                 },
                 "next_cursor": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "offset": {
                     "maximum": 9223372036854775807,
@@ -1701,7 +1782,8 @@
                 "total": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1725,7 +1807,8 @@
                     "type": "integer"
                 },
                 "next_cursor": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "offset": {
                     "maximum": 9223372036854775807,
@@ -1735,7 +1818,8 @@
                 "total": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1759,7 +1843,8 @@
                     "type": "integer"
                 },
                 "next_cursor": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "offset": {
                     "maximum": 9223372036854775807,
@@ -1769,7 +1854,8 @@
                 "total": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1793,7 +1879,8 @@
                     "type": "integer"
                 },
                 "next_cursor": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "offset": {
                     "maximum": 9223372036854775807,
@@ -1803,7 +1890,8 @@
                 "total": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1827,7 +1915,8 @@
                     "type": "integer"
                 },
                 "next_cursor": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "offset": {
                     "maximum": 9223372036854775807,
@@ -1837,7 +1926,8 @@
                 "total": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1861,7 +1951,8 @@
                     "type": "integer"
                 },
                 "next_cursor": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "offset": {
                     "maximum": 9223372036854775807,
@@ -1871,7 +1962,8 @@
                 "total": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1895,7 +1987,8 @@
                     "type": "integer"
                 },
                 "next_cursor": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "offset": {
                     "maximum": 9223372036854775807,
@@ -1905,7 +1998,8 @@
                 "total": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1929,7 +2023,8 @@
                     "type": "integer"
                 },
                 "next_cursor": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "offset": {
                     "maximum": 9223372036854775807,
@@ -1939,7 +2034,8 @@
                 "total": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1963,7 +2059,8 @@
                     "type": "integer"
                 },
                 "next_cursor": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "offset": {
                     "maximum": 9223372036854775807,
@@ -1973,7 +2070,8 @@
                 "total": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -1997,7 +2095,8 @@
                     "type": "integer"
                 },
                 "next_cursor": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "offset": {
                     "maximum": 9223372036854775807,
@@ -2007,7 +2106,8 @@
                 "total": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -2031,7 +2131,8 @@
                     "type": "integer"
                 },
                 "next_cursor": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "offset": {
                     "maximum": 9223372036854775807,
@@ -2041,7 +2142,8 @@
                 "total": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -2054,7 +2156,8 @@
         "ParamChangeRow": {
             "properties": {
                 "group": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "param": {
                     "type": "string"
@@ -2074,7 +2177,8 @@
                     "type": "integer"
                 },
                 "hi": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "lo": {
                     "type": "integer"
@@ -2124,13 +2228,15 @@
                 },
                 "participation_rate": {
                     "format": "double",
-                    "type": "number"
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "pool_id": {
                     "type": "string"
                 },
                 "ticker": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "votes_cast": {
                     "maximum": 9223372036854775807,
@@ -2187,7 +2293,8 @@
                     "type": "string"
                 },
                 "status": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "subtitle": {
                     "type": "string"
@@ -2310,15 +2417,18 @@
                 "attest_lag_seconds": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "attestation": {
-                    "$ref": "#/definitions/AttestationStatus"
+                    "$ref": "#/definitions/AttestationStatus",
+                    "x-nullable": true
                 },
                 "drep_distr_epoch": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "epoch_params": {
                     "$ref": "#/definitions/EpochParamsSummary"
@@ -2329,7 +2439,8 @@
                 "metrics_as_of_epoch": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "network": {
                     "type": "string"
@@ -2401,21 +2512,25 @@
                     "type": "string"
                 },
                 "enacted_at": {
-                    "$ref": "#/definitions/ChainPointEpochOnly"
+                    "$ref": "#/definitions/ChainPointEpochOnly",
+                    "x-nullable": true
                 },
                 "enacted_epoch": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "gov_action_id": {
                     "type": "string"
                 },
                 "gov_action_title": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "paid_heuristic": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -2434,10 +2549,12 @@
                     "type": "string"
                 },
                 "enacted_at": {
-                    "$ref": "#/definitions/ChainPointEpochOnly"
+                    "$ref": "#/definitions/ChainPointEpochOnly",
+                    "x-nullable": true
                 },
                 "paid_heuristic": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -2465,7 +2582,8 @@
                 },
                 "participation_rate": {
                     "format": "double",
-                    "type": "number"
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "votes_cast": {
                     "maximum": 9223372036854775807,
@@ -2503,13 +2621,15 @@
         "VoteAnchor": {
             "properties": {
                 "cip100_valid": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "x-nullable": true
                 },
                 "status": {
                     "$ref": "#/definitions/AnchorStatus"
                 },
                 "url": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -2545,7 +2665,8 @@
         "VoteRecord": {
             "properties": {
                 "anchor": {
-                    "$ref": "#/definitions/VoteAnchor"
+                    "$ref": "#/definitions/VoteAnchor",
+                    "x-nullable": true
                 },
                 "cast_at": {
                     "$ref": "#/definitions/ChainPoint"
@@ -2557,7 +2678,8 @@
                     "type": "string"
                 },
                 "gov_action_title": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "gov_action_type": {
                     "$ref": "#/definitions/GovActionType"
@@ -2570,7 +2692,8 @@
                 },
                 "latency_hours": {
                     "format": "double",
-                    "type": "number"
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "revote_count": {
                     "maximum": 9223372036854775807,
@@ -2581,24 +2704,28 @@
                     "$ref": "#/definitions/Vote"
                 },
                 "voter_hot_hash": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "voter_id": {
                     "type": "string"
                 },
                 "voter_name": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "voter_role": {
                     "$ref": "#/definitions/VoterRole"
                 },
                 "voting_power": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "voting_power_epoch": {
                     "maximum": 9223372036854775807,
                     "minimum": -9223372036854775808,
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 }
             },
             "required": [
@@ -2646,17 +2773,20 @@
                 },
                 "ratio": {
                     "format": "double",
-                    "type": "number"
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "role": {
                     "$ref": "#/definitions/VoterRole"
                 },
                 "threshold": {
                     "format": "double",
-                    "type": "number"
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "threshold_param": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "yes_count": {
                     "maximum": 9223372036854775807,
@@ -2691,12 +2821,12 @@
         }
     },
     "info": {
-        "description": "Read-only queries over the Cardano governance record: DReps, governance actions, votes, delegations, the constitutional committee and treasury withdrawals. Every row comes from a view over cardano-db-sync — the only derived object is palmares.drep_metrics, a materialized view whose agreement with the published formulas is asserted by a test — and every published metric carries the id of the formula that produced it, resolvable at /metrics/formulas.",
+        "description": "Read-only queries over the Cardano governance record: DReps, governance actions, votes, delegations, the constitutional committee and treasury withdrawals. Every row comes from a view over cardano-db-sync — the only derived object is palmares.drep_metrics, a materialized view whose agreement with the published formulas is asserted by a test — and every published metric carries the id of the formula that produced it, resolvable at /metrics/formulas. \n\n**Paging.** Every `limit` and `offset` in this document carries the bound the server actually enforces. A `limit` outside its range is clamped silently and the applied value comes back in the response envelope; an `offset` above its maximum is refused with 400 `offset_too_large`. The one exception to the published `limit` ceiling is a CSV export: a request whose `Accept` is `text/csv` and nothing else raises the ceiling to 10000 on the endpoints that produce it (see each route's `produces`), because the point of an export is to leave in one request. \n\n**Nullability.** A field absent from a definition's `required` list is a field this API sends as `null`, not one it omits, and it carries `x-nullable: true` so a generated client types it that way. The 15 such fields that are a bare `$ref` carry the key beside the reference, which a strict Swagger 2.0 reader is entitled to ignore; those are whole nested objects (`attestation` on /status, `verdict` on a dispute, `anchor` on a vote) rather than scalars inside a row.",
         "license": {
             "name": "Apache-2.0"
         },
         "title": "Palmares Query API",
-        "version": "1.4.0"
+        "version": "1.6.0"
     },
     "paths": {
         "/activity": {
@@ -2716,9 +2846,11 @@
                         "type": "string"
                     },
                     {
+                        "default": 20,
+                        "description": "Page size, 20 when omitted. A value outside [1, 100] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 100,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
@@ -2791,6 +2923,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -2803,20 +2953,24 @@
         },
         "/attestations": {
             "get": {
-                "description": "Every attestation one profile has issued about another. One endpoint rather than a route per direction: `subject` is a track record, `issuer` is an issuance history, and both together is one actor's statements about another. \n`date` is the ISSUANCE time and IS bounded by the minting transaction's validity interval. `claimed_period` is SELF-REPORTED and never chain-verified, which is why it is not a filter and not a sort key -- a range query over it would read as though the chain had checked it. Both of its bounds travel or neither. \n`accepted` is the subject's acknowledgement. It filters both ways and has no default, so the unfiltered list is the whole record including claims nobody has accepted. \n`date_from`/`date_to` bound `date`, inclusive; a reversed range is 400 `invalid_time_range` rather than an empty page. Default ordering is date descending.",
+                "description": "Every attestation one profile has issued about another. One endpoint rather than a route per direction: `subject` is a track record, `issuer` is an issuance history, and both together is one actor's statements about another. \n`issuer` IS AN ISSUANCE HISTORY, so it excludes an unaccepted `credential_withdrawal`, and that is the one place the two directions are not symmetric. On the two credential kinds the issuer column is structural rather than authorial: the protocol forces issuer == subject on a binding record (`Mc1`), and it EXEMPTS a withdrawal from the rule that the issuer's user token be spent (`Mf`) -- deliberately, because the case a withdrawal exists for is a profile that claimed somebody else's credential, and that profile's token is held by whoever did it. So a withdrawal is minted on the named CREDENTIAL's proof alone and the profile it names never consented to it. Attributing it to that profile's issuance history would be this API asserting something the chain explicitly does not. \nConsent is `accepted`, the same signal every other kind uses: accepting requires the subject to spend its own user token, and subject == issuer here, so an ACCEPTED withdrawal is one the profile put its token behind and it stays in `issuer`. Nothing is hidden either way -- every withdrawal is reachable by `subject`, on /profiles/{id}/attestations and on /attestations/{id}, where the profile is the thing the record is about rather than its author. \n`date` is the ISSUANCE time and IS bounded by the minting transaction's validity interval. `claimed_period` is SELF-REPORTED and never chain-verified, which is why it is not a filter and not a sort key -- a range query over it would read as though the chain had checked it. Both of its bounds travel or neither. \n`accepted` is the subject's acknowledgement. It filters both ways and has no default, so the unfiltered list is the whole record including claims nobody has accepted. \n`date_from`/`date_to` bound `date`, inclusive; a reversed range is 400 `invalid_time_range` rather than an empty page. Default ordering is date descending.",
                 "parameters": [
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -2917,6 +3071,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -2960,6 +3132,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -2995,6 +3185,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -3016,17 +3224,21 @@
                         "type": "string"
                     },
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -3123,6 +3335,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -3138,17 +3368,21 @@
                 "description": "Every dispute opened against an attestation. `resolved` is `verdict IS NOT NULL` and not a verdict value, because the column is null while a dispute is open -- so `resolved=false` is the open ones and `resolved=true` the CLOSED ones, which is three values and not two: `upheld` and `rejected` are the oracle admin's findings, and `expired` means nobody decided it and its deadline passed, so anyone was free to close it. A client that wants findings only must read the verdict value, not this flag. \n`deposit` is returned to the opener on EVERY outcome: there is no punitive verdict, so losing a dispute costs network fees and nothing else. \nOrdered by `opened_at`, newest first. There is no `order_by`: the list has one chronology, and a second ordering would be a control with no screen behind it.",
                 "parameters": [
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -3198,6 +3432,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -3206,6 +3458,67 @@
                     }
                 },
                 "summary": "Disputes"
+            }
+        },
+        "/disputes/{dispute-id}": {
+            "get": {
+                "description": "One dispute by its asset class, `<policy_id>.<token_name_hex>`. \n`verdict` is null while the dispute is OPEN, and three values when it is closed: `upheld` and `rejected` are the oracle admin's findings, `expired` means the deadline in this dispute's own datum passed with nobody deciding it, at which point anyone was free to close it. `expired` is NOT a finding and must not be rendered as one. \n`deposit` is the lovelace the opener locked, returned on every outcome -- there is no punitive verdict, so losing a dispute costs network fees and nothing else. It is the amount THIS dispute recorded when it was opened, not the oracle's current price: repricing the protocol never moves an open dispute's deposit or its deadline. \n404 `dispute_not_found` when no projection carries that id, which includes an attestation id (the two wear different CIP-67 labels) and an id that exists on chain but has not been projected yet.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "dispute-id",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/DisputeRow"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "Dispute"
             }
         },
         "/drep/{drep-id}": {
@@ -3241,6 +3554,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -3268,17 +3599,21 @@
                         "type": "string"
                     },
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -3343,6 +3678,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -3364,9 +3717,11 @@
                         "type": "string"
                     },
                     {
+                        "default": 200,
+                        "description": "Page size, 200 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
@@ -3420,6 +3775,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -3441,17 +3814,21 @@
                         "type": "string"
                     },
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -3503,6 +3880,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -3524,17 +3919,21 @@
                         "type": "string"
                     },
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -3723,6 +4122,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -3766,6 +4183,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -3787,17 +4222,21 @@
                         "type": "string"
                     },
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -3962,6 +4401,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -3993,6 +4450,24 @@
                     },
                     "404": {
                         "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -4035,6 +4510,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -4050,25 +4543,31 @@
                 "description": "Every headline figure in one request and one transaction: how many DReps there are and in what state, how much stake is parked on the two reserved ledger options against how much is delegated to real DReps, every governance action by type and by state, what is still votable, what closes next, the treasury's requested and enacted totals, the current power leaderboard, and DRep participation epoch by epoch. \nThe DRep counts, the leaderboard rows and the closing-soon rows are /dreps' and /gov-actions' own -- the same queries, so no figure here can disagree with the list it links to. `total_dreps` is the universe /dreps lists by default (registered = active + inactive); `retired_dreps` is published beside it, never inside it, because preprod has 511 retired against 294 registered. \n`power_epoch` is its own field because the ledger writes the DRep stake distribution one epoch behind the tip, so the three lovelace figures are a different moment from everything else and say so. \n`actions_in_flight` is `last_votable_epoch >= epoch`, which is not `state = proposed`: measured 12 against 11, the extra one being an action whose state already reads expired while its window is still open. \nThe treasury is TWO numbers because 83 withdrawals are recorded on preprod and none has been enacted, so one field called `withdrawn` would be either 0 -- true, and reads as no treasury activity -- or the requested total, which is a lie about the word.",
                 "parameters": [
                     {
+                        "default": 10,
+                        "description": "Page size, 10 when omitted. A value outside [1, 50] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 50,
+                        "minimum": 1,
                         "name": "top_limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 5,
+                        "description": "Page size, 5 when omitted. A value outside [1, 20] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 20,
+                        "minimum": 1,
                         "name": "closing_soon_limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 20,
+                        "description": "Page size, 20 when omitted. A value outside [1, 100] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 100,
+                        "minimum": 1,
                         "name": "epochs",
                         "required": false,
                         "type": "integer"
@@ -4096,6 +4595,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -4111,17 +4628,21 @@
                 "description": "One page of /dreps with the four counts its sidebar renders, in a single snapshot. The rows and the total are /dreps' own -- this endpoint adds facets to that list rather than re-deriving it -- and every parameter means exactly what it means there. \nThe three enumerated facets are counted over the applied filter set WITH THAT FACET'S OWN PREDICATE REMOVED, so the sidebar can offer `Retired (511)` while `status=active` is applied. They therefore sum to every registered credential (measured: 805) and not to the 294 the list shows. `power_buckets` is NOT a facet in that sense: it is a range control, so it follows the filter as applied and its counts sum to `total`. \n`reserved` never appears among the statuses: the two reserved ledger options hold stake but no credential, and are published by /pages/dashboard instead.",
                 "parameters": [
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -4309,6 +4830,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -4348,6 +4887,24 @@
                     },
                     "404": {
                         "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -4395,6 +4952,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -4410,17 +4985,21 @@
                 "description": "Every profile the registry has projected from chain: who it says it is, what kind of actor it stands for, and the governance credential it CLAIMS. \n`credential` is a claim and not a proof -- nothing on chain checks that the claimant controls the credential, and the same credential may be claimed by more than one profile. `claimed=true` narrows to the profiles that claim one at all, which is the subset a verification screen has anything to check. \n`credential_is_script` travels beside the string and is DECODED from its CIP-129 header byte, never inferred: a key credential and a script credential can share a hash and are not the same actor. \n`slot` is the only time a projection row carries -- a wall clock stamped at ingest would be re-stamped by every rollback replay -- and it is published raw, because this service holds no slot configuration and a second slot-to-time conversion that can disagree with the chain's is worse than a slot number. \n`q` matches name and description, case-insensitively, with any % or _ the user typed matched literally. Default ordering is registered_at descending.",
                 "parameters": [
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -4500,6 +5079,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -4512,7 +5109,7 @@
         },
         "/profiles/by-credential/{credential}": {
             "get": {
-                "description": "The verify direction: given a DRep credential, which profiles claim it. \n**CIP-129 ONLY.** `drep1y...` (key) and `drep1yw...` (script) are accepted; the CIP-105 form `drep1...` and 56 bare hex characters are REFUSED with 400 `invalid_drep_id`, although every other route here accepts all three. The reason is that neither of those two carries a header byte and `drep` is the HRP for both credential kinds, so neither can say whether the credential is a key or a script -- and the projection stores the full CIP-129 string the datum claimed. Accepting one would mean choosing a header byte to compare against, and choosing the key byte (which the governance routes do, then resolve the row by its 28-byte hash and re-render from db-sync's own has_script) would silently report every script DRep as a key DRep and find no claim for the script profile that exists. There is no row to ask here, so the caller is asked instead. \nA non-canonical bech32 spelling of an accepted form still matches: the id is decoded and re-encoded before it reaches the query. \nPAGED, and `total` is the answer to \"is this contested\": 0 is an unclaimed credential, 1 is a single claim, more than 1 means several profiles claim the same credential and this API does not pick a winner. Ordered OLDEST CLAIM FIRST, by slot, so the first row is deterministically the first claimant rather than whichever row the database returned first.",
+                "description": "The verify direction: given a governance credential, which profiles claim it. \n**ALL THREE CLAIMABLE ROLES.** `drep1y...`, `cc_cold1z...` and `cc_hot1q...` are accepted, each in its key and script form. ADR 0006 makes all three claimable -- the role lives in the CIP-129 header byte rather than in the profile's `kind`, because an Organization may be a DRep and a Committee may hold both committee credentials -- and the write side has always accepted all three. This route accepted only `drep`, so a committee credential the registry already held a claim for answered 400 `invalid_drep_id` (\"Not a DRep identifier\"), which is true of the input and useless to the caller. \n**CIP-129 ONLY.** The CIP-105 form `drep1...` and 56 bare hex characters are REFUSED with 400 `invalid_credential`, although every other route here accepts all three DRep forms. The reason is that neither of those two carries a header byte and `drep` is the HRP for both credential kinds, so neither can say whether the credential is a key or a script -- and the projection stores the full CIP-129 string the datum claimed. Accepting one would mean choosing a header byte to compare against, and choosing the key byte (which the governance routes do, then resolve the row by its 28-byte hash and re-render from db-sync's own has_script) would silently report every script DRep as a key DRep and find no claim for the script profile that exists. There is no row to ask here, so the caller is asked instead. \nAn identifier whose header byte disagrees with its HRP -- a `drep1...` carrying a committee header -- is also refused, rather than being read as either: two different claims about the same 28 bytes give no reason to prefer one. \nA non-canonical bech32 spelling of an accepted form still matches: the id is decoded and re-encoded before it reaches the query. \nPAGED, and `total` is the answer to \"is this contested\": 0 is an unclaimed credential, 1 is a single claim, more than 1 means several profiles claim the same credential and this API does not pick a winner. Ordered OLDEST CLAIM FIRST, by slot, so the first row is deterministically the first claimant rather than whichever row the database returned first.",
                 "parameters": [
                     {
                         "in": "path",
@@ -4521,17 +5118,21 @@
                         "type": "string"
                     },
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -4559,6 +5160,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -4567,6 +5186,67 @@
                     }
                 },
                 "summary": "Profiles claiming a governance credential"
+            }
+        },
+        "/profiles/by-user-token/{asset-class}": {
+            "get": {
+                "description": "The wallet direction: given the CIP-68 USER token a wallet holds, the profile it owns. \nThis is the only question a connected wallet can ask on its own. A profile is identified everywhere else here by its REFERENCE token (`<policy_id>.000643b0<hash>`, the one locked at the profiles validator with the datum), and the token that lands in the owner's wallet is the user half (`<policy_id>.000de140<hash>`). The two differ in their four-byte CIP-67 label and in nothing else. \nBefore this route a client had to do that swap in the browser -- enumerate `wallet.getAssets()`, filter on the policy id from `/status.attestation.policy_id`, rebuild the reference name, then call `/profiles/{id}` -- which is protocol knowledge no frontend should carry. Pass the wallet's asset class as it comes and this does the derivation. \nThe asset class must be `<policy_id_hex>.<token_name_hex>` whose name begins with the user label `000de140`. Anything else -- a reference token, an attestation id (CIP-67 private-use label 1), a dispute id (label 2), `lovelace`, or any unrelated asset -- is 400 `invalid_asset_class`, never an empty result: \"no profile\" for an identifier that could not name one reads as \"you own no profile\". \n404 `profile_not_found` when the derivation succeeds and no projection carries the resulting id. That is the honest answer to \"this wallet holds a token of this policy that the registry has not projected yet\" and to \"this is not a profile token of this registry\" alike -- the policy id is not checked here, because the projection holds only one policy's rows and a foreign policy's token simply finds nothing. \nThe ANSWER IS THE CURRENT OWNER'S ONLY IN THE SENSE THAT THE TOKEN IS: the projection records no holding address (it is built from the registry's own UTxOs, not from wallet balances), so this says \"the profile whose user token this is\", which is what a wallet that just read its own assets already knows to be in its own hands.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "asset-class",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "produces": [
+                    "application/json;charset=utf-8"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/AttestProfileRow"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters; the body carries a machine-readable `code`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "404": {
+                        "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "503": {
+                        "description": "Index not ready: too far behind, no ledger state, or the wrong network",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    }
+                },
+                "summary": "The profile a wallet-held user token owns"
             }
         },
         "/profiles/{profile-id}": {
@@ -4602,6 +5282,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -4623,17 +5321,21 @@
                         "type": "string"
                     },
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -4671,6 +5373,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -4702,6 +5422,24 @@
                     },
                     "404": {
                         "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -4744,9 +5482,11 @@
                         "type": "array"
                     },
                     {
+                        "default": 5,
+                        "description": "Page size, 5 when omitted. A value outside [1, 20] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 20,
+                        "minimum": 1,
                         "name": "limit_per_group",
                         "required": false,
                         "type": "integer"
@@ -4774,6 +5514,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -4795,17 +5553,21 @@
                         "type": "string"
                     },
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -4880,6 +5642,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -4892,7 +5672,7 @@
         },
         "/status": {
             "get": {
-                "description": "What this instance serves, how far behind the chain its index is, and the protocol parameters its published numbers mean something against. `governance.is_ready` is the same verdict /ready gives, so a client needs one request rather than two that can disagree.",
+                "description": "What this instance serves, how far behind the chain its index is, and the protocol parameters its published numbers mean something against. `governance.is_ready` is the same verdict /ready gives, so a client needs one request rather than two that can disagree. \n`epoch_params` is the LEDGER's parameters, not the attestation protocol's. The registry's own oracle parameters -- the dispute deposit a client is about to lock, the dispute timeout its deadline is computed from, and the arbiter who may write a verdict -- live in the oracle UTxO's datum, which only a service with a Cardano provider can read: this one has none by design (it reads `palmares` views over db-sync and never queries the chain), and db-sync is indexed here without `tx_out`, `datum` or `multi_asset`, so the UTxO is not reachable from this database either. interaction-api's /status already reads that datum for `oracle_paused` and is where those numbers are published. \n`attestation.policy_id` is the minting policy every profile, attestation and dispute id in this API is scoped to -- the one a wallet filters its own assets by before calling /profiles/by-user-token. It is null on a governance-only deployment, where the whole `attestation` block is absent.",
                 "produces": [
                     "application/json;charset=utf-8"
                 ],
@@ -4911,6 +5691,24 @@
                     },
                     "404": {
                         "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -4936,17 +5734,21 @@
                         "type": "string"
                     },
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -5047,6 +5849,24 @@
                             "$ref": "#/definitions/ApiError"
                         }
                     },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
                     "503": {
                         "description": "Index not ready: too far behind, no ledger state, or the wrong network",
                         "schema": {
@@ -5059,7 +5879,7 @@
         },
         "/votes": {
             "get": {
-                "description": "Every vote cast, across all three voter roles, with the rationale anchor's outcome and the voter's power at the epoch the action's window closed. One endpoint rather than four per-actor routes: the filters are repeatable, so a DRep's record, an action's votes, a committee member's votes and the global feed are all the same query. \n`voter_id` accepts any identifier form -- drep1y…, cc_cold1…, pool1… or 56 hex characters -- and committee votes are addressed by the COLD credential, the identity that survives a hot-key rotation, with the signing hot key published beside it. \nRe-votes are returned as rows, not hidden: `revote_count` says how many exist for that (voter, action) pair and `is_final` / `is_first` mark which one a verdict or a latency is measured from. preprod's worst pair has 21,626 rows, from the epoch-187 committee stress test. \nThere is no `has_rationale` parameter: it is `anchor_status=valid`, which makes the caller say which of the five anchor outcomes they mean instead of collapsing an unreachable IPFS document into \"no rationale\".",
+                "description": "Every vote cast, across all three voter roles, with the rationale anchor's outcome and the voter's power at the epoch the action's window closed. One endpoint rather than four per-actor routes: the filters are repeatable, so a DRep's record, an action's votes, a committee member's votes and the global feed are all the same query. \n`voter_id` accepts any identifier form -- drep1y…, cc_cold1…, pool1… or 56 hex characters -- and committee votes are addressed by the COLD credential, the identity that survives a hot-key rotation, with the signing hot key published beside it. \nRe-votes are returned as rows, not hidden: `revote_count` says how many exist for that (voter, action) pair and `is_final` / `is_first` mark which one a verdict or a latency is measured from. preprod's worst pair has 21,626 rows, from the epoch-187 committee stress test. \n`is_final=true` is the parameter most clients want and the one that makes this endpoint usable: it keeps one row per (voter, action) -- the vote that counts -- which on preprod turns 3,244,723 rows into 931, and 65,000 pages into 19. `is_final=false` returns only the superseded votes, which is the audit question \"who changed their mind\". Omit it and you get every row, including every re-vote. \nThere is no `has_rationale` parameter: it is `anchor_status=valid`, which makes the caller say which of the five anchor outcomes they mean instead of collapsing an unreachable IPFS document into \"no rationale\".",
                 "parameters": [
                     {
                         "in": "header",
@@ -5068,17 +5888,21 @@
                         "type": "string"
                     },
                     {
+                        "default": 50,
+                        "description": "Page size, 50 when omitted. A value outside [1, 200] is CLAMPED and never refused; the applied value comes back as `limit` in the response envelope, so a clamp is visible rather than silent.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 200,
+                        "minimum": 1,
                         "name": "limit",
                         "required": false,
                         "type": "integer"
                     },
                     {
+                        "default": 0,
+                        "description": "Rows to skip. A negative value clamps to 0; above 10000 the request is REFUSED with 400 `offset_too_large` rather than clamped, because a clamped deep offset would serve a different page than the one asked for. Use the cursor-paged /activity feed for a deep walk.",
                         "in": "query",
-                        "maximum": 9223372036854775807,
-                        "minimum": -9223372036854775808,
+                        "maximum": 10000,
+                        "minimum": 0,
                         "name": "offset",
                         "required": false,
                         "type": "integer"
@@ -5202,6 +6026,12 @@
                         "type": "string"
                     },
                     {
+                        "in": "query",
+                        "name": "is_final",
+                        "required": false,
+                        "type": "boolean"
+                    },
+                    {
                         "enum": [
                             "cast_at",
                             "voting_power",
@@ -5244,6 +6074,24 @@
                     },
                     "404": {
                         "description": "Well-formed request naming something that does not exist",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "405": {
+                        "description": "That method is not served on this path",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "406": {
+                        "description": "No media type in `Accept` is one this route produces; compare `produces`",
+                        "schema": {
+                            "$ref": "#/definitions/ApiError"
+                        }
+                    },
+                    "500": {
+                        "description": "A bug here. `internal_error`, and never a condition the request can fix",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }

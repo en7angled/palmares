@@ -6,10 +6,15 @@ module Palmares.WebAPI.Utils
   , requirePgConnStr
   , requireEnv
   , addSharedSwaggerDescriptions
+  , markNullableFields
   , escapeLikePattern
   ) where
 
 import Control.Lens ((&), (?~), at, mapped)
+import Data.Aeson (Value (Array, Bool, Object, String))
+import Data.Aeson.Key qualified as Key
+import Data.Aeson.KeyMap qualified as KM
+import Data.Foldable (toList)
 import Data.Swagger (Swagger, description, definitions)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -70,6 +75,71 @@ escapeLikePattern =
   T.replace "_" "\\_"
     . T.replace "%" "\\%"
     . T.replace "\\" "\\\\"
+
+-- | Publish every @Maybe@ field as nullable, by adding @x-nullable: true@ to its property schema.
+--
+-- __Why this is a pass over the encoded document and not a 'Data.Swagger.SchemaOptions' setting.__
+-- swagger2's @Schema@ record (2.8.9, @Data.Swagger.Internal@) has no extension field at all — the
+-- constructor is title\/description\/required\/allOf\/properties\/additionalProperties\/
+-- discriminator\/readOnly\/xml\/externalDocs\/example\/maxProperties\/minProperties\/paramSchema and
+-- nothing else — so there is no value of any swagger2 type that encodes an @x-@ key, and
+-- @SchemaOptions@ carries only the four name modifiers. The alternative to this pass is a
+-- hand-written @ToSchema@ instance per DTO that post-processes its own properties, which is 60-odd
+-- instances to say one thing.
+--
+-- __What makes it correct rather than a guess: absence from @required@ IS the @Maybe@.__
+-- @genericDeclareNamedSchema@ puts a record field in @required@ unless its type is @Maybe a@ — that
+-- is the only thing that takes a field out of the list — so the document already carries the
+-- distinction and this pass copies it into the one key a client codegen reads. Verified by value on
+-- the committed document: @StatusResponse.required@ names five of its nine properties, and the four
+-- it omits (@attest_lag_seconds@, @attestation@, @drep_distr_epoch@, @metrics_as_of_epoch@) are
+-- exactly the four @Maybe@ fields of the Haskell record.
+--
+-- __Why it matters.__ In Swagger 2.0 absence from @required@ permits the key to be OMITTED; it does
+-- not sanction a @null@ value. Every encoder in this repo always EMITS the key, with @null@ — the
+-- shape @UnitTests.GovDto@ pins — so a generated TypeScript client typed those fields as
+-- non-optional and non-null and threw on the first row that had one. 127 properties across 61
+-- definitions were in that state, @DRepSummary.given_name@ and @Page.total@ among them.
+--
+-- __The one case this cannot express, stated rather than hidden.__ 15 of the 127 are a bare
+-- @{"$ref": …}@ (@StatusResponse.attestation@, @DisputeRow.verdict@, @VoteRecord.anchor@, …), and a
+-- Swagger 2.0 reader is entitled to ignore any sibling of @$ref@ — the same limit
+-- 'addSharedSwaggerDescriptions' records for @AttestationType@'s description. The key is written
+-- anyway, because the generators that read @x-nullable@ at all read it there too, and because the
+-- alternative — rewriting each into @{"x-nullable": true, "allOf": [{"$ref": …}]}@ — changes the
+-- shape of 15 properties in the frontend's codegen input to fix a case where a @null@ is a whole
+-- absent object rather than a field inside a row. If a generator is ever shown to need the wrapper,
+-- it belongs here, in this function, and nowhere else.
+--
+-- The walk is recursive and keyed on @type: "object"@ plus a @properties@ object, so it also covers
+-- an inline schema under @paths@ if one ever appears (today there are none: measured, every object
+-- with @properties@ in the document is under @definitions@). The @type@ guard is what keeps a DTO
+-- field that happens to be NAMED @properties@ or @required@ from being read as schema structure —
+-- a property's value is always a schema object, never the string @"object"@.
+markNullableFields :: Value -> Value
+markNullableFields = go
+  where
+    go (Object o) = Object (markProperties (KM.map go o))
+    go (Array xs) = Array (fmap go xs)
+    go v = v
+
+    markProperties o
+      | Just (String "object") <- KM.lookup "type" o,
+        Just (Object props) <- KM.lookup "properties" o =
+          KM.insert "properties" (Object (KM.mapWithKey (markUnlessRequired (requiredNames o)) props)) o
+      | otherwise = o
+
+    requiredNames o = case KM.lookup "required" o of
+      Just (Array rs) -> [t | String t <- toList rs]
+      _ -> []
+
+    markUnlessRequired req k v
+      | Key.toText k `elem` req = v
+      | Object p <- v = Object (KM.insert "x-nullable" (Bool True) p)
+      -- A property schema is always an object in a swagger2-generated document; anything else is
+      -- left exactly as it was rather than wrapped, because this pass must not be the thing that
+      -- invents a schema.
+      | otherwise = v
 
 -- | Add descriptions to shared Cardano/domain type definitions in a Swagger spec.
 -- Call this in both interaction-api and query-api to keep descriptions consistent.

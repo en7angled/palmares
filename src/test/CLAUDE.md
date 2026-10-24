@@ -43,6 +43,10 @@ The governance layer is views, not Haskell, so its tests are SQL:
 - `sql/checks/*.sql` run `ASSERT`s against a real preprod db-sync and are the authority on view
   correctness. They pin exact values measured on-chain; when one fails, first ask whether the chain moved
   before assuming the view broke.
+  CI runs the same files against the empty skeleton through `scripts/check_sql_checks.sh`, which
+  rewrites each condition to `TRUE OR <condition>` so the block runs to the end: that proves every
+  identifier in all 135 conditions still resolves against the schema, and proves nothing about any
+  number. The against-preprod run is still the one that signs them.
 - `test/fixtures/dbsync-skeleton.sql` creates empty stand-ins for the db-sync tables the views read, so the
   suite needs only an **empty PostgreSQL** rather than a synced db-sync — not no database at all: 85 cases
   connect to one, and without `PALMARES_TEST_PG_CONN_STR` they fail in 14 seconds looking like a broken

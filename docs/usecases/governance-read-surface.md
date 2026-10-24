@@ -1532,7 +1532,20 @@ lovelace — about 46% of preprod's delegated stake, more than every real DRep c
 to ask for the power series **without** `delegator_count`. There is no parameter to drop that
 column. Narrowing `from_epoch`/`to_epoch` helps but does not get under a second.
 
-### G-4. `/votes` cannot filter to final votes, so "this DRep's votes" is unrenderable at scale
+### G-4. ~~`/votes` cannot filter to final votes~~ CLOSED — and it is the parameter that makes the endpoint usable
+
+> **Closed 2026-10-24: `?is_final=true`.** One row per (voter, action) — the vote that counts. On
+> preprod that is **3,244,723 rows → 931**, and 65,000 pages → 19.
+>
+> Expressed the obvious way, `WHERE seq_last = 1`, the same filter costs **7,058 ms**, because a
+> window column is not pushdown-safe and Postgres must compute the window over the whole corpus
+> before it can test it. It reads the pre-aggregation instead and costs **2.4 ms**.
+>
+> **Deep pages WITHOUT the filter are still slow** — 13 s at offset 1000, 22 s at offset 10000 — and
+> that is a data property, not a query shape: a page of 100 stress-test votes belongs to 70–150
+> partitions of ~20,000 rows each, so `revote_count` for one row is a count over ~20,000 siblings and
+> any partition-complete restriction must read 1.5–3.2 M rows. The shallow pages did get 3.3× faster.
+> A DRep's voting record is `?voter_id=…&is_final=true`, which is 19 pages, not 65,000.
 
 **What the screen needs:** a DRep's voting record — one row per decision.
 

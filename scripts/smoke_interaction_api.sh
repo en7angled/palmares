@@ -120,4 +120,24 @@ case "$got" in
 esac
 
 echo
+# The router's own refusals, which are the two this API answers with no handler involved.
+#
+# Why they need a live assertion rather than a unit test: 405 and 406 are a `FailFatal` from
+# servant's router, so no `ErrorFormatters` hook can reach them — `ErrorFormatters` has exactly four
+# fields and none of them is the method or the negotiation. They are rewritten by a WAI middleware
+# instead, which means the only thing that proves the middleware is installed, in the right order
+# relative to CORS, and not shadowed by `provideOptions`, is a request to the running service.
+#
+# Both carried a ZERO-BYTE body with no content type at all until this was fixed. A client cannot
+# branch on that, and a client written against the documented `{code, message}` shape crashes on it.
+echo "== the router's refusals carry a code, not an empty body"
+check "GET on a POST-only route is 405" "$(code /expire-dispute)" "405"
+check "the 405 body names method_not_allowed" \
+  "$(curl -s -u "$AUTH" "$API/expire-dispute" | jq -r '.code // "none"')" "method_not_allowed"
+check "an Accept this API cannot satisfy is 406" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -u "$AUTH" -H 'Accept: text/csv' "$API/status")" "406"
+check "the 406 body names not_acceptable" \
+  "$(curl -s -u "$AUTH" -H 'Accept: text/csv' "$API/status" | jq -r '.code // "none"')" "not_acceptable"
+
+echo
 if [ "$fail" = 0 ]; then echo "all checks passed"; else echo "FAILURES above"; exit 1; fi

@@ -19,15 +19,17 @@
 -- assertion, which is the honest failure for a signature change: 'parseClaimCredential' and
 -- 'ClaimWitness' did not exist, and 'spendWithGivenWitness' cannot be written at all against a
 -- 'txMustSpendFromAddress' that takes no witness.
-module UnitTests.WritePath (writePathTests) where
+module UnitTests.WritePath (writePathTests, constructorsOf, GConstructorCount) where
 
 import Control.Exception (displayException)
 import Data.Aeson (encode)
 import Data.ByteString.Lazy.Char8 qualified as BL8
-import Data.List (isInfixOf)
+import Data.Kind (Type)
+import Data.List (isInfixOf, nub)
 import Data.Proxy (Proxy (..))
 import Data.Swagger (ToSchema, toSchema)
 import Data.Text (Text)
+import GHC.Generics (C1, D1, Generic (Rep), (:+:))
 import GeniusYield.TxBuilder (GYTxQueryMonadIO, GYTxSkeleton)
 import GeniusYield.Types
   ( GYAddress,
@@ -117,6 +119,107 @@ nativeScriptA = RequireSignature "e1cbb80db89e292269aeb93ec15eb963dda5176b66949f
 -- | The JSON of a type's generated Swagger schema, as a string to search.
 schemaJson :: forall a. (ToSchema a) => String
 schemaJson = BL8.unpack (encode (toSchema (Proxy :: Proxy a)))
+
+-------------------------------------------------------------------------------
+
+-- * How many constructors a type has, from its own 'Generic' representation
+
+-------------------------------------------------------------------------------
+
+-- | Count the constructors of a sum type.
+--
+-- __Why this exists, in six lines, in a test module.__ This repository pins sum types with
+-- hand-written lists of one value per constructor, and has been bitten by that twice in two weeks:
+-- @PropertyTests.allAdminActions@ carries a comment saying so verbatim (\"this list IS the test, so
+-- an action missing from it is an index mirror and an apply mirror that quietly say nothing\" — D-A
+-- added 'Palmares.DomainTypes.Core.Actions.SetDisputeTimeoutAction' and nothing noticed), and
+-- @UnitTests.InteractionApi@'s own @disputeArms@ called itself \"one value per constructor\" while
+-- missing @ExpireDisputeAction@.
+--
+-- A count read off 'Rep' cannot be forgotten: GHC derives it, so a new constructor changes this
+-- number the moment it is written, and the test that compares it against the list's length fails
+-- before anybody runs the service. That is the difference between a list that documents a trap and
+-- a list that is checked.
+--
+-- Three instances is the whole mechanism: a sum splits, a constructor counts one, the datatype
+-- wrapper passes through. Fields are never visited, so a constructor carrying arguments costs
+-- nothing — which is the case 'Enum'\/'Bounded' cannot serve, and the reason this exists at all.
+--
+-- The kind is written out rather than inferred: the class variable appears in no method type, so
+-- nothing in the declaration would otherwise pin it to the kind 'Rep' has.
+class GConstructorCount (f :: Type -> Type) where
+  gConstructorCount :: Int
+
+instance (GConstructorCount a, GConstructorCount b) => GConstructorCount (a :+: b) where
+  gConstructorCount = gConstructorCount @a + gConstructorCount @b
+
+instance GConstructorCount (C1 meta f) where
+  gConstructorCount = 1
+
+instance (GConstructorCount f) => GConstructorCount (D1 meta f) where
+  gConstructorCount = gConstructorCount @f
+
+-- | The number of constructors of @a@, e.g. @constructorsOf \@TxBuildingException@.
+constructorsOf :: forall a. (Generic a, GConstructorCount (Rep a)) => Int
+constructorsOf = gConstructorCount @(Rep a)
+
+-------------------------------------------------------------------------------
+
+-- * The published error table
+
+-------------------------------------------------------------------------------
+
+-- | Every 'TxBuildingException', with the status and the code the write API publishes for it.
+--
+-- __This is the table the audit asked for, and it is a second, independent spelling of
+-- 'txBuildingExceptionToHttpStatus' on purpose.__ A test that recomputed the status from the
+-- function it is checking would pass on whatever that function happened to return. MEASURED before
+-- this list existed: of the 26 constructors, five had their status or their code asserted anywhere
+-- in the suite and thirteen were not named in it at all — while twelve reached a client through a
+-- @_ = 400@ in the mapping. So the published answer for most of this type was a value nobody had
+-- chosen and nothing could contradict.
+--
+-- The @code@ column is spelled out rather than derived from 'show', for the same reason: the code is
+-- what a client branches on and what the docs tables in @docs\/usecases@ list, so it is a published
+-- name and a rename of the constructor is a BREAKING change that has to show up here.
+--
+-- Rows are in the order the constructors are declared, so this list and the data declaration diff
+-- against each other by eye.
+publishedErrorTable :: [(TxBuildingException, Int, String)]
+publishedErrorTable =
+  [ (ProfileNotFound, 404, "ProfileNotFound"),
+    (WrongProfileType, 400, "WrongProfileType"),
+    (AttestationNotFound, 404, "AttestationNotFound"),
+    (AttestationAlreadyAccepted, 400, "AttestationAlreadyAccepted"),
+    (AttestationOtherMetadataReservedKeys, 400, "AttestationOtherMetadataReservedKeys"),
+    (AttestationPeriodInverted, 400, "AttestationPeriodInverted"),
+    (DepositAddressNotSpendable, 400, "DepositAddressNotSpendable"),
+    (DepositAddressIsScript, 400, "DepositAddressIsScript"),
+    (SubjectProfileNotFound, 404, "SubjectProfileNotFound"),
+    (CredentialMalformed, 400, "CredentialMalformed"),
+    -- The one constructor that carries a field, and the one whose code could have been wrong without
+    -- anybody noticing: `txBuildingExceptionCode` is `takeWhile (/= ' ') . show`, so an applied
+    -- constructor's code is the constructor name and NOT the rendered script hash beside it.
+    (ScriptCredentialHasNoUtxo scriptHashA, 400, "ScriptCredentialHasNoUtxo"),
+    (DisputeNotFound, 404, "DisputeNotFound"),
+    (DisputeAlreadyOpen, 400, "DisputeAlreadyOpen"),
+    (DisputeAlreadyResolved, 400, "DisputeAlreadyResolved"),
+    (DisputeVerdictNotAFinding, 400, "DisputeVerdictNotAFinding"),
+    (AttestationKindIsCredentialBinding, 400, "AttestationKindIsCredentialBinding"),
+    (DisputeNotStaleYet, 400, "DisputeNotStaleYet"),
+    (OracleNotFound, 404, "OracleNotFound"),
+    -- 500 and not 400: an oracle UTxO whose datum this protocol wrote and cannot now parse is a
+    -- fault on our side of the boundary, and there is nothing the caller can change about it. Same
+    -- for `DatumParseError` below.
+    (OracleDatumInvalid, 500, "OracleDatumInvalid"),
+    (ProtocolPaused, 503, "ProtocolPaused"),
+    (DeployedScriptsNotReady, 503, "DeployedScriptsNotReady"),
+    (InvalidAssetClass, 400, "InvalidAssetClass"),
+    (NFTNotFound, 404, "NFTNotFound"),
+    (MultipleUtxosFound, 400, "MultipleUtxosFound"),
+    (DatumParseError, 500, "DatumParseError"),
+    (NoDustFound, 404, "NoDustFound")
+  ]
 
 writePathTests :: TestTree
 writePathTests =
@@ -234,5 +337,28 @@ writePathTests =
       testCase "the issue-attestation request carries no date field" $
         assertBool
           "no date in the request type"
-          (not ("attestation_date" `isInfixOf` schemaJson @ProfileActionType))
+          (not ("attestation_date" `isInfixOf` schemaJson @ProfileActionType)),
+      ---- the whole published error table -------------------------------------------------------
+      --
+      -- Every constructor, by value, with no catch-all on either side. The failure label is the
+      -- code, so a wrong row names itself instead of printing two 26-element lists.
+      testCase "every TxBuildingException serves the status and the code the table publishes" $
+        mapM_
+          ( \(e, status, code) ->
+              assertEqual code (status, code) (txBuildingExceptionToHttpStatus e, txBuildingExceptionCode e)
+          )
+          publishedErrorTable,
+      -- The DOMAIN of the table, structurally. 'constructorsOf' reads the number off the type's
+      -- 'Generic' representation, so a twenty-seventh constructor fails HERE, with the row count it
+      -- expected and the one it found — rather than inheriting a status nobody chose and being
+      -- discovered by a client. This is the assertion the @_ = 400@ made impossible to write.
+      testCase "the table covers every constructor of TxBuildingException, each exactly once" $ do
+        assertEqual
+          "a constructor was added to TxBuildingException and not to publishedErrorTable"
+          (constructorsOf @TxBuildingException)
+          (length publishedErrorTable)
+        assertEqual
+          "two rows publish the same code"
+          (length publishedErrorTable)
+          (length (nub [code | (_, _, code) <- publishedErrorTable]))
     ]

@@ -156,5 +156,37 @@ else
   echo "ok   a FeeConfig field is named only where it is defined and in feeFor"
 fi
 
+# ---------------------------------------------------------------------------------------------
+# No `?` anywhere in the five schema files — not in SQL, not in a string literal, and NOT IN A
+# COMMENT.
+#
+# `Query/Views.hs` applies each of these files WHOLE, with `rawExecute (decodeUtf8 sql) []`, and
+# postgresql-simple reads `?` as a parameter placeholder in the query text it is handed. Comments
+# included: it is a text formatter, not a SQL parser. So a URL in a comment is a fatal boot error.
+#
+# MEASURED, and it cost a full test run to find: two comments gained `/gov-actions?limit=50` while
+# documenting a performance fix, and every one of the ~20 database-backed test cases failed with
+# `FormatError "2 single '?' characters, but 0 parameters"` — a message that names neither the file
+# nor the line, under a first line that reads "palmares schema DDL failed".
+#
+# `sql/indexes/*.sql`, `sql/050_roles.sql` and `sql/checks/*.sql` are deliberately NOT covered: the
+# first two go through `ApplySql.splitStatements`, whose `InComment` state drops comment text before
+# it reaches the driver, and the checks are run by psql. Their comments may hold a `?` and several do.
+#
+# The deeper fix is to apply these five through `splitStatements` as well, which exists and is tested
+# — one function away. It is not taken here because that rewrites the read API's boot path, which is
+# load-bearing (an unchanged restart must not rebuild the schema), to enforce a convention this gate
+# enforces for four lines and no risk.
+echo
+qmarks="$(grep -lE '\?' sql/000_schema.sql sql/010_gov_views.sql sql/020_views.sql sql/030_metrics.sql sql/040_grants.sql 2>/dev/null || true)"
+if [ -n "$qmarks" ]; then
+  echo "FAIL a '?' in a schema file applied whole — postgresql-simple reads it as a placeholder:"
+  echo "$qmarks" | sed 's/^/       /'
+  grep -nE '\?' $qmarks | sed 's/^/         /'
+  fail=1
+else
+  echo "ok   no schema file applied whole contains a '?'"
+fi
+
 if [ "$fail" = 0 ]; then echo "vocabulary OK"; else echo "vocabulary FAILED"; fi
 exit $fail

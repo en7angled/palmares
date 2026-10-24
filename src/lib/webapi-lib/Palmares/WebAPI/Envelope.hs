@@ -131,6 +131,16 @@ instance ToSchema ApiError where
 -- @rate_limited@ — are unreachable in Plan A. They are declared anyway because a code is part of
 -- the published contract and adding one later is a Swagger change; a client that can already
 -- handle @attestation_not_found@ needs no release when attestations land.
+--
+-- __That argument has a limit, and @invalid_asset_class@ was past it.__ A code nothing can produce
+-- is a branch a client writes and never exercises, and after the attestation surface landed this
+-- one was the only member of the 400 group with no site at all: the three asset-class captures parse
+-- through Atlas's own @FromHttpApiData GYAssetClass@, whose failure message is not one of this
+-- repo's tags, so a malformed profile id answered @invalid_parameter@ (measured). It is reachable
+-- now, from @GET \/profiles\/by-user-token\/{asset-class}@, where \"not an asset class of this
+-- registry's CIP-68 user form\" is exactly what it means and nothing else can say it. The three
+-- captures still answer @invalid_parameter@; narrowing them needs a newtype in @offchain-lib@'s
+-- @Core.Types@ with its own parser, which is a wider change than the code's absence justified.
 data ErrorCode
   = -- 400: the request itself is wrong
     InvalidParameter
@@ -143,8 +153,24 @@ data ErrorCode
   | InvalidDrepId
   | InvalidGovActionId
   | InvalidAssetClass
+  | InvalidCredential
   | InvalidTimeRange
   | InvalidEpochRange
+  | -- 405/406: the route exists, the request's method or its @Accept@ does not
+    --
+    -- __Both come out of servant's ROUTER, not out of a handler__, which is why they are the only
+    -- two codes in this enum that no @throwApi@ ever raises: the router builds the response before
+    -- a handler is reached and before 'Palmares.WebAPI.Errors.palmaresErrorFormatters' is
+    -- consulted — servant has no formatter hook for either. They are carried by
+    -- 'Palmares.WebAPI.Errors.refusedRequestMiddleware', which is the only producer.
+    --
+    -- Measured before it: @POST \/dreps@ and @GET \/profiles@ with @Accept: text\/csv@ both answered
+    -- a bare @405@ \/ @406@ with __zero bytes and no content type__, so a browser client calling
+    -- @.json()@ on either threw. @not_acceptable@ is the reachable one of the two in practice — six
+    -- list routes serve CSV and seven do not, and asking the wrong one for it is the mistake
+    -- @docs\/usecases\/api-screen-map.md@ §5.11 records a frontend already making.
+    MethodNotAllowed
+  | NotAcceptable
   | -- 404: the request is well formed and names nothing
     DrepNotFound
   | GovActionNotFound
@@ -206,8 +232,11 @@ errorCodeToHttpStatus = \case
   InvalidDrepId -> 400
   InvalidGovActionId -> 400
   InvalidAssetClass -> 400
+  InvalidCredential -> 400
   InvalidTimeRange -> 400
   InvalidEpochRange -> 400
+  MethodNotAllowed -> 405
+  NotAcceptable -> 406
   DrepNotFound -> 404
   GovActionNotFound -> 404
   SpoNotFound -> 404

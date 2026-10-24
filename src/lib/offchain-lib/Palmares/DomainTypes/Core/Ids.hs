@@ -26,6 +26,7 @@ module Palmares.DomainTypes.Core.Ids
     ccColdIdCip129,
     govActionIdCip129,
     parseGovActionIdCip129,
+    parseStakeAddressBech32,
     poolIdBech32,
     anyVoterIdHex,
     parseDrepIdAny,
@@ -187,6 +188,26 @@ parseGovActionIdCip129 t = case Bech32.decode t of
       Just (txId, ix) <- BS.unsnoc bs ->
         Right (TE.decodeUtf8 (B16.encode txId), ix)
   _ -> Left "invalid_gov_action_id"
+
+-- | Decode the bech32 stake address @cardano-db-sync@ publishes in @stake_address.view@.
+--
+-- Returns the address in its CANONICAL lowercase spelling rather than a decoded payload, because
+-- every consumer of it is a comparison against that very column — @palmares.treasury_withdrawal@'s
+-- @stake_address@, @\/delegations?stake_address=@ — and db-sync writes lowercase. Bech32 is
+-- case-insensitive by BIP-173 and an all-uppercase address decodes fine, so without the fold a
+-- perfectly valid @STAKE_TEST1…@ would resolve to nothing, which reads as "that address received no
+-- withdrawal" rather than "you shouted at me".
+--
+-- 29 bytes is the whole length validation: a reward address is one header byte plus a 28-byte
+-- credential hash, and both HRPs are accepted because the same code serves preprod and mainnet.
+parseStakeAddressBech32 :: Text -> Either Text Text
+parseStakeAddressBech32 t = case Bech32.decode t of
+  Right (hrp, dp)
+    | Bech32.humanReadablePartToText hrp `elem` ["stake", "stake_test"],
+      Just bs <- Bech32.dataPartToBytes dp,
+      BS.length bs == 29 ->
+        Right (T.toLower t)
+  _ -> Left "invalid_stake_address"
 
 -- | CIP-5 stake pool id (@pool1…@) over the 28-byte pool hash.
 --

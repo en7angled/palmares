@@ -6,6 +6,18 @@
 -- these views, two separate join mistakes inflated row counts here (131 actions -> 135, and
 -- 3 committee members -> 1,563). Both were invisible in every other assertion and both corrupted
 -- downstream sums.
+
+-- FIRST, and outside the DO block because PreventInTransactionBlock rejects CONCURRENTLY "from a
+-- function or multi-command string" (the same reason 070 ends with its own refresh).
+--
+-- `gov_action.votes_cast` now reads `palmares.vote_partition` instead of a correlated subselect over
+-- 3.2 M rows — 2,449 ms to 6 ms. That turns the votes_cast assertion below into a comparison between
+-- the MATVIEW and the live view, which is a better check than the one it replaced and a flakier one:
+-- a vote cast between the schema apply and this file would make the two disagree legitimately.
+-- Refreshing here removes that window. If this statement fails because the matview does not exist,
+-- the schema was applied from an older `sql/030_metrics.sql`.
+REFRESH MATERIALIZED VIEW CONCURRENTLY palmares.vote_partition;
+
 DO $$
 DECLARE
   n_actions bigint;

@@ -159,6 +159,7 @@ import Control.Monad (forever)
 import Data.Aeson (eitherDecodeStrict)
 import Data.ByteString.Char8 qualified as BS8
 import Data.Char (isDigit, isHexDigit)
+import Data.List (nub)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -1535,8 +1536,54 @@ voteWhere f =
 -- restriction written as @(voter_id_hash, gov_action_id) IN (SELECT …)@ is 3,340 ms, because a
 -- SubLink is opaque to @qual_is_pushdown_safe@ and the windows are then computed over the whole
 -- corpus before the filter applies. As bound values it is 286 ms. The id list is bound too: the
--- pairs give the pushdown, the ids give exactness — two rows of one partition can both match the
--- pairs while only one of them is on this page.
+-- partition keys give the pushdown, the ids give exactness — two rows of one partition can both
+-- match the keys while only one of them is on this page.
+--
+-- __And the keys are bound as TWO DEDUPLICATED SETS, not as one list of pairs.__ MEASURED on
+-- preprod at epoch 321, stage 4's WALL CLOCK through psql with the cache warm, pairs -> sets
+-- (median of three runs for the first two rows, mean of two for the third):
+--
+--   * @limit=200&offset=0@ (16 actions, 170 voters): 1,509 ms -> 451 ms;
+--   * @limit=100&offset=1000@ (5 actions, 14 voters, 1,513,750 partition rows): 13,183 -> 11,132 ms;
+--   * @limit=200&offset=10000@ (5 actions, 30 voters, 3,243,752 partition rows): 24,777 -> 22,153 ms.
+--
+-- So: a 3.3x on the pages a client actually scrolls, and 12-16% on the deep ones. The wall clock
+-- is the number quoted because @EXPLAIN (ANALYZE)@ cannot measure these statements — its per-row
+-- instrumentation over three WindowAggs and a 100-term filter reported 36,476 ms for the same
+-- offset-1000 statement that takes 13,183 ms unobserved. The plan FACTS below are from EXPLAIN and
+-- are sound; its timings are not comparable to a request.
+--
+-- Why it is faster. (1) @gov_action_id@ is a BASE column of @public.voting_procedure@, so the qual
+-- reaches @gov_idx_voting_procedure_gap@ and the window's input arrives presorted on the
+-- partition's leading columns — an Incremental Sort rather than a 229,632 kB external merge.
+-- @voter_id_hash@ cannot do that: the view DERIVES it as @COALESCE(cold_raw, hot_hash)@, so a qual
+-- on it can only be applied after the @cc_cold_interval@ join. (2) As pairs it was ONE 100-term
+-- OR-chain of two-column equality tests, which is both unindexable and enormous: JIT compiled
+-- 2,114 functions for it (3,914 at 200 pairs), against 331 for the same page as two sets. (3)
+-- Deduplication is what makes the sets small — the offset-1000 page's 100 pairs are 5 actions and
+-- 14 voters — so it is not tidiness, it is the plan size.
+--
+-- The two sets keep the CROSS PRODUCT of the page's partition keys, which is a superset of the
+-- page's own partitions and, measured on both deep pages, exactly the same rows the pairs kept:
+-- 1,513,750 for the offset-1000 page either way, because consecutive stress-test ids are one voter
+-- voting on five actions and the page's pairs are already a full product.
+--
+-- __What is still slow, and why it is NOT the query shape.__ A deep page is still 11-22 s warm,
+-- and over 30 s cold, which is the 503. The page's own partitions hold 1.5-3.2 M of preprod's
+-- 3.24 M vote rows: the epoch-187 committee stress test is 5 actions, each voted by 30-33 cold
+-- credentials about 20,000 times, so @revote_count@ for one of those rows is a count over ~20,000
+-- siblings and @is_final@ a max over the same. Every partition-complete restriction must read them
+-- — a restriction on the ACTION alone keeps MORE (3,243,765 rows), because those five actions are
+-- 99.97% of the corpus, and the primary key cannot be used at all: it is not a partition column,
+-- so @qual_is_pushdown_safe@ keeps it above the WindowAgg, where it makes @is_final@ and
+-- @revote_count@ wrong rather than fast.
+--
+-- The remaining fix is therefore not a better restriction but to stop computing the window per
+-- request: @palmares.vote_partition@ (added for @votes_cast@ and the @is_final@ filter) already
+-- holds those three columns per partition, so a row source for the page that reads them from there
+-- instead of from a WindowAgg would make the restriction a plain primary-key lookup. That trades
+-- the matview's staleness window for the speed, which is a decision rather than a refactor, and it
+-- is why it is not done here.
 listVotes :: VoteFilter -> (VotesOrderBy, SortOrder) -> (Limit, Offset) -> SqlPersistT IO (Page VoteRecord)
 listVotes f (ob, so) (lim, off) = do
   totals <- rawSql ("SELECT count(*)::int" <> baseFrom <> baseWhereSql) baseParams
@@ -1569,6 +1616,12 @@ listVotes f (ob, so) (lim, off) = do
           )
           (map toPersistValue ids)
   let triples = [(i, h, g) | (Single i, Single h, Single g) <- keys] :: [(Int64, Text, Int64)]
+      -- The page's partition keys, as two DEDUPLICATED sets. 'nub' rather than a Set because the
+      -- lists are at most one page long and the order has to be stable: the SQL text is what the
+      -- plan cache is keyed on. See the note above for why the length of these lists is the
+      -- difference between 1,018 ms of JIT and 9,782 ms of it.
+      pageActions = nub [g | (_, _, g) <- triples]
+      pageVoters = nub [h | (_, h, _) <- triples]
 
   items <-
     if null triples
@@ -1578,15 +1631,18 @@ listVotes f (ob, so) (lim, off) = do
           ( "SELECT row_to_json(x)::text FROM ( SELECT "
               <> voteProjection
               <> voteFrom
-              <> " WHERE (v.voter_id_hash, v.gov_action_id) IN ("
-              <> T.intercalate ", " ["(decode(?, 'hex'), ?)" | _ <- triples]
+              <> " WHERE v.gov_action_id IN ("
+              <> T.intercalate ", " ["?" | _ <- pageActions]
+              <> ") AND v.voter_id_hash IN ("
+              <> T.intercalate ", " ["decode(?, 'hex')" | _ <- pageVoters]
               <> ") AND v.voting_procedure_id IN ("
               <> T.intercalate ", " ["?" | _ <- triples]
               <> ") "
               <> orderClause (voteSortSpec ob) so
               <> " ) x"
           )
-          ( concat [[toPersistValue h, toPersistValue g] | (_, h, g) <- triples]
+          ( map toPersistValue pageActions
+              <> map toPersistValue pageVoters
               <> [toPersistValue i | (i, _, _) <- triples]
           )
   pure (Page items (Just total) lim off Nothing)
@@ -2929,7 +2985,8 @@ voteBaseWhere f =
             one "b.time <= ?" (voteFilterTo f),
             one "b.epoch_no >= ?" (voteFilterFromEpoch f),
             one "b.epoch_no <= ?" (voteFilterToEpoch f),
-            qClause (voteFilterQ f)
+            qClause (voteFilterQ f),
+            finalClause (voteFilterIsFinal f)
           ]
    in ( if null clauses then "" else " WHERE " <> T.intercalate " AND " (map fst clauses),
         concatMap snd clauses
@@ -2971,6 +3028,36 @@ voteBaseWhere f =
               [toPersistValue p, toPersistValue p, toPersistValue p]
             )
           ]
+
+    -- is_final, over BASE columns and with no parameter at all.
+    --
+    -- The set of final votes IS @palmares.vote_partition.last_voting_procedure_id@ — 931 rows on
+    -- preprod, one per (role, voter, action) — so the planner reads the whole matview and probes
+    -- @voting_procedure_pkey@ 931 times rather than testing 3.24 M rows: the semi-join runs
+    -- BACKWARDS, from the tiny side. Same economics as the voter clause above, where the credential
+    -- sets have no outer reference and are hashed once as an InitPlan.
+    --
+    -- __It cannot be a qual on @palmares.vote.seq_last@__, which is what it means. That is a
+    -- WINDOW column, so @qual_is_pushdown_safe@ keeps it above the WindowAgg and both the count
+    -- and the id page would pay the view's whole 3.24 M-row window pass — to serve a filter whose
+    -- entire point is that the answer is 931 rows. MEASURED on preprod: the count is 2.4 ms here
+    -- and 7,058 ms through @seq_last = 1@, same 931 rows; the id page behind it is 598 ms, a
+    -- backward walk of @voting_procedure_pkey@ merge-joined against the 931 ids. The unfiltered
+    -- count, for scale, is 768 ms.
+    --
+    -- @NOT EXISTS@ rather than @NOT IN@: a NULL in the subquery's column would make @NOT IN@
+    -- answer "no rows" instead of "every row", and that failure is silent.
+    --
+    -- The matview's staleness window applies (@PALMARES_VIEW_REFRESH_SECONDS@, 300 s): a vote cast
+    -- since the last refresh is not yet recorded as its partition's final one, so it is missing
+    -- from @is_final=true@ and present in @is_final=false@ until the next tick.
+    finalClause = maybe [] $ \b ->
+      [ ( (if b then "" else "NOT ")
+            <> "EXISTS (SELECT 1 FROM palmares.vote_partition vp \
+               \ WHERE vp.last_voting_procedure_id = v.id)",
+          []
+        )
+      ]
 
     placeholders vs = T.intercalate ", " (map (const "?") vs)
 

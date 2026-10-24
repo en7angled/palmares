@@ -16,9 +16,12 @@
 -- thing that was actually broken.
 module UnitTests.AttestSchema (tests) where
 
+import ChainSyncLogic (parseReadyMaxLagSlots, readyMaxLagSlotsDefault)
+import ChainsyncAPI (ChainSyncState (..), SyncMetrics (..), probeDatabase, readyVerdict)
 import Data.List (sort)
 import Data.Text qualified as T
 import Database.Persist.Sql (ConnectionPool, Entity (..), Filter, Single (..), rawExecute, rawSql, selectList, toPersistValue)
+import Palmares.WebAPI.Envelope (ErrorCode (..))
 import Palmares.DomainTypes.Core.Types
   ( attestationClaimedPeriod,
     attestationId,
@@ -328,7 +331,115 @@ tests =
             [Entity _ ap] ->
               (attestationProjectionClaimedPeriodFrom ap, attestationProjectionClaimedPeriodTo ap)
                 @?= (Nothing, Nothing)
-            _ -> assertFailure ("expected exactly one row, got " <> show (length rows))
+            _ -> assertFailure ("expected exactly one row, got " <> show (length rows)),
+      -- THE READINESS THRESHOLD, pure. `READY_MAX_LAG_SLOTS` was a bare 1200 in `ChainSyncLogic`,
+      -- so `/ready` reported green up to twenty minutes behind the chain (one preprod slot is one
+      -- second) and a Kubernetes probe could not be tuned per environment. Three cases, because the
+      -- parse is the whole of the new behaviour and the default is a published number.
+      testCase "an unset READY_MAX_LAG_SLOTS keeps the measured default of 1200 slots" $ do
+        parseReadyMaxLagSlots Nothing @?= 1200
+        -- Pinned against the constant too, so a future change to the default has to come here and
+        -- to the README row in the same commit rather than silently moving the probe.
+        parseReadyMaxLagSlots Nothing @?= readyMaxLagSlotsDefault,
+      testCase "a set READY_MAX_LAG_SLOTS overrides the default" $
+        parseReadyMaxLagSlots (Just "60") @?= 60,
+      -- Not fail-closed, unlike KUPO_URL and PG_CONN_STR beside it: this value decides the colour of
+      -- a probe and nothing the projector reads or writes, so a typo leaves the documented default
+      -- rather than refusing to boot. Zero and negatives are rejected for the same reason the
+      -- function's comment gives — a healthy projector sits a slot behind the tip between blocks.
+      testCase "a malformed, empty, zero or negative READY_MAX_LAG_SLOTS falls back to the default" $ do
+        parseReadyMaxLagSlots (Just "twenty minutes") @?= readyMaxLagSlotsDefault
+        parseReadyMaxLagSlots (Just "") @?= readyMaxLagSlotsDefault
+        parseReadyMaxLagSlots (Just "1200 slots") @?= readyMaxLagSlotsDefault
+        parseReadyMaxLagSlots (Just "0") @?= readyMaxLagSlotsDefault
+        parseReadyMaxLagSlots (Just "-1") @?= readyMaxLagSlotsDefault,
+      -- THE VERDICT, pure, one case per dependency this service has. Each row below is a shape in
+      -- which the process is running perfectly and `/ready` used to answer 200.
+      testCase "every dependency failure is a 503 with its own code, and only a fresh cursor is ready" $ do
+        let healthy =
+              SyncMetrics
+                { smLocalTip = 137170034,
+                  smBlockchainTip = 137170034,
+                  smLastSyncTime = read "2026-10-24 14:47:15 UTC",
+                  smDbReady = True,
+                  smMigrationsComplete = True,
+                  smChainSyncState = UpToDate
+                }
+            -- 1200 slots and a tick five seconds old: a projector at the tip, mid-sleep.
+            verdict = readyVerdict 1200 5
+        assertEqual "at the tip" Nothing (verdict healthy)
+        assertEqual
+          "a slot or two behind between blocks stays green"
+          Nothing
+          (verdict healthy {smChainSyncState = Behind False, smLocalTip = 137170032})
+        assertEqual
+          "past the threshold"
+          (Just IndexerBehind)
+          (verdict healthy {smChainSyncState = Behind True, smLocalTip = 137168000})
+        assertEqual "the database did not answer" (Just DbUnavailable) (verdict healthy {smDbReady = False})
+        assertEqual
+          "the schema is not this binary's"
+          (Just NotReady)
+          (verdict healthy {smMigrationsComplete = False})
+        assertEqual
+          "Kupo's tip is below our cursor, so the index is the thing that is behind"
+          (Just IndexerBehind)
+          (verdict healthy {smChainSyncState = Ahead})
+        assertEqual
+          "our cursor names a block that is not on the chain"
+          (Just NotReady)
+          (verdict healthy {smChainSyncState = UpToDateButDifferentBlockHash}),
+      -- THE KUPO CASE, and the reason the tick's age had to become a signal. `getBlockchainTip`
+      -- retries inside the tick, so with Kupo unreachable nothing below it runs: the metrics MVar is
+      -- never touched and `chain_sync_state`, `local_tip` and `blockchain_tip` all stand at their
+      -- last good values. The record below is EXACTLY that shape — a perfect `UpToDate` at the tip —
+      -- and it is the one the old handler answered 200 on for as long as Kupo stayed down.
+      testCase "a frozen tick is red even though every number in it says UpToDate — Kupo is gone" $ do
+        let frozen =
+              SyncMetrics
+                { smLocalTip = 137170034,
+                  smBlockchainTip = 137170034,
+                  smLastSyncTime = read "2026-10-24 14:47:15 UTC",
+                  smDbReady = True,
+                  smMigrationsComplete = True,
+                  smChainSyncState = UpToDate
+                }
+        -- The loop sleeps ten seconds when up to date and ten more between Kupo retries, so 1800
+        -- seconds is on the order of a hundred missed ticks.
+        assertEqual "no word from Kupo for half an hour" (Just IndexerBehind) (readyVerdict 1200 1800 frozen)
+        -- And the threshold governs it, so an operator who tightens the probe tightens this too.
+        assertEqual "the same tick, under a 60-slot ceiling" (Just IndexerBehind) (readyVerdict 60 61 frozen)
+        assertEqual "and inside it, still green" Nothing (readyVerdict 60 59 frozen),
+      -- db_ready / migrations_complete, AGAINST A REAL DATABASE. They were `True` literals set in
+      -- `main` before the loop started and reported for the life of the process, so the probe
+      -- claimed a healthy database after the postmaster had restarted underneath it. The four
+      -- answers below are the four a live check can give, and not one of them is reachable from a
+      -- boot-time boolean.
+      testCase "db_ready and migrations_complete are measured, not remembered" $
+        withScratchDb $ \pool -> do
+          -- No schema at all: the one query raises `relation does not exist`, which reads as
+          -- unreachable. Documented on `probeDatabase` — separating "up but unmigrated" from "down"
+          -- would cost a second round trip to change neither the verdict nor the remedy.
+          absent <- probeDatabase pool
+          assertEqual "nothing migrated yet" (False, False) absent
+
+          runPg pool ensureAttestSchema
+          runAttest pool runMigrations
+          -- The table exists and `putStoredPolicyHistory` has not run: the database is up and the
+          -- boot sequence did not finish.
+          unmigrated <- probeDatabase pool
+          assertEqual "tables but no config row" (True, False) unmigrated
+
+          runAttest pool (putStoredPolicyHistory ["beef"])
+          ready <- probeDatabase pool
+          assertEqual "the schema this binary writes" (True, True) ready
+
+          -- A database restored from an older dump under a running projector. This is the case the
+          -- incident would have shown and the one a literal can never produce: the connection is
+          -- fine, and the schema is not one this binary migrates to.
+          runAttest pool (rawExecute "UPDATE chain_sync_config SET schema_version = 1" [])
+          stale <- probeDatabase pool
+          assertEqual "an older schema under a running projector" (True, False) stale
     ]
   where
     columnsIn :: ConnectionPool -> T.Text -> T.Text -> IO [T.Text]

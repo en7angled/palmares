@@ -52,9 +52,17 @@ COPY --from=builder /palmares/attest-sync /app/attest-sync
 # and nothing read it: compose bind-mounts ./config over this path and a cluster supplies both files
 # by env (ATLAS_CORE_CONFIG, DEPLOYED_VALIDATORS_CONFIG). This service needs neither from disk.
 
-# Defaults (overridable)
-ENV KUPO_URL=http://localhost:1442 \
-    PG_CONN_STR="host=postgres user=postgres password=postgres dbname=cexplorer port=5432" \
-    FETCH_BATCH_SIZE=100000
+# ONE default, and the two that were here are deliberately gone.
+#
+# `Main.hs` reads `KUPO_URL` and `PG_CONN_STR` through `requireEnv`, which exists so that a missing
+# value stops the service instead of letting it run against the wrong chain or the wrong database.
+# Baking defaults here defeated exactly that: a container started with no environment resolved
+# `http://localhost:1442` — nothing, inside the container's own namespace — and a database reachable
+# as `postgres/postgres`, and then reported itself healthy while indexing nothing. A fail-closed
+# check whose value is supplied by the image is not fail-closed.
+#
+# `FETCH_BATCH_SIZE` stays because its BINARY default is unusable (10 M slots in one window), so the
+# image's value is the real operating default rather than a shadow of a good one.
+ENV FETCH_BATCH_SIZE=100000
 
 ENTRYPOINT ["/app/attest-sync"]

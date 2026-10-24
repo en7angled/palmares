@@ -457,7 +457,6 @@ executable attest-sync
     , webapi-lib
 
   build-depends:
-    , bytestring
     , deriving-aeson
     , extra
     , monad-logger

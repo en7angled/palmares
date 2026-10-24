@@ -16,14 +16,19 @@ module Palmares.WebAPI.Errors
     errorCodeFromParserMessage,
     genericErrorMessage,
     palmaresErrorFormatters,
+    refusedRequestMiddleware,
+    internalErrorResponse,
   )
 where
 
 import Data.Aeson (encode)
+import Data.ByteString.Char8 qualified as BS8
 import Data.ByteString.Lazy (ByteString)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Network.HTTP.Types (Status (..))
 import Network.HTTP.Types.Header (hContentType)
+import Network.Wai (Middleware, Response, responseHeaders, responseLBS, responseStatus)
 import Palmares.WebAPI.Envelope (ApiError (..), ErrorCode (..), errorCodeFromText, errorCodeToHttpStatus)
 import Servant
 
@@ -38,6 +43,11 @@ mkServantErrBody status body =
     base = case status of
       400 -> err400
       404 -> err404
+      -- The two router statuses. They have no handler that raises them — see 'MethodNotAllowed' —
+      -- but they are in 'errorCodeToHttpStatus' now, and without an arm here a caller that passed
+      -- one of them through 'mkServantErr' would have served a 405 as a 500 by falling through.
+      405 -> err405
+      406 -> err406
       429 -> err429
       500 -> err500
       502 -> err502
@@ -94,8 +104,11 @@ genericErrorMessage = \case
   InvalidDrepId -> "Not a DRep identifier"
   InvalidGovActionId -> "Not a governance action identifier"
   InvalidAssetClass -> "Not an asset class"
+  InvalidCredential -> "Not a CIP-129 governance credential: expected drep1y..., cc_cold1... or cc_hot1..."
   InvalidTimeRange -> "The time range is empty or reversed"
   InvalidEpochRange -> "The epoch range is empty or reversed"
+  MethodNotAllowed -> "That method is not served on this path"
+  NotAcceptable -> "This route cannot produce any of the media types in Accept"
   DrepNotFound -> "No DRep with that identifier"
   GovActionNotFound -> "No governance action with that identifier"
   SpoNotFound -> "No stake pool with that identifier"
@@ -136,3 +149,63 @@ palmaresErrorFormatters =
     fromParserMessage _ _ msg =
       let code = errorCodeFromParserMessage msg
        in mkServantErr (errorCodeToHttpStatus code) code
+
+-- | Give the two refusals servant's ROUTER produces the same @{code, message}@ body as every other
+-- non-2xx response.
+--
+-- __Middleware rather than a formatter, because servant offers no hook for either.__
+-- 'ErrorFormatters' covers a failing URL piece, a failing header and a malformed body — all three
+-- of which happen while a handler is being reached. A 405 and a 406 are decided by the router
+-- BEFORE that: @Verb@'s @AllCTRender@ raises @err406@ when content negotiation finds no match, and
+-- the method check raises @err405@, both as a @FailFatal@ that no formatter is consulted for. There
+-- is no @methodNotAllowedErrorFormatter@ to set.
+--
+-- Measured against the deployed binary: @POST \/dreps@ answered @405@ and
+-- @GET \/profiles?limit=1@ with @Accept: text\/csv@ answered @406@, each with @len=0@ and __no
+-- content type at all__ — so a browser client that does @res.json()@ on a failure path threw a
+-- parse error instead of reading a code. Six list routes serve CSV and seven do not, so the 406 is
+-- a mistake a real client makes rather than a theoretical one.
+--
+-- __The absence of a content type is the test__, and it is deliberately not a status test alone.
+-- Every response this service means to send carries one: a handler's own 4xx goes through
+-- 'mkServantErr', which sets @application\/json@, and a success carries whatever was negotiated.
+-- The router's refusals carry @errHeaders = []@. So rewriting only the content-type-less ones
+-- cannot touch a body a handler built, which a bare @status == 405@ test could.
+--
+-- The body comes from 'mkServantErr' rather than being assembled here, so there is exactly one
+-- place an 'ApiError' is constructed from a code and nothing can drift between the two.
+-- The continuation is @send@ and not WAI's conventional @respond@, because this module imports
+-- 'Servant', which exports a @respond@ of its own ('Servant.Server.UVerb') — same name, unrelated
+-- function, and shadowing it is a warning rather than a bug only because nothing here wants the
+-- other one.
+refusedRequestMiddleware :: Middleware
+refusedRequestMiddleware app req send = app req (send . reshape)
+  where
+    reshape res = case (statusCode (responseStatus res), lookup hContentType (responseHeaders res)) of
+      (405, Nothing) -> refusal MethodNotAllowed
+      (406, Nothing) -> refusal NotAcceptable
+      _ -> res
+    refusal code = serverErrorToResponse (mkServantErr (errorCodeToHttpStatus code) code)
+
+-- | The response warp sends when a request dies of an uncaught exception.
+--
+-- Warp's default is @text\/plain@ with the words @Something went wrong@, and it is produced OUTSIDE
+-- the middleware stack — when the application throws, the continuation 'refusedRequestMiddleware'
+-- wraps is never called, so nothing in WAI can reshape it. @setOnExceptionResponse@ is the only
+-- hook, which is why this is a value for a caller to install rather than another middleware.
+--
+-- A 500 is a bug here and not a condition a client can fix: a database that is unreachable or a
+-- view that a db-sync migration dropped is caught in 'QueryAppMonad.runRead' and served as @503
+-- db_unavailable@. So this is the shape of the last resort, and the reason it exists at all is
+-- that @{code, message}@ is published as the body of EVERY non-2xx response — a client that
+-- special-cases one status because it is the only one that is not JSON has to be told which.
+internalErrorResponse :: Response
+internalErrorResponse = serverErrorToResponse (mkServantErr 500 InternalError)
+
+-- | A 'ServerError' as a WAI 'Response', so one body builder serves both layers.
+serverErrorToResponse :: ServerError -> Response
+serverErrorToResponse e =
+  responseLBS
+    (Status (errHTTPCode e) (BS8.pack (errReasonPhrase e)))
+    (errHeaders e)
+    (errBody e)

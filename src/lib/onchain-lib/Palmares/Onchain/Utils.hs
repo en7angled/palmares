@@ -1,9 +1,13 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 
 -- | On-chain utility functions shared across validators.
--- Provides helpers for untyped lambda conversion, datum/value lookups,
--- output validation, and oracle reading. Minimum lovelace for state outputs
--- comes from the oracle ('opMinUTxOValue'), not from this module.
+-- Provides helpers for untyped lambda conversion, datum/value lookups and
+-- output validation. Minimum lovelace for state outputs comes from the oracle
+-- ('opMinUTxOValue'), not from this module.
+--
+-- __It does NOT read the oracle__, which this sentence claimed for as long as the claim was wrong:
+-- every oracle read goes through 'Palmares.Onchain.Protocol.Lookup' ('readOracleParams', 'feeFor',
+-- 'checkFee'), which is where @K1@ and @K2@ are emitted. Nothing here touches a reference input.
 module Palmares.Onchain.Utils
   ( -- * Helper Functions
     mkUntypedLambda,
@@ -16,13 +20,6 @@ module Palmares.Onchain.Utils
     isGivenInlineDatum,
     unsafeFindOwnInputByTxOutRef,
     isUnbackedDatum,
-
-    -- * Validate and Get
-    checkAndGetCurrentStateDatumAndValue,
-    checkAndGetInlineDatum,
-
-    -- * Asset Class Helpers
-    hasCurrencySymbol,
 
     -- * Inputs Spend TxOutRef Helper Functions
     inputsSpendTxOutRef,
@@ -129,8 +126,12 @@ isTxOutAtIndexWithDatumMinValueAndAddress datum minValue address TxOut {txOutVal
 -- hasTxInAtAddressWithNFT is gone: an `any` over inputs matching address AND NFT, with no caller.
 -- The protocol's two input questions are asked by `spentExactlyOnceFromAddress` (which counts, and
 -- counting is what the multiple-satisfaction guard needs) and by
--- `checkAndGetCurrentStateDatumAndValue` (which returns the datum, not a Bool). An existence check
--- that answers neither is a third shape nothing wanted.
+-- `unsafeFindOwnInputByTxOutRef` (which returns the input, not a Bool). An existence check that
+-- answers neither is a third shape nothing wanted.
+--
+-- This paragraph named `checkAndGetCurrentStateDatumAndValue` as the second of those two routes, and
+-- that is now wrong twice over: it was never the route any validator took, and it has since been
+-- deleted for exactly that reason — see the named-and-gone block at the foot of this module.
 
 {-# INLINEABLE inputsSpendTxOutRef #-}
 inputsSpendTxOutRef :: TxOutRef -> [TxInInfo] -> Bool
@@ -232,6 +233,15 @@ spentExactlyOnceFromAddress address inputs = go inputs 0
 -- The read layer can narrow this further at no on-chain cost, by comparing @attestationDate@ against
 -- the block time of the transaction that carried it; the chain cannot, because the only clock a
 -- validator has is the interval it is being asked to trust.
+--
+-- __And it PERMITS future-dating by the same @maxDateWindow@__, which every paragraph above leaves
+-- implicit by arguing only about back-dating (audit @OC-11g@). The bound is on the interval's width
+-- and the ledger only requires the current slot to lie inside it, so @[now, now + maxDateWindow]@ is
+-- as available as @[now - maxDateWindow, now]@: a date up to 14.4h in the future is accepted. That is
+-- deliberate and it is the price of having one symmetric rule — a validator cannot distinguish "the
+-- builder padded the window" from "the builder is dating this tomorrow", because both are the same
+-- finite interval containing the same current slot. A reader who needs the tighter answer compares
+-- the date against the carrying transaction's block time, per the paragraph above.
 {-# INLINEABLE maxDateWindow #-}
 maxDateWindow :: POSIXTime
 maxDateWindow = POSIXTime 51840000 -- 2 * safeEraTime, in milliseconds
@@ -462,32 +472,37 @@ isUnbackedDatum isOwnKindName stateNFT@(AssetClass (_, tn)) spendingTxOutRef txI
   not (isOwnKindName tn)
     || V1.assetClassValueOf (txOutValue (unsafeFindOwnInputByTxOutRef spendingTxOutRef txInfoInputs)) stateNFT == 0
 
--------------------------------------------------------------------------------
-
--- * Validate and Get - Datum and Value Helper Functions
-
--------------------------------------------------------------------------------
-
-{-# INLINEABLE checkAndGetCurrentStateDatumAndValue #-}
-checkAndGetCurrentStateDatumAndValue :: V1.AssetClass -> Address -> [TxInInfo] -> (Value, BuiltinData)
-checkAndGetCurrentStateDatumAndValue stateToken addr outs =
-  case filter (\(TxInInfo _inOutRef (TxOut {txOutValue, txOutAddress})) -> (txOutValue `geq` V1.assetClassValue stateToken 1) && (addr == txOutAddress)) outs of
-    [TxInInfo _inOutRef out] -> (txOutValue out, checkAndGetInlineDatum out)
-    _ -> traceError "U2" -- Cannot find state NFT at expected address (U2)
-
-{-# INLINEABLE checkAndGetInlineDatum #-}
-checkAndGetInlineDatum :: TxOut -> BuiltinData
-checkAndGetInlineDatum out = case txOutDatum out of
-  OutputDatum da -> getDatum da
-  _ -> traceError "U3" -- Invalid output: expected inline datum (U3)
-
--------------------------------------------------------------------------------
-
--- * Asset Class Helpers
-
--------------------------------------------------------------------------------
-
--- | Check whether an 'AssetClass' belongs to the given 'CurrencySymbol'.
-{-# INLINEABLE hasCurrencySymbol #-}
-hasCurrencySymbol :: AssetClass -> CurrencySymbol -> Bool
-hasCurrencySymbol (AssetClass (cs, _)) cs' = cs == cs'
+-- Three exports are gone from the foot of this module, and they are worth naming because two of them
+-- took a pair of the protocol's trace codes with them.
+--
+-- @checkAndGetCurrentStateDatumAndValue@ (which held @U2@) and @checkAndGetInlineDatum@ (which held
+-- @U3@) were the \"Validate and Get\" pair: find the single input at an address carrying a state
+-- token, and return its value together with its inline datum. The second was called from the first
+-- and from nowhere else, so the two lived or died together — and they died, because no validator
+-- ever called the first. Every state validator is HANDED its own datum by @SpendingScript _ mdatum@
+-- and parses it inline, and reads its own input's value and address through
+-- 'unsafeFindOwnInputByTxOutRef'; the oracle arrives as a reference input through
+-- 'Palmares.Onchain.Protocol.Lookup.readOracleParams'. The pair was a third route nothing took.
+--
+-- __So @U2@ and @U3@ are retired, not reassigned.__ Neither could ever be emitted — the only
+-- @traceError@ sites for them were inside these two functions — so the protocol's code alphabet
+-- loses two letters no operator could ever have read, the same way @K3@ went with the profile
+-- lookups it lived inside. The codes are burnt rather than reused: a trace code is a runbook entry,
+-- and @U0@ and @U1@ above keep their meanings.
+--
+-- @hasCurrencySymbol@ answered \"does this asset class belong to this policy\" and nothing asked it.
+-- It is the untyped ancestor of 'Palmares.Onchain.CIP68.isProtocolRefToken' and of the typed
+-- @is*Id@ predicates beside it, and the upgrade to those was a FIX: the symbol alone is satisfied by
+-- a profile's USER token, which is the hole @Mg@ and @Md4@ were closed over and which
+-- @UnitTests.MintInputs@ pins. Keeping the weaker predicate exported — and prescribed by
+-- `onchain-lib/CLAUDE.md`, which it was — is an invitation to re-open it at the next call site.
+--
+-- __All three were @INLINEABLE@ and unreached, so removing them cannot move a script hash.__ The
+-- PlutusTx plugin compiles the transitive call graph of each @compile [|| … ||]@ splice; @INLINEABLE@
+-- makes a binding's unfolding AVAILABLE to be pulled in, it does not pull it in. A top-level binding
+-- no splice reaches contributes nothing to the UPLC, so deleting it is byte-identical. Measured
+-- rather than argued: @3654f57@ deleted nine dead exports from this module, @CIP68.hs@ and
+-- @Protocol/Lookup.hs@ and did not touch the pinned size table in @UnitTests.ScriptSize@ — all five
+-- scripts came out the same number of bytes. That table's own history says the same thing from the
+-- other side: every entry records which validators did NOT move, and a shared helper only ever moved
+-- the validators that call it.

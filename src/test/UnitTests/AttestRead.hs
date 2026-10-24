@@ -62,7 +62,7 @@ import Palmares.WebAPI.Envelope (Page (..))
 import Query.Attest
   ( attestationById,
     attestationSortSpec,
-    canonicalDrepCredential,
+    canonicalGovCredential,
     credentialIsScript,
     listAttestations,
     listDisputes,
@@ -253,25 +253,25 @@ attestReadTests =
 codecTests :: [TestTree]
 codecTests =
   [ testCase "a CIP-129 key credential canonicalises to itself" $
-      canonicalDrepCredential keyCredential @?= Just keyCredential,
+      canonicalGovCredential keyCredential @?= Just keyCredential,
     testCase "a CIP-129 script credential canonicalises to itself, NOT to the key form" $
-      canonicalDrepCredential scriptCredential @?= Just scriptCredential,
+      canonicalGovCredential scriptCredential @?= Just scriptCredential,
     -- The two renderings are the same 28 bytes, so a codec that dropped the header byte would
     -- make these equal and every assertion below vacuous.
     testCase "the key and script renderings of one hash are different identifiers" $
       assertBool "key and script forms collided" (keyCredential /= scriptCredential),
     testCase "a CIP-105 id is REFUSED: it carries no header byte" $
-      canonicalDrepCredential cip105Credential @?= Nothing,
+      canonicalGovCredential cip105Credential @?= Nothing,
     testCase "56 bare hex characters are REFUSED for the same reason" $
-      canonicalDrepCredential hexCredential @?= Nothing,
+      canonicalGovCredential hexCredential @?= Nothing,
     testCase "garbage is refused" $ do
-      canonicalDrepCredential "" @?= Nothing
-      canonicalDrepCredential "drep_always_abstain" @?= Nothing
-      canonicalDrepCredential "pool1xyz" @?= Nothing,
+      canonicalGovCredential "" @?= Nothing
+      canonicalGovCredential "drep_always_abstain" @?= Nothing
+      canonicalGovCredential "pool1xyz" @?= Nothing,
     -- All-upper-case is a VALID bech32 spelling of the same id (BIP-173 forbids only mixed case),
     -- and going through the parse and back out is what makes it match a stored lower-case one.
     testCase "an upper-case bech32 spelling canonicalises to the stored lower-case form" $
-      canonicalDrepCredential (T.toUpper keyCredential) @?= Just keyCredential,
+      canonicalGovCredential (T.toUpper keyCredential) @?= Just keyCredential,
     testCase "credentialIsScript reads the header byte and never guesses" $ do
       credentialIsScript keyCredential @?= Just False
       credentialIsScript scriptCredential @?= Just True
@@ -377,7 +377,7 @@ byCredentialTests =
       seeded $ \pool -> do
         c <-
           maybe (assertFailure "the canonicaliser refused a valid upper-case id") pure $
-            canonicalDrepCredential (T.toUpper keyCredential)
+            canonicalGovCredential (T.toUpper keyCredential)
         p <- byCredential pool c
         map attestProfileName (pageItems p) @?= ["Alice", "Bob"]
   ]

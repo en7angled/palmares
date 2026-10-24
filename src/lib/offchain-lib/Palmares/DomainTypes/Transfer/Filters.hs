@@ -220,7 +220,11 @@ data VoteFilter = VoteFilter
     voteFilterTo :: Maybe UTCTime,
     voteFilterFromEpoch :: Maybe Int,
     voteFilterToEpoch :: Maybe Int,
-    voteFilterQ :: Maybe Text
+    voteFilterQ :: Maybe Text,
+    -- | @is_final@: keep only each voter's LAST vote on each action, or only the superseded ones.
+    -- The rows already publish the flag; without the filter a client looking for the standing
+    -- verdicts had to page all 3.24 M rows to find the 931 that carry it.
+    voteFilterIsFinal :: Maybe Bool
   }
   deriving stock (Show, Eq)
 
@@ -238,7 +242,8 @@ emptyVoteFilter =
       voteFilterTo = Nothing,
       voteFilterFromEpoch = Nothing,
       voteFilterToEpoch = Nothing,
-      voteFilterQ = Nothing
+      voteFilterQ = Nothing,
+      voteFilterIsFinal = Nothing
     }
 
 drepFilterFromParams ::
@@ -428,7 +433,7 @@ data AttestProfileFilter = AttestProfileFilter
     -- \"claims this\" are different questions, and the first one is what a list facet asks.
     attestProfileFilterClaimed :: Maybe Bool,
     -- | One credential, as the CANONICAL CIP-129 string the projection stores. The handler
-    -- produces it with 'Query.Attest.canonicalDrepCredential' and never from request text
+    -- produces it with 'Query.Attest.canonicalGovCredential' and never from request text
     -- directly, so a non-canonical bech32 spelling of the same credential still matches.
     attestProfileFilterCredential :: Maybe Text,
     -- | Free text against the profile's name and description.

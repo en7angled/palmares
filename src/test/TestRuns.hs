@@ -447,10 +447,12 @@ sendDustToValidator user validator = asUser user $ do
 -- | Lock a UTxO at a validator address carrying a datum that PARSES as that validator's state, but
 -- no protocol token.
 --
--- That combination is what makes it interesting: 'Palmares.TxBuilding.Lookups.getDustUTxOs' selects
--- on the absence of a protocol-policy token, so the cleanup sweep picks this UTxO up as dust and
--- builds a @Cleanup@ spend for it — and then the validator must refuse, because its datum parses.
--- Dust that merely lacks a datum never reaches that branch.
+-- That combination is what makes it interesting, and the reason changed under this comment: the old
+-- 'Palmares.TxBuilding.Lookups.getDustUTxOs' selected on the ABSENCE of a protocol-policy token, so
+-- it offered this UTxO and the validator then refused it — which is the all-or-nothing brick the
+-- selector fix closed. The selector now mirrors @isUnbackedDatum@: this UTxO's datum parses but the
+-- NFT it names is not in its own value, so the validator ALLOWS the sweep and the selector offers
+-- it. Dust that merely lacks a datum is allowed by the same arm, by its first case.
 lockParsingDatumAt :: (GYTxGameMonad m, HasCallStack, ToData a) => User -> GYScript 'PlutusV3 -> a -> m ()
 lockParsingDatumAt user validator datum = asUser user $ do
   skeleton <- txMustLockStateWithInlineDatumAndValue validator datum (valueFromLovelace 2_000_000)
@@ -483,7 +485,8 @@ sendAdaToAddress user addr lovelace = asUser user $ do
 -- that never offers the UTxO — and a @mustFail@ on that refusal says nothing about whether the
 -- validator checks anything at all. That is the mistake 'UnitTests.Oracle' documents for @O1@; these
 -- are the same remedy for @Mc3@, @Mp2@, @Ml@, @Mf@, @A3@, @D1@, @D3@, @P6@ and the three @Cleanup@
--- codes @P0@/@A0@/@D0@.
+-- codes @P7@/@A4@/@D8@. (Those three were written here as @P0@/@A0@/@D0@, which are the NO-DATUM
+-- codes on the other redeemers; under @Cleanup@ an absent datum reaches no trace code at all.)
 
 ------------------------------------------------------------------------------------------------
 
@@ -951,13 +954,14 @@ maliciousUpdateProfileTX gyProfileRefAC newImageURI ownAddrs = do
 
 -- | MALICIOUS: spend REAL protocol state with the permissionless @Cleanup@ redeemer.
 --
--- The dust sweep cannot produce this transaction: 'Palmares.TxBuilding.Lookups.getDustUTxOs' selects
--- only UTxOs carrying no token of the protocol's policy, so a state UTxO is never offered to it. That
--- off-chain filter is also why the inherited suite's five cleanup cases all passed with @Cleanup@
--- effectively unchecked — none of them could reach the on-chain arm with real state in front of it.
+-- The dust sweep cannot produce this transaction: 'Palmares.TxBuilding.Lookups.getDustUTxOs' never
+-- offers a UTxO whose own value backs the state NFT its datum names, so a state UTxO is never
+-- selected. That off-chain filter is also why the inherited suite's five cleanup cases all passed
+-- with @Cleanup@ effectively unchecked — none of them could reach the on-chain arm with real state in
+-- front of it.
 --
 -- What it asserts is the dangerous half of the value-backed guard: a datum the UTxO's own NFT backs
--- is state, and @P0@/@A0@/@D0@ must refuse the sweep. Each validator looks up its own NFT through its
+-- is state, and @P7@/@A4@/@D8@ must refuse the sweep. Each validator looks up its own NFT through its
 -- own datum field, and those fields are all 'PlutusLedgerApi.V1.Value.AssetClass' — @disputeTarget@
 -- in place of @disputeId@ type-checks — so the three cases are three different checks, not one
 -- repeated.

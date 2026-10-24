@@ -184,6 +184,64 @@ AS $$
 $$;
 
 -- ---------------------------------------------------------------------------------------------
+-- palmares.vote_partition — one row per (voter_role, voter_id_hash, gov_action_id), which is
+-- EXACTLY the PARTITION BY of palmares.vote's three window functions.
+--
+-- 931 rows on preprod, over 3,244,723 vote rows. It is the answer to "what does this voter's
+-- record on this action look like", pre-computed: how many times they voted, and which row is the
+-- first and the last of them.
+--
+-- THE SECOND MATERIALIZED VIEW IN THIS SCHEMA, and the bar for that is the one
+-- palmares.drep_epoch_delegators above states: a matview buys a refresh thread and a staleness
+-- window, so the pushdown answer wins whenever there is one. MEASURED, there is not:
+--
+--   * `votes_cast` on palmares.gov_action was a correlated DISTINCT over every vote on the action.
+--     2,449 ms for the 131 actions, 2,048 ms of it the five epoch-187 stress-test actions alone
+--     (648,750-648,755 votes each), which is `/gov-actions` with `limit=50` at 2.5 s and the
+--     `order_by=votes_cast` sort at the same price. Here it is a count over 931 indexed rows.
+--   * `is_final` has no base-column form. It means "the last vote this voter cast on this action",
+--     and for the committee the voter is the COLD credential resolved per vote through
+--     cc_cold_interval (D-24) — so the question cannot be asked of public.voting_procedure alone,
+--     and asked of palmares.vote it costs that view's whole window pass: 7,058 ms for the count of
+--     final votes, against 2.4 ms for the same count as a semi-join against this matview's
+--     `last_voting_procedure_id`.
+--
+-- IDENTICAL BY CONSTRUCTION, not by re-derivation: the sequence numbers are read from
+-- palmares.vote, so there is still exactly one notion of "which vote is final" in this codebase.
+-- `seq_first = 1` and `seq_last = 1` each hold for exactly one row of each partition (they are
+-- ROW_NUMBERs), so the `min()` around them picks that row rather than aggregating anything, and
+-- `vote_rows` is constant within a partition (it is COUNT(*) OVER the same partition).
+--
+-- MEASURED: 8.9 s to build, over the whole view and with no filter. That is the cost this adds to
+-- a refresh tick and to the one boot that rebuilds the schema; Query.Refresh owns the first.
+--
+-- VERIFIED against the number it replaces: `count(*) GROUP BY gov_action_id` here agrees with the
+-- correlated subselect it replaces on all 131 actions, 0 disagreements, including the 28 actions
+-- with no votes (absent here, and a scalar `count(*)` over no rows is 0, not NULL).
+CREATE MATERIALIZED VIEW palmares.vote_partition AS
+SELECT
+  v.voter_role,
+  v.voter_id_hash,
+  v.gov_action_id,
+  max(v.vote_rows) AS vote_rows,
+  min(v.voting_procedure_id) FILTER (WHERE v.seq_first = 1) AS first_voting_procedure_id,
+  min(v.voting_procedure_id) FILTER (WHERE v.seq_last = 1) AS last_voting_procedure_id
+FROM palmares.vote v
+GROUP BY v.voter_role, v.voter_id_hash, v.gov_action_id
+WITH DATA;
+
+-- UNIQUE and on the GROUP BY key, so it is unique by construction: REFRESH MATERIALIZED VIEW
+-- CONCURRENTLY refuses to run without one, and CONCURRENTLY is what keeps /votes and /gov-actions
+-- answering during a rebuild. No column of the key is nullable — `voter_id_hash` is
+-- COALESCE(cold, hot) over two credential tables that a foreign key guarantees.
+CREATE UNIQUE INDEX palmares_idx_vote_partition_pk
+  ON palmares.vote_partition (voter_role, voter_id_hash, gov_action_id);
+
+-- The two reads: `votes_cast` per action, and the /votes `is_final` filter's membership test.
+CREATE INDEX palmares_idx_vote_partition_action ON palmares.vote_partition (gov_action_id);
+CREATE INDEX palmares_idx_vote_partition_last ON palmares.vote_partition (last_voting_procedure_id);
+
+-- ---------------------------------------------------------------------------------------------
 -- palmares.vote_tally — one row per (action, voter role), over FINAL votes only.
 --
 -- `basis = 'cast_votes_only'` is a column rather than a comment because the alternative basis is
@@ -389,29 +447,29 @@ SELECT
   g.prev_gov_action_proposal,
   (SELECT sum(tw.amount) FROM public.treasury_withdrawal tw
    WHERE tw.gov_action_proposal_id = g.id) AS withdrawal_total,
-  -- Final votes only: a re-voted action must not count twice. Counted as DISTINCT VOTERS rather
-  -- than as palmares.vote rows with seq_last = 1, which is the same number by definition — one
-  -- final vote per voter per action — but does not pay for that view's window functions over all
-  -- 3.24 M rows. Measured: 5.7 s for one action through palmares.vote, 0.03 s this way.
+  -- Final votes only: a re-voted action must not count twice. So it is DISTINCT VOTERS, which is
+  -- the same number by definition — one final vote per voter per action — and a voter is a
+  -- partition of palmares.vote, which is what palmares.vote_partition holds one row of.
   --
   -- The committee is counted by COLD credential, like everywhere else: preprod's 648,766 hot keys
   -- resolve to 43 cold ones, so counting hot keys would report a governance action as having been
-  -- voted on by six hundred thousand committee members.
-  (SELECT count(*) FROM (
-     SELECT DISTINCT
-       v.voter_role,
-       CASE v.voter_role
-         WHEN 'DRep' THEN 'd:' || v.drep_voter
-         WHEN 'SPO' THEN 'p:' || v.pool_voter
-         ELSE 'c:' || COALESCE(encode(cold.cold_raw, 'hex'), 'hot:' || v.committee_voter)
-       END AS who
-     FROM public.voting_procedure v
-     LEFT JOIN palmares.cc_cold_interval cold
-       ON cold.hot_key_id = v.committee_voter
-      AND cold.from_tx <= v.tx_id
-      AND (cold.to_tx IS NULL OR cold.to_tx > v.tx_id)
-     WHERE v.gov_action_proposal_id = aw.gov_action_id
-   ) voters) AS votes_cast,
+  -- voted on by six hundred thousand committee members. `voter_id_hash` is already that
+  -- credential, so the count needs no case analysis here.
+  --
+  -- WAS a correlated DISTINCT over public.voting_procedure for each action, with the
+  -- cc_cold_interval join to resolve the committee. MEASURED on preprod: 2,449 ms for the 131
+  -- actions, of which 2,048 ms is the five epoch-187 stress-test actions alone (648,750-648,755
+  -- votes each) and 586 ms the 31 newest. That is the whole of `/gov-actions` with `limit=50` at 2.5 s,
+  -- because the subselect is evaluated per action and `order_by=votes_cast` needs all 131 of them.
+  -- The replacement is a count over 931 rows through palmares_idx_vote_partition_action: 6.0 ms
+  -- for all 131 actions, measured against the pre-aggregation with NO index at all, so that is an
+  -- upper bound.
+  --
+  -- The price is the matview's staleness window (PALMARES_VIEW_REFRESH_SECONDS, 300 s): a vote
+  -- cast since the last refresh is not counted yet, and an action proposed since then reads 0
+  -- rather than vanishing — which is why this is a scalar subselect and not a join.
+  (SELECT count(*) FROM palmares.vote_partition p
+   WHERE p.gov_action_id = aw.gov_action_id) AS votes_cast,
   g.voting_anchor_id
 FROM palmares.action_window aw
 JOIN public.gov_action_proposal g ON g.id = aw.gov_action_id

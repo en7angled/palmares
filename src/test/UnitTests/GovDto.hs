@@ -254,8 +254,11 @@ govDtoTests =
             InvalidDrepId,
             InvalidGovActionId,
             InvalidAssetClass,
+            InvalidCredential,
             InvalidTimeRange,
             InvalidEpochRange,
+            MethodNotAllowed,
+            NotAcceptable,
             DrepNotFound,
             GovActionNotFound,
             SpoNotFound,
@@ -269,11 +272,11 @@ govDtoTests =
             DbUnavailable,
             InternalError
           ]
-          @?= replicate 12 400 <> replicate 7 404 <> [429] <> replicate 3 503 <> [500],
+          @?= replicate 13 400 <> [405, 406] <> replicate 7 404 <> [429] <> replicate 3 503 <> [500],
       -- Every code must be listed above. Without this, adding a code and forgetting it leaves it
       -- untested rather than failing.
       testCase "the status map covers every ErrorCode" $
-        length ([minBound .. maxBound] :: [ErrorCode]) @?= 24,
+        length ([minBound .. maxBound] :: [ErrorCode]) @?= 27,
       -- The decode boundary: this exact object is what Query.Gov's projection builds, so a
       -- renamed view column fails here rather than silently reaching a client as null.
       testCase "queryJson's row shape decodes into SyncStatus" $

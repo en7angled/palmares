@@ -188,6 +188,19 @@ instance IsGYApiError TxBuildingException
 
 -- | Map a 'TxBuildingException' to the appropriate HTTP status code.
 -- Used by the interaction API to return structured error responses.
+--
+-- __TOTAL, and no wildcard arm — that is the fix.__ This ended in @_ = 400@, which is defensible as
+-- a default and indefensible as a MECHANISM. MEASURED on the 26 constructors of
+-- 'TxBuildingException': twelve of them reached a client through that one line, and only five had
+-- their status or their code asserted anywhere in the test suite (thirteen were not named in it at
+-- all) — so a constructor added for a 404 or a 503 inherited a 400 in silence, and nothing could
+-- tell a chosen 400 from an inherited one.
+--
+-- Enumerating every arm costs twelve lines once and buys the one thing a default cannot: GHC reports
+-- a new constructor here, because @-Wall@ is on for every stanza in this project and this function
+-- then has an incomplete pattern — so a new error's status is a decision somebody takes in a
+-- reviewed diff instead of a value nobody picked. @UnitTests.WritePath@ pins the resulting table by
+-- value, which is the half that catches a status being CHANGED rather than forgotten.
 txBuildingExceptionToHttpStatus :: TxBuildingException -> Int
 txBuildingExceptionToHttpStatus ProfileNotFound = 404
 txBuildingExceptionToHttpStatus AttestationNotFound = 404
@@ -203,7 +216,29 @@ txBuildingExceptionToHttpStatus NoDustFound = 404
 txBuildingExceptionToHttpStatus NFTNotFound = 404
 txBuildingExceptionToHttpStatus OracleDatumInvalid = 500
 txBuildingExceptionToHttpStatus DatumParseError = 500
-txBuildingExceptionToHttpStatus _ = 400
+-- The twelve that used to arrive here through @_ = 400@. Every one of them IS a 400 — the request is
+-- the thing that is wrong and the client is the one who can fix it — so the values below are what
+-- the catch-all was already serving. What changed is that they are now written down:
+--
+--   * a 400 and not a 403 for 'DisputeNotStaleYet', because nobody lacks permission — @ExpireDispute@
+--     needs none — the request is simply early, and the deadline is in the dispute's own datum;
+--   * a 400 and not a 404 for 'ScriptCredentialHasNoUtxo', because the script exists and the fix is
+--     to fund it, which is a thing the caller does rather than a thing that is missing;
+--   * a 400 and not a 409 for the three "already" refusals: this API publishes no 409 anywhere, and
+--     introducing one on three constructors would be a new status a client must learn for no new
+--     decision — the @code@ is what distinguishes them and it always has been.
+txBuildingExceptionToHttpStatus WrongProfileType = 400
+txBuildingExceptionToHttpStatus AttestationKindIsCredentialBinding = 400
+txBuildingExceptionToHttpStatus CredentialMalformed = 400
+txBuildingExceptionToHttpStatus (ScriptCredentialHasNoUtxo _) = 400
+txBuildingExceptionToHttpStatus DepositAddressNotSpendable = 400
+txBuildingExceptionToHttpStatus DepositAddressIsScript = 400
+txBuildingExceptionToHttpStatus DisputeAlreadyOpen = 400
+txBuildingExceptionToHttpStatus DisputeAlreadyResolved = 400
+txBuildingExceptionToHttpStatus DisputeVerdictNotAFinding = 400
+txBuildingExceptionToHttpStatus DisputeNotStaleYet = 400
+txBuildingExceptionToHttpStatus InvalidAssetClass = 400
+txBuildingExceptionToHttpStatus MultipleUtxosFound = 400
 
 -- | Stable, machine-readable error code for a 'TxBuildingException' — the
 -- Clients should match on this instead of the human-readable message text,

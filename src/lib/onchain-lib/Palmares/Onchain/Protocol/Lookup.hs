@@ -3,11 +3,24 @@
 -- | The oracle read, and the fee it prices.
 --
 -- Three profile lookups used to live here — @unsafeGetProfile@, @unsafeGetProfileDatumAndValue@ and
--- @unsafeGetProtocolParamsFromProfileRefInput@ — and all three had zero callers. Every validator
--- reads a profile through @Utils.checkAndGetCurrentStateDatumAndValue@ directly, so these were a
--- second way to do it that nothing took. Deleting them also retires trace code @K3@, which existed
--- only inside the third one: it was never reachable, never pinned by a test and named in no
--- document, so the protocol's code alphabet loses a letter nothing could ever have read.
+-- @unsafeGetProtocolParamsFromProfileRefInput@ — and all three had zero callers. Deleting them also
+-- retires trace code @K3@, which existed only inside the third one: it was never reachable, never
+-- pinned by a test and named in no document, so the protocol's code alphabet loses a letter nothing
+-- could ever have read.
+--
+-- __This paragraph used to say they were a second way to do what every validator does \"through
+-- @Utils.checkAndGetCurrentStateDatumAndValue@ directly\", and that was false__ — audit @NEW-OC-5@.
+-- No validator ever called that function either; @git grep@ found its definition, its export and
+-- comments, which is how it came to be deleted in its turn. So the sentence named a THIRD dead route
+-- as the live one, and a reader following it would have gone looking for the protocol's state-reading
+-- convention in a function nothing called.
+--
+-- What each validator actually does, which is the useful statement: it is HANDED its own datum by
+-- @SpendingScript _ mdatum@ and parses it inline, reads its own input's value and address through
+-- @Utils.unsafeFindOwnInputByTxOutRef@, and gets the oracle as a reference input through
+-- 'readOracleParams' below — the one lookup in this module that any validator reaches. A profile is
+-- never read by a sibling validator at all: the one external fact a validator needs is the oracle
+-- token, and that is pinned in its own datum.
 module Palmares.Onchain.Protocol.Lookup
   ( readOracleParams,
     feeFor,

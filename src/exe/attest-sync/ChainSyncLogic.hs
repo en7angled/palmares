@@ -5,6 +5,10 @@
 -- the Kupo indexer.
 module ChainSyncLogic
   ( evaluateChainSyncState,
+    evaluateChainSyncStateWith,
+    readyMaxLagSlotsDefault,
+    parseReadyMaxLagSlots,
+    readyMaxLagSlotsFromEnv,
     reportSyncState,
     CursorCheck (..),
     classifyCursor,
@@ -37,15 +41,56 @@ import Palmares.Storage
     putCursor,
     runAttest,
   )
+import System.Environment (lookupEnv)
+import Text.Read (readMaybe)
 
--- | Slot gap beyond which the local tip is considered "way behind" the chain
--- (drives the 'Behind' flag that selects bulk vs incremental fetching).
-wayBehindThresholdSlots :: Integer
-wayBehindThresholdSlots = 1200
+-- | The slot gap at which the local tip counts as \"way behind\" the chain, and therefore the gap
+-- at which @\/ready@ turns red. The DEFAULT, not the value: @READY_MAX_LAG_SLOTS@ overrides it.
+--
+-- __Why it had to become configurable.__ 1200 slots is twenty minutes at preprod's and mainnet's
+-- one second per slot, and it was a bare constant: a client could be told @ready@ while reading a
+-- projection twenty minutes stale, and a Kubernetes readiness probe could not be tuned per
+-- environment — twenty minutes is a reasonable allowance for a bulk backfill and far too much for a
+-- deployment whose clients read attestations as current. The number is unchanged as the default, so
+-- an operator who sets nothing gets exactly the behaviour measured until now.
+--
+-- The unit is SLOTS because that is what this service measures; query-api's
+-- @PALMARES_READY_MAX_LAG_SECONDS@ / @readyMaxLagDefault@ pair is the same knob in seconds, and at
+-- one slot per second the two scales coincide.
+readyMaxLagSlotsDefault :: Integer
+readyMaxLagSlotsDefault = 1200
 
--- | Compare local and blockchain tips to derive the current sync state.
+-- | 'readyMaxLagSlotsFromEnv' with the environment lookup lifted out, so the parse can be pinned by
+-- a pure test.
+--
+-- Absent, unparseable or non-positive all fall back to the default — the same three lines, and the
+-- same rule, as query-api's @intFromEnv@. Deliberately NOT fail-closed, unlike @KUPO_URL@ and
+-- @PG_CONN_STR@ beside it: those decide what the projector reads and writes, while this decides only
+-- the colour of a probe, and refusing to boot over a typo in it would take a working projector out
+-- of service to protect nothing. Zero and negatives are rejected rather than honoured because a
+-- healthy projector sits one slot behind the tip for a moment after every block, so a threshold of
+-- zero would make @\/ready@ flicker red at the tip.
+parseReadyMaxLagSlots :: Maybe String -> Integer
+parseReadyMaxLagSlots mv = case mv >>= readMaybe of
+  Just n | n > 0 -> n
+  _ -> readyMaxLagSlotsDefault
+
+-- | @READY_MAX_LAG_SLOTS@, defaulting to 'readyMaxLagSlotsDefault'.
+readyMaxLagSlotsFromEnv :: IO Integer
+readyMaxLagSlotsFromEnv = parseReadyMaxLagSlots <$> lookupEnv "READY_MAX_LAG_SLOTS"
+
+-- | Compare local and blockchain tips to derive the current sync state, at the default threshold.
 evaluateChainSyncState :: KupoCheckpoint -> KupoCheckpoint -> ChainSyncState
-evaluateChainSyncState localTip@(KupoCheckpoint localSlot localHeader) blockchainTip@(KupoCheckpoint blockchainSlot blockchainHeader)
+evaluateChainSyncState = evaluateChainSyncStateWith readyMaxLagSlotsDefault
+
+-- | 'evaluateChainSyncState' against a given \"way behind\" threshold in slots.
+--
+-- The threshold is an ARGUMENT rather than the constant for the reason query-api's @readyVerdict@
+-- gives about its own ceiling: a constant inside the decision would make the environment variable
+-- decorative. The two-argument spelling above keeps the default for every caller that configures
+-- nothing, which is what the test suite's fork cases do.
+evaluateChainSyncStateWith :: Integer -> KupoCheckpoint -> KupoCheckpoint -> ChainSyncState
+evaluateChainSyncStateWith wayBehindThresholdSlots localTip@(KupoCheckpoint localSlot localHeader) blockchainTip@(KupoCheckpoint blockchainSlot blockchainHeader)
   | localTip == blockchainTip = UpToDate
   | localSlot == blockchainSlot && localHeader /= blockchainHeader = UpToDateButDifferentBlockHash
   | localSlot < blockchainSlot = Behind (blockchainSlot - localSlot > wayBehindThresholdSlots)

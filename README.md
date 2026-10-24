@@ -128,7 +128,8 @@ cabal test
 
 `PALMARES_FIXTURE_PG_CONN_STR` is optional and points at a synced preprod db-sync; without it the
 epoch-320 metric-fixture gate reports `SKIPPED` inside passing cases, so "all tests passed" does not
-mean that gate ran.
+mean that gate ran. `PALMARES_REQUIRE_FIXTURE_GATE=1` turns that skip into a failure — the preprod
+signing run sets both variables, so "the gate passed" cannot mean "the gate did not run".
 
 Containers, and the read-path stack. Two profiles, matching the two doors of §2:
 
@@ -179,6 +180,7 @@ exits rather than starting with an unsafe default.
 | `KUPO_URL` | required, **fail-closed** — no default: the projector's only view of the chain | attest-sync |
 | `FETCH_BATCH_SIZE` | slots per fetch window; default `10000000` in the binary, `100000` as the images and `compose.yaml` set it | attest-sync |
 | `ROLLBACK_MARGIN` | default `2160` | attest-sync |
+| `READY_MAX_LAG_SLOTS` | default `1200` — the slot gap at which `/ready` turns red, and the same number in seconds bounds how long the projector may go without an answer from Kupo. Unparseable or non-positive falls back to the default rather than failing the boot | attest-sync |
 | `PALMARES_VIEW_REFRESH_SECONDS` | default `300` | query-api |
 | `PALMARES_READY_MAX_LAG_SECONDS` | default `300` — `/ready` red above this | query-api |
 | `PALMARES_AMBER_LAG_SECONDS` | default `120` — UI amber above this | query-api |
@@ -189,6 +191,7 @@ exits rather than starting with an unsafe default.
 | `PALMARES_API` · `KOIOS_API` · `KOIOS_API_TOKEN` | the parity gate's two base URLs and an optional Koios token; `PALMARES_API` is **query-api's** base | admin |
 | `PALMARES_TEST_PG_CONN_STR` | required by `cabal test` — see §10 | test suite |
 | `PALMARES_FIXTURE_PG_CONN_STR` | optional; a synced preprod db-sync for the epoch-320 metric gate — unset, that gate reports `SKIPPED` inside passing cases | test suite |
+| `PALMARES_REQUIRE_FIXTURE_GATE` | optional; any non-empty value makes a skipped epoch-320 fixture case a **failure** rather than a pass. Set it on the preprod signing run; CI sets it alone, on a filtered run, to assert the skip can never read as green | test suite |
 
 `BATCH_SIZE` was removed from this table, from `.env.example` and from `Dockerfile.attest-sync`: it was
 set in three places and read in none.

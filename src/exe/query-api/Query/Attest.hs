@@ -37,11 +37,14 @@
 -- ('profileSortSpec', 'attestationSortSpec'). No request value reaches a clause, not even inside
 -- a @LIKE@ pattern: 'Query.Common.likePat' escapes the user's @%@ and @_@ and the result is bound.
 --
--- __4. The credential lookup accepts CIP-129 only.__ See 'canonicalDrepCredential'.
+-- __4. The credential lookup accepts CIP-129 only.__ See 'canonicalGovCredential'.
 module Query.Attest
   ( -- * The credential codec, strict
-    canonicalDrepCredential,
+    canonicalGovCredential,
     credentialIsScript,
+
+    -- * The CIP-68 pair, read backwards
+    profileRefOfUserToken,
 
     -- * Profiles
     profileSortSpec,
@@ -51,12 +54,18 @@ module Query.Attest
     -- * Attestations
     attestationSortSpec,
     subjectTrackRecordSortSpec,
+    -- | Exported for @UnitTests.QueryHardening@, the same reason "Query.Gov" exports @drepWhere@
+    -- and @voteBaseWhere@: the clause this builds is where @issuer=@ stops attributing an
+    -- unconsented @credential_withdrawal@ to the profile it names, and that is a property of the
+    -- SQL rather than of a row, so it is pinned without a database.
+    attestationWhere,
     listAttestations,
     attestationById,
 
     -- * Disputes
     inlineDisputeLimit,
     listDisputes,
+    disputeById,
   )
 where
 
@@ -64,7 +73,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Database.Persist (Entity (..), PersistField, PersistValue, entityVal, toPersistValue)
 import Database.Persist.Sql (Single (..), SqlPersistT, rawSql)
-import Palmares.DomainTypes.Core.Ids (drepIdCip129, parseDrepIdAny)
+import Palmares.DomainTypes.Core.Ids (parseCredentialRoleCip129, renderCredentialRoleCip129)
 import Palmares.DomainTypes.Core.Types qualified as Core
 import Palmares.DomainTypes.Transfer.Filters
   ( AttestProfileFilter (..),
@@ -89,18 +98,22 @@ import Palmares.Storage
   )
 import Palmares.WebAPI.Envelope (Page (..))
 import Query.Common (Limit, Offset, SortSpec (..), likePat, orderClause)
+import Servant (FromHttpApiData (..))
 
 -- ---------------------------------------------------------------------------------------------
 
 -- * The credential codec, strict
 
--- | The canonical CIP-129 spelling of a DRep credential, or 'Nothing'.
+-- | The canonical CIP-129 spelling of a governance credential, in __any of the three claimable
+-- roles__, or 'Nothing'.
 --
 -- __This is the endpoint the word \"verified\" rests on, so it is deliberately not lenient.__
--- 'parseDrepIdAny' accepts three forms and reports whether the input carried a header byte;
--- only the CIP-129 form does, and this function accepts __only that case__:
+-- 'parseCredentialRoleCip129' accepts only an identifier that carries a header byte whose role
+-- agrees with its HRP, which is exactly the set this lookup can answer about:
 --
---   * @drep1y…@ \/ @drep1yw…@ (CIP-129, 29 bytes, header @0x22@ or @0x23@) — accepted;
+--   * @drep1y…@ \/ @drep1yw…@ (header @0x22@\/@0x23@) — accepted;
+--   * @cc_cold1z…@ \/ @cc_cold1zw…@ (header @0x12@\/@0x13@) — accepted;
+--   * @cc_hot1q…@ \/ @cc_hot1qw…@ (header @0x02@\/@0x03@) — accepted;
 --   * @drep1…@ (CIP-105, the bare 28-byte hash) — __refused__;
 --   * 56 hex characters — __refused__.
 --
@@ -114,15 +127,28 @@ import Query.Common (Limit, Offset, SortSpec (..), likePat, orderClause)
 -- exactly what the datum claimed, which is what 'Palmares.TxBuilding.Conversions.claimCredentialToText'
 -- produced, which is CIP-129.
 --
--- Going through the parse and back out through 'drepIdCip129' rather than comparing the request
--- text is what makes the match canonical: an upper-case or otherwise non-canonical bech32
--- spelling of the same credential still finds its profile, and nothing but a well-formed
--- credential reaches the query.
-canonicalDrepCredential :: Text -> Maybe Text
-canonicalDrepCredential t = case parseDrepIdAny t of
-  Right (Just isScript, raw) -> Just (drepIdCip129 isScript raw)
-  -- Right (Nothing, _) is CIP-105 or bare hex: well-formed, and not a CIP-129 credential.
-  _ -> Nothing
+-- __THE THREE ROLES, and this function used to accept one of them.__ It was @canonicalDrepCredential@
+-- over 'Palmares.DomainTypes.Core.Ids.parseDrepIdAny', whose HRP table is @drep@ alone — so a
+-- committee credential was answered @400 invalid_drep_id@, \"Not a DRep identifier\", which is
+-- literally true of a perfectly good @cc_cold1…@ and tells the caller nothing. ADR 0006 settles
+-- that all three roles are claimable (@ClaimedDRep@ | @ClaimedCCCold@ | @ClaimedCCHot@, and the hot
+-- one deliberately included because the claim\/withdrawal chain already handles rotation), the write
+-- side accepts all three through 'parseCredentialRoleCip129', and the projection stores whatever
+-- 'Palmares.TxBuilding.Conversions.claimCredentialToText' rendered — @cc_cold1…@ for a committee
+-- cold claim. So the read side was refusing to look up a row it already held. Measured against the
+-- deployed binary before the change: @\/profiles\/by-credential\/\<cc_cold1…\>@ and @\<cc_hot1…\>@
+-- both answered @400 invalid_drep_id@.
+--
+-- Going through the parse and back out through 'renderCredentialRoleCip129' rather than comparing
+-- the request text is what makes the match canonical in two senses: an upper-case or otherwise
+-- non-canonical bech32 spelling of the same credential still finds its profile, and the HRP is
+-- re-derived from the header byte rather than echoed — so a @drep1…@ carrying a committee header,
+-- which 'parseCredentialRoleCip129' refuses outright, can never be silently matched against a
+-- committee row.
+canonicalGovCredential :: Text -> Maybe Text
+canonicalGovCredential t =
+  (\(role, isScript, raw) -> renderCredentialRoleCip129 role isScript raw)
+    <$> parseCredentialRoleCip129 t
 
 -- | Whether a stored credential is a script credential, from its header byte.
 --
@@ -130,10 +156,69 @@ canonicalDrepCredential t = case parseDrepIdAny t of
 -- 'Palmares.TxBuilding.Conversions.claimCredentialToText' cannot happen — so a 'Nothing' beside a
 -- non-null @credential@ means the column holds something that writer did not produce, and is
 -- published as \"unknown\" rather than guessed.
+--
+-- __It had the same single-role bug as the lookup above__, and here it was silent rather than a
+-- 400: over @parseDrepIdAny@ this answered 'Nothing' for every @cc_cold1…@ and @cc_hot1…@ in the
+-- column, so a committee profile's @credential_is_script@ was published as \"unknown\" — the one
+-- field @AttestProfileRow@'s own documentation promises a verification UI will never have to guess.
+-- 'parseCredentialRoleCip129' reads the byte for all three roles.
 credentialIsScript :: Text -> Maybe Bool
-credentialIsScript t = case parseDrepIdAny t of
-  Right (Just isScript, _) -> Just isScript
+credentialIsScript t = (\(_, isScript, _) -> isScript) <$> parseCredentialRoleCip129 t
+
+-- ---------------------------------------------------------------------------------------------
+
+-- * The CIP-68 pair, read backwards
+
+-- | The profile reference asset class that a CIP-68 __user__ token names, or 'Nothing'.
+--
+-- __This is the only thing a connected wallet holds.__ A profile is identified everywhere in this
+-- API by its REFERENCE token — @\<policy\>.000643b0\<hash\>@, the one locked at the profiles
+-- validator with the datum — and the token that lands in the owner's wallet is the USER half,
+-- @\<policy\>.000de140\<hash\>@. Nothing on either service accepted a wallet-held identifier, so
+-- \"which profile does my wallet own\" had no route at all: the documented workaround
+-- (@docs\/usecases\/api-screen-map.md@ §5.2) was @wallet.getAssets()@, filter by the policy id from
+-- @\/status.attestation.policy_id@, __reconstruct the reference name in the browser__, then
+-- @GET \/profiles\/{that}@. This function is that reconstruction, moved to the side that owns the
+-- derivation.
+--
+-- __Why it is a four-byte swap and not a hash.__ CIP-67 puts a 4-byte label in front of a shared
+-- 28-byte name, and 'Palmares.Onchain.CIP68.generateRefAndUserTN' builds both halves from the same
+-- bytes: @refTokenPrefixBS \<\> bs@ and @userTokenPrefixBS \<\> bs@. So the two differ in their
+-- first four bytes and in nothing else, and going from one to the other needs no secret, no hash
+-- and no chain read.
+--
+-- __Why the two labels are spelled here rather than imported.__ They live in @onchain-lib@, which
+-- query-api deliberately does not depend on — the cabal stanza says so in a comment: \"No
+-- atlas-cardano and no plutus-ledger-api: this service reads @palmares@ views over db-sync and
+-- never queries the chain\". Importing 'Palmares.Onchain.CIP68' to read two constants would put
+-- @plutus-ledger-api@ on a public read path. The cost is a second copy of two numbers, and it is
+-- paid down by @UnitTests.QueryHardening@, which pins both against CIP-67's published values (100
+-- and 222) and asserts that an attestation id and a dispute id — private-use labels 1 and 2, which
+-- a wallet may well also hold — are refused rather than derived from. A divergence from
+-- @Palmares.Onchain.CIP68@ therefore fails a test rather than returning somebody else's profile.
+--
+-- 'Nothing' for anything that is not a two-part asset class whose name begins with the user label:
+-- the reference token itself (label @000643b0@), an attestation id (private-use label 1), a dispute
+-- id (label 2), @lovelace@, or any other asset the wallet happens to hold. The handler serves that
+-- as @400 invalid_asset_class@, which is a true statement about the input and the only reachable
+-- site for that code in this service.
+profileRefOfUserToken :: Text -> Maybe Core.ProfileRefAC
+profileRefOfUserToken raw = case T.splitOn "." (T.toLower (T.strip raw)) of
+  [policy, name]
+    | Just rest <- T.stripPrefix cip67UserLabelHex name ->
+        -- Re-parsed rather than constructed, so the policy id is validated by Atlas's own codec —
+        -- the same one the `{profile-id}` capture uses — and this function cannot manufacture an
+        -- asset class the rest of the API would not have accepted.
+        either (const Nothing) Just (parseUrlPiece (policy <> "." <> cip67RefLabelHex <> rest))
   _ -> Nothing
+
+-- | CIP-67 label 222, the user half of a CIP-68 pair. Mirrors @userTokenPrefixBS@.
+cip67UserLabelHex :: Text
+cip67UserLabelHex = "000de140"
+
+-- | CIP-67 label 100, the reference half. Mirrors @refTokenPrefixBS@.
+cip67RefLabelHex :: Text
+cip67RefLabelHex = "000643b0"
 
 -- ---------------------------------------------------------------------------------------------
 
@@ -323,7 +408,7 @@ attestationWhere :: AttestationRecordFilter -> (Text, [PersistValue])
 attestationWhere f =
   conjoin
     [ one "attestation_projection.subject_profile_id = ?" (attestationRecordFilterSubject f),
-      one "attestation_projection.issuer_profile_id = ?" (attestationRecordFilterIssuer f),
+      issuedBy (attestationRecordFilterIssuer f),
       inList "attestation_projection.attestation_kind" (attestationRecordFilterKinds f),
       one "attestation_projection.is_accepted = ?" (attestationRecordFilterAccepted f),
       -- Bound as UTCTime against a timestamptz column: the same PersistUTCTime the GYTime
@@ -331,6 +416,47 @@ attestationWhere f =
       one "attestation_projection.attestation_date >= ?" (attestationRecordFilterDateFrom f),
       one "attestation_projection.attestation_date <= ?" (attestationRecordFilterDateTo f)
     ]
+  where
+    -- `issuer=` means "what this profile has SAID", and on one kind the column does not mean that —
+    -- so this clause is narrower than an equality test, and the difference is a correctness fix
+    -- rather than a filter refinement.
+    --
+    -- `Mf` IS CONDITIONAL, and `CredentialWithdrawal` is its one exemption (minting policy,
+    -- ADR 0003). For every other kind the issuer's user NFT must be spent in the minting
+    -- transaction, which is what makes `issuer_profile_id` mean "this profile said so". A
+    -- withdrawal is the one record the profile must NOT be asked for, because the case it exists
+    -- for is a profile that claimed somebody else's credential and whose token is held by whoever
+    -- did it. The on-chain comment states the consequence in as many words: on the two credential
+    -- kinds `attestationIssuer` is STRUCTURAL — `Mc1` forces it to equal the subject, so it names
+    -- the profile the record is ABOUT and "makes no claim about who acted".
+    --
+    -- The read layer was making that claim anyway. `issuer` is documented on GET /attestations as
+    -- "an issuance history", so a withdrawal minted by the credential holder alone was served as
+    -- something the named profile had issued — and the chain cannot be changed to prevent it (the
+    -- protocol is deployed with frozen hashes), which puts the fix exactly here. It is the same
+    -- division of labour `Palmares.Storage.deriveProfileCredential` already documents for a
+    -- withdrawal naming the wrong credential: "the chain permits such a record (Mc3 asks only the
+    -- named credential to consent), so the read layer has to be the one that ignores it".
+    --
+    -- THE CONSENT TEST IS `is_accepted`, which is the one this surface already uses and not a new
+    -- signal. `A5` asks the SUBJECT to spend its user NFT to accept, and `Mc1` makes subject and
+    -- issuer the same profile on a credential record — so an ACCEPTED withdrawal is one the named
+    -- profile put its own token behind, and stays in its issuance history. Only the unaccepted one
+    -- leaves, and it leaves nothing invisible: `Mc1` also means the row is reachable with identical
+    -- content through `subject=`, GET /profiles/{id}/attestations and GET /attestations/{id}, where
+    -- the profile is the thing the record is about rather than its author. Nothing is deleted or
+    -- hidden, which is ADR 0003's whole rule.
+    issuedBy =
+      maybe
+        []
+        ( \pid ->
+            [ ( "attestation_projection.issuer_profile_id = ? \
+                \AND NOT (attestation_projection.attestation_kind = ? \
+                \AND attestation_projection.is_accepted = false)",
+                [toPersistValue pid, toPersistValue Core.CredentialWithdrawal]
+              )
+            ]
+        )
 
 -- | One page of attestations, with a total over the same predicate.
 --
@@ -474,6 +600,29 @@ listDisputes f so (lim, off) = do
   pure (Page (map (toDisputeRow . entityVal) rows) (Just total) lim off Nothing)
   where
     (whereSql, params) = disputeWhere f
+
+-- | One dispute by its asset class. 'Nothing' is the handler's 404.
+--
+-- The same shape as 'profileById', and it exists for the reason a dispute needs a URL of its own:
+-- a notification or a shared link points at ONE dispute, and before this the only ways to reach it
+-- were @GET \/disputes?target=…@ (the list, which needs the attestation id as well) and
+-- @GET \/attestations\/{id}@ (which inlines at most 'inlineDisputeLimit' of them, so a dispute
+-- past the bound was unreachable by id at all). @dispute_not_found@ was declared and unreachable;
+-- this is its site.
+--
+-- Typed 'Core.AttestationAC' because 'Palmares.DomainTypes.Transfer.QueryResponses.DisputeRow'
+-- types @disputeRowId@ that way and both are @GYAssetClass@ — not because a dispute id is an
+-- attestation id. ADR 0006 gives a dispute its own CIP-67 label (private-use label 2) and an
+-- attestation label 1, so the two are distinguishable by value; the capture accepts either
+-- spelling and this query answers for whichever one is actually a dispute, which is a 404 for an
+-- attestation id rather than a wrong row.
+disputeById :: Core.AttestationAC -> SqlPersistT IO (Maybe DisputeRow)
+disputeById did = do
+  rows <-
+    rawSql
+      ("SELECT ?? FROM " <> disputeTable <> " WHERE dispute_projection.dispute_id = ? LIMIT 1")
+      [toPersistValue did]
+  pure (case rows of (r : _) -> Just (toDisputeRow (entityVal r)); [] -> Nothing)
 
 toDisputeRow :: DisputeProjection -> DisputeRow
 toDisputeRow d =

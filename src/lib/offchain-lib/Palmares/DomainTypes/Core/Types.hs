@@ -33,6 +33,7 @@ import Palmares.DomainTypes.Core.Ids
     govActionIdCip129,
     parseDrepIdAny,
     parseGovActionIdCip129,
+    parseStakeAddressBech32,
     poolIdBech32,
   )
 import Palmares.Utils
@@ -293,6 +294,75 @@ instance ToSchema Attestation where
           AesonTypes.defaultOptions
             { AesonTypes.fieldLabelModifier = camelTo2 '_' . dropPrefix "attestation"
             }
+
+-- | The @otherMetadata@ key carrying the governance action an attestation is anchored to —
+-- __ADR 0008__.
+levelOneAnchorActionKey :: Text
+levelOneAnchorActionKey = "palmares:level1_gov_action"
+
+-- | The @otherMetadata@ key carrying the stake address paid by the anchored withdrawal.
+levelOneAnchorAddressKey :: Text
+levelOneAnchorAddressKey = "palmares:level1_stake_address"
+
+-- | An attestation's optional pointer at the level-1 fact it comments on — __ADR 0008__.
+--
+-- The action alone anchors to a governance action; the action plus an address anchors to the
+-- treasury withdrawal that pair names, which is how @palmares.treasury_withdrawal@ is keyed. This is
+-- what links money to delivery: the chain says "address X received N ADA under action G" and the
+-- attestation says "the paying committee confirms milestone 2".
+--
+-- __Nothing on chain checks that the fact exists__, by the specification's own decision (§4.3): a
+-- treasury withdrawal is not an addressable UTxO, so there is no reference input to verify against.
+-- The pointer is confronted with the data at READ time and the API says whether it resolved. A
+-- consumer that renders an unresolved anchor as a payment is claiming something nobody said.
+data LevelOneAnchor = LevelOneAnchor
+  { anchorGovActionId :: Text,
+    anchorStakeAddress :: Maybe Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving
+    (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "anchor", CamelToSnake]] LevelOneAnchor
+
+instance ToSchema LevelOneAnchor where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "anchor")
+
+-- | Read an attestation's level-1 anchor out of its @otherMetadata@ entries — __ADR 0008__.
+--
+-- Three outcomes, and the middle one is the reason this is not a @Maybe@:
+--
+--   * @Right Nothing@ — no anchor. Most attestations: a vendor paid from an organization's budget
+--     has no on-chain payment fact and belongs in the registry anyway (spec §2).
+--   * @Right (Just a)@ — an anchor whose SHAPE is valid. Not a claim that the fact exists.
+--   * @Left msg@ — the keys are present and malformed. Returning @Nothing@ here would publish an
+--     attestation as unanchored while its datum permanently says otherwise, which is the one answer
+--     that is a lie.
+--
+-- The message is prose, not an error code, because the two callers have different vocabularies — the
+-- write API answers in @TxBuildingException@ codes and the read API in 'ErrorCode' — and a shared
+-- domain function that picked one would force the other to re-map a string it did not choose.
+--
+-- Both fields come back in their canonical lowercase spelling (see 'parseStakeAddressBech32'), so
+-- they can be fed straight back into @\/gov-action\/{id}@ and compared against
+-- @palmares.treasury_withdrawal.stake_address@ without a second normalisation nobody would remember.
+parseLevelOneAnchor :: [(Text, Text)] -> Either Text (Maybe LevelOneAnchor)
+parseLevelOneAnchor entries =
+  case (lookup levelOneAnchorActionKey entries, lookup levelOneAnchorAddressKey entries) of
+    (Nothing, Nothing) -> Right Nothing
+    -- An address with no action is not half an anchor: `palmares.treasury_withdrawal` is keyed by
+    -- the PAIR, and one address can be paid by many actions, so there is nothing to resolve.
+    (Nothing, Just _) ->
+      Left $
+        "a level-1 anchor needs its governance action: " <> levelOneAnchorActionKey <> " is missing"
+    (Just action, addr) -> case parseGovActionIdCip129 action of
+      Left _ -> Left $ levelOneAnchorActionKey <> " is not a CIP-129 governance action id (gov_action1…)"
+      Right _ -> case traverse parseStakeAddressBech32 addr of
+        Left _ -> Left $ levelOneAnchorAddressKey <> " is not a bech32 stake address (stake…/stake_test…)"
+        Right addr' -> Right (Just (LevelOneAnchor (T.toLower action) addr'))
+
+-- | The two anchor keys, for a caller that has to filter them out of a raw metadata listing.
+levelOneAnchorKeys :: [Text]
+levelOneAnchorKeys = [levelOneAnchorActionKey, levelOneAnchorAddressKey]
 
 -- | How a dispute ended — the off-chain mirror of
 -- 'Palmares.Onchain.Protocol.Types.Verdict', the same three constructors in the same order.

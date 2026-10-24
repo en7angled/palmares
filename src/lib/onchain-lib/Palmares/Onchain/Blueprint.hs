@@ -129,7 +129,7 @@ mintingPolicyValidatorBlueprint =
       validatorDescription =
         Just
           "The single minting authority for protocol tokens. Parameterised by ProtocolParams (the \
-          \Profiles and Attestations validator script hashes plus the oracle token), which is how \
+          \Profiles, Attestations and Disputes validator script hashes plus the oracle token), which is how \
           \validators authenticate each other. Every minting transaction reads the oracle UTxO as a \
           \reference input and is refused while the protocol is paused. Token names are derived \
           \deterministically from a seed TxOutRef, which must be spent in the same transaction, so a \
@@ -379,7 +379,12 @@ oracleValidatorBlueprint =
           \same address with at least the same value; only the datum may change. This is how the \
           \protocol is paused, repriced (fees, minimum UTxO, and the dispute deposit for NEW \
           \disputes — an open dispute's deposit is recorded in its own datum and cannot be changed \
-          \from here) or re-keyed without redeploying a validator. Re-keying is OracleSetAdmin for \
+          \from here), retimed or re-keyed without redeploying a validator. Retiming is \
+          \opDisputeTimeoutMs, the sixth field and the one with teeth: it decides how long after \
+          \opening a dispute must stand before ANYONE may close it as VerdictExpired, and like the \
+          \deposit it applies to NEW disputes only, because each dispute's own staleAfter deadline is \
+          \computed when it opens and carried in its datum. It must be strictly positive — a zero \
+          \timeout would make a dispute expirable in the block after it opened. Re-keying is OracleSetAdmin for \
           \the admin and OracleSetArbiter for the arbiter, and BOTH SIDES must prove control: the \
           \outgoing one authorises, the incoming one proves it exists and is held, so a handover to \
           \a credential nobody controls cannot be made by mistake. A credential still controlled is \

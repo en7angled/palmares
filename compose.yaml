@@ -318,6 +318,10 @@ services:
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
       FETCH_BATCH_SIZE: "${FETCH_BATCH_SIZE:-100000}"
       ROLLBACK_MARGIN: "${ROLLBACK_MARGIN:-2160}"
+      # Declared so the knob is reachable from `.env`: compose passes nothing through that it does
+      # not name here, so without this line an operator setting it would see no effect. The default
+      # is the binary's own, so this changes no behaviour.
+      READY_MAX_LAG_SLOTS: "${READY_MAX_LAG_SLOTS:-1200}"
     volumes:
       # The deployed-validators config, for the minting policy hash it follows. Same mount and same
       # reason as interaction-api's: written by `admin deploy-reference-scripts`, absent until then.

@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Keeping @palmares.drep_metrics@ current: one thread, one @REFRESH@, no scheduler.
+-- | Keeping the schema's two matviews current: one thread, one tick, no scheduler.
 --
--- The matview is created @WITH DATA@ by the schema bootstrap, so it is already correct when the
+-- Both are created @WITH DATA@ by the schema bootstrap, so they are already correct when the
 -- process starts serving. This thread exists only to follow the chain afterwards.
 --
 -- The refresh is decided by comparing a mark — the tip block and the tip epoch — against the mark
@@ -76,7 +76,7 @@ readRefreshMark pool = do
     (Single b, Single e) : _ -> Just (RefreshMark b e)
     [] -> Nothing
 
--- | @REFRESH MATERIALIZED VIEW CONCURRENTLY@, outside any transaction.
+-- | @REFRESH MATERIALIZED VIEW CONCURRENTLY@ for both matviews, outside any transaction.
 --
 -- 'runSqlPoolNoTransaction', not 'runSqlPool': PostgreSQL's @ExecRefreshMatView@ calls
 -- @PreventInTransactionBlock@ for @CONCURRENTLY@, so the plain pool runner's @BEGIN@ turns every
@@ -84,14 +84,26 @@ readRefreshMark pool = do
 -- @CREATE INDEX CONCURRENTLY@ (D-15), one layer up.
 --
 -- @CONCURRENTLY@ is what keeps the API answering during a rebuild: it takes no exclusive lock, at
--- the price of needing the unique index @sql/030_metrics.sql@ creates.
+-- the price of needing the unique index each matview's own DDL creates.
+--
+-- __Two statements, one tick, and the ORDER is @drep_metrics@ first__ — not because the matviews
+-- depend on each other (they do not: one is keyed by DRep, the other by palmares.vote's window
+-- partition), but because a failure short-circuits the rest, and the one whose absence means a
+-- db-sync migration CASCADE'd through the schema is the one worth reporting first. MEASURED on
+-- preprod, @vote_partition@'s pass over all 3,244,723 vote rows: 8.9 s, which is what this adds
+-- to a tick (@drep_metrics@ costs the 3.1 s its own header records). The name stays
+-- 'refreshDRepMetrics' because it is what the tick calls and what @src\/test\/UnitTests\/Refresh.hs@
+-- asserts on.
 refreshDRepMetrics :: ConnectionPool -> IO (Either SomeException ())
 refreshDRepMetrics pool =
   try $
     runSqlPoolNoTransaction
-      (rawExecute "REFRESH MATERIALIZED VIEW CONCURRENTLY palmares.drep_metrics" [])
+      (mapM_ refresh matviews)
       pool
       Nothing
+  where
+    matviews = ["palmares.drep_metrics", "palmares.vote_partition"]
+    refresh v = rawExecute ("REFRESH MATERIALIZED VIEW CONCURRENTLY " <> v) []
 
 -- | @PALMARES_VIEW_REFRESH_SECONDS@, defaulting to 300.
 --
@@ -117,7 +129,7 @@ step pool ref = do
         r <- refreshDRepMetrics pool
         case r of
           Right () -> writeIORef ref (Just now)
-          Left e -> warn ("palmares.drep_metrics refresh failed: " <> show e <> hint e)
+          Left e -> warn ("matview refresh failed: " <> show e <> hint e)
   where
     -- A dropped matview means a db-sync migration CASCADE'd through it. The fix is a restart,
     -- because the schema bootstrap is what re-creates it; say so here rather than leaving the
@@ -140,7 +152,7 @@ runRefreshThread pool = do
   forkIO . forever $ do
     r <- try (step pool ref)
     case r of
-      Left (e :: SomeException) -> warn ("palmares.drep_metrics refresh tick failed: " <> show e)
+      Left (e :: SomeException) -> warn ("matview refresh tick failed: " <> show e)
       Right () -> pure ()
     threadDelay (secs * 1000000)
 

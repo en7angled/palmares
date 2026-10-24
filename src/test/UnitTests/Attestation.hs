@@ -82,7 +82,8 @@ attestationTests =
       mkTestFor "Test Case 5.14: other_metadata past the entry limit FAILS (Mn)" oversizedOtherMetadataFails,
       mkTestFor "Test Case 5.12: a back-dated attestation FAILS (Mq, fix #4)" backDatedAttestationFails,
       mkTestFor "Test Case 5.13: an attestation issued with someone else's user NFT FAILS (Mf)" wrongIssuerNFTFails,
-      mkTestFor "a paused protocol refuses a profile update and an acceptance, not only an issuance" pauseStopsEverything
+      mkTestFor "a paused protocol refuses a profile update and an acceptance, not only an issuance" pauseStopsEverything,
+      mkTestFor "neither credential kind is issuable on this route" credentialKindNotIssuable
     ]
   where
     -- Test Case 5.1. The assertion is the DATUM, not "the transaction did not throw": an attestation
@@ -263,6 +264,30 @@ attestationTests =
           issue ctx (w1 testWallets) ghostAC issuerAC Endorsement milestoneAttestationData []
 
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "An attestation about a non-existent subject was refused (SubjectProfileNotFound)."
+
+    -- The two credential kinds parse here, are listed in this route's published @enum@, and are not
+    -- issuable through it: @issueAttestationTX@ names no credential, so @Mc2@ ("a credential record
+    -- must name a credential") can never hold, and @Mc3@ ("the named credential must control the
+    -- transaction") has no proof to check either. Two unsatisfiable conjuncts, not one.
+    --
+    -- Plain 'mustFail' with no trace code, and that IS the assertion: the refusal is off chain, the
+    -- first statement of the builder, before any chain read. A trace code here would mean a user had
+    -- paid for a build and signed a transaction the chain then threw away. The error constructor
+    -- (@AttestationKindIsCredentialBinding@) had no test of any kind until the write API's error
+    -- table was pinned; this is the other half, through the production pipeline.
+    credentialKindNotIssuable :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    credentialKindNotIssuable info@TestInfo {..} = do
+      (ctx, issuerAC, subjectAC) <- deployWithTwoProfiles info
+
+      mustFail $
+        void $
+          issue ctx (w1 testWallets) subjectAC issuerAC CredentialClaim milestoneAttestationData []
+
+      mustFail $
+        void $
+          issue ctx (w1 testWallets) subjectAC issuerAC CredentialWithdrawal milestoneAttestationData []
+
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Both credential kinds were refused off chain, before any chain read."
 
     -- Test Case 5.11. LINEAGE IS REFUSED NOW, and this case is the inversion of the one that used to
     -- stand here. It asserted that an attestation about an earlier attestation LANDS, because

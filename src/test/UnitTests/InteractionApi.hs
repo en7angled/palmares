@@ -42,8 +42,8 @@ import Data.Aeson
   )
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KeyMap
-import Data.List (isInfixOf, sort)
-import Data.Maybe (fromMaybe)
+import Data.List (isInfixOf, nub, sort)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Swagger (Referenced (Inline), Schema, ToSchema, enum_, maxProperties, properties, toSchema)
 import Data.Text (Text)
@@ -70,6 +70,12 @@ import Palmares.DomainTypes.Core.Types (AttestationType (Affiliation), DisputeVe
 import Palmares.TxBuilding.Interactions (ActionType (..))
 import Test.Tasty
 import Test.Tasty.HUnit
+-- One definition, two users: 'constructorsOf' reads a type's constructor count off its own
+-- 'GHC.Generics.Rep', and it is what makes the arm lists below exhaustive instead of merely claiming
+-- to be. It lives in 'UnitTests.WritePath' because that module's whole subject is the same problem
+-- one type over (the 26-constructor error table), and duplicating six lines of generic plumbing in
+-- two test modules is the thing worth avoiding here.
+import UnitTests.WritePath (constructorsOf)
 
 -------------------------------------------------------------------------------
 
@@ -88,11 +94,42 @@ pkhA :: GYPubKeyHash
 pkhA = "11111111111111111111111111111111111111111111111111111111"
 
 -- | One value per constructor. The lists are what make the schema assertions exhaustive, so a new
--- arm costs one line here — and nothing else notices it.
+-- arm costs one line here.
+--
+-- __"And nothing else notices it" used to end that sentence, and it was true.__ 'disputeArms' below
+-- carried two of @DisputeActionType@'s three constructors — D-A added @ExpireDisputeAction@ and this
+-- list did not grow — so "every arm encodes within its own published schema" was a claim about two
+-- thirds of the type, and the one arm nobody had encoded was the one route with no coverage at all.
+-- @adminActions@ was missing @SetDisputeTimeoutAction@ for the same reason, which is the third time
+-- this repository has recorded that exact miss (see @PropertyTests.allAdminActions@).
+--
+-- Fixed by the case below, "every constructor of every action union is exercised": the counts come
+-- from 'constructorsOf', which GHC derives, so a new constructor fails a test the day it is written
+-- rather than the day somebody re-reads a comment.
 profileArms :: [ProfileActionType]
 profileArms =
   [ UpdateProfileAction (ac "00000000000000000000000000000000000000000000000000000000.6161") (Just "new") "ipfs://i",
     ClaimProfileAction PersonDRep pd,
+    -- ADR 0003's two arms, and the two this list ALSO did not have — found by the coverage case
+    -- below rather than by reading, which is the argument for the coverage case. @/claim-credential@
+    -- and @/withdraw-credential@ are two of the nine service routes and neither of their request
+    -- shapes had ever been encoded against its own published schema.
+    --
+    -- A real CIP-129 identifier rather than a placeholder: these arms are only encoded here, so the
+    -- string is never parsed — but the document's example is what a client copies, and a value that
+    -- would be refused by `parseClaimCredential` has no business standing in for one that would not.
+    -- `Nothing` for the witness is the key-credential case, which is every claim until somebody
+    -- claims a script.
+    ClaimCredentialAction
+      (ac "00000000000000000000000000000000000000000000000000000000.6a6a")
+      "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg"
+      Nothing
+      pd,
+    WithdrawCredentialAction
+      (ac "00000000000000000000000000000000000000000000000000000000.6b6b")
+      "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg"
+      Nothing
+      pd,
     IssueAttestationAction
       (ac "00000000000000000000000000000000000000000000000000000000.6262")
       (ac "00000000000000000000000000000000000000000000000000000000.6363")
@@ -110,7 +147,11 @@ disputeArms =
       (ac "00000000000000000000000000000000000000000000000000000000.6666")
       Nothing
       pd,
-    ResolveDisputeAction (ac "00000000000000000000000000000000000000000000000000000000.6767") VerdictUpheld
+    ResolveDisputeAction (ac "00000000000000000000000000000000000000000000000000000000.6767") VerdictUpheld,
+    -- D-A, and the arm this list was missing. It is the request body of @\/expire-dispute@ and the
+    -- @\/build-tx@ arm that reaches 'Palmares.TxBuilding.Operations.expireDisputeTX', so without it
+    -- neither the published schema nor the round trip below said anything about either.
+    ExpireDisputeAction (ac "00000000000000000000000000000000000000000000000000000000.6868")
   ]
 
 -- | The admin arm is deliberately absent: 'adminBodies' covers it, and it is the one arm that must
@@ -118,9 +159,23 @@ disputeArms =
 nonAdminActionArms :: [ActionType]
 nonAdminActionArms = map ProfileAction profileArms <> map DisputeAction disputeArms
 
+-- | Every arm of 'ActionType', including the two the HTTP surface treats specially.
+--
+-- Named rather than inlined into @armChecks@ so that the coverage case can count the DISTINCT tags
+-- it emits: 'ActionType' has four constructors and this list has one value per inner action, so its
+-- length is not the number of arms — the number of distinct @tag@s it encodes is.
+actionArms :: [ActionType]
+actionArms =
+  nonAdminActionArms
+    <> [ProtocolAction CleanupDustAction, AdminAction PauseProtocolAction Nothing]
+
 -- | One per constructor, so the assertion is about the TYPE and not about the four arms that used
 -- to parse. 'RotateArbiterAction' is here for the same reason: an admin action absent from this
 -- list is an admin action nobody has checked is refused over HTTP.
+--
+-- 'SetDisputeTimeoutAction' was that action. It is the one admin power with a direct bearing on a
+-- user's money — @opDisputeTimeoutMs@ is how long a deposit can sit undecided — and nothing had
+-- checked that a request body carrying it is refused.
 adminActions :: [AdminActionType]
 adminActions =
   [ PauseProtocolAction,
@@ -129,7 +184,8 @@ adminActions =
     SetMinUTxOValueAction 1_000_000,
     RotateAdminAction (PubKeyCredential (pubKeyHashToPlutus pkhA)) Nothing,
     SetDisputeDepositAction 5_000_000,
-    RotateArbiterAction (PubKeyCredential (pubKeyHashToPlutus pkhA)) Nothing
+    RotateArbiterAction (PubKeyCredential (pubKeyHashToPlutus pkhA)) Nothing,
+    SetDisputeTimeoutAction 2_592_000_000
   ]
 
 -- | Request bodies built by the ENCODERS of the types under test, never hand-spelled. A hand-written
@@ -191,7 +247,18 @@ interactionApiTests =
         assertEqual
           "no property is named after a constructor"
           []
-          (filter (`elem` propKeys s) ["UpdateProfileAction", "ClaimProfileAction", "IssueAttestationAction", "AcceptAttestationAction"]),
+          ( filter
+              (`elem` propKeys s)
+              [ "UpdateProfileAction",
+                "ClaimProfileAction",
+                -- The two ADR 0003 arms, absent from this list for the same reason they were absent
+                -- from 'profileArms': nobody had enumerated the type since they landed.
+                "ClaimCredentialAction",
+                "WithdrawCredentialAction",
+                "IssueAttestationAction",
+                "AcceptAttestationAction"
+              ]
+          ),
       testCase "DisputeActionType and ActionType publish tagged objects too" $
         assertEqual
           "tag is a property of both"
@@ -204,6 +271,20 @@ interactionApiTests =
       -- tag it emits must be one the document lists.
       testCase "every arm encodes within its own published schema" $
         mapM_ armIsDocumented armChecks,
+      -- The guard on the lists above, and the only thing that makes "one value per constructor"
+      -- true rather than aspirational. 'constructorsOf' is derived from each type's own 'Rep', so a
+      -- new arm moves the expected number without anybody editing this case.
+      --
+      -- 'ActionType' is counted by DISTINCT TAGS and not by length, because 'actionArms' holds one
+      -- value per inner action rather than one per arm of the union.
+      testCase "every constructor of every action union is exercised" $ do
+        assertEqual "ProfileActionType arms" (constructorsOf @ProfileActionType) (length profileArms)
+        assertEqual "DisputeActionType arms" (constructorsOf @DisputeActionType) (length disputeArms)
+        assertEqual "AdminActionType arms" (constructorsOf @AdminActionType) (length adminActions)
+        assertEqual
+          "ActionType arms"
+          (constructorsOf @ActionType)
+          (length (nub (mapMaybe (field "tag" . toJSON) actionArms))),
       ---- the admin surface is off HTTP ----------------------------------------------------------
       testCase "no admin action deserializes from an HTTP body" $
         map adminParses adminBodies @?= replicate (length adminBodies) (Left ()),
@@ -247,14 +328,31 @@ interactionApiTests =
               ],
       -- /health answers `alwaysHealthy` and reports healthy with a dead provider and unreachable
       -- scripts. /status is what an operator actually needs.
+      --
+      -- `oracle` is the registry's OWN parameters — the deposit, the dispute timeout, the minimum
+      -- UTxO, both fees and the admin and arbiter credentials. It is asserted here as part of the
+      -- whole key set rather than by name because this service is the ONLY one that can publish
+      -- them: query-api carries no Cardano provider and its db-sync is indexed without UTxOs, so
+      -- losing this field would make three screens unbuildable with nowhere else to look. It is a
+      -- different fact from `oracle_paused`, which stays a separate read off the gate every write
+      -- goes through, precisely so it cannot disagree with the production check.
       testCase "/status reports the provider, the deployed scripts and the oracle's paused flag" $ do
         doc <- readSwagger
         sort (objKeys (fromMaybe Null (path ["definitions", "InteractionStatusResponse", "properties"] doc)))
-          @?= ["deployed_scripts", "network", "oracle_paused", "provider", "version"],
+          @?= ["deployed_scripts", "network", "oracle", "oracle_paused", "provider", "version"],
       testCase "the Swagger title and version name this product" $ do
         doc <- readSwagger
         (path ["info", "title"] doc, path ["info", "version"] doc)
-          @?= (Just (String "Palmares Interaction API"), Just (String "3.3.0")),
+          @?= (Just (String "Palmares Interaction API"), Just (String "3.5.0")),
+      -- The statuses the service can return, as the document declares them. Asserted as the WHOLE
+      -- declared set on one operation rather than with `has`, because the defect was an OMISSION:
+      -- `index(…) != null` on five keys would have passed on a document that declared four of them
+      -- and dropped the fifth. 405/406/415 come from the router (see `jsonRoutingRefusals`), 500 and
+      -- 502 from a handler, and every one of them was reachable before it was published.
+      testCase "every status the service can return is declared on every operation" $ do
+        doc <- readSwagger
+        let declaredOn p = sort (objKeys (fromMaybe Null (path ["paths", p, "post", "responses"] doc)))
+        declaredOn "/expire-dispute" @?= ["200", "400", "404", "405", "406", "415", "500", "502", "503"],
       -- The same defect as the first case, asserted on the artifact a client actually downloads.
       -- This is the one that was measured: both definitions carried `maxProperties: 1`.
       testCase "the published action definitions are tagged objects" $ do
@@ -288,7 +386,7 @@ interactionApiTests =
     armChecks =
       checksFor "ProfileActionType" profileArms
         <> checksFor "DisputeActionType" disputeArms
-        <> checksFor "ActionType" (nonAdminActionArms <> [ProtocolAction CleanupDustAction, AdminAction PauseProtocolAction Nothing])
+        <> checksFor "ActionType" actionArms
 
     checksFor :: forall a. (ToSchema a, ToJSON a) => String -> [a] -> [(String, Schema, Value)]
     checksFor name vs = [(name, toSchema (Proxy :: Proxy a), toJSON v) | v <- vs]

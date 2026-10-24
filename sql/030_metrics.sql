@@ -1,13 +1,15 @@
 -- palmares views over db-sync's public schema; objects appended by later tasks.
 --
 -- ---------------------------------------------------------------------------------------------
--- palmares.drep_metrics — the ONE materialized view in this schema.
+-- palmares.drep_metrics — one of the TWO materialized views in this schema.
 --
 -- Everything else in `palmares` is a plain view, because a view cannot go stale and needs no
--- refresh thread to maintain. This one is materialized because it is the only object that costs
--- a full pass over public.voting_procedure (3.2M rows on preprod) per read, and it is the object
--- the DRep list and the DRep detail page both hit. One matview, one refresh thread, one
--- staleness window: Query/Refresh.hs.
+-- refresh thread to maintain. This one is materialized because it costs a full pass over
+-- public.voting_procedure (3.2M rows on preprod) per read, and it is the object the DRep list and
+-- the DRep detail page both hit. The other is `palmares.vote_partition` in 020_views.sql, which
+-- pre-aggregates palmares.vote's window partitions; its header has the measurement that justifies
+-- it. Both are refreshed by the same thread, on the same tick, into the same staleness window:
+-- Query/Refresh.hs.
 --
 -- WHY THE SHAPE IS "ONE CTE PER METRIC, JOINED AT THE END", and not "a LATERAL per DRep":
 -- palmares.vote computes three window functions partitioned by (voter_role, voter_id_hash,

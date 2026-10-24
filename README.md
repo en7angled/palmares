@@ -156,8 +156,8 @@ exits rather than starting with an unsafe default.
 | `BASIC_PASS` | required, **fail-closed** | interaction-api, admin |
 | `CORS_ALLOWED_ORIGINS` | required; empty = deny all cross-origin (**fail-closed**) | both APIs |
 | `PG_CONN_STR` | required — db-sync's own database, one pool | query-api, attest-sync |
-| `ATLAS_CORE_CONFIG` | required for the write path (JSON blob or file path) | interaction-api, admin |
-| `DEPLOYED_VALIDATORS_CONFIG` | required for the write path (JSON blob or file path) | interaction-api, admin |
+| `ATLAS_CORE_CONFIG` | write path; **the JSON itself**, not a path — unset reads `config/config_atlas.json` | interaction-api, attest-sync, admin |
+| `DEPLOYED_VALIDATORS_CONFIG` | write path; **the JSON itself**, not a path — unset reads `config/config_palmares_validators.json` | interaction-api, attest-sync, admin |
 | `PORT` | default `8083` query-api · `8082` interaction-api · `8084` attest-sync | all services |
 | `KUPO_URL` | default `http://localhost:1442` | attest-sync |
 | `BATCH_SIZE` | default `1000000` | attest-sync |

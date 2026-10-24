@@ -375,6 +375,15 @@ putAttestSyncState = upsertByUnique (const (UniqueAttestSyncState True))
 -- current role may see — so a missing @GRANT@ reads as absence rather than as an error. The caller
 -- distinguishes "no pipeline here" from "the pipeline is behind"; collapsing them is the defect
 -- `CS-07` describes.
+--
+-- __The @FROM@ is schema-qualified, and that is load-bearing__ — the same rule 'attestCursorSlot'
+-- states. This was written as @getBy (UniqueAttestSyncState True)@, which persistent renders as an
+-- unqualified @FROM "attest_sync_state"@; @palmares_attest@ is not on query-api's @search_path@, so
+-- the guard above answered "the table is there" (it asks the catalog by schema) and the read then
+-- raised @42P01 relation "attest_sync_state" does not exist@. The poller caught that, logged it and
+-- kept its previous value, so @\/status.attestation@ and @attest_lag_seconds@ stayed @null@ for ever
+-- against a projector that was following normally — and @null@ is the one answer that reads as "this
+-- deployment has no projector". Measured on preprod 2026-10-24.
 attestSyncStateRow :: (MonadIO m) => SqlPersistT m (Maybe AttestSyncState)
 attestSyncStateRow = do
   tbl <-
@@ -383,7 +392,11 @@ attestSyncStateRow = do
       \WHERE table_name = 'attest_sync_state' AND table_schema = ?)"
       [toPersistValue attestSchema]
   case tbl of
-    [Single True] -> fmap entityVal <$> getBy (UniqueAttestSyncState True)
+    [Single True] -> do
+      rows <- rawSql ("SELECT ?? FROM " <> attestSchema <> ".attest_sync_state LIMIT 1") []
+      pure $ case rows of
+        (Entity _ row : _) -> Just row
+        _ -> Nothing
     _ -> pure Nothing
 
 -- | Record a match the projector could not apply, with the error that stopped it.

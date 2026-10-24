@@ -33,6 +33,14 @@ check() { if [ "$2" = "$3" ]; then echo "  ok   $1"; else echo "  FAIL $1 => $2 
 # Status code of an unauthenticated GET.
 code() { curl -s -o /dev/null -w '%{http_code}' "$API$1"; }
 
+# The same for a POST, and the auth assertions below need it: every write route is POST-only, and
+# Servant matches the METHOD before it reaches the BasicAuth combinator — so an unauthenticated GET
+# on one of them is a 405 from the router and says nothing about the auth boundary. Measured: GET
+# /build-tx is 405, POST /build-tx is 401.
+post_unauth_code() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' "$API$1"
+}
+
 # Status code of an authenticated POST with a JSON body.
 post_code() {
   curl -s -o /dev/null -w '%{http_code}' -u "$AUTH" -H 'Content-Type: application/json' -d "$2" "$API$1"
@@ -74,8 +82,8 @@ assert /swagger-api.json '.definitions.ActionType.properties|has("tag")' 'true'
 assert /swagger-api.json '.definitions.ProfileActionType.properties|has("tag")' 'true'
 
 echo "== the auth boundary"
-check "/build-tx without credentials is 401" "$(code /build-tx)" "401"
-check "/claim-profile without credentials is 401" "$(code /claim-profile)" "401"
+check "/build-tx without credentials is 401" "$(post_unauth_code /build-tx)" "401"
+check "/claim-profile without credentials is 401" "$(post_unauth_code /claim-profile)" "401"
 # The probes and /status are public on purpose: a k8s probe has no credentials, and an operator
 # diagnosing a refused write should not need any either.
 check "/health is public" "$(code /health)" "200"
@@ -87,7 +95,12 @@ echo "== admin actions are not on the HTTP surface"
 # not assumed. A real address goes in `changeAddress` on purpose: an unparseable one would make the
 # body fail for the wrong reason and the refusals below would pass vacuously.
 ADDR="00e1cbb80db89e292269aeb93ec15eb963dda5176b66949fe1c2a6a38d1b930e9f7add78a174a21000e989ff551366dcd127028cb2aa39f616"
-wrap() { echo "{\"action\":{\"tag\":\"AdminAction\",\"contents\":$1},\"userAddresses\":{\"usedAddresses\":[],\"changeAddress\":\"$ADDR\"},\"recipient\":null}"; }
+# `contents` is a two-element ARRAY, not the action object: the arm is
+# `AdminAction AdminActionType (Maybe ClaimWitness)` (Interactions.hs:71), so aeson's generic sum
+# encoding wants [action, witness-or-null]. Passing the bare object also produces a 400 — from the
+# shape, at `$.action.contents`, before the parser ever reaches the refusal below — which is exactly
+# the vacuous pass the `admin CLI` message check downstream exists to catch, and did.
+wrap() { echo "{\"action\":{\"tag\":\"AdminAction\",\"contents\":[$1,null]},\"userAddresses\":{\"usedAddresses\":[],\"changeAddress\":\"$ADDR\"},\"recipient\":null}"; }
 
 # Every constructor, including the two that were already refused, so the assertion is about the
 # TYPE and not about four of its arms. Each must be a 400 from the parser, never a built transaction.

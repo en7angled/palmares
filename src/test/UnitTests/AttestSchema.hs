@@ -191,6 +191,17 @@ tests =
           runAttest pool (putAttestSyncState (row "following"))
           got <- runAttest pool attestSyncStateRow
           fmap attestSyncStateState got @?= Just "following"
+          -- AND through `runPg`, on the DEFAULT search_path — which is the one that matters, because
+          -- it is what query-api's freshness poller runs on: `Query.Gov.runGovRead` pins a statement
+          -- timeout and nothing else, and `palmares_attest` is not on that path. The read above
+          -- cannot catch a missing schema qualification, since `runAttest` pins the path itself.
+          --
+          -- It did not catch one: `attestSyncStateRow` read through `getBy`, which persistent
+          -- renders unqualified, so on preprod it raised `relation "attest_sync_state" does not
+          -- exist`, the poller logged it and kept its previous value, and `/status.attestation`
+          -- stayed null for ever beside a projector reporting `following`.
+          unqualified <- runPg pool attestSyncStateRow
+          fmap attestSyncStateState unqualified @?= Just "following"
           [Single (n :: Int)] <- runAttest pool (rawSql "SELECT count(*)::int FROM attest_sync_state" [])
           n @?= 1,
       -- The schema-version TRIPWIRE, and it is honest about being one rather than a proof.

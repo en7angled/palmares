@@ -37,6 +37,14 @@ authTests =
       testCase "wrong password is unauthorized" $ do
         r <- runCheck (AuthContext "user" "pass") (BasicAuthData "user" "nope")
         case r of Unauthorized -> pure (); _ -> assertFailure "expected Unauthorized",
+      -- THE USERNAME HALF, which no case here reached: every other one keeps the username correct
+      -- or gets the password wrong too, so neutralising `constEq username expectedUser` in
+      -- `authCheck` left all three green — proven by mutation. The compare is
+      -- `username == expected && password == expected`, and only this case holds the second
+      -- conjunct true while breaking the first.
+      testCase "the right password under the wrong username is unauthorized" $ do
+        r <- runCheck (AuthContext "user" "pass") (BasicAuthData "nope" "pass")
+        case r of Unauthorized -> pure (); _ -> assertFailure "expected Unauthorized",
       testCase "invalid-UTF-8 credential bytes do not crash, return Unauthorized" $ do
         r <- runCheck (AuthContext "user" "pass") (BasicAuthData "\xff\xfe" "\xff")
         case r of Unauthorized -> pure (); _ -> assertFailure "expected Unauthorized"

@@ -158,21 +158,32 @@ getLocalTip pool = do
           Nothing -> return (KupoCheckpoint 0 "")
     )
 
--- | Fetch the current blockchain tip from Kupo, retrying on failure.
-getBlockchainTip :: String -> IO KupoCheckpoint
-getBlockchainTip kupoUrl = do
+-- | Fetch the current blockchain tip from Kupo, retrying on failure — and REPORTING the failure.
+--
+-- __The retry used to be silent, and it is the one failure this service cannot otherwise show.__
+-- It recursed here, inside the tick, so nothing below it ran: `modifyMVar_ metricsVar` was never
+-- reached and 'reportSyncState' was never called. With Kupo down or @KUPO_URL@ pointing at nothing,
+-- @\/health@ kept serving the last good @chain_sync_state@ with a frozen @last_sync_time@,
+-- @\/ready@ kept answering 200, and @attest_sync_state@ stayed @following@ with an empty
+-- @last_error@ — indefinitely. The only detector anywhere was query-api noticing that the report
+-- had stopped being written, which is a weaker signal than the error itself.
+--
+-- The cursor reported with it is the LOCAL one, because that is what the projector knows: it has no
+-- tip to compare against, which is precisely the condition being reported.
+getBlockchainTip :: ConnectionPool -> GYMintingPolicyId -> String -> IO KupoCheckpoint
+getBlockchainTip pool ourPolicy kupoUrl = do
   eCk <- liftIO $ runKupoCheckpointsList kupoUrl
   case eCk of
-    Left _err -> do
-      liftIO $ putStrLn "Kupo client error while fetching tip (retrying)"
-      liftIO $ putStrLn "Retrying in 10 seconds"
-      liftIO $ threadDelay 10000000
-      getBlockchainTip kupoUrl
+    Left err -> retryAfter ("Kupo client error while fetching the tip: " <> T.pack (show err))
     Right (ck : _) -> return ck
-    Right [] -> do
-      liftIO $ putStrLn "No checkpoints returned from Kupo"
+    Right [] -> retryAfter "Kupo returned no checkpoints"
+  where
+    retryAfter msg = do
+      liftIO $ putStrLn (T.unpack msg <> " — retrying in 10 seconds")
+      cursor <- getLocalTip pool
+      reportSyncState pool ourPolicy "error" cursor (ck_slot_no cursor) (Just msg)
       liftIO $ threadDelay 10000000
-      getBlockchainTip kupoUrl
+      getBlockchainTip pool ourPolicy kupoUrl
 
 -- | Recursively fetch and project Kupo matches in batches from @start@ to @end@. The continuation
 -- recurses only on success; on error it tail-retries the SAME window. Windows overlap by one slot
@@ -214,12 +225,21 @@ fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool start e
           threadDelay 10000000
           fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool start end batchSize
         Right matches -> do
-          applyMatches networkId ourPolicy pool matches
+          dead <- applyMatches networkId ourPolicy pool matches
           now <- getCurrentTime
           modifyMVar_ metricsVar $ \m -> pure m {smLocalTip = endInterval, smLastSyncTime = now}
           -- Per WINDOW, with an empty hash: the applied slot is known here and the header is not —
           -- only a completed pass knows which block it stopped at, and `updateLocalTip` writes that.
           -- `syncing` is the honest state inside a window even when this is the last one, because
           -- the pass has not returned yet.
-          reportSyncState pool ourPolicy "syncing" (KupoCheckpoint endInterval "") end Nothing
+          --
+          -- A DEAD-LETTERED MATCH IS REPORTED, and the cursor still advances. `applyMatches`
+          -- isolates a row Postgres refuses so the window can land, which is right — but it used to
+          -- return `()` and nothing read `attest_dead_letter`, so the read surface could stay
+          -- permanently short of a record while every probe was green. `last_error` is where that
+          -- shows, and it is also what turns query-api's `/ready` red.
+          let mDead
+                | dead > 0 = Just (T.pack (show dead <> " match(es) dead-lettered in the window ending at slot " <> show endInterval <> "; see palmares_attest.attest_dead_letter"))
+                | otherwise = Nothing
+          reportSyncState pool ourPolicy (if dead > 0 then "error" else "syncing") (KupoCheckpoint endInterval "") end mDead
           fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool endInterval end batchSize

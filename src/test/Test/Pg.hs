@@ -24,6 +24,7 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Logger (runNoLoggingT)
 import Data.ByteString (ByteString)
 import Data.FileEmbed (embedFile, makeRelativeToProject)
+import Data.IORef (IORef, atomicModifyIORef', newIORef)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -31,6 +32,7 @@ import Database.Persist.Postgresql (withPostgresqlPool)
 import Database.Persist.Sql (ConnectionPool, SqlPersistT, rawExecute, runSqlPool, runSqlPoolNoTransaction)
 import System.Environment (lookupEnv)
 import System.Exit (die)
+import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Process (getProcessID)
 
 -- | db-sync's enums, domains and the empty tables our views read. Embedded rather than read at
@@ -43,6 +45,14 @@ runPg :: ConnectionPool -> SqlPersistT IO a -> IO a
 runPg = flip runSqlPool
 
 -- | The admin connection string, or a 'die' naming the variable that is missing.
+-- | One counter per process, so two concurrent 'withScratchDb' calls cannot pick the same name.
+--
+-- @NOINLINE@ and the usual top-level-'IORef' idiom: without it GHC may inline the @unsafePerformIO@
+-- and hand each use site its own counter, which is exactly the collision this exists to prevent.
+scratchCounter :: IORef Int
+scratchCounter = unsafePerformIO (newIORef 0)
+{-# NOINLINE scratchCounter #-}
+
 adminConnStr :: IO Text
 adminConnStr =
   lookupEnv "PALMARES_TEST_PG_CONN_STR" >>= \case
@@ -70,11 +80,20 @@ withDbName db s =
 --     drop runs. A pool left open makes the drop fail with @is being accessed by other users@.
 --   * the drop is @WITH (FORCE)@ anyway (PostgreSQL 13+), so a connection leaked by a failing
 --     test cannot wedge the next run.
+-- The database name is PER CALL, not per process, and that is a correctness property rather than
+-- hygiene. With one name per process, two DB-backed cases running at the same time share a database
+-- and each one's @DROP … WITH (FORCE)@ kills the other's pool. Measured: @cabal test
+-- --test-options='-j4'@ fails 84 of 706 cases — 61 duplicate-key violations, 6 "terminating
+-- connection due to administrator command", 2 "database already exists" — while the default
+-- single-threaded run fails none. The suite was green only because tasty happened to run it
+-- serially, and CI's own comment already claimed the stronger property ("each test creates and drops
+-- its own database, so they neither share rows nor depend on order").
 withScratchDb :: (ConnectionPool -> IO a) -> IO a
 withScratchDb body = do
   admin <- adminConnStr
   pid <- getProcessID
-  let dbName = "palmares_test_" <> T.pack (show pid)
+  n <- atomicModifyIORef' scratchCounter (\k -> (k + 1, k))
+  let dbName = "palmares_test_" <> T.pack (show pid) <> "_" <> T.pack (show n)
       onAdmin sql =
         runNoLoggingT $ withPostgresqlPool (TE.encodeUtf8 admin) 1 $ \pool ->
           runSqlPoolNoTransaction (rawExecute sql []) pool Nothing

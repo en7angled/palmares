@@ -170,7 +170,7 @@ main = do
   putStrLn ("Postgres: " <> redactConnStr connStr)
 
   forever $ do
-    blockchainTip <- getBlockchainTip kupoUrl
+    blockchainTip <- getBlockchainTip pool ourPolicy kupoUrl
     localTip <- getLocalTip pool
     let chainSyncState = evaluateChainSyncState localTip blockchainTip
     modifyMVar_ metricsVar $ \m -> pure m {smLocalTip = ck_slot_no localTip, smBlockchainTip = ck_slot_no blockchainTip, smChainSyncState = chainSyncState}

@@ -621,9 +621,13 @@ cs01IsolationTests =
           -- The poison: the table the profile projections need is gone, the dead-letter table stays.
           runAttest pool $ rawExecute "DROP TABLE profile_projection" []
           -- No exception escapes. That is the whole point: the caller advances the cursor.
-          applyMatches testNetworkId ourPolicy pool fixtureMatches
+          nDead <- applyMatches testNetworkId ourPolicy pool fixtureMatches
           dead <- runAttest pool (selectList ([] :: [Filter AttestDeadLetter]) [])
           assertBool "at least the profile matches were dead-lettered" (not (null dead))
+          -- The RETURNED count, which is what the projector reports as `last_error` and what turns
+          -- query-api's `/ready` red. It used to return `()`, so a window could drop records while
+          -- every probe stayed green; an unasserted return value would drift back to that.
+          assertEqual "the returned count is the number of dead-lettered rows" (length dead) nDead
           -- Every dead-letter row carries the error that stopped it, so an operator can see why.
           assertBool
             "each row records a non-empty error"
@@ -635,18 +639,21 @@ cs01IsolationTests =
           runPg pool ensureAttestSchema
           runAttest pool runMigrations
           runAttest pool $ rawExecute "DROP TABLE profile_projection" []
-          applyMatches testNetworkId ourPolicy pool fixtureMatches
+          n1 <- applyMatches testNetworkId ourPolicy pool fixtureMatches
           first <- runAttest pool (selectList ([] :: [Filter AttestDeadLetter]) [])
-          applyMatches testNetworkId ourPolicy pool fixtureMatches
+          n2 <- applyMatches testNetworkId ourPolicy pool fixtureMatches
           second <- runAttest pool (selectList ([] :: [Filter AttestDeadLetter]) [])
-          length second @?= length first,
+          length second @?= length first
+          -- The count is per WINDOW, not cumulative: the table is upserted, and so is the number.
+          n2 @?= n1,
       -- And the converse, which keeps the first two honest: with the table present, a clean window
       -- leaves the dead-letter table EMPTY. Without this, "dead-lettered" could mean "always".
       testCase "a window with nothing wrong dead-letters nothing" $
         withScratchDb $ \pool -> do
           runPg pool ensureAttestSchema
           runAttest pool runMigrations
-          applyMatches testNetworkId ourPolicy pool fixtureMatches
+          nDead <- applyMatches testNetworkId ourPolicy pool fixtureMatches
           dead <- runAttest pool (selectList ([] :: [Filter AttestDeadLetter]) [])
           assertEqual "nothing was dead-lettered" 0 (length dead)
+          assertEqual "and the returned count is zero, so nothing is reported" 0 nDead
     ]

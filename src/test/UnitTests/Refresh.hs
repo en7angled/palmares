@@ -88,18 +88,33 @@ tests =
           votes @?= 0
           assertBool "a DRep with nothing to vote on has no rate, not a rate of zero" (rate == Nothing)
           power @?= 0,
-      testCase "the five rationale grades sum to votes_cast, for every row" $
+      -- __DELETED: "the five rationale grades sum to votes_cast, for every row".__ It was vacuous
+      -- and it cannot be made honest here. `seedTip` has no `voting_procedure` rows at all, so the
+      -- single matview row carried `votes_cast = 0` with all five grades COALESCEd to 0, and
+      -- `0 = 0` holds whether the FILTERs in `sql/030_metrics.sql` are wired correctly or not — it
+      -- would also have passed on an empty matview. Proven by mutation: breaking `rationale_inline`
+      -- so the grades summed to 2 against `votes_cast = 3` left that case OK, and the only test in
+      -- the suite that went red was `UnitTests.MetricAgreement`.
+      --
+      -- Which is where the property belongs: that module seeds a corpus WITH votes — a re-voter, a
+      -- silent DRep, a partial rate — and compares the served response against all five published
+      -- formulas. Copying its corpus here to re-prove the same thing would be a second fixture to
+      -- keep in step with the first. The honest coverage is one real test, not two cases.
+      testCase "an epoch with no votes leaves the grades at zero rather than null" $
         withScratchDb $ \pool -> do
           runPg pool $ rawExecute seedTip []
           applyPalmaresSchema pool
-          [Single (bad :: Int)] <-
+          -- The COALESCE, which this corpus CAN prove: no votes must give 0 and never NULL, because
+          -- a NULL would propagate through every sum a consumer builds on these five columns.
+          [Single (nulls :: Int)] <-
             runPg pool $
               rawSql
                 "SELECT count(*)::int FROM palmares.drep_metrics \
-                \ WHERE rationale_verified + rationale_inline + rationale_unverified \
-                \     + rationale_pending  + rationale_absent <> votes_cast"
+                \ WHERE rationale_verified IS NULL OR rationale_inline IS NULL \
+                \    OR rationale_unverified IS NULL OR rationale_pending IS NULL \
+                \    OR rationale_absent IS NULL OR votes_cast IS NULL"
                 []
-          bad @?= 0
+          nulls @?= 0
     ]
 
 -- | The smallest chain the matview needs: a tip block, one registered DRep, and the transaction

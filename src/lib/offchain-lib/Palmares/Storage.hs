@@ -445,13 +445,17 @@ putDeadLetter km err =
 -- the registry, which is the worse of the two for something whose product IS the record.
 -- 'putDeadLetter' keeps the match and the error so an operator can see what was skipped and
 -- re-drive it after a fix.
-applyMatches :: GYNetworkId -> GYMintingPolicyId -> ConnectionPool -> [KupoMatch] -> IO ()
-applyMatches _networkId _ourPolicy _pool [] = return ()
+-- Returns THE NUMBER OF DEAD-LETTERED MATCHES, so the caller can report it. This returned `()`
+-- whether it had dead-lettered none or five hundred, and nothing read `attest_dead_letter`, so a
+-- window that silently dropped records still reported `syncing` with an empty `last_error` and the
+-- read surface stayed permanently incomplete behind three green probes.
+applyMatches :: GYNetworkId -> GYMintingPolicyId -> ConnectionPool -> [KupoMatch] -> IO Int
+applyMatches _networkId _ourPolicy _pool [] = return 0
 applyMatches networkId ourPolicy pool matches = do
   putStrLn ("-----------------------------------------> Applying matches: " <> show (length matches))
   batch <- try (runAttest pool (forM_ matches (putMatchAndProjections networkId ourPolicy)))
   case batch of
-    Right () -> return ()
+    Right () -> return 0
     Left (batchErr :: SomeException) -> do
       putStrLn
         ( "BATCH ABORTED ("
@@ -468,6 +472,7 @@ applyMatches networkId ourPolicy pool matches = do
             <> show bad
             <> " dead-lettered. The cursor advances either way."
         )
+      return bad
   where
     isolate deadSoFar km = do
       one <- try (runAttest pool (putMatchAndProjections networkId ourPolicy km))
@@ -579,7 +584,13 @@ putMatchAndProjections networkId ourPolicy km = do
 projectAndStore :: (MonadIO m) => GYNetworkId -> GYMintingPolicyId -> KupoMatch -> SqlPersistT m ()
 projectAndStore networkId ourPolicy km =
   case kupoMatchToAtlasMatch km of
-    Left convErr -> liftIO $ putStrLn ("PROJECTION ERROR (dropped, raw match retained): conversion error: " <> convErr)
+    -- DEAD-LETTERED, not only logged. These two branches used to `putStrLn` and return, so a match
+    -- the projector could not convert or project was dropped with no row anywhere: invisible to
+    -- `attest_dead_letter`, which is the one place an operator looks, and reproduced identically by
+    -- every `rollbackTo` replay. A stderr line in a container's log is not a record.
+    Left convErr -> do
+      liftIO $ putStrLn ("PROJECTION ERROR (dead-lettered, raw match retained): conversion error: " <> convErr)
+      putDeadLetter km ("conversion error: " <> Text.pack convErr)
     Right am -> do
       let slotNoInt = slot_no (created_at km)
           header = header_hash (created_at km)
@@ -587,7 +598,9 @@ projectAndStore networkId ourPolicy km =
           outIdx = output_index km
       ev <- runExceptT (projectChainEvent networkId ourPolicy am)
       case ev of
-        Left e -> liftIO $ putStrLn ("PROJECTION ERROR (dropped, raw match retained): " <> show e)
+        Left e -> do
+          liftIO $ putStrLn ("PROJECTION ERROR (dead-lettered, raw match retained): " <> show e)
+          putDeadLetter km (Text.pack (show e))
         Right proj -> case proj of
           ProfileEvent p -> putProfileProjection slotNoInt header p
           AttestationEvent a -> putAttestationProjection slotNoInt header txId outIdx a

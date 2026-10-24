@@ -79,9 +79,10 @@ where
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Read qualified as TRead
 import Database.Persist (Entity (..), PersistField, PersistValue, entityVal, toPersistValue)
 import Database.Persist.Sql (Single (..), SqlPersistT, rawSql)
-import Palmares.DomainTypes.Core.Ids (parseCredentialRoleCip129, parseGovActionIdCip129, renderCredentialRoleCip129)
+import Palmares.DomainTypes.Core.Ids (parseCredentialRoleCip129, renderCredentialRoleCip129)
 import Palmares.DomainTypes.Core.Types qualified as Core
 import Palmares.DomainTypes.Transfer.Filters
   ( AttestProfileFilter (..),
@@ -544,12 +545,13 @@ resolveLevelOneAnchor :: [(Text, Text)] -> SqlPersistT IO (Maybe ResolvedLevelOn
 resolveLevelOneAnchor entries = case Core.parseLevelOneAnchor entries of
   Left _ -> pure (Just (malformed (raw Core.levelOneAnchorActionKey) (raw Core.levelOneAnchorAddressKey)))
   Right Nothing -> pure Nothing
-  Right (Just a) -> case parseGovActionIdCip129 (Core.anchorGovActionId a) of
-    -- Unreachable through 'Core.parseLevelOneAnchor', which already accepted this id. Written as
-    -- `malformed` rather than as an `error` so that a future change to either parser degrades to a
-    -- published verdict instead of a 500 on an attestation detail page.
-    Left _ -> pure (Just (malformed (Just (Core.anchorGovActionId a)) (Core.anchorStakeAddress a)))
-    Right (txHashHex, ix) -> do
+  -- The id is already CANONICAL — @\<tx_hash\>#\<index\>@ — because 'Core.parseLevelOneAnchor' put it
+  -- through the API's own 'GovActionId' parser, which accepts the bech32 form too and normalises.
+  -- So this splits rather than decodes, and the failure branch is unreachable through that parser.
+  Right (Just a) -> case T.splitOn "#" (Core.anchorGovActionId a) of
+    -- Written as `malformed` rather than as an `error` so that a future change to either parser
+    -- degrades to a published verdict instead of a 500 on an attestation detail page.
+    [txHashHex, ixText] | Right (ix :: Int, "") <- TRead.decimal ixText -> do
       rows <-
         rawSql
           "SELECT ga.gov_action_id IS NOT NULL, tw.stake_address IS NOT NULL, \
@@ -585,6 +587,7 @@ resolveLevelOneAnchor entries = case Core.parseLevelOneAnchor entries of
                       }
                 else Nothing
           }
+    _ -> pure (Just (malformed (Just (Core.anchorGovActionId a)) (Core.anchorStakeAddress a)))
   where
     raw k = lookup k entries
     malformed ga addr = ResolvedLevelOneAnchor ga addr Core.L1Malformed Nothing

@@ -419,10 +419,15 @@ assert "/profiles/by-credential/$ATTEST_SMOKE_DREP_ID" '.items[0].credential_is_
 # kinds, so neither can say key or script. Answering "nobody claims it" would be a false negative
 # dressed as a result. These three spellings are the SAME 28 bytes — the golden vectors from
 # src/test/UnitTests/GovIds.hs — so the refusal is about the FORM and not about the credential.
+#
+# The CODE is `invalid_credential` and no longer `invalid_drep_id`: this route now accepts all three
+# claimable roles, so "Not a DRep identifier" was literally true and completely misleading about a
+# `cc_cold1…` it would in fact have resolved. `invalid_drep_id` keeps its narrower meaning on the
+# governance routes, where a DRep id really is the only thing accepted.
 assert_err /profiles/by-credential/drep1symc604gnd50plqfj393lyljl6u9zvv0r9he3wjq98v2sz3vtkp \
-  '.code' '"invalid_drep_id"'
+  '.code' '"invalid_credential"'
 assert_err /profiles/by-credential/81378d3ea89b68f0fc09944b1f93f2feb851318f196f98ba4029d8a8 \
-  '.code' '"invalid_drep_id"'
+  '.code' '"invalid_credential"'
 # And the accepted script form of those same bytes is NOT refused — it resolves to an empty page,
 # which is the difference between "cannot answer" and "no claim".
 assert /profiles/by-credential/drep1ywqn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmuzqx0 '.total' '0'
@@ -512,7 +517,7 @@ if [ -z "$WD" ]; then
   echo "  --   no treasury withdrawal in the index, anchor resolution not asserted"
 else
   WD_ACTION=$(echo "$WD" | jq -re '.gov_action_id')
-  WD_ADDR=$(echo "$WD" | jq -re '.stake_address')
+  WD_ADDR=$(echo "$WD" | jq -re '.beneficiary')
   echo "  ..   anchoring to $WD_ACTION / $WD_ADDR"
 
   # (a) WITH a resolvable anchor.
@@ -565,11 +570,11 @@ else
   # that payment, so publishing it as unanchored would be a different claim about a record nobody
   # can change.
   WD2=$(curl -fsS -H 'Accept: application/json' "$QAPI/treasury-withdrawals?limit=2" \
-    | jq -c '[.items[]|select(.stake_address != "'"$WD_ADDR"'")][0] // empty') || true
+    | jq -c '[.items[]|select(.beneficiary != "'"$WD_ADDR"'")][0] // empty') || true
   if [ -z "$WD2" ]; then
     echo "  --   only one distinct withdrawal address in the index, `unresolved` not asserted live"
   else
-    OTHER_ADDR=$(echo "$WD2" | jq -re '.stake_address')
+    OTHER_ADDR=$(echo "$WD2" | jq -re '.beneficiary')
     UNRES_TX=$(submit /issue-attestation "$(jq -nc \
       --arg s "$SUBJECT" --arg b "$ISSUER" --arg n "$TAG-unresolvable" \
       --arg d "unresolvable anchor for $TAG" --arg i "$IMG" --arg t "$TAG" \
@@ -595,7 +600,7 @@ else
   # (d) A MALFORMED anchor never reaches the chain: the write API refuses it before a signature.
   # This is the half that cannot be asserted from a projection, because there is nothing to project.
   code=$(curl -s -o /dev/null -w '%{http_code}' -u "$BASIC_USER:$BASIC_PASS" \
-    -H 'Content-Type: application/json' -X POST "$IAPI/issue-attestation" \
+    -H 'Content-Type: application/json' -X POST "$API/issue-attestation" \
     -d "$(jq -nc --arg s "$SUBJECT" --arg b "$ISSUER" --arg i "$IMG" --argjson ua "$(addrs)" \
       '{subject_profile_id:$s,issuer_profile_id:$b,kind:"endorsement",
         name:"malformed-anchor",description:"not a gov action id",image_uri:$i,
@@ -605,7 +610,7 @@ else
   else echo "  FAIL a malformed anchor should be a 400, got $code"; fail=1; fi
   # An address with no action is not half an anchor: the withdrawal table is keyed by the PAIR.
   code=$(curl -s -o /dev/null -w '%{http_code}' -u "$BASIC_USER:$BASIC_PASS" \
-    -H 'Content-Type: application/json' -X POST "$IAPI/issue-attestation" \
+    -H 'Content-Type: application/json' -X POST "$API/issue-attestation" \
     -d "$(jq -nc --arg s "$SUBJECT" --arg b "$ISSUER" --arg i "$IMG" --arg sa "$WD_ADDR" --argjson ua "$(addrs)" \
       '{subject_profile_id:$s,issuer_profile_id:$b,kind:"endorsement",
         name:"half-anchor",description:"an address with no action",image_uri:$i,

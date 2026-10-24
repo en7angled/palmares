@@ -342,8 +342,9 @@ instance ToSchema LevelOneAnchor where
 -- write API answers in @TxBuildingException@ codes and the read API in 'ErrorCode' — and a shared
 -- domain function that picked one would force the other to re-map a string it did not choose.
 --
--- Both fields come back in their canonical lowercase spelling (see 'parseStakeAddressBech32'), so
--- they can be fed straight back into @\/gov-action\/{id}@ and compared against
+-- Both fields come back CANONICAL — the action as @\<tx_hash\>#\<index\>@, which is the form every
+-- response carries, and the address lowercased (see 'parseStakeAddressBech32') — so they can be fed
+-- straight back into @\/gov-action\/{id}@ and compared against
 -- @palmares.treasury_withdrawal.stake_address@ without a second normalisation nobody would remember.
 parseLevelOneAnchor :: [(Text, Text)] -> Either Text (Maybe LevelOneAnchor)
 parseLevelOneAnchor entries =
@@ -354,11 +355,21 @@ parseLevelOneAnchor entries =
     (Nothing, Just _) ->
       Left $
         "a level-1 anchor needs its governance action: " <> levelOneAnchorActionKey <> " is missing"
-    (Just action, addr) -> case parseGovActionIdCip129 action of
-      Left _ -> Left $ levelOneAnchorActionKey <> " is not a CIP-129 governance action id (gov_action1…)"
-      Right _ -> case traverse parseStakeAddressBech32 addr of
+    -- BOTH published forms, through the API's own parser rather than a second one. Measured, and it
+    -- is the whole reason this does not call 'parseGovActionIdCip129' directly:
+    -- @GET /treasury-withdrawals@ publishes @gov_action_id@ as @\<tx_hash\>#\<index\>@, so a client
+    -- copying an id out of the very route that tells it what to anchor to would have been refused
+    -- with a 400. 'FromHttpApiData' 'GovActionId' accepts the bech32 AND the hash form and
+    -- canonicalises to the hash form, which is what every response carries and what
+    -- @\/gov-action\/{id}@ takes back.
+    (Just action, addr) -> case parseUrlPiece action :: Either Text GovActionId of
+      Left _ ->
+        Left $
+          levelOneAnchorActionKey
+            <> " is not a governance action id (gov_action1… or <tx_hash>#<index>)"
+      Right (GovActionId canonical) -> case traverse parseStakeAddressBech32 addr of
         Left _ -> Left $ levelOneAnchorAddressKey <> " is not a bech32 stake address (stake…/stake_test…)"
-        Right addr' -> Right (Just (LevelOneAnchor (T.toLower action) addr'))
+        Right addr' -> Right (Just (LevelOneAnchor canonical addr'))
 
 -- | The two anchor keys, for a caller that has to filter them out of a raw metadata listing.
 levelOneAnchorKeys :: [Text]

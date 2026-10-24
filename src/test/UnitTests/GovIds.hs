@@ -139,11 +139,22 @@ levelOneAnchorTests =
         parseLevelOneAnchor [("role", "auditor")] @?= Right Nothing,
       testCase "the action alone anchors to a governance action" $
         parseLevelOneAnchor [(levelOneAnchorActionKey, action0)]
-          @?= Right (Just (LevelOneAnchor action0 Nothing)),
+          @?= Right (Just (LevelOneAnchor action0Canonical Nothing)),
       testCase "action plus address anchors to a treasury withdrawal" $
         parseLevelOneAnchor
           [(levelOneAnchorActionKey, action0), (levelOneAnchorAddressKey, stakeTestAddr)]
-          @?= Right (Just (LevelOneAnchor action0 (Just stakeTestAddr))),
+          @?= Right (Just (LevelOneAnchor action0Canonical (Just stakeTestAddr))),
+      -- BOTH published forms, and this is the case the first version got wrong. The anchor parser
+      -- accepted CIP-129 only, while `GET /treasury-withdrawals` — the very route that tells a client
+      -- what there is to anchor to — publishes `<tx_hash>#<index>`. So copying an id out of the API
+      -- and into an anchor was a 400. Measured against the live route, not reasoned about.
+      testCase "either published form of the same id canonicalises identically" $
+        ( parseLevelOneAnchor [(levelOneAnchorActionKey, action0)],
+          parseLevelOneAnchor [(levelOneAnchorActionKey, action0Canonical)]
+        )
+          @?= ( Right (Just (LevelOneAnchor action0Canonical Nothing)),
+                Right (Just (LevelOneAnchor action0Canonical Nothing))
+              ),
       -- An address alone has nothing to resolve against: `palmares.treasury_withdrawal` is keyed by
       -- the PAIR, and one address can be paid under many actions.
       testCase "an address with no action is refused, not silently ignored" $
@@ -158,12 +169,15 @@ levelOneAnchorTests =
               [(levelOneAnchorActionKey, action0), (levelOneAnchorAddressKey, "stake_test1nope")]
           )
           @?= True,
+      -- The action canonicalises to the HASH form — what every response carries and what
+      -- `/gov-action/{id}` takes back — and the address to lowercase, so both can be fed straight
+      -- back into the API with no second normalisation nobody would remember.
       testCase "both ids come back canonical, so they can be fed straight back into the API" $
         parseLevelOneAnchor
           [ (levelOneAnchorActionKey, T.toUpper action0),
             (levelOneAnchorAddressKey, T.toUpper stakeTestAddr)
           ]
-          @?= Right (Just (LevelOneAnchor action0 (Just stakeTestAddr))),
+          @?= Right (Just (LevelOneAnchor action0Canonical (Just stakeTestAddr))),
       -- Through the REAL on-chain gate, not against copied constants. The minting policy validates
       -- these two entries like any other `otherMetadata` pair — count, key length, value length,
       -- duplicates, collisions with name/description/image — so the day someone tightens
@@ -176,6 +190,8 @@ levelOneAnchorTests =
     ]
   where
     action0 = govActionIdCip129 txid32 0
+    -- The form every response carries: 64 hex characters of transaction id, then the index.
+    action0Canonical = T.replicate 32 "ab" <> "#0"
     anchorEntries =
       [(levelOneAnchorActionKey, action0), (levelOneAnchorAddressKey, stakeTestAddr)]
     bbs = fromString . T.unpack

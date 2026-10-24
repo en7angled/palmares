@@ -15,6 +15,7 @@ module Palmares.WebAPI.Errors
     mkServantErrBody,
     errorCodeFromParserMessage,
     genericErrorMessage,
+    palmaresErrorFormatters,
   )
 where
 
@@ -23,7 +24,7 @@ import Data.ByteString.Lazy (ByteString)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Network.HTTP.Types.Header (hContentType)
-import Palmares.WebAPI.Envelope (ApiError (..), ErrorCode (..), errorCodeFromText)
+import Palmares.WebAPI.Envelope (ApiError (..), ErrorCode (..), errorCodeFromText, errorCodeToHttpStatus)
 import Servant
 
 -- | Build a 'ServerError' for an HTTP status code with the given JSON body.
@@ -79,7 +80,11 @@ errorCodeFromParserMessage =
 -- them. None of these names a table, a column, a host or an internal limit.
 genericErrorMessage :: ErrorCode -> Text
 genericErrorMessage = \case
-  InvalidParameter -> "A query parameter is not valid"
+  -- Not "a query parameter": this code is also what a bad PATH SEGMENT and a malformed request
+  -- BODY answer with, now that both services install `palmaresErrorFormatters`. Rewording is what
+  -- the code/message split is for — a client matches on `invalid_parameter` and this line is for a
+  -- person, who was being sent to look at the query string for a broken JSON body.
+  InvalidParameter -> "A query parameter, path segment or request body is not valid"
   QueryTooShort -> "The search query is too short"
   QueryTooLong -> "The search query is too long"
   OffsetTooLarge -> "The offset is beyond the allowed range"
@@ -103,3 +108,31 @@ genericErrorMessage = \case
   IndexerBehind -> "The chain index is too far behind to answer"
   DbUnavailable -> "Service temporarily unavailable"
   InternalError -> "Internal server error"
+
+-- | The formatters both services install, so a request servant refuses BEFORE a handler runs still
+-- answers with the documented @{code, message}@ body.
+--
+-- __interaction-api installed none at all__, and it is the service where it matters most: a
+-- malformed or incomplete JSON body on any of its twelve POST routes — the most common client error
+-- on a write API — came back as @text\/plain@ with no @code@ to branch on, and
+-- @GET \/tx-status\/nope@ answered @400 Invalid transaction ID: nope@ as plain text. query-api had
+-- its own private copy of this value, which is how one service ended up with it and the other
+-- without; one definition, in the library that owns the error vocabulary.
+--
+-- A BODY that does not parse is 'InvalidParameter' and deliberately not whatever aeson said: aeson's
+-- message is a path into the document, which is useful to a person and is not a code a client can
+-- switch on. The two parser hooks below keep going through 'errorCodeFromParserMessage', because a
+-- capture and a query parameter DO carry the repo's own code tags in their messages.
+palmaresErrorFormatters :: ErrorFormatters
+palmaresErrorFormatters =
+  defaultErrorFormatters
+    { -- One hook covers a failing Capture AND a failing QueryParam: servant has no separate
+      -- queryParseErrorFormatter to set.
+      urlParseErrorFormatter = fromParserMessage,
+      headerParseErrorFormatter = fromParserMessage,
+      bodyParserErrorFormatter = \_ _ _ -> mkServantErr 400 InvalidParameter
+    }
+  where
+    fromParserMessage _ _ msg =
+      let code = errorCodeFromParserMessage msg
+       in mkServantErr (errorCodeToHttpStatus code) code

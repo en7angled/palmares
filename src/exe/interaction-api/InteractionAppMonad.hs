@@ -14,7 +14,7 @@
 module InteractionAppMonad where
 
 import Palmares.Constants qualified as Constants
-import Control.Exception (SomeException, displayException, try)
+import Control.Exception (SomeException, displayException, fromException, try)
 import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Aeson (encode, object, (.=))
@@ -134,12 +134,18 @@ checkDeployedScriptsAreReady = do
   InteractionAppMonad $ do
     InteractionAppContext {..} <- ask
     let queryScriptsReady = runReaderT ensureDeployedScriptsAreReady (deployedScriptsCtx txBuildingContext)
-    res <- liftIO $ try $ runQuery (providerCtx txBuildingContext) queryScriptsReady
+    -- @SomeException@, not @GYTxMonadException@. The pattern match below monomorphised this `try`,
+    -- so a provider HTTP failure, a dropped connection or a timeout — none of which is a
+    -- `GYTxMonadException` — was not caught at all: it propagated out of the Handler to Warp, which
+    -- answers `text/plain` "Something went wrong" under a 500. On a readiness probe the truth is a
+    -- 503, and `mkServantErr 503 NotReady` was already on the next branch. `OF-05`'s own note said
+    -- to catch `SomeException` at the handler; `runWithTxErrorHandling` got that and this did not.
+    res <- liftIO $ try @SomeException $ runQuery (providerCtx txBuildingContext) queryScriptsReady
     now <- liftIO getCurrentTime
     case res of
       Left ex ->
-        case ex of
-          GYApplicationException appE
+        case fromException ex of
+          Just (GYApplicationException appE)
             | Just txEx <- cast appE -> do
                 let status = txBuildingExceptionToHttpStatus txEx
                 liftIO $ putStrLn $ "checkDeployedScriptsAreReady TxBuildingException (" <> show status <> ") [" <> txBuildingExceptionCode txEx <> "]: " <> displayException txEx

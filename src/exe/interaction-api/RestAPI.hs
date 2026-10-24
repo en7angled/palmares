@@ -28,6 +28,7 @@ import ServiceStatus (InteractionStatusResponse, getStatus)
 import Palmares.TxBuilding.Interactions
 import Palmares.WebAPI.Auth
 import Palmares.WebAPI.CORS
+import Palmares.WebAPI.Errors (palmaresErrorFormatters)
 import Palmares.WebAPI.ServiceProbe (alwaysHealthy)
 import Palmares.WebAPI.ServiceProbe qualified as WebAPI.ServiceProbe
 import Palmares.WebAPI.Utils (addSharedSwaggerDescriptions)
@@ -323,7 +324,10 @@ fullServer =
 
 ------------------------------------------------------------------------------------------------
 
-proxyServerContext :: Proxy '[BasicAuthCheck AuthUser]
+-- 'ErrorFormatters' is in the context too, and that is the fix: without it servant answers a
+-- refused request with `text/plain` and no `code`, which on a write API is the most common error a
+-- client sees. Both entries, in the same order as `ctxEntries` below.
+proxyServerContext :: Proxy '[BasicAuthCheck AuthUser, ErrorFormatters]
 proxyServerContext = Proxy
 
 mkWebApp :: CorsConfig -> InteractionAppContext -> Application
@@ -332,5 +336,5 @@ mkWebApp corsCfg ctx =
     provideOptions proxyPublicAPI $
       serveWithContext proxyFullAPI ctxEntries hoistedServer
   where
-    ctxEntries = authCheck (authContext ctx) :. EmptyContext
+    ctxEntries = authCheck (authContext ctx) :. palmaresErrorFormatters :. EmptyContext
     hoistedServer = hoistServerWithContext proxyFullAPI proxyServerContext (runInteractionAppMonad ctx) fullServer

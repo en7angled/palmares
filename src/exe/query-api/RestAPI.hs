@@ -118,8 +118,8 @@ import Palmares.Metrics.Catalog (MetricFormula, resolvedMetricCatalog, retention
 import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.CSV (CSV)
 import Data.Text qualified as T
-import Palmares.WebAPI.Envelope (ApiError, ErrorCode (..), Page (..), errorCodeToHttpStatus)
-import Palmares.WebAPI.Errors (errorCodeFromParserMessage, mkServantErr)
+import Palmares.WebAPI.Envelope (ApiError, ErrorCode (..), Page (..))
+import Palmares.WebAPI.Errors (palmaresErrorFormatters)
 import Palmares.WebAPI.Utils (addSharedSwaggerDescriptions)
 import Query.Common
   ( PageBounds (..),
@@ -1932,17 +1932,6 @@ mkWebApp corsCfg readFresh ctx =
 -- Every @parseUrlPiece@ in this codebase returns the error CODE as that string, which is what
 -- makes the round trip work: @invalid_drep_id@ goes out of the parser and comes back in here as
 -- 'InvalidDrepId'. Anything unrecognised becomes @invalid_parameter@, which is true of it.
-palmaresErrorFormatters :: ErrorFormatters
-palmaresErrorFormatters =
-  defaultErrorFormatters
-    { -- urlParseErrorFormatter covers a failing Capture AND a failing QueryParam: servant has one
-      -- hook for both, which is why there is no queryParseErrorFormatter to set.
-      urlParseErrorFormatter = fromParserMessage,
-      headerParseErrorFormatter = fromParserMessage
-    }
-  where
-    -- 'errorCodeFromParserMessage' carries the reason it is not a plain decode of the whole
-    -- string: servant wraps a query parameter's message and passes a capture's through.
-    fromParserMessage _ _ msg =
-      let code = errorCodeFromParserMessage msg
-       in mkServantErr (errorCodeToHttpStatus code) code
+-- MOVED to "Palmares.WebAPI.Errors", because interaction-api had no formatters at all and a value
+-- defined privately here could not be shared: a malformed JSON body on any of its twelve POST routes
+-- came back as plain text with no `code`. One definition, in the library that owns the vocabulary.

@@ -60,9 +60,27 @@ activityBounds = PageBounds 100 20
 --
 -- Matched by prefix, because @text\/csv;charset=utf-8@ is the same request as @text\/csv@ and a
 -- client that sends the parameter must not silently get the JSON ceiling.
+--
+-- __And the prefix must be the WHOLE header, which is the fix.__ A bare prefix test let the CSV
+-- ceiling be applied to a JSON response: servant does real RFC-7231 negotiation, this function read
+-- the raw header, and the two disagreed whenever both types appeared. Measured on every
+-- CSV-negotiating route — @Accept: text\/csv;q=0.1, application\/json@ served
+-- @limit=250 items=250@ with @content-type: application\/json@, against the documented JSON ceiling
+-- of 200. With @limit=10000@ it is this module's own stated bug class #1: "an unbounded page, which
+-- turns a public endpoint into a way to ask for the whole table", and it compounds the one route
+-- that is already too slow to page deeply.
+--
+-- A header naming several types therefore gets the JSON bounds, which is the lower pair: when the
+-- client leaves the choice open, the ceiling that cannot be abused is the honest default. A client
+-- that genuinely wants a CSV export asks for @text\/csv@ and nothing else — which is what
+-- @scripts\/smoke_query_api.sh@ and every documented export command send.
 boundsFor :: Maybe Text -> PageBounds
 boundsFor accept
-  | Just a <- accept, "text/csv" `T.isPrefixOf` T.strip a = csvBounds
+  | Just a <- accept,
+    let h = T.strip a,
+    "text/csv" `T.isPrefixOf` h,
+    not (T.isInfixOf "," h) =
+      csvBounds
   | otherwise = jsonBounds
 
 -- | The largest @offset@ this API will serve.

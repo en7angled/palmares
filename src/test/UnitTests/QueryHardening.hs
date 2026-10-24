@@ -453,6 +453,13 @@ voteStageTests =
       -- labelled `inactive`; leaving the new value out of the default would drop 90 registered
       -- DReps off the page in order to stop mislabelling 21 of them. With it in, the change is a
       -- pure relabel and the page's population is unchanged.
+      --
+      -- __And the Koios parity gate now rides on this.__ `GV-02`: the reconciler used to fetch our
+      -- side with an explicit `?status=active&status=inactive`, which left those 90 out and made the
+      -- nightly gate report 90 false `membership` divergences. It fetches `/dreps` with no filter
+      -- now, so THIS set is what our side of the comparison is. Narrowing the default would make the
+      -- gate lie again, silently, from a file in another directory — which is why the dependency is
+      -- written down here rather than inferred.
       testCase "the default status set includes unknown, so the default population is unchanged" $
         (effectiveDRepStatus emptyDRepFilter, length (effectiveDRepStatus emptyDRepFilter))
           @?= ([DRepActive, DRepInactive, DRepUnknown], 3),

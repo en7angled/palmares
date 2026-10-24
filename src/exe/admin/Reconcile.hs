@@ -322,7 +322,19 @@ chunksOf n xs = take n xs : chunksOf n (drop n xs)
 fetchPalmaresFiles :: Side -> ReconcileSample -> [Int] -> IO (Map FilePath Value)
 fetchPalmaresFiles side sample epochs = do
   status <- getValue side "/status"
-  dreps <- fetchPaged side itemsOf "/dreps?status=active&status=inactive" 200
+  -- NO STATUS FILTER — `GV-02`. This asked for `?status=active&status=inactive`, and since the
+  -- owner decision of 2026-10-21 `drepStatusExpr` yields `unknown` for every registered DRep with
+  -- no `drep_distr` row — 90 of 294 on preprod. An explicit status list is honoured verbatim, so
+  -- those 90 were ABSENT from our side of the comparison, and R1/R2 are keyed by DRep id: a key
+  -- present only on Koios's side is a `membership` divergence. The R2 waivers are keyed on
+  -- `active_until_epoch` and `status`, and `covers` requires the field to match, so `membership`
+  -- was not waived. The nightly gate reported 90 false divergences.
+  --
+  -- Omitting the filter uses the API's DEFAULT, which is `[active, inactive, unknown]` and includes
+  -- `unknown` deliberately: it is exactly the population the default page shows, so our side of the
+  -- comparison is now the same set a reader sees. Widening the explicit list would have worked too
+  -- and would have had to be widened again by hand the next time a status is added.
+  dreps <- fetchPaged side itemsOf "/dreps" 200
   let ids = [t | String t <- map idOf (arrayOf dreps)] <> reservedIds
       -- NOT `minimum (0 : epochs)`, which is what this said first: seeding the fold with 0 made
       -- `from_epoch=0` on every request, so each series came back from the dawn of the chain and

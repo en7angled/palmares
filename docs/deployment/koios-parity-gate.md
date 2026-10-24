@@ -108,3 +108,24 @@ Koios's answer into our own gap would be putting words in the reference's mouth.
 The information was always complete on the wire — `active_until_epoch` has always been published and
 always been nullable, so those 90 were already identifiable. Only the label above them was a guess.
 That is why the fix cost nothing in SQL.
+
+## The committed snapshot is stale (2026-10-24)
+
+`test/fixtures/snapshot/palmares/dreps.json` holds 294 rows whose statuses are only `inactive` (277)
+and `active` (17), with 90 rows carrying `active_until_epoch: null`. That is exactly the population
+which now reads `unknown`, so the pair **predates the owner decision of 2026-10-21** and the replay
+test asserts zero unexplained divergences over a world that no longer exists.
+
+`GV-02`'s live half is fixed: the reconciler no longer sends a status filter, so all 294 registered
+DReps are on our side of the comparison and the 90 false `membership` divergences are gone. The
+replay test still passes because it exercises the reconciler's LOGIC, which is unchanged by the
+relabel — but it no longer certifies anything about today's statuses.
+
+Re-recording needs live Koios and a live query-api, which is why it is not done here:
+
+```
+cabal run exe:admin -- reconcile-koios --dump-snapshots test/fixtures/snapshot
+```
+
+After it, `dreps.json` should contain `unknown` rows, and the replay assertion becomes a statement
+about the current status vocabulary again.

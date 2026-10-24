@@ -377,9 +377,11 @@ claiming and withdrawing one are routes, and a dispute gained a keyless exit onc
 witness and submits through the provider (`RestAPI.hs:103-107`). `/resolve-dispute` is on HTTP because
 the oracle validator requires the admin signature, so the unsigned transaction is the product
 (`RestAPI.hs:159`); every other admin action is refused in a request body
-(`src/lib/offchain-lib/Palmares/DomainTypes/Core/Actions.hs:449-470`). Atlas balancing failures
-(`GYQueryUTxOException`, `GYBuildTxException`, `GYNoSuitableCollateralException`) become HTTP 400
-`InsufficientFunds` (`InteractionAppMonad.hs:87-108`).
+(`src/lib/offchain-lib/Palmares/DomainTypes/Core/Actions.hs:449-470`). Every write failure is classified by one pure
+function, `Palmares.TxBuilding.Exceptions.classifyWriteFailure` (`OF-05`): a validator's refusal is
+`400 ScriptRefused` carrying the trace codes, a wallet that cannot pay is `400 InsufficientFunds`, a
+protocol ceiling is `400 TxTooExpensive`/`TxTooLarge`, a provider failure or a rejected submission is
+`502 ProviderError`, and anything else is a `500` that still has a `code` in its body.
 
 **Provider.** The server runs inside `withCfgProviders` on `ATLAS_CORE_CONFIG`
 (`src/exe/interaction-api/Main.hs:58-61`). The committed example is Maestro

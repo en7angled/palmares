@@ -1,8 +1,11 @@
 module Palmares.TxBuilding.Exceptions where
 
 import Control.Exception
+import Data.Typeable (cast)
 import GHC.Generics (Generic)
 import GeniusYield.HTTP.Errors (IsGYApiError)
+import GeniusYield.Transaction.Common (GYBuildTxError (..))
+import GeniusYield.TxBuilder.Errors (GYTxMonadException (..))
 import GeniusYield.Types (GYScriptHash)
 import Prelude
 
@@ -207,3 +210,143 @@ txBuildingExceptionToHttpStatus _ = 400
 -- which is subject to rewording. Derived from the (stable) derived 'Show'.
 txBuildingExceptionCode :: TxBuildingException -> String
 txBuildingExceptionCode = takeWhile (/= ' ') . show
+
+------------------------------------------------------------------------------------------------
+
+-- * Write-path failure classification — OF-05
+
+------------------------------------------------------------------------------------------------
+
+-- | The HTTP answer a write-path failure deserves.
+--
+-- A record rather than a tuple because the three travel together everywhere and the caller builds
+-- one JSON body out of them.
+data ApiFailure = ApiFailure
+  { afStatus :: Int,
+    -- | The stable code a client matches on.
+    afCode :: String,
+    afMessage :: String
+  }
+  deriving stock (Eq, Show)
+
+-- | Classify __any__ exception the write path can throw into the answer a client can act on.
+--
+-- __Why this is one pure function.__ The translation used to live inside the interaction API's
+-- handler, typed by its own patterns to 'GYTxMonadException', and it collapsed four different
+-- failures into one answer (@OF-05@):
+--
+--   * every balancing failure became @400 InsufficientFunds@, "Not enough ADA in your wallet" —
+--     INCLUDING a Plutus script refusing the transaction. A user told to add funds for an @Md8@ or a
+--     @D7@ adds funds and is told the same thing again;
+--   * anything that was not a 'GYTxMonadException' at all — a provider's HTTP failure, a submission
+--     rejection — escaped the handler and reached Warp's default, which answers @text\/plain@
+--     "Something went wrong" with no @code@ at all, under a 500 where a 502 is the truth.
+--
+-- Pure, total and exported so a test can pin the table: the audit asked for exactly that, and a
+-- mapping nobody can call without an HTTP server is a mapping nobody tests.
+--
+-- __The script arm is the one that matters__, and it is why the validators keep their traces: a
+-- refusal names the conjunct that refused. The trace codes are read out of the rendered exception by
+-- 'traceCodesInRender' — see that function for why a render parse is the honest choice here.
+classifyWriteFailure :: SomeException -> ApiFailure
+classifyWriteFailure e
+  -- Our own exceptions first: they already carry a code and a status.
+  | Just (GYApplicationException appE) <- fromException @GYTxMonadException e,
+    Just txEx <- cast appE =
+      ApiFailure (txBuildingExceptionToHttpStatus txEx) (txBuildingExceptionCode txEx) (displayException txEx)
+  -- A script refused the transaction. 400, because the transaction is the client's to fix, and the
+  -- codes say what to fix.
+  | not (null codes) =
+      ApiFailure
+        400
+        "ScriptRefused"
+        ( "A validator refused this transaction: "
+            <> unwords codes
+            <> ". These are on-chain trace codes; see docs/architecture/onchain-flows.md for what each one requires."
+        )
+  | Just gyEx <- fromException @GYTxMonadException e = fromGY gyEx
+  -- Not a transaction-building exception at all. A submission rejected by the node or a provider
+  -- that could not be reached is not the client's fault and not an internal fault either: 502 is the
+  -- status that says "the thing upstream of me failed", and it is what the old code answered 500 to.
+  | isProviderFailure = ApiFailure 502 "ProviderError" "The chain provider could not be reached or rejected the submission"
+  | otherwise = ApiFailure 500 "InternalError" "Internal server error"
+  where
+    rendered = show e
+    codes = traceCodesInRender rendered
+    -- Matched on the render, for the same reason the trace codes are: `SubmitTxException` lives in
+    -- Atlas's provider layer and every provider wraps its own client error in it, so the type is
+    -- reachable but tells us nothing a string does not. A provider that invents a new exception type
+    -- lands in `InternalError`, which is the safe direction: a 500 that should have been a 502 is a
+    -- worse answer, not a wrong promise.
+    isProviderFailure =
+      any
+        (`isInfixOfStr` rendered)
+        ["SubmitTxException", "HttpExceptionRequest", "ConnectionFailure", "ResponseTimeout"]
+    fromGY gyEx = case gyEx of
+      -- Everything Atlas raises when the wallet cannot pay: no UTxO to spend, nothing to balance
+      -- with, no collateral. These keep the answer they had, which was right for them.
+      GYQueryUTxOException {} -> shortfall
+      GYNoSuitableCollateralException {} -> shortfall
+      GYBuildTxException buildErr -> case buildErr of
+        GYBuildTxBalancingError {} -> shortfall
+        GYBuildTxFeeUtxoAdaInsufficient {} -> shortfall
+        GYBuildTxCollateralShortFall {} -> shortfall
+        GYBuildTxNoSuitableCollateral -> shortfall
+        -- The ExUnits and size ceilings are the client's problem and NOT a shortfall: adding ADA
+        -- does nothing about either, which is precisely what the old answer told them to do.
+        GYBuildTxExUnitsTooBig {} ->
+          ApiFailure 400 "TxTooExpensive" "This transaction needs more execution units than the protocol allows"
+        GYBuildTxSizeTooBig {} ->
+          ApiFailure 400 "TxTooLarge" "This transaction is larger than the protocol allows"
+        -- `GYBuildTxBodyErrorAutoBalance` with no trace codes in it: the ledger refused the BODY.
+        -- Most of those shapes are a negative ADA balance, which is a shortfall, and the rest are
+        -- malformations a client cannot act on differently — so this keeps the 400 it had rather
+        -- than pretending to a precision the error does not carry. The script case, which is the
+        -- one the audit is about, never reaches here: it is caught by the trace-code guard above.
+        _ -> shortfall
+      _ -> ApiFailure 500 "InternalError" "Internal server error"
+    shortfall =
+      ApiFailure
+        400
+        "InsufficientFunds"
+        "Not enough ADA in your wallet to cover the deposit and transaction cost."
+
+-- | The on-chain trace codes inside a rendered Plutus failure, in the order the script emitted them.
+--
+-- __A render parse, deliberately.__ cardano-api's @ScriptExecutionError@ carries the logs in a
+-- @DebugPlutusFailure@ record, and reaching it means importing that constructor surface through two
+-- layers of @TxBodyErrorAutoBalance@. The test suite has read these codes off the render since the
+-- first negative test (@Test.Helpers.failedWithTrace@), roughly sixty cases depend on it, and those
+-- cases are what keeps this parser honest — so there is one parser now instead of two, and the
+-- emulator suite is its gate.
+--
+-- The failure mode is bounded in the right direction: a render change makes the list EMPTY, so a
+-- script refusal degrades to the shortfall answer it used to give. It cannot produce a wrong code.
+traceCodesInRender :: String -> [String]
+traceCodesInRender rendered = case afterMarker rendered of
+  Nothing -> []
+  Just rest -> quoted (takeWhile (/= ']') rest)
+  where
+    marker = "dpfExecutionLogs = ["
+    afterMarker s
+      | marker `isPrefixOfStr` s = Just (drop (length marker) s)
+      | null s = Nothing
+      | otherwise = afterMarker (tail s)
+    -- The logs render as a Haskell list of Text literals: ["D6","PT5"]. Anything else yields no
+    -- codes rather than fragments of one.
+    quoted s = case dropWhile (/= '"') s of
+      [] -> []
+      (_ : s') -> case break (== '"') s' of
+        (code, []) -> [code | not (null code)]
+        (code, _ : s'') -> (if null code then id else (code :)) (quoted s'')
+
+isPrefixOfStr :: String -> String -> Bool
+isPrefixOfStr [] _ = True
+isPrefixOfStr _ [] = False
+isPrefixOfStr (x : xs) (y : ys) = x == y && isPrefixOfStr xs ys
+
+isInfixOfStr :: String -> String -> Bool
+isInfixOfStr needle haystack
+  | needle `isPrefixOfStr` haystack = True
+  | null haystack = False
+  | otherwise = isInfixOfStr needle (tail haystack)

@@ -6,11 +6,11 @@ module Test.Helpers
 where
 
 import Control.Monad.Reader (runReaderT)
-import Data.List.Extra (breakOn, isInfixOf)
 import GeniusYield.TxBuilder (GYTxMonadException)
 import GeniusYield.TxBuilder.Query.Class (GYTxQueryMonad)
 import Palmares.Onchain.Protocol.Types (OracleParams (..))
 import Palmares.TxBuilding.Context (DeployedScriptsContext)
+import Palmares.TxBuilding.Exceptions (traceCodesInRender)
 import Palmares.TxBuilding.Lookups (queryOracleParams)
 
 -- | Assert a boolean in the test monad; calls 'error' if False.
@@ -41,9 +41,15 @@ queryOracle ctx = do
 --
 -- Matched against the execution-log section of the rendered exception rather than the whole thing:
 -- the full render embeds the script's own bytes, where a two-character code appears by coincidence.
+--
+-- __The parser is shared with the write API__ as of @OF-05@: 'traceCodesInRender' is what turns a
+-- validator refusal into a @400 ScriptRefused@ naming the codes instead of "Not enough ADA in your
+-- wallet". One parser, and the sixty-odd negative cases that call this function are its gate — which
+-- is a better test than any the API could have on its own.
+--
+-- It is also stricter than the version this replaces: that one matched the quoted code as a SUBSTRING
+-- of the first 200 characters of the log section, so a case asserting a code could in principle be
+-- satisfied by a longer code containing it, and a script that emitted many traces before the
+-- asserted one would read as a failure for the wrong reason. This compares list elements.
 failedWithTrace :: String -> GYTxMonadException -> Bool
-failedWithTrace code e = case breakOn marker (show e) of
-  (_, "") -> False
-  (_, logs) -> show code `isInfixOf` take 200 logs
-  where
-    marker = "dpfExecutionLogs = "
+failedWithTrace code e = code `elem` traceCodesInRender (show e)

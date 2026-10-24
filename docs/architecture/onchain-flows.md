@@ -229,7 +229,7 @@ fields this route now ignores.
 
 **Off-chain failures (HTTP):** `ProtocolPaused` 503; `OracleNotFound` 404 / `OracleDatumInvalid` 500;
 an empty wallet surfaces as Atlas `GYQueryUTxOException` → 400 `InsufficientFunds`
-(`InteractionAppMonad.hs:88-109`). `CredentialMalformed` and `ScriptCredentialHasNoUtxo` have moved to
+(`classifyWriteFailure`, `TxBuilding/Exceptions.hs`). `CredentialMalformed` and `ScriptCredentialHasNoUtxo` have moved to
 the credential routes (§3.11).
 
 ### 3.4 (b) UpdateProfile
@@ -303,8 +303,8 @@ Not checked on chain: that the subject EXISTS. `Mg` requires policy + the profil
 straight through (`Interactions.hs:136-144`) and `AttestationType`'s `FromJSON` accepts
 `credential_claim` and `credential_withdrawal` (`DomainTypes/Core/Types.hs:143-165`), so both are
 reachable on this route; the builder then sets the credential to `Nothing` and `Mc2` refuses the mint
-during script evaluation, which `runWithTxErrorHandling` reports as `400 InsufficientFunds`
-(`InteractionAppMonad.hs:93`). Nothing off chain refuses the combination. Fix: reject the two
+during script evaluation, which the route now reports as `400 ScriptRefused` naming `Mc2`
+(`OF-05`) rather than as a shortfall. Nothing off chain refuses the combination. Fix: reject the two
 credential kinds in `issueAttestationTX` (or in `IssueAttestationAction`) with a 400 that names them,
 and point the caller at §3.11.
 
@@ -431,7 +431,7 @@ test mints under a configured fee (`UnitTests.Oracle` 0.3 sets and clears fees w
 **Finding F4 — `Md8` has no off-chain mirror.** `Md8` requires an input at `depositTo` (`MintingPolicy.hs:468`);
 the builder never checks it. With one wallet address (smoke script, emulator) the seed comes from the change
 address and `Md8` holds; with a multi-address wallet whose change address contributes no input, script
-evaluation fails at build time and the route answers 400 `InsufficientFunds` (`InteractionAppMonad.hs:93`).
+evaluation fails at build time and the route answers 400 `ScriptRefused` naming `Md8` (`OF-05`).
 `Dispute` test 6.8 pins the on-chain half only. A second consequence of `Md8`'s breadth, found by the D-A
 audit: it permits `deposit_to` to be the Disputes Validator's own address, which lets one output discharge
 both `D2`'s floor and `D4` and destroys the deposit instead of returning it
@@ -865,7 +865,7 @@ sequenceDiagram
   Note over D,C: ALTERNATIVE EXIT (D-A). If the admin never rules, then after datum.disputeStaleAfter ANYONE - including D, or a stranger - may POST /expire-dispute {dispute_id}, sign with their own wallet keys only, and close it as expired. No oracle reference input, no required signer, so neither a pause nor a lost admin key can block it. The deposit still returns to deposit_to.
 ```
 
-If the protocol is paused, the route still builds, `D7` trips during script evaluation and the route answers `400 InsufficientFunds` (§8): unpause first. `/expire-dispute` is the one dispute route a pause cannot reach.
+If the protocol is paused, the route still builds, `D7` trips during script evaluation and the route answers `400 ScriptRefused` naming `D7` (§8, `OF-05`): unpause first. `/expire-dispute` is the one dispute route a pause cannot reach.
 
 ### 5.3 Operator pauses, reprices the deposit, rotates the admin
 
@@ -1021,8 +1021,11 @@ code that would refuse the same mistake in a hand-built transaction, or says tha
 | `MultipleUtxosFound` | `Lookups.hs:45, 69` | 400 | n/a |
 | `DatumParseError` | `Lookups.hs:85`; `TxBuilding/Utils.hs:164` | 500 | `P0` / `A0` / `D0` |
 | `NoDustFound` | `Operations.hs:1065-1066` | 404 | n/a |
-| Atlas `GYQueryUTxOException`, `GYBuildTxException`, `GYNoSuitableCollateralException` | empty wallet, cannot balance, no collateral, **and any script-evaluation failure during balancing** | 400 `InsufficientFunds` | the script code that failed (hidden by the message) |
-| any other exception | — | 500 `InternalError` | — |
+| a script-evaluation failure during balancing | a validator refused the transaction | 400 `ScriptRefused` | **named in the message** — the trace codes, read out of the rendered Plutus failure (`OF-05`) |
+| Atlas `GYQueryUTxOException`, `GYBuildTxBalancingError`, `GYBuildTxCollateralShortFall`, `GYNoSuitableCollateralException` | empty wallet, cannot balance, no collateral | 400 `InsufficientFunds` | — |
+| Atlas `GYBuildTxExUnitsTooBig` / `GYBuildTxSizeTooBig` | the transaction exceeds a protocol ceiling | 400 `TxTooExpensive` / `TxTooLarge` | — (adding ADA does not help, which is what the old answer implied) |
+| a provider failure or a rejected submission (`SubmitTxException`, an HTTP failure) | upstream of this service | 502 `ProviderError` | — (used to escape to Warp's text/plain 500) |
+| any other exception | — | 500 `InternalError`, with a `code` in the body | — |
 | `AdminActionType` in a body | `Actions.hs:394-399` (`FromJSON` always fails) | 400 (body parse) | `O1` — the admin must sign anyway |
 
 ## 10. How to keep this document true

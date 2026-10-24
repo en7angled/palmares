@@ -30,6 +30,7 @@
 -- served routes available from here, which is a second reason to gate on it.
 module UnitTests.InteractionApi (interactionApiTests) where
 
+import Control.Exception (SomeException, toException)
 import Control.Lens (at, itoList, (^.))
 import Data.Aeson
   ( Result (..),
@@ -41,12 +42,21 @@ import Data.Aeson
   )
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KeyMap
-import Data.List (sort)
+import Data.List (isInfixOf, sort)
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Swagger (Referenced (Inline), Schema, ToSchema, enum_, maxProperties, properties, toSchema)
 import Data.Text (Text)
+import GeniusYield.Providers.Common (SubmitTxException (..))
+import GeniusYield.Transaction.Common (GYBuildTxError (..))
+import GeniusYield.TxBuilder.Errors (GYTxMonadException (..))
 import GeniusYield.Types (GYAssetClass, GYPubKeyHash, pubKeyHashToPlutus)
+import Palmares.TxBuilding.Exceptions
+  ( ApiFailure (..),
+    TxBuildingException (ProfileNotFound, ProtocolPaused),
+    classifyWriteFailure,
+    traceCodesInRender,
+  )
 import PlutusLedgerApi.V3 (Credential (PubKeyCredential))
 import Palmares.ChainSync.KupoAtlas (toGYAssetClass)
 import Palmares.DomainTypes.Core.Actions
@@ -171,7 +181,7 @@ interactionApiTests :: TestTree
 interactionApiTests =
   testGroup
     "interaction API surface"
-    [ ---- the published schema is the wire format ------------------------------------------------
+    [ writeFailureTests, ---- the published schema is the wire format ------------------------------------------------
       testCase "ProfileActionType publishes a TAGGED object, not a constructor-keyed one" $ do
         let s = toSchema (Proxy @ProfileActionType)
         assertBool "tag is a property" ("tag" `elem` propKeys s)
@@ -292,3 +302,67 @@ interactionApiTests =
           (label <> ": the emitted tag is in the documented enum " <> show (tagEnum sch))
           (maybe False (`elem` tagEnum sch) (KeyMap.lookup "tag" o))
       _ -> assertFailure (name <> ": a tagged union must encode as an object, got " <> show v)
+
+-------------------------------------------------------------------------------
+
+-- * The write path's error table — OF-05
+
+-------------------------------------------------------------------------------
+
+-- | What a client is told when a write fails.
+--
+-- __Why a test exists at all.__ The translation used to be a @case@ inside the handler, typed by its
+-- own patterns, so there was nothing to call without an HTTP server and nothing was called. It
+-- collapsed four distinct failures into "Not enough ADA in your wallet" and let a fifth escape to
+-- Warp's text/plain 500 with no @code@ (@OF-05@). It is one pure function now, and this is the
+-- table.
+--
+-- The script arm is the one the finding is about: a validator refusing a transaction told the user
+-- to add funds. The codes come out of the rendered Plutus failure, which is the same place
+-- @Test.Helpers.failedWithTrace@ has read them since the first negative test — one parser, with the
+-- emulator suite as its gate.
+writeFailureTests :: TestTree
+writeFailureTests =
+  testGroup
+    "write failures carry a code a client can act on (OF-05)"
+    [ testCase "our own exception keeps its own code and status" $ do
+        let f = classifyWriteFailure (toException (GYApplicationException ProfileNotFound))
+        (afStatus f, afCode f) @?= (404, "ProfileNotFound"),
+      testCase "a paused protocol is a 503, not a 400" $ do
+        let f = classifyWriteFailure (toException (GYApplicationException ProtocolPaused))
+        (afStatus f, afCode f) @?= (503, "ProtocolPaused"),
+      testCase "a VALIDATOR refusal is ScriptRefused and names the trace codes, not InsufficientFunds" $ do
+        -- The render fragment is the shape cardano-api actually produces, taken from an emulator
+        -- failure: `dpfExecutionLogs = ["D6","PT5"]`.
+        let f = classifyWriteFailure scriptFailure
+        afStatus f @?= 400
+        afCode f @?= "ScriptRefused"
+        assertBool ("the message must name the codes: " <> afMessage f) ("D6" `isInfixOf` afMessage f)
+        assertBool ("and all of them: " <> afMessage f) ("PT5" `isInfixOf` afMessage f),
+      testCase "a balancing shortfall is still InsufficientFunds" $ do
+        let f = classifyWriteFailure (toException (GYBuildTxException GYBuildTxNoSuitableCollateral))
+        (afStatus f, afCode f) @?= (400, "InsufficientFunds"),
+      testCase "the ExUnits and size ceilings are NOT shortfalls — adding ADA does nothing about them" $ do
+        let tooBig = classifyWriteFailure (toException (GYBuildTxException (GYBuildTxExUnitsTooBig (10, 10) (20, 20))))
+            tooLarge = classifyWriteFailure (toException (GYBuildTxException (GYBuildTxSizeTooBig 16384 20000)))
+        (afCode tooBig, afCode tooLarge) @?= ("TxTooExpensive", "TxTooLarge")
+        (afStatus tooBig, afStatus tooLarge) @?= (400, 400),
+      testCase "a submission the provider rejected is a 502, not a 500 with no code" $ do
+        let f = classifyWriteFailure (toException (SubmitTxException "the node rejected the transaction"))
+        (afStatus f, afCode f) @?= (502, "ProviderError"),
+      testCase "anything unrecognised is still a 500, but with a code in the body" $ do
+        let f = classifyWriteFailure (toException (userError "something nobody classified"))
+        (afStatus f, afCode f) @?= (500, "InternalError"),
+      ---- the parser the script arm depends on ----------------------------------------------------
+      testCase "the trace-code parser reads every code, in order" $
+        traceCodesInRender renderedLogs @?= ["D6", "PT5"],
+      testCase "no marker means no codes — a render change degrades, it does not invent" $ do
+        traceCodesInRender "GYBuildTxException (GYBuildTxBalancingError ...)" @?= []
+        traceCodesInRender "" @?= [],
+      testCase "an empty log list is no codes, not one empty code" $
+        traceCodesInRender "dpfExecutionLogs = []}" @?= []
+    ]
+  where
+    renderedLogs = "DebugPlutusFailure {dpfExecutionUnits = ..., dpfExecutionLogs = [\"D6\",\"PT5\"]}"
+    scriptFailure :: SomeException
+    scriptFailure = toException (userError ("TxBodyScriptExecutionError " <> renderedLogs))

@@ -14,7 +14,7 @@
 module InteractionAppMonad where
 
 import Palmares.Constants qualified as Constants
-import Control.Exception (displayException, try)
+import Control.Exception (SomeException, displayException, try)
 import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Aeson (encode, object, (.=))
@@ -26,7 +26,13 @@ import GeniusYield.TxBuilder.Errors (GYTxMonadException (..))
 import GeniusYield.Types
 import Servant
 import Palmares.TxBuilding.Context
-import Palmares.TxBuilding.Exceptions (TxBuildingException, txBuildingExceptionCode, txBuildingExceptionToHttpStatus)
+import Palmares.TxBuilding.Exceptions
+  ( ApiFailure (..),
+    TxBuildingException,
+    classifyWriteFailure,
+    txBuildingExceptionCode,
+    txBuildingExceptionToHttpStatus,
+  )
 import Palmares.TxBuilding.Interactions (Interaction)
 import Palmares.TxBuilding.Operations (ensureDeployedScriptsAreReady)
 import Palmares.TxBuilding.Transactions (interactionToHexEncodedCBOR, submitTx)
@@ -71,41 +77,26 @@ txBuildingServantErr status txEx =
   mkServantErrBody status $ encode $ object ["code" .= txBuildingExceptionCode txEx, "message" .= displayException txEx]
 
 -- | Run an IO action in the TxBuilding context with standardized error handling.
--- Maps 'TxBuildingException' constructors to appropriate HTTP status codes
--- using the centralized 'txBuildingExceptionToHttpStatus' mapping.
+--
+-- __Catches 'SomeException', and that is the fix.__ The patterns here used to type @try@ to
+-- 'GYTxMonadException', so a provider's HTTP failure or a submission rejected by the node was not
+-- caught at all: it reached Warp's default handler, which answers @text\/plain@ with no @code@ under
+-- a 500 (@OF-05@). Every exception now gets a JSON body with a code a client can match on, and the
+-- table that decides which one is 'classifyWriteFailure' — pure, total, and tested.
 runWithTxErrorHandling :: IO a -> InteractionAppMonad a
 runWithTxErrorHandling action = InteractionAppMonad $ do
-  res <- liftIO $ try action
+  res <- liftIO $ try @SomeException action
   case res of
-    Left ex ->
-      case ex of
-        GYApplicationException appE
-          | Just txEx <- cast appE -> do
-              let status = txBuildingExceptionToHttpStatus txEx
-              liftIO $ putStrLn $ "TxBuildingException (" <> show status <> ") [" <> txBuildingExceptionCode txEx <> "]: " <> displayException txEx
-              throwError $ txBuildingServantErr status txEx
-        -- Atlas builder ran out of funds: empty wallet (no seed UTxO), can't
-        -- balance the fee/deposit, or no collateral. These are normal client
-        -- conditions, not server faults — map to 400 with a clear message
-        -- instead of a misleading 500.
-        GYQueryUTxOException {} -> insufficientFunds ex
-        GYBuildTxException {} -> insufficientFunds ex
-        GYNoSuitableCollateralException {} -> insufficientFunds ex
-        _ -> do
-          liftIO $ putStrLn $ "Unexpected exception: " <> show ex
-          throwError $ mkServantErr 500 InternalError
     Right ok -> pure ok
-  where
-    insufficientFunds ex = do
-      liftIO $ putStrLn $ "Insufficient funds (400) [InsufficientFunds]: " <> show ex
+    Left ex -> do
+      let ApiFailure {..} = classifyWriteFailure ex
+      -- The full exception is LOGGED and the client gets the classified message: a script's trace
+      -- codes are a protocol fact and travel, but a provider URL or a wallet address in a balancing
+      -- error is not the client's business.
+      liftIO $ putStrLn $ "Write failure (" <> show afStatus <> ") [" <> afCode <> "]: " <> show ex
       throwError $
-        mkServantErrBody 400 $
-          encode $
-            object
-                [ "code" .= ("InsufficientFunds" :: Text),
-                  "message"
-                    .= ("Not enough ADA in your wallet to cover the deposit and transaction cost." :: Text)
-                ]
+        mkServantErrBody afStatus $
+          encode $ object ["code" .= afCode, "message" .= afMessage]
 
 -- | Build a transaction from an 'Interaction' and return its hex-encoded CBOR.
 buildInteractionApp :: Interaction -> InteractionAppMonad String
@@ -127,7 +118,12 @@ pollTxConfirmation txId = do
   let providers = ctxProviders (providerCtx txBuildingContext)
   -- Single attempt, 100ms delay, 1 confirmation
   let params = GYAwaitTxParameters 1 100000 1
-  res <- liftIO $ try @GYTxMonadException $ gyAwaitTxConfirmed providers params txId
+  -- 'SomeException' and not 'GYTxMonadException' — @OF-05@(c). Atlas signals "I waited and it is
+  -- still not there" with its own 'GYAwaitTxException', which is a standalone newtype and NOT a
+  -- 'GYTxMonadException', so the one exception this function exists to absorb was the one it did not
+  -- catch: a transaction that simply had not confirmed yet produced a 500. The smoke script survived
+  -- only because `curl -f` reads that 500 as "not yet".
+  res <- liftIO $ try @SomeException $ gyAwaitTxConfirmed providers params txId
   case res of
     Right () -> return True
     Left _ -> return False

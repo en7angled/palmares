@@ -82,8 +82,11 @@ transaction whose required signature is missing. So the other two values have to
 - `ATTEST_SMOKE_ADDR` — `admin operator-address` prints it, in the raw hex form the request fields
   want. Take it from there rather than from a wallet, and the address and the signature cannot
   belong to different keys.
-- `ATTEST_SMOKE_DREP_ID` — must be the DRep credential of that same key (see below), and **nothing
-  in the repo prints it**. `operator-address` gives the payment address, not the DRep one.
+- `ATTEST_SMOKE_DREP_ID` — must be the DRep credential of that same key (see below).
+  `operator-address` prints it too, as the first line and **before the Atlas config loads**: a
+  CIP-129 credential carries no network byte, so it is available even when the provider config is
+  not. Take it from there; slicing the hash out of the address hex is deriving it with a second
+  tool.
 
 ## Two values that are easy to get wrong
 

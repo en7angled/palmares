@@ -25,7 +25,7 @@
       "drep_hash_id",
       "as_of_epoch"
     ],
-    "spec": "docs/superpowers/design/f1-metric-formulas.md#51-participation_rate-eligible_actions-votes_cast-open_actions_unvoted",
+    "spec": "docs/spec/metrics.md#participation_rate_v1",
     "version": 1
   },
   {
@@ -55,7 +55,7 @@
       "drep_hash_id",
       "as_of_epoch"
     ],
-    "spec": "docs/superpowers/design/f1-metric-formulas.md#52-rationale_rate-and-its-four-counters",
+    "spec": "docs/spec/metrics.md#rationale_rate_v1",
     "version": 1
   },
   {
@@ -80,7 +80,7 @@
       "drep_hash_id",
       "as_of_epoch"
     ],
-    "spec": "docs/superpowers/design/f1-metric-formulas.md#53-age_days",
+    "spec": "docs/spec/metrics.md#age_days_v1",
     "version": 1
   },
   {
@@ -107,7 +107,7 @@
       "as_of_epoch",
       "retention_window_epochs"
     ],
-    "spec": "docs/superpowers/design/f1-metric-formulas.md#54-delegator_count-delegator_retention_rate-delegators_joinedleft",
+    "spec": "docs/spec/metrics.md#delegator_retention_rate_v1",
     "version": 1
   },
   {
@@ -133,7 +133,7 @@
       "drep_hash_id",
       "as_of_epoch"
     ],
-    "spec": "docs/superpowers/design/f1-metric-formulas.md#55-vote_latency_median_hours-vote_latency_p90_hours",
+    "spec": "docs/spec/metrics.md#vote_latency_median_hours_v1",
     "version": 1
   },
   {
@@ -157,7 +157,7 @@
       "drep_hash_id",
       "as_of_epoch"
     ],
-    "spec": "docs/superpowers/design/f1-metric-formulas.md#56-votes_by_type",
+    "spec": "docs/spec/metrics.md#votes_by_type_v1",
     "version": 1
   },
   {
@@ -181,7 +181,7 @@
     "sql_file": null,
     "sql_object": "palmares.gov_action",
     "params": [],
-    "spec": "docs/superpowers/design/f1-dbsync-data-layer.md",
+    "spec": "docs/spec/metrics.md#gov_action_state_v1",
     "version": 1
   },
   {
@@ -206,7 +206,7 @@
     "sql_file": null,
     "sql_object": "palmares.vote_tally",
     "params": [],
-    "spec": "docs/superpowers/design/f1-metric-formulas.md#33-spo-on-parameterchange-the-securitygroup-test",
+    "spec": "docs/spec/metrics.md#tally_cast_votes_v1",
     "version": 1
   }
 ]

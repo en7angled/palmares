@@ -69,6 +69,7 @@ transaction-building stack is Atlas.
 | `src/test/` | unit, property and emulator tests |
 | `sql/` | the schema, the views and the metric SQL, applied at service boot |
 | `resources/metrics/` | one `.sql` per metric, embedded at compile time — the single source of truth |
+| `docs/spec/` | the specification the code cites, the metric decisions, and the `D-`/`F-` identifiers |
 | `docs/adr/` | decision records, each carrying the measurements behind it |
 | `docs/generated/` | generated Swagger and CIP-57 blueprint — committed, never hand-edited |
 | `experiments/` | throwaway measurement rigs, deleted once their numbers land in an ADR |

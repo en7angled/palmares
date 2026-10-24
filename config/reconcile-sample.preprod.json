@@ -20,7 +20,7 @@
     "  withdrawals with the largest total, and the 2 oldest bootstrap-era actions: every",
     "  lifecycle shape and the whole withdrawal path.",
     "",
-    "Redraw with the commands in docs/superpowers/F1-PROGRESS.md under T-PARITY-4."
+    "Redraw with the commands in docs/deployment/koios-parity-gate.md."
   ],
   "network": "preprod",
   "recorded_at_epoch": 320,

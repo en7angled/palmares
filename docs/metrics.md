@@ -99,7 +99,7 @@ SELECT
   (SELECT count(*) FROM open_unvoted) AS open_actions_unvoted;
 ```
 
-Spec: docs/superpowers/design/f1-metric-formulas.md#51-participation_rate-eligible_actions-votes_cast-open_actions_unvoted
+Spec: docs/spec/metrics.md#participation_rate_v1
 
 ## Rationale rate
 
@@ -204,7 +204,7 @@ SELECT
 FROM graded;
 ```
 
-Spec: docs/superpowers/design/f1-metric-formulas.md#52-rationale_rate-and-its-four-counters
+Spec: docs/spec/metrics.md#rationale_rate_v1
 
 ## Registered age
 
@@ -269,7 +269,7 @@ LEFT JOIN LATERAL (
 WHERE i.drep_hash_id = (SELECT drep_hash_id FROM p);
 ```
 
-Spec: docs/superpowers/design/f1-metric-formulas.md#53-age_days
+Spec: docs/spec/metrics.md#age_days_v1
 
 ## Delegator retention rate
 
@@ -388,7 +388,7 @@ SELECT
 FROM at_epoch;
 ```
 
-Spec: docs/superpowers/design/f1-metric-formulas.md#54-delegator_count-delegator_retention_rate-delegators_joinedleft
+Spec: docs/spec/metrics.md#delegator_retention_rate_v1
 
 ## Vote latency
 
@@ -449,7 +449,7 @@ SELECT
 FROM f;
 ```
 
-Spec: docs/superpowers/design/f1-metric-formulas.md#55-vote_latency_median_hours-vote_latency_p90_hours
+Spec: docs/spec/metrics.md#vote_latency_median_hours_v1
 
 ## Votes by action type
 
@@ -521,7 +521,7 @@ LEFT JOIN final f ON f.gov_action_id = e.gov_action_id
 GROUP BY t.action_type;
 ```
 
-Spec: docs/superpowers/design/f1-metric-formulas.md#56-votes_by_type
+Spec: docs/spec/metrics.md#votes_by_type_v1
 
 ## Governance action state
 
@@ -542,7 +542,7 @@ Spec: docs/superpowers/design/f1-metric-formulas.md#56-votes_by_type
 - state and votability can disagree: an action with expired_epoch = the current epoch is 'expired' while its window is still open, so action_window is the authority for whether a vote is still possible
 - dropped_epoch is not an independent outcome; on expiry db-sync sets it to expired_epoch + 1
 
-Spec: docs/superpowers/design/f1-dbsync-data-layer.md
+Spec: docs/spec/metrics.md#gov_action_state_v1
 
 ## Vote tally
 
@@ -568,5 +568,5 @@ Spec: docs/superpowers/design/f1-dbsync-data-layer.md
 - committee rows carry counts and zero power: the committee ratifies by member quorum and holds no stake
 - ParameterChange has no single DRep threshold: it is a maximum over the parameter groups the proposal touches
 
-Spec: docs/superpowers/design/f1-metric-formulas.md#33-spo-on-parameterchange-the-securitygroup-test
+Spec: docs/spec/metrics.md#tally_cast_votes_v1
 

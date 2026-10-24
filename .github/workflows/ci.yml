@@ -99,13 +99,31 @@ jobs:
           ghc-version: "9.6.6"      # forced by plutus-tx-plugin; do not widen
           cabal-version: "3.10"
 
+      # TD-03. TWO ENTRIES, because the two directories have opposite restore rules.
+      #
+      # The cabal STORE is content-addressed: every path in it is a built package keyed by its own
+      # hash, so restoring an older one can only ever supply packages that are still correct. A loose
+      # `restore-keys` is right there and saves most of the build.
+      #
+      # `dist-newstyle` is THIS package's object files and its resolved build plan, and it was keyed
+      # on `cabal.project.freeze` and `cabal.project` only — not on `palmares.cabal`. So a change to
+      # `ghc-options`, to a flag's `default:`, or to the module list did not invalidate it, and the
+      # `restore-keys` fallback would restore ANY previous cache on top of that. A `-Wall` addition
+      # or a plugin flag could therefore go un-rebuilt, which makes CI something other than the fresh
+      # checkout the trace-code commit assumed it was.
+      #
+      # So: `palmares.cabal` in the key, and NO restore-keys. A near-miss restore is the defect, not
+      # a saving — on a miss the package rebuilds, which is the only answer that is always correct.
       - uses: actions/cache@v4
         with:
-          path: |
-            ${{ steps.setup.outputs.cabal-store }}
-            dist-newstyle
-          key: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          restore-keys: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-
+          path: ${{ steps.setup.outputs.cabal-store }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-store-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-store-
+
+      - uses: actions/cache@v4
+        with:
+          path: dist-newstyle
+          key: ${{ runner.os }}-${{ runner.arch }}-ghc9.6.6-dist-${{ hashFiles('cabal.project.freeze', 'cabal.project', 'palmares.cabal') }}
 
       - run: cabal update
       - run: cabal build all --enable-tests

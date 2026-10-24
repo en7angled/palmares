@@ -78,13 +78,21 @@ acProfileA, acProfileB, acProfileC, acAttestation, acDispute, acForeign :: GYAss
 acProfileA = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0a1"
 acProfileB = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0b2"
 acProfileC = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0c3"
-acAttestation = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0d4"
-acDispute = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0e5"
+-- The LABELS ARE LOAD-BEARING, and these two carried `000643b0` — the profile label — until
+-- 2026-10-24. `OC-05` gave attestations CIP-67 label 1 (`00001070`) and disputes label 2
+-- (`000020e0`), and the authentication gate in "Palmares.Ingestion" tests exactly that prefix. So
+-- every case below asserted on ids the minting policy cannot produce, and the gate's own bug — one
+-- shared profile-label predicate for all three kinds — passed this module unnoticed while the live
+-- read surface served nothing.
+acAttestation = ac "c0ffee00000000000000000000000000000000000000000000000001.00001070d4"
+acDispute = ac "c0ffee00000000000000000000000000000000000000000000000001.000020e0e5"
 acForeign = ac "deadbeef000000000000000000000000000000000000000000000002.000643b0f6"
 
 acClaimRecord, acWithdrawRecord :: GYAssetClass
-acClaimRecord = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0f8"
-acWithdrawRecord = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b0f9"
+-- A credential claim and a withdrawal are ATTESTATION kinds, so their ids wear the attestation
+-- label too — see the note above.
+acClaimRecord = ac "c0ffee00000000000000000000000000000000000000000000000001.00001070f8"
+acWithdrawRecord = ac "c0ffee00000000000000000000000000000000000000000000000001.00001070f9"
 
 -- | A second credential, for the case a withdrawal names one the profile does not publish.
 otherCredential :: OnchainTypes.ClaimedCredential

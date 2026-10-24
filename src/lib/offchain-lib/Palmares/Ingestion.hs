@@ -19,7 +19,7 @@ import GeniusYield.Types
 import Palmares.ChainSync.KupoAtlas
 import Palmares.DomainTypes.Core.Actions (ProfileData (..))
 import Palmares.DomainTypes.Core.Types
-import Palmares.Onchain.CIP68 (CIP68Datum, extra, getMetadataFields)
+import Palmares.Onchain.CIP68 (CIP68Datum, extra, getMetadataFields, isAttestationTokenName, isDisputeTokenName, isRefTokenName)
 import Palmares.Onchain.Protocol.Types qualified as OnchainTypes
 import Palmares.TxBuilding.Conversions
 import Palmares.TxBuilding.Utils
@@ -89,19 +89,19 @@ projectChainEvent nid ourPolicy am@AtlasMatch {..}
   | amAddress == validatorAddress profilesValidatorHashGY =
       case profileFromGYOutDatum amDatum of
         Just datum
-          | authentic (OnchainTypes.profileId (extra datum)) ->
+          | authentic isRefTokenName (OnchainTypes.profileId (extra datum)) ->
               ProfileEvent <$> profileDatumToProfile datum
         _ -> return (NoEvent am)
   | amAddress == validatorAddress attestationsValidatorHashGY =
       case attestationFromGYOutDatum amDatum of
         Just datum
-          | authentic (OnchainTypes.attestationId (extra datum)) ->
+          | authentic isAttestationTokenName (OnchainTypes.attestationId (extra datum)) ->
               AttestationEvent <$> onchainAttestationToAttestation datum
         _ -> return (NoEvent am)
   | amAddress == validatorAddress disputesValidatorHashGY =
       case disputeFromGYOutDatum amDatum of
         Just datum
-          | authentic (OnchainTypes.disputeId (extra datum)) ->
+          | authentic isDisputeTokenName (OnchainTypes.disputeId (extra datum)) ->
               DisputeEvent <$> projectDispute datum
         _ -> return (NoEvent am)
   | otherwise = return (NoEvent am)
@@ -113,9 +113,12 @@ projectChainEvent nid ourPolicy am@AtlasMatch {..}
     -- The gate. An id the ledger cannot even represent as an asset class fails it, rather than
     -- being converted with 'assetClassFromPlutus'' and throwing: a forged datum must be skipped,
     -- not turned into a projection error that stops the batch.
-    authentic claimedId = case assetClassFromPlutus claimedId of
+    -- EACH BRANCH PASSES ITS OWN KIND'S NAME PREDICATE, and that is the whole of the fix described
+    -- on 'authenticateStateUTxO': one shared `isRefTokenName` here meant every attestation and every
+    -- dispute fell to `NoEvent`, because `OC-05` gave those two kinds their own CIP-67 labels.
+    authentic isOwnKindName claimedId = case assetClassFromPlutus claimedId of
       Left _ -> False
-      Right ac -> authenticateStateUTxO ourPolicy ac amValue
+      Right ac -> authenticateStateUTxO isOwnKindName ourPolicy ac amValue
 
 -- | Convert an authenticated CIP-68 dispute datum into its projection payload.
 projectDispute :: (MonadError GYTxMonadException m) => CIP68Datum OnchainTypes.OnchainDispute -> m ProjectedDispute

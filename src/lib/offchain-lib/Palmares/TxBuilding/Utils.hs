@@ -17,7 +17,7 @@ import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import GeniusYield.Types.Time (timeFromPOSIX, timeFromPlutus, timeToPOSIX, timeToPlutus)
 import GeniusYield.Types.Wallet
-import Palmares.Onchain.CIP68 (CIP68Datum, isRefTokenName)
+import Palmares.Onchain.CIP68 (CIP68Datum)
 import Palmares.Onchain.Protocol qualified as Onchain
 import Palmares.Onchain.Protocol.Types (OnchainAttestation, OnchainDispute, OracleParams)
 import PlutusLedgerApi.V1.Tx qualified as V1
@@ -92,14 +92,25 @@ extractNFTAssetClass v =
 -- path READS; this one guards the id the protocol TRUSTS AS STATE, which is the site where a forged
 -- datum becomes a record. It was left on the old version.
 --
--- 'Palmares.Onchain.CIP68.isRefTokenName' rather than a second definition here, so there is one place that says
--- what a reference token name is.
-authenticateStateUTxO :: GYMintingPolicyId -> GYAssetClass -> GYValue -> Bool
-authenticateStateUTxO ourPolicy ac v =
+-- __It takes the kind's OWN name predicate, exactly as 'Palmares.Onchain.Utils.isUnbackedDatum'
+-- does, and that is a fix and not a generalisation.__ This hardcoded
+-- 'Palmares.Onchain.CIP68.isRefTokenName' — CIP-67 label 100 — while `OC-05` had moved attestations
+-- to label 1 and disputes to label 2. So the gate was @False@ for every id the minting policy can
+-- produce for those two kinds, and 'Palmares.Ingestion.projectChainEvent' returned @NoEvent@ for
+-- every genuine attestation and every genuine dispute: the whole attestation read surface was dead,
+-- silently, while profiles projected normally. Measured on preprod 2026-10-24, on the first
+-- end-to-end run there has ever been (F1 check 11): six raw matches, two profile projections, one
+-- unspent attestation on chain at the attestations address, @GET \/attestations@ → @total: 0@.
+--
+-- The paragraph above says this predicate "was left on the old version" — it was describing the
+-- on-chain twin's upgrade. The off-chain one was left on the old version too, and nothing noticed,
+-- because the only tests that fed it an attestation id gave that id the PROFILE label.
+authenticateStateUTxO :: (TokenName -> Bool) -> GYMintingPolicyId -> GYAssetClass -> GYValue -> Bool
+authenticateStateUTxO isOwnKindName ourPolicy ac v =
   case ac of
     GYToken pid tn ->
       pid == ourPolicy
-        && isRefTokenName (tokenNameToPlutus tn)
+        && isOwnKindName (tokenNameToPlutus tn)
         && valueAssetClass v ac == 1
     GYLovelace -> False
 

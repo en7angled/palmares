@@ -23,6 +23,7 @@ import GeniusYield.Types
   )
 import Palmares.ChainSync.KupoAtlas (toGYAssetClass)
 import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..))
+import Palmares.Onchain.CIP68 (isAttestationTokenName, isDisputeTokenName, isRefTokenName)
 import Palmares.TxBuilding.Utils (authenticateStateUTxO, slotToUTC, utcToSlot)
 import Palmares.Storage
   ( OnchainMatchEvent (..),
@@ -89,35 +90,56 @@ ourPolicy :: GYMintingPolicyId
 ourPolicy = "c0ffee00000000000000000000000000000000000000000000000001"
 
 -- Token names carry their CIP-67 prefix: `000643b0` is the reference NFT, `000de140` the user token.
-acX, acY, acForeign, acUserX :: GYAssetClass
+-- `OC-05` gave the other two kinds their own labels: `00001070` an attestation, `000020e0` a dispute.
+acX, acY, acForeign, acUserX, acAttest, acDisp :: GYAssetClass
 acX = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b05801" -- ref id X, our policy
 acY = ac "c0ffee00000000000000000000000000000000000000000000000001.000643b05902" -- ref id Y, our policy
 acForeign = ac "deadbeef000000000000000000000000000000000000000000000002.000643b05801" -- someone else's policy
 acUserX = ac "c0ffee00000000000000000000000000000000000000000000000001.000de1405801" -- the USER half of X
+acAttest = ac "c0ffee00000000000000000000000000000000000000000000000001.000010705801" -- an attestation id
+acDisp = ac "c0ffee00000000000000000000000000000000000000000000000001.000020e05801" -- a dispute id
 
 authenticationTests :: TestTree
 authenticationTests =
   testGroup
     "state-UTxO authentication (inherited fix #3)"
     [ testCase "a datum's own reference NFT, under our policy, authenticates" $
-        authenticateStateUTxO ourPolicy acX (valueSingleton acX 1 <> valueFromLovelace 2_000_000) @?= True,
+        authenticateStateUTxO isRefTokenName ourPolicy acX (valueSingleton acX 1 <> valueFromLovelace 2_000_000) @?= True,
       testCase "no NFT in the value is not authentic (the free-dust forgery)" $
-        authenticateStateUTxO ourPolicy acX (valueFromLovelace 2_000_000) @?= False,
+        authenticateStateUTxO isRefTokenName ourPolicy acX (valueFromLovelace 2_000_000) @?= False,
       testCase "a datum naming id X in a UTxO holding NFT Y is not authentic" $
-        authenticateStateUTxO ourPolicy acX (valueSingleton acY 1 <> valueFromLovelace 2_000_000) @?= False,
+        authenticateStateUTxO isRefTokenName ourPolicy acX (valueSingleton acY 1 <> valueFromLovelace 2_000_000) @?= False,
       testCase "the right token name under someone else's policy is not authentic" $
-        authenticateStateUTxO ourPolicy acForeign (valueSingleton acForeign 1) @?= False,
+        authenticateStateUTxO isRefTokenName ourPolicy acForeign (valueSingleton acForeign 1) @?= False,
       testCase "two copies of the NFT is not authentic" $
-        authenticateStateUTxO ourPolicy acX (valueSingleton acX 2) @?= False,
+        authenticateStateUTxO isRefTokenName ourPolicy acX (valueSingleton acX 2) @?= False,
       testCase "GYLovelace as the claimed id is never authentic" $
-        authenticateStateUTxO ourPolicy GYLovelace (valueFromLovelace 2_000_000) @?= False,
+        authenticateStateUTxO isRefTokenName ourPolicy GYLovelace (valueFromLovelace 2_000_000) @?= False,
       -- The forgery vector itself. Our policy, exactly one token, the datum names the id it holds —
       -- every clause of the original guard satisfied. Only the CIP-67 prefix refuses it.
       testCase "a profile's USER token does not authenticate a datum (the forgery vector)" $
-        authenticateStateUTxO ourPolicy acUserX (valueSingleton acUserX 1 <> valueFromLovelace 2_000_000) @?= False,
+        authenticateStateUTxO isRefTokenName ourPolicy acUserX (valueSingleton acUserX 1 <> valueFromLovelace 2_000_000) @?= False,
       -- A name SHORTER than the four-byte prefix must not slip through on a truncated comparison.
       testCase "a two-byte token name is not a reference token" $
-        authenticateStateUTxO ourPolicy acShort (valueSingleton acShort 1) @?= False
+        authenticateStateUTxO isRefTokenName ourPolicy acShort (valueSingleton acShort 1) @?= False,
+      -- THE KIND'S OWN LABEL, and the case this group did not have. The predicate was hardcoded to
+      -- the profile label while `OC-05` had moved attestations to label 1 and disputes to label 2,
+      -- so `projectChainEvent` returned `NoEvent` for every real attestation and every real dispute
+      -- and the attestation read surface served nothing. Measured on preprod before it was fixed:
+      -- one attestation on chain, `GET /attestations` → `total: 0`.
+      --
+      -- Each kind authenticates under ITS OWN predicate and under no other, which is both halves:
+      -- the dead surface, and the cross-kind confusion that a shared predicate would re-introduce.
+      testCase "an attestation id authenticates as an attestation" $
+        authenticateStateUTxO isAttestationTokenName ourPolicy acAttest (valueSingleton acAttest 1) @?= True,
+      testCase "an attestation id is not a profile" $
+        authenticateStateUTxO isRefTokenName ourPolicy acAttest (valueSingleton acAttest 1) @?= False,
+      testCase "a dispute id authenticates as a dispute" $
+        authenticateStateUTxO isDisputeTokenName ourPolicy acDisp (valueSingleton acDisp 1) @?= True,
+      testCase "a dispute id is not an attestation" $
+        authenticateStateUTxO isAttestationTokenName ourPolicy acDisp (valueSingleton acDisp 1) @?= False,
+      testCase "a profile id is not a dispute" $
+        authenticateStateUTxO isDisputeTokenName ourPolicy acX (valueSingleton acX 1) @?= False
     ]
 
 -- | A token name too short to carry a CIP-67 prefix at all.

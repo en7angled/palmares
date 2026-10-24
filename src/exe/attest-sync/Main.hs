@@ -48,13 +48,6 @@ import Palmares.WebAPI.CORS (getCorsConfigFromEnv)
 import Palmares.WebAPI.Utils
 import System.IO (BufferMode (LineBuffering), hSetBuffering, stdout)
 
-defaultConnStr :: String
--- `cexplorer`, which is db-sync's database and the one this service's schema lives beside
--- (ADR 0001 chose one database with role separation over two). The inherited default said
--- `chainsync`, a database no deployment here has: `.env.example` and `Dockerfile.attest-sync`
--- both say `cexplorer`, so the code default was the only place that disagreed.
-defaultConnStr = "host=localhost user=postgres password=postgres dbname=cexplorer port=5432"
-
 defaultKupoUrl :: String
 defaultKupoUrl = "http://localhost:1442"
 
@@ -74,7 +67,7 @@ main = do
   corsCfg <- getCorsConfigFromEnv
 
   kupoUrl <- liftIO $ fmap (fromMaybe defaultKupoUrl) (lookupEnv "KUPO_URL")
-  connStr <- liftIO $ fmap (fromMaybe defaultConnStr) (lookupEnv "PG_CONN_STR")
+  connStr <- liftIO requirePgConnStr
 
   let connBS :: ConnectionString = TE.encodeUtf8 (T.pack connStr)
   pool <- runStdoutLoggingT $ createPostgresqlPool connBS 16

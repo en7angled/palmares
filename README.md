@@ -115,8 +115,16 @@ Containers, and the read-path stack. Two profiles, matching the two doors of §2
 ```bash
 scripts/build-images.sh                    # all four service images, host architecture, loaded locally
 docker compose --profile chain up -d       # node + db-sync + Postgres: the whole read path
-docker compose --profile app   up -d       # + the public query API on :8083
+docker compose --profile app   up -d       # + the public query API on :8083, as palmares_owner
+
+# The write path, once `admin deploy-reference-scripts` has run. BASIC_USER and BASIC_PASS have no
+# defaults — a shipped credential is worse than a missing one — so compose names the one you forgot.
+BASIC_USER=you BASIC_PASS=secret docker compose --profile write up -d
 ```
+
+Every published port binds to `127.0.0.1`, including Postgres. The `write` profile brings up Kupo,
+the interaction API **and `attest-sync`**: without the last one the stack can submit an attestation
+to the chain and never read it back, which is what the audit found.
 
 Time until useful, measured 2026-10-20 on an Apple-silicon laptop (Experiment A, numbers in
 `docs/adr/0001-governance-data-substrate.md`):

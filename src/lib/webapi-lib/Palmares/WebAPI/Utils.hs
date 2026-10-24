@@ -3,6 +3,7 @@
 -- | Shared utilities for web API executables (port configuration, Swagger helpers, etc.).
 module Palmares.WebAPI.Utils
   ( getPortFromEnvOrDefault
+  , requirePgConnStr
   , addSharedSwaggerDescriptions
   , escapeLikePattern
   ) where
@@ -11,10 +12,31 @@ import Control.Lens ((&), (?~), at, mapped)
 import Data.Swagger (Swagger, description, definitions)
 import Data.Text (Text)
 import qualified Data.Text as T
+import System.Exit (die)
 import System.Environment (lookupEnv)
 import Text.Read (readMaybe)
 
 -- | Read the @PORT@ environment variable, falling back to the given default if unset or unparseable.
+-- | The Postgres DSN from @PG_CONN_STR@, or refuse to boot — `TD-09`.
+--
+-- __What stood in each executable was a DEFAULT, and the default was a superuser with a guessable
+-- password:__ @user=postgres password=postgres@. An operator who set every other variable and forgot
+-- this one got a service silently connected as the database superuser — or, far likelier in a
+-- cluster, a connection refused with no hint that the DSN had never been configured.
+--
+-- Fail-closed, the same rule @BASIC_USER@ and @CORS_ALLOWED_ORIGINS@ already follow: a wrong
+-- configuration that works is worse than one that stops, because only one of the two gets fixed.
+--
+-- Here rather than in each executable because both query-api and attest-sync had their own copy of
+-- the default, with different hosts and the same password, which is how one of them could be fixed
+-- and the other not.
+requirePgConnStr :: IO String
+requirePgConnStr = do
+  mv <- lookupEnv "PG_CONN_STR"
+  case mv of
+    Just v | not (null v) -> pure v
+    _ -> die "PG_CONN_STR is required and has no default. Set the Postgres DSN for this service."
+
 getPortFromEnvOrDefault :: Int -> IO Int
 getPortFromEnvOrDefault defaultPort = do
   eport <- lookupEnv "PORT"

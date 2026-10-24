@@ -3,11 +3,16 @@
 #
 #   docker compose --profile chain up -d        # node + db-sync + postgres
 #   docker compose --profile app   up -d        # + the public query API (reads Postgres only)
-#   docker compose --profile write up -d        # + Kupo and the interaction API (the write path)
+#   docker compose --profile write up -d        # + Kupo, the interaction API and attest-sync
 #
 # `write` is its own profile because it needs things the read path does not: a UTxO index, the node
 # socket, and `config/config_palmares_validators.json`, which does not exist until
 # `admin deploy-reference-scripts` has run once.
+#
+# It also needs BASIC_USER and BASIC_PASS in the environment. They have no defaults on purpose — a
+# shipped credential is worse than a missing one — so compose names the one you forgot. The audit
+# (`TD-02`) found this profile unable to BOOT for want of them and, once booted, unable to serve an
+# attestation for want of `attest-sync`, which nothing here started. Both are fixed.
 #
 # TIME UNTIL USEFUL (measured 2026-10-20 on an Apple-silicon laptop, Experiment A):
 #   node, via Mithril          : ~20-40 min  (default; RESTORE_SNAPSHOT=false for a genesis audit run)
@@ -93,7 +98,7 @@ services:
       - wal_compression=on
       - -c
       - synchronous_commit=off
-    ports: ["${POSTGRES_PORT:-5432}:5432"]
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5432}:5432"]
     volumes:
       - postgres:/var/lib/postgresql/data
     healthcheck:
@@ -216,7 +221,7 @@ services:
       # byte-identical genesis files.
       - ./deploy/node-config:/node-config:ro
       - kupo-db:/db
-    ports: ["${KUPO_PORT:-1442}:1442"]
+    ports: ["127.0.0.1:${KUPO_PORT:-1442}:1442"]
     depends_on:
       cardano-node: {condition: service_healthy}
     healthcheck:
@@ -248,12 +253,19 @@ services:
          "logging":[{"type":{"tag":"stderr"},"severity":"Info","verbosity":"V2"}]}
       PORT: "8082"
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
+      # FAIL-CLOSED AND UNSET BY DEFAULT — TD-02. The service refuses to boot without these, which
+      # is the intended behaviour and was also the reason the documented `write` profile could not
+      # start at all: nothing here supplied them, so `docker compose --profile write up` died on the
+      # first service that mattered. `:?` makes compose say which variable is missing instead of
+      # letting the container die with it, and a default would be a shipped credential.
+      BASIC_USER: "${BASIC_USER:?set BASIC_USER — interaction-api is fail-closed and will not boot without it}"
+      BASIC_PASS: "${BASIC_PASS:?set BASIC_PASS — interaction-api is fail-closed and will not boot without it}"
     volumes:
       - node-ipc:/ipc:ro
       # Written by `admin deploy-reference-scripts`; absent until the first deploy, which is why
       # this service is in its own profile rather than in `app`.
       - ./config:/app/config:ro
-    ports: ["${INTERACTION_API_PORT:-8082}:8082"]
+    ports: ["127.0.0.1:${INTERACTION_API_PORT:-8082}:8082"]
     depends_on:
       cardano-node: {condition: service_healthy}
       kupo: {condition: service_healthy}
@@ -265,20 +277,86 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # GV-04. The two roles `sql/050_roles.sql` declares, created before anything connects as them.
+  #
+  # A one-shot and not a line in query-api's entrypoint: `apply-roles` is idempotent and must fail the
+  # process rather than warn, which is exactly what a Job-shaped service with `restart: "no"` gives.
+  # It is in the `app` profile because query-api cannot start without it.
+  palmares-roles:
+    # Both profiles: `attest-sync` is in `write` and depends on it, and the job is idempotent, so
+    # running it again when `write` comes up costs one no-op transaction.
+    profiles: [app, write]
+    image: ghcr.io/${GH_OWNER:-mariusgeorgescu}/palmares-admin:${TAG:-latest}
+    command: ["apply-roles"]
+    environment:
+      PG_CONN_STR: "host=postgres user=postgres password=${POSTGRES_PASSWORD:-devonly} dbname=cexplorer port=5432"
+      PALMARES_OWNER_PASSWORD: "${PALMARES_OWNER_PASSWORD:-devonly}"
+      PALMARES_RO_PASSWORD: "${PALMARES_RO_PASSWORD:-devonly}"
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+
+  # CS-03 / TD-02. THE SERVICE WITHOUT WHICH THE `write` PROFILE CANNOT SERVE AN ATTESTATION.
+  #
+  # `interaction-api` builds and submits; nothing projected what it submitted, so the documented
+  # self-host path could write to the chain and never read it back. The audit found the profile
+  # unable to boot for the credentials above and unable to WORK for this.
+  #
+  # Its own schema, `palmares_attest`, which is why it connects as the owner rather than as
+  # `palmares_ro`: it creates and migrates its own tables. That schema survives query-api's
+  # `DROP SCHEMA palmares CASCADE` by design — see `ensureAttestSchema`.
+  #
+  # `KUPO_MATCH '*'` is the kupo service's default and is load-bearing here: this service follows
+  # `<policy>.*`, so Kupo must have indexed those names to have them to give.
+  attest-sync:
+    profiles: [write]
+    image: ghcr.io/${GH_OWNER:-mariusgeorgescu}/palmares-attest-sync:${TAG:-latest}
+    environment:
+      PG_CONN_STR: "host=postgres user=palmares_owner password=${PALMARES_OWNER_PASSWORD:-devonly} dbname=cexplorer port=5432"
+      KUPO_URL: "http://kupo:1442"
+      PORT: "8084"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
+      FETCH_BATCH_SIZE: "${FETCH_BATCH_SIZE:-100000}"
+      ROLLBACK_MARGIN: "${ROLLBACK_MARGIN:-2160}"
+    volumes:
+      # The deployed-validators config, for the minting policy hash it follows. Same mount and same
+      # reason as interaction-api's: written by `admin deploy-reference-scripts`, absent until then.
+      - ./config:/app/config:ro
+    ports: ["127.0.0.1:${ATTEST_SYNC_PORT:-8084}:8084"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      kupo: {condition: service_healthy}
+      palmares-roles: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8084/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
   query-api:
     profiles: [app]
     image: ghcr.io/${GH_OWNER:-mariusgeorgescu}/palmares-query-api:${TAG:-latest}
     environment:
-      PG_CONN_STR: "host=postgres user=postgres password=${POSTGRES_PASSWORD:-devonly} dbname=cexplorer port=5432"
+      # GV-04: `palmares_ro` and not `postgres`. The documented self-host path ran the PUBLIC read
+      # service as the database superuser, which is the one connection in the stack that should be
+      # least privileged — it serves unauthenticated traffic and writes nothing.
+      #
+      # It still OWNS the `palmares` schema bootstrap, which needs DDL, so the owner role is what the
+      # schema work runs as; `palmares_ro` is what serves reads. Both are created by
+      # `palmares-roles` above.
+      PG_CONN_STR: "host=postgres user=palmares_owner password=${PALMARES_OWNER_PASSWORD:-devonly} dbname=cexplorer port=5432"
       PORT: "8083"
       # Empty allowlist denies all cross-origin: fail-closed. Set it for a local frontend.
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
       PALMARES_VIEW_REFRESH_SECONDS: "${PALMARES_VIEW_REFRESH_SECONDS:-300}"
       PALMARES_READY_MAX_LAG_SECONDS: "${PALMARES_READY_MAX_LAG_SECONDS:-300}"
       PALMARES_AMBER_LAG_SECONDS: "${PALMARES_AMBER_LAG_SECONDS:-120}"
-    ports: ["${QUERY_API_PORT:-8083}:8083"]
+    ports: ["127.0.0.1:${QUERY_API_PORT:-8083}:8083"]
     depends_on:
       postgres: {condition: service_healthy}
+      palmares-roles: {condition: service_completed_successfully}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8083/health || exit 1"]
       interval: 30s

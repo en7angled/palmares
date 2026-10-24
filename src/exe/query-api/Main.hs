@@ -12,7 +12,7 @@ import Database.Persist.Postgresql (createPostgresqlPool)
 import Network.Wai.Handler.Warp
 import Palmares.Metrics.Catalog (resolvedMetricCatalog)
 import Palmares.WebAPI.CORS (getCorsConfigFromEnv)
-import Palmares.WebAPI.Utils (getPortFromEnvOrDefault)
+import Palmares.WebAPI.Utils (requirePgConnStr, getPortFromEnvOrDefault)
 import Query.Gov
   ( amberLagFromEnv,
     expectedNetworkFromEnv,
@@ -28,8 +28,6 @@ import System.Environment (getArgs, lookupEnv)
 import System.Exit (die, exitSuccess)
 import System.IO (BufferMode (LineBuffering), hSetBuffering, stdout)
 
-defaultConnStr :: String
-defaultConnStr = "host=postgres user=postgres password=postgres dbname=cexplorer port=5432"
 
 -- | Show only the host and dbname fields of a Postgres DSN, hiding the password.
 redactConnStr :: String -> String
@@ -84,7 +82,7 @@ serve = do
     Right fs -> putStrLn ("Metric catalog: " <> show (length fs) <> " formulas")
 
   corsCfg <- getCorsConfigFromEnv
-  connStr <- fromMaybe defaultConnStr <$> lookupEnv "PG_CONN_STR"
+  connStr <- requirePgConnStr
   pool <- runStdoutLoggingT $ createPostgresqlPool (T.encodeUtf8 (T.pack connStr)) 10
 
   -- The `palmares` schema is applied at BOOT, by this process, in one transaction, and the

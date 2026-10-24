@@ -44,7 +44,8 @@ The governance layer is views, not Haskell, so its tests are SQL:
   correctness. They pin exact values measured on-chain; when one fails, first ask whether the chain moved
   before assuming the view broke.
 - `test/fixtures/dbsync-skeleton.sql` creates empty stand-ins for the db-sync tables the views read, so the
-  Haskell suite can run with no database. It is a **shape** fixture only: it catches a renamed column, not
-  a wrong number.
+  suite needs only an **empty PostgreSQL** rather than a synced db-sync — not no database at all: 85 cases
+  connect to one, and without `PALMARES_TEST_PG_CONN_STR` they fail in 14 seconds looking like a broken
+  checkout. It is a **shape** fixture only: it catches a renamed column, not a wrong number.
 - Never pin a count that a live preprod can change without also pinning the as-of epoch in the predicate.
   An assertion whose truth depends on when it ran is a flake with extra steps.

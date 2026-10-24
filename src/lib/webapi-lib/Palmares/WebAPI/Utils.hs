@@ -4,6 +4,7 @@
 module Palmares.WebAPI.Utils
   ( getPortFromEnvOrDefault
   , requirePgConnStr
+  , requireEnv
   , addSharedSwaggerDescriptions
   , escapeLikePattern
   ) where
@@ -31,11 +32,23 @@ import Text.Read (readMaybe)
 -- the default, with different hosts and the same password, which is how one of them could be fixed
 -- and the other not.
 requirePgConnStr :: IO String
-requirePgConnStr = do
-  mv <- lookupEnv "PG_CONN_STR"
+requirePgConnStr =
+  requireEnv' "PG_CONN_STR" "Set the Postgres DSN for this service."
+
+-- | Any environment variable that must not have a default, with the reason in the refusal.
+--
+-- The generalisation of 'requirePgConnStr', and it exists because the rule had been applied one
+-- variable at a time: @KUPO_URL@ still defaulted to @http:\/\/localhost:1442@ on the one service
+-- whose whole job is reading the chain, at a port no deployment in this repo uses.
+requireEnv :: String -> IO String
+requireEnv name = requireEnv' name "It has no default: a wrong configuration that works is worse than one that stops."
+
+requireEnv' :: String -> String -> IO String
+requireEnv' name hint = do
+  mv <- lookupEnv name
   case mv of
     Just v | not (null v) -> pure v
-    _ -> die "PG_CONN_STR is required and has no default. Set the Postgres DSN for this service."
+    _ -> die (name <> " is required and has no default. " <> hint)
 
 getPortFromEnvOrDefault :: Int -> IO Int
 getPortFromEnvOrDefault defaultPort = do
@@ -63,7 +76,13 @@ escapeLikePattern =
 addSharedSwaggerDescriptions :: Swagger -> Swagger
 addSharedSwaggerDescriptions s = s
   & definitions . at "GYAssetClass" . mapped . description ?~ "Cardano native asset identifier in format: <56-char policy ID hex>.<asset name hex>"
-  & definitions . at "GYAddress" . mapped . description ?~ "Bech32-encoded Cardano address (addr_test1... on testnet, addr1... on mainnet)"
+  -- RAW CBOR HEX, and this line used to say bech32. Atlas's `FromJSON GYAddress` is
+  -- `parseUrlPiece`, i.e. `deserialiseFromRawBytesHex`, so `addr_test1…` is REFUSED on every write
+  -- route — while the same definition carries Atlas's own `format: cbor hex`, `minLength`/
+  -- `maxLength` 114 and a 114-character hex example. The document contradicted itself and the
+  -- sentence a reader trusts was the wrong half: an integrator following it got a 400 on every
+  -- write. `scripts/smoke_attest_flow.sh` and `smoke_interaction_api.sh` both send the hex form.
+  & definitions . at "GYAddress" . mapped . description ?~ "Cardano address as RAW CBOR HEX (114 hex characters), not bech32: this field is parsed with deserialiseFromRawBytesHex, so addr_test1…/addr1… is refused. `admin operator-address` prints the hex form."
   & definitions . at "GYTime" . mapped . description ?~ "Timestamp in ISO 8601 format (e.g. 2024-06-15T10:30:00Z)"
   & definitions . at "GYPubKeyHash" . mapped . description ?~ "Blake2b-224 public key hash, 28 bytes, hex-encoded"
   & definitions . at "DRepId" . mapped . description ?~ "DRep identifier. CIP-129 bech32 (drep1...) is canonical; the CIP-105 and raw-hex forms are also accepted on input"

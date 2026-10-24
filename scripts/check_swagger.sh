@@ -59,6 +59,20 @@ for p in /health /ready /status /metrics/formulas /dreps /gov-actions /votes /ac
   check "$p is documented" ".paths | has(\"$p\")"
 done
 
+echo "== a list route's items are its own DTO"
+# The gate asserted paths, parameters, `produces` and enums, and never this — so a `ToSchema (Page a)`
+# instance that named every page after the DATATYPE and ignored its argument went unnoticed: all 15
+# list routes `$ref`-ed one `#/definitions/Page` whose `items` were whichever element type registered
+# last (`DisputeRow`). A generated client typed `/dreps` as a list of disputes. Three routes with
+# three different element types is enough to catch a collision; the count catches a route that stops
+# paging at all.
+check "13 per-element page schemas" '[.definitions | keys[] | select(startswith("Page_"))] | length == 13'
+for pair in "/dreps:DRepSummary" "/gov-actions:GovActionSummary" "/votes:VoteRecord" "/disputes:DisputeRow"; do
+  p="${pair%%:*}"; dto="${pair##*:}"
+  check "$p pages $dto" \
+    ".paths[\"$p\"].get.responses[\"200\"].schema[\"\$ref\"] == \"#/definitions/Page_$dto\" and (.definitions[\"Page_$dto\"].properties.items.items[\"\$ref\"] == \"#/definitions/$dto\")"
+done
+
 echo "== the error contract"
 # Nothing in the served API type mentions ApiError — servant types the success body only — so both
 # of these are declared explicitly in apiSwagger. Without them a client cannot discover a single
@@ -171,6 +185,28 @@ check "DRepStatus carries the third registered status" \
 # arrives with the attestation schema, and this assertion is what will have to be updated when it
 # does — deliberately, rather than the enum growing unnoticed.
 check "ActivitySource is governance alone in F1" '.definitions.ActivitySource.enum == ["governance"]'
+
+echo "== the interaction document"
+# Nothing in this gate used to look at the WRITE document, and it published `"GPL-3.0 license"` for
+# as long as it has existed — regenerated into the committed file on every boot of a service whose
+# project is Apache-2.0. Only the facts that are wrong independently of the route set are asserted
+# here; the write API's own contract is `scripts/smoke_interaction_api.sh`, which needs it running.
+IDOC="docs/generated/swagger/interaction-swagger-api.json"
+if [ -f "$IDOC" ]; then
+  icheck() {
+    if jq -e "$2" "$IDOC" >/dev/null; then
+      echo "  ok   $1"
+    else
+      echo "  FAIL $1"
+      echo "       $2 => $(jq -c "$2" "$IDOC" 2>&1 | head -1)"
+      fail=1
+    fi
+  }
+  icheck "license is Apache-2.0" '.info.license.name == "Apache-2.0"'
+  icheck "title is the product's name" '.info.title == "Palmares Interaction API"'
+else
+  echo "  --   $IDOC absent, skipped"
+fi
 
 if [ "$fail" = 0 ]; then echo "swagger OK"; else echo "swagger FAILED" >&2; fi
 exit $fail

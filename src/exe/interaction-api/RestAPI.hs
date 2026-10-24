@@ -253,7 +253,11 @@ apiSwagger =
     -- this is the same refusal moved before the signature.
     & info . Data.Swagger.version .~ "3.3.0"
     & info . Data.Swagger.description ?~ "This is the Palmares Interaction API — transaction building, submission, and the dedicated per-action service endpoints."
-    & info . license ?~ "GPL-3.0 license"
+    -- Apache-2.0, which is what `palmares.cabal`, `LICENSE` and the README say. This published
+    -- "GPL-3.0 license" for as long as the document has existed — inherited, never looked at, and
+    -- regenerated into the committed file on every boot. `scripts/check_swagger.sh` asserted the
+    -- licence on the query document only, which is why nothing caught it.
+    & info . license ?~ "Apache-2.0"
     & host .~ Nothing
     -- Response descriptions
     -- One description for every operation, so it has to be true of every operation: /health, /ready,

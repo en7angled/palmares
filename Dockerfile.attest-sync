@@ -55,7 +55,6 @@ COPY --from=builder /palmares/attest-sync /app/attest-sync
 # Defaults (overridable)
 ENV KUPO_URL=http://localhost:1442 \
     PG_CONN_STR="host=postgres user=postgres password=postgres dbname=cexplorer port=5432" \
-    BATCH_SIZE=1000000 \
     FETCH_BATCH_SIZE=100000
 
 ENTRYPOINT ["/app/attest-sync"]

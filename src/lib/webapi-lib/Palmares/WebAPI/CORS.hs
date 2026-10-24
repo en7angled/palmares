@@ -54,7 +54,13 @@ freshnessExposedHeaders =
     "X-Chain-Slot",
     "X-Chain-Block-Time",
     "X-Data-Lag-Seconds",
-    "X-Data-Source"
+    "X-Data-Source",
+    -- `CS-07` added these three and did not add them here, which is the exact failure the paragraph
+    -- above describes: the server sends the projector's state on every response and a browser client
+    -- cannot read any of it, with nothing logged anywhere to find it by.
+    "X-Attest-Slot",
+    "X-Attest-Lag-Seconds",
+    "X-Attest-State"
   ]
 
 -- | Policy: reflect the request 'Origin' only if it is in the allowlist,

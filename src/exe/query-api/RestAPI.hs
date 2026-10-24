@@ -1341,7 +1341,13 @@ handleGetDashboardPage topLimit closingSoonLimit epochsParam = do
         pure . Just $
           DashboardPageResponse
             { dashboardEpoch = freshEpoch fr,
-              dashboardTotalDreps = n DRepActive + n DRepInactive,
+              -- ALL THREE REGISTERED STATUSES. This was `active + inactive`, which drops the
+              -- `unknown` ones — registered credentials for which the ledger recorded no activity
+              -- deadline — and on preprod that is 90 of 294: the dashboard headline read 204 while
+              -- the explorer it links to listed 294, with no `unknown_dreps` field for a client to
+              -- reconstruct the difference from. The comment above states the invariant this broke:
+              -- one derivation of the registered population, published by two endpoints.
+              dashboardTotalDreps = n DRepActive + n DRepInactive + n DRepUnknown,
               dashboardActiveDreps = n DRepActive,
               dashboardInactiveDreps = n DRepInactive,
               dashboardRetiredDreps = n DRepRetired,

@@ -72,7 +72,12 @@ transaction-building stack is Atlas.
 | `docs/spec/` | the specification the code cites, the metric decisions, and the `D-`/`F-` identifiers |
 | `docs/adr/` | decision records, each carrying the measurements behind it |
 | `docs/generated/` | generated Swagger and CIP-57 blueprint — committed, never hand-edited |
-| `experiments/` | throwaway measurement rigs, deleted once their numbers land in an ADR |
+| `docs/deployment/` | the runbooks: the attestation-flow smoke test and the Koios parity gate |
+| `docs/metrics.md` | generated from `resources/` by `admin write-metrics-doc` — the published formulas, rendered |
+| `docs/audit/` | the 2026-10-22 audit; §3 of its README is the list kept current |
+| `docs/architecture/` | reference diagrams for the on-chain protocol, its flows, and the system |
+| `scripts/` · `config/` · `deploy/` | maintained tooling · the provider and validator configs (gitignored, with committed templates) · db-sync's configuration, the single source for the k8s ConfigMap |
+| `experiments/` | the measurement rigs behind the ADRs, kept while an ADR still cites one |
 
 ## 7. Governance data provenance
 
@@ -111,8 +116,19 @@ cp .env.example .env                       # then fill it in; .env is gitignored
 direnv allow                               # first run pulls the devx closure (~8-12 GB, once)
 cabal update
 cabal build all
+
+# `cabal test` needs an empty PostgreSQL of its own — 85 of the cases connect to one, and without
+# the variable they fail in 14 seconds looking like a broken checkout. Use 127.0.0.1 and not
+# localhost: a port published by Docker is on 127.0.0.1 only, and localhost resolves to ::1 first.
+docker run -d --name palmares-test-pg -p 127.0.0.1:55439:5432 \
+  -e POSTGRES_PASSWORD=devonly postgres:17-alpine
+export PALMARES_TEST_PG_CONN_STR="host=127.0.0.1 user=postgres password=devonly dbname=postgres port=55439"
 cabal test
 ```
+
+`PALMARES_FIXTURE_PG_CONN_STR` is optional and points at a synced preprod db-sync; without it the
+epoch-320 metric-fixture gate reports `SKIPPED` inside passing cases, so "all tests passed" does not
+mean that gate ran.
 
 Containers, and the read-path stack. Two profiles, matching the two doors of §2:
 
@@ -152,20 +168,30 @@ exits rather than starting with an unsafe default.
 
 | Name | Status | Used by |
 |---|---|---|
-| `BASIC_USER` | required, **fail-closed** | interaction-api, admin |
-| `BASIC_PASS` | required, **fail-closed** | interaction-api, admin |
-| `CORS_ALLOWED_ORIGINS` | required; empty = deny all cross-origin (**fail-closed**) | both APIs |
-| `PG_CONN_STR` | required — db-sync's own database, one pool | query-api, attest-sync |
+| `BASIC_USER` | required, **fail-closed** | interaction-api |
+| `BASIC_PASS` | required, **fail-closed** | interaction-api |
+| `CORS_ALLOWED_ORIGINS` | optional; unset or empty denies all cross-origin, which is the safe default and not a boot failure | query-api, interaction-api, attest-sync |
+| `PG_CONN_STR` | required — db-sync's own database, the pool that serves requests | query-api, attest-sync |
+| `PALMARES_PG_OWNER_CONN_STR` | optional; the owner pool for the boot DDL and the matview refresh. Unset, it falls back to `PG_CONN_STR` | query-api |
 | `ATLAS_CORE_CONFIG` | write path; **the JSON itself**, not a path — unset reads `config/config_atlas.json` | interaction-api, attest-sync, admin |
 | `DEPLOYED_VALIDATORS_CONFIG` | write path; **the JSON itself**, not a path — unset reads `config/config_palmares_validators.json` | interaction-api, attest-sync, admin |
 | `PORT` | default `8083` query-api · `8082` interaction-api · `8084` attest-sync | all services |
-| `KUPO_URL` | default `http://localhost:1442` | attest-sync |
-| `BATCH_SIZE` | default `1000000` | attest-sync |
-| `FETCH_BATCH_SIZE` | default `100000` | attest-sync |
+| `KUPO_URL` | required, **fail-closed** — no default: the projector's only view of the chain | attest-sync |
+| `FETCH_BATCH_SIZE` | slots per fetch window; default `10000000` in the binary, `100000` as the images and `compose.yaml` set it | attest-sync |
 | `ROLLBACK_MARGIN` | default `2160` | attest-sync |
 | `PALMARES_VIEW_REFRESH_SECONDS` | default `300` | query-api |
 | `PALMARES_READY_MAX_LAG_SECONDS` | default `300` — `/ready` red above this | query-api |
 | `PALMARES_AMBER_LAG_SECONDS` | default `120` — UI amber above this | query-api |
+| `PALMARES_NETWORK_NAME` | default `preprod` — the value `/ready` compares `meta.network_name` against | query-api |
+| `PALMARES_FRESHNESS_POLL_MS` | default `5000` | query-api |
+| `PALMARES_ADMIN_CONN_STR` | required by `apply-indexes` and `apply-roles`, **fail-closed** — the superuser DSN, deliberately not `PG_CONN_STR` | admin |
+| `PALMARES_OWNER_PASSWORD` · `PALMARES_RO_PASSWORD` | required by `apply-roles`, **fail-closed** — it never invents a password | admin |
+| `PALMARES_API` · `KOIOS_API` · `KOIOS_API_TOKEN` | the parity gate's two base URLs and an optional Koios token; `PALMARES_API` is **query-api's** base | admin |
+| `PALMARES_TEST_PG_CONN_STR` | required by `cabal test` — see §10 | test suite |
+| `PALMARES_FIXTURE_PG_CONN_STR` | optional; a synced preprod db-sync for the epoch-320 metric gate — unset, that gate reports `SKIPPED` inside passing cases | test suite |
+
+`BATCH_SIZE` was removed from this table, from `.env.example` and from `Dockerfile.attest-sync`: it was
+set in three places and read in none.
 
 There is **no** provider-token variable in this list: Atlas reads the provider out of the core config,
 never from the environment. `config/config_atlas.example.json` is the committed template and carries
@@ -180,5 +206,6 @@ withdrew its Cardano API in 2026 and the hostname no longer resolves.)
 **If you run a node yourself, you need no key at all.** `{"socketPath": …, "kupoUrl": …}` is measured
 rather than aspirational — see [ADR 0004](docs/adr/0004-maestro-withdrew-its-cardano-api.md) — and it
 leaves the write path with no secret. Kupo must run with `--match '*'`: the builder resolves the admin
-wallet's own UTxOs plus five validator addresses that change whenever the scripts do. On macOS the node
+wallet's own UTxOs, the four validator addresses — which change whenever the scripts do — and Atlas's
+limbo address, where the reference scripts are locked. On macOS the node
 socket is reachable only from inside the compose project, never from a host CLI.

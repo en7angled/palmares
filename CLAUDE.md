@@ -21,7 +21,8 @@ attestation protocol has state of our own.
 
 1. **Governance (read-only, no state of ours)**: `cardano-node` → `cardano-db-sync` (`preset: only_governance`,
    ledger enabled) → PostgreSQL. Our layer is the `palmares` schema: read-only views, one materialized view,
-   one SQL function. No projection service, no ingestion, no re-derivation of ledger math. If a governance
+   two SQL functions, and one single-row `schema_fingerprint` table that gates the boot DDL. No governance
+   projection tables, no projection service, no ingestion, no re-derivation of ledger math. If a governance
    number is wrong, the fix is a view, not a pipeline.
 2. **Attestations (our own state)**: on-chain validators → Kupo → `attest-sync` → `palmares_attest` schema.
    This is the only path with stored state, migrations and rollback handling.
@@ -54,10 +55,10 @@ depends on `chainsync-lib`.
 | New governance identifier | `DomainTypes/Core/Ids.hs` (CIP-129 / CIP-105) + its golden test |
 | New tx operation | `TxBuilding/Operations.hs`, `TxBuilding/Lookups.hs`, `TxBuilding/Interactions.hs`, `TxBuilding/Conversions.hs` |
 | New error type | `TxBuilding/Exceptions.hs` |
-| **New governance metric** | `resources/metrics/<name>.sql` + the catalog in `query-api/Metrics/Catalog.hs`. The `.sql` file is the single source of truth: it is embedded at compile time, served at `/metrics/formulas`, and `docs/metrics.md` is generated from it. Never write the formula twice. |
+| **New governance metric** | `resources/metrics/<name>.sql` + the catalog entry in `resources/metric-formulas.json`, both embedded by `offchain-lib/Palmares/Metrics/Catalog.hs`. The `.sql` file is the single source of truth: it is embedded at compile time, served at `/metrics/formulas`, and `docs/metrics.md` is generated from it by `Metrics/Doc.hs`. Never write the formula twice. |
 | **New governance view** | `sql/*.sql` (applied at service boot by `Query/Views.hs`) + a check in `sql/checks/` |
 | New governance query endpoint | `query-api/RestAPI.hs`, `Query/Gov.hs` (raw SQL over schema `palmares`); response DTOs in `offchain-lib/DomainTypes/Transfer/QueryResponses.hs`, filters + `*FromParams` in `Transfer/Filters.hs`, sort enums in `Transfer/OrderBy.hs`; aggregates in `Query/Aggregates.hs`, pages in `Query/Pages.hs` |
-| New attestation query endpoint | `query-api/RestAPI.hs`, `Query/Projected.hs`; shared helpers in `Query/Common.hs` |
+| New attestation query endpoint | `query-api/RestAPI.hs`, `Query/Attest.hs`; shared helpers in `Query/Common.hs` |
 | New attestation projection | `Storage.hs`, `Ingestion.hs` |
 | New admin command | `src/exe/admin/Main.hs` |
 | New fee type | `Onchain/Protocol/Types.hs` (FeeConfig), `Onchain/Protocol/Lookup.hs` (`feeFor`), `TxBuilding/Operations.hs`, `Onchain/Validators/MintingPolicy.hs` |

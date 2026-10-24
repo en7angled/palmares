@@ -114,7 +114,8 @@ delegators_left(d, E)          = |D(d, E−W) \ D(d, E)|
 ```
 
 **Decision — `W = 10` epochs** (50 days on both networks): one real governance cycle, and longer than
-`govActionLifetime` on either network (7 epochs on preprod, 6 on mainnet, both verified), so a churn
+`govActionLifetime`, which preprod has held at **6 epochs** in every Conway epoch (163–321,
+`epoch_param.gov_action_lifetime`, and live `/status.epoch_params.gov_action_lifetime`), so a churn
 figure spans at least one full action. It is `retentionWindowEpochs` in one place, **bound as a
 parameter** rather than written into the SQL, and echoed on the response so a reader never has to
 guess the window. A test sets the window to zero and asserts that "previous" equals "today", which is

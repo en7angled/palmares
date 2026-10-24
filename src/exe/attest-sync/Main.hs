@@ -48,8 +48,6 @@ import Palmares.WebAPI.CORS (getCorsConfigFromEnv)
 import Palmares.WebAPI.Utils
 import System.IO (BufferMode (LineBuffering), hSetBuffering, stdout)
 
-defaultKupoUrl :: String
-defaultKupoUrl = "http://localhost:1442"
 
 -- | Show only the host and dbname fields of a Postgres DSN, hiding the password.
 redactConnStr :: String -> String
@@ -66,7 +64,12 @@ main = do
   port <- getPortFromEnvOrDefault 8084
   corsCfg <- getCorsConfigFromEnv
 
-  kupoUrl <- liftIO $ fmap (fromMaybe defaultKupoUrl) (lookupEnv "KUPO_URL")
+  -- FAIL-CLOSED, like PG_CONN_STR beside it and for the same reason: a wrong configuration that
+  -- works is worse than one that stops. This defaulted to `http://localhost:1442` on the one
+  -- service whose whole job is reading the chain — and that port is wrong for every deployment in
+  -- this repo. Unset in a container it meant an invisible retry loop against nothing, with
+  -- `/health` still reporting the last good state.
+  kupoUrl <- liftIO $ requireEnv "KUPO_URL"
   connStr <- liftIO requirePgConnStr
 
   let connBS :: ConnectionString = TE.encodeUtf8 (T.pack connStr)

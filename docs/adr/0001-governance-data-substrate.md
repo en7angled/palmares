@@ -9,8 +9,9 @@ Date: 2026-10-20
 Governance data comes from **cardano-db-sync 13.7.1.0** (image `ghcr.io/blinklabs-io/cardano-db-sync`,
 pinned by digest; arm64), with `preset: only_governance`, `ledger: enable`, `shelley: enable: true` and
 `offchain_vote_data: enable`. Our layer adds two schemas to db-sync's own `cexplorer` database —
-`palmares` (fourteen read-only views, one materialized view, one SQL function) and `palmares_attest` —
-and no governance projection tables.
+`palmares` (nineteen read-only views, one materialized view, two SQL functions and one single-row
+`schema_fingerprint` table that gates the boot DDL) and `palmares_attest` — and no governance
+projection tables.
 
 The sync is run **from genesis**. This is a correctness requirement, not a completeness one: db-sync's
 13.6.0.4 Known Issue states that pre-upgrade `drep_distribution` values "are not well defined and could
@@ -104,8 +105,9 @@ chain.
   (2,530 MB) and `tx` (1,765 MB) are, and together they are 69% of the database. So pruning `epoch_stake`
   buys only **11.9%** of the disk and is a weak first fallback; on preprod the whole database is small
   enough that none of this matters, and on mainnet the lever is hardware, not pruning.
-- The read layer this product adds is **680 kB**: nineteen views, one materialized view, and zero
-  tables. Whatever the substrate costs, it is not us.
+- The read layer this product adds is **680 kB**: nineteen views, one materialized view, zero
+  governance tables, and (since `GV-01`) one single-row `schema_fingerprint` table that gates the
+  boot DDL. Whatever the substrate costs, it is not us.
 - `tx.fee` is `0` under this preset (`tx_out: disable`), `off_chain_pool_data` is empty (SPO pages show
   hashes, not tickers), and constitution anchors are never fetched. These are accepted limitations.
 - Mainnet needs a 48–64 GB x86_64 host; the arm64 Pi cluster is preprod-only for this workload.

@@ -33,10 +33,11 @@ import Data.Aeson (Value (String), toJSON)
 import Data.Aeson.Types qualified as AesonTypes
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
-import Data.Swagger (SchemaOptions, ToSchema (..), genericDeclareNamedSchema)
+import Data.Swagger (NamedSchema (..), SchemaOptions, ToSchema (..), genericDeclareNamedSchema)
 import Data.Swagger.SchemaOptions (fromAesonOptions)
 import Data.Text (Text)
-import Data.Typeable (Typeable)
+import Data.Text qualified as T
+import Data.Typeable (Typeable, typeRep)
 -- Open, as everywhere else in this repository, and it is also where Generic, FromJSON and ToJSON
 -- come from below: re-importing those three from their own modules is what -Wall called redundant.
 import Deriving.Aeson
@@ -82,8 +83,23 @@ pageSchemaOptions =
       { AesonTypes.fieldLabelModifier = AesonTypes.camelTo2 '_' . drop (length ("page" :: String))
       }
 
+-- | __The schema is named per element type, and that is the whole of this instance.__
+--
+-- @genericDeclareNamedSchema@ names a schema after the DATATYPE and ignores its type argument, so
+-- every @Page X@ declared itself as @#\/definitions\/Page@ and the last registration won. Measured
+-- on the committed document: 15 of 29 routes @$ref@-ed one @Page@ whose @items@ were
+-- @DisputeRow@ — so a generated client typed @\/dreps@, @\/votes@, @\/gov-actions@ and eleven more
+-- as lists of disputes and failed to deserialise every row. That file is the frontend's codegen
+-- input, and @scripts\/check_swagger.sh@ could not catch it: it asserted paths, parameters,
+-- @produces@ and enums, never that a list route's @items@ are the right DTO. It asserts that now.
+--
+-- The element type's name comes from 'Typeable' rather than from its own @ToSchema@ name, because
+-- that is available without declaring the element schema a second time; every element here is a
+-- plain DTO, so the two spellings coincide.
 instance (ToSchema a, Typeable a) => ToSchema (Page a) where
-  declareNamedSchema = genericDeclareNamedSchema pageSchemaOptions
+  declareNamedSchema proxy = do
+    NamedSchema _ s <- genericDeclareNamedSchema pageSchemaOptions proxy
+    pure (NamedSchema (Just ("Page_" <> T.pack (show (typeRep (Proxy :: Proxy a))))) s)
 
 -- | A stable machine-readable reason, paired with human text.
 --

@@ -49,6 +49,21 @@ $$;
 -- is O(addresses x epochs) at read time. Promote it to a matview only if /drep/{id} or
 -- /drep/{id}/power measures over 500 ms p95 on preprod — not before, because a matview adds a
 -- refresh thread and a staleness window to maintain.
+--
+-- __That threshold was crossed, by a factor of 65, and the answer was not a matview.__ Measured on
+-- preprod 2026-10-24: this view for ONE credential over five epochs took 32.9 s, `/drep/{id}` took
+-- 30.8 s and `/drep/{id}/power` exceeded the 30 s statement timeout and served 503 — which also
+-- stopped the Koios parity gate, since the reconciler reads that route. The reason is the window
+-- function: `LEAD() OVER (PARTITION BY addr_id)` needs every certificate of an address, so no
+-- predicate on `drep_hash_id` can be pushed into `seq`, and the whole chain's delegation history is
+-- computed before the outer `WHERE` keeps five rows. A matview would have fixed the symptom and
+-- bought a refresh thread and a staleness window.
+--
+-- 'palmares.drep_delegator_counts' below is the same arithmetic with the ONE predicate that can be
+-- pushed down — the set of addresses that ever delegated to this DRep — which leaves the window
+-- complete and correct. Measured: 1.30 s for the same five rows, identical counts. Per-credential
+-- reads go through the function; this view remains the whole-table definition the checks assert
+-- against.
 CREATE VIEW palmares.drep_epoch_delegators AS
 WITH seq AS (
   SELECT
@@ -99,6 +114,74 @@ SELECT
 FROM intervals i
 JOIN epochs e ON i.from_epoch <= e.epoch_no AND i.to_epoch > e.epoch_no
 GROUP BY i.drep_hash_id, e.epoch_no;
+
+-- ---------------------------------------------------------------------------------------------
+-- palmares.drep_delegator_counts — the same counts for ONE DRep, over a bounded epoch range.
+--
+-- Identical arithmetic to palmares.drep_epoch_delegators above, and the same rules: intervals from
+-- the certificate log, a de-registration matched by CERTIFICATE and not by epoch, and the window
+-- ordered by (slot, block_index, cert_index). The difference is one pushdown and its placement.
+--
+-- WHY IT EXISTS: see the note on the view. `LEAD() OVER (PARTITION BY addr_id)` needs every
+-- certificate of an address, so a predicate on `drep_hash_id` cannot be pushed into the window —
+-- but a predicate on `addr_id` can, and the addresses that ever delegated to this DRep are the only
+-- ones whose intervals can contribute to its counts. That restriction leaves the window complete for
+-- each address it keeps, which is what makes this the same number rather than an approximation of
+-- it. Measured on preprod, credential 2 over epochs 316-320: 32.9 s through the view, 1.30 s here,
+-- same five counts.
+--
+-- A function and not a matview, deliberately: a matview for a per-credential read would add a
+-- refresh thread and a staleness window to a number that is exact and cheap to compute on demand.
+-- Same shape as palmares.eligible_actions above, and for the same reason.
+--
+-- The epoch range is REQUIRED rather than optional: the only caller that wants every epoch is the
+-- view, and an unbounded call here would generate the full series per address for no reader.
+CREATE FUNCTION palmares.drep_delegator_counts(drep_hash_id bigint, from_epoch int, to_epoch int)
+RETURNS TABLE (epoch_no int, delegator_count bigint)
+LANGUAGE sql
+STABLE
+AS $$
+  WITH target AS (
+    SELECT DISTINCT dv.addr_id
+    FROM public.delegation_vote dv
+    WHERE dv.drep_hash_id = drep_delegator_counts.drep_hash_id
+  ),
+  seq AS (
+    SELECT
+      dv.addr_id,
+      dv.drep_hash_id,
+      b.epoch_no AS from_epoch,
+      dv.tx_id AS from_tx,
+      dv.cert_index AS from_cert,
+      LEAD(b.epoch_no) OVER w AS next_epoch
+    FROM public.delegation_vote dv
+    JOIN public.tx ON tx.id = dv.tx_id
+    JOIN public.block b ON b.id = tx.block_id
+    WHERE dv.addr_id IN (SELECT t.addr_id FROM target t)
+    WINDOW w AS (PARTITION BY dv.addr_id ORDER BY b.slot_no, tx.block_index, dv.cert_index)
+  ),
+  intervals AS (
+    SELECT
+      s.addr_id,
+      s.drep_hash_id,
+      s.from_epoch,
+      LEAST(
+        COALESCE(s.next_epoch, 2147483647),
+        COALESCE((SELECT min(sd.epoch_no) FROM public.stake_deregistration sd
+                  WHERE sd.addr_id = s.addr_id
+                    AND (sd.tx_id, sd.cert_index) > (s.from_tx, s.from_cert)), 2147483647)
+      ) AS to_epoch
+    FROM seq s
+  ),
+  epochs AS (
+    SELECT generate_series(drep_delegator_counts.from_epoch, drep_delegator_counts.to_epoch) AS epoch_no
+  )
+  SELECT e.epoch_no, count(*) AS delegator_count
+  FROM intervals i
+  JOIN epochs e ON i.from_epoch <= e.epoch_no AND i.to_epoch > e.epoch_no
+  WHERE i.drep_hash_id = drep_delegator_counts.drep_hash_id
+  GROUP BY e.epoch_no;
+$$;
 
 -- ---------------------------------------------------------------------------------------------
 -- palmares.vote_tally — one row per (action, voter role), over FINAL votes only.

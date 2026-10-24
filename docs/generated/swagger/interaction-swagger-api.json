@@ -218,7 +218,7 @@
             "type": "object"
         },
         "GYAddress": {
-            "description": "Bech32-encoded Cardano address (addr_test1... on testnet, addr1... on mainnet)",
+            "description": "Cardano address as RAW CBOR HEX (114 hex characters), not bech32: this field is parsed with deserialiseFromRawBytesHex, so addr_test1…/addr1… is refused. `admin operator-address` prints the hex form.",
             "example": "00e1cbb80db89e292269aeb93ec15eb963dda5176b66949fe1c2a6a38d1b930e9f7add78a174a21000e989ff551366dcd127028cb2aa39f616",
             "format": "cbor hex",
             "maxLength": 114,
@@ -712,7 +712,7 @@
     "info": {
         "description": "This is the Palmares Interaction API — transaction building, submission, and the dedicated per-action service endpoints.",
         "license": {
-            "name": "GPL-3.0 license"
+            "name": "Apache-2.0"
         },
         "title": "Palmares Interaction API",
         "version": "3.3.0"

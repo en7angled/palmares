@@ -8,7 +8,7 @@ Sources in `src/exe/<name>/`.
 - Single `Main.hs` with `Command` sum type, optparse-applicative `hsubparser`, `executeCommand` dispatch.
 - **Context**: `Either ProviderCtx TxBuildingContext` — `Left` for deploy/blueprint/limited queries,
   `Right` for full tx-building.
-- **Tx commands**: Convert CLI args → `ActionType` → `runPalmaresActionWithPK txBuildingCtx signKey actionType Nothing`.
+- **Tx commands**: Convert CLI args → `ActionType` → `runActionWithPK txBuildingCtx signKey actionType Nothing`.
 - **Read-only commands**: `runQuery providerCtx (runReaderT lookupFn deployedScriptsCtx)` — no signing.
 - **Parsing**: Use `maybeReader` for asset classes (JSON-decode) and custom parsers for enums. Share
   parsers (e.g. `profileDataParser`, `assetClassParser`, `claimedPeriodParser`, `outputIdParser`) across commands.
@@ -39,12 +39,18 @@ Sources in `src/exe/<name>/`.
 
 ## Query API Specifics
 
-- `QueryAppContext` = auth + `ProviderCtx` + **one** PostgreSQL `ConnectionPool` — db-sync's own database,
-  which holds both the `palmares` views and the `palmares_attest` tables. There is no second pool.
+- `QueryAppContext` = auth + `ProviderCtx` + the request `ConnectionPool` — db-sync's own database, which
+  holds both the `palmares` views and the `palmares_attest` tables. There is a **second** pool outside the
+  context, on `PALMARES_PG_OWNER_CONN_STR`, used only for the boot DDL and the matview refresh, because
+  those need owner rights while every request should be served read-only. It defaults to `PG_CONN_STR`, so
+  a single-role deployment works unchanged.
 - **Two query families, kept apart**:
   - **Governance** (`Query/Gov.hs`): raw SQL over the `palmares` schema. No Persistent entities for
     db-sync's tables — the views are the interface, and a view's column list is its contract.
-  - **Attestations** (`Query/Projected.hs`): Persistent/esqueleto over `palmares_attest`.
+  - **Attestations** (`Query/Attest.hs`): `rawSql` with `??` over `palmares_attest`, schema-qualified and
+    never aliased — see that module's header for why. `Query/Projected.hs`, `Query/Pages.hs` and
+    `Query/Aggregates.hs` are inherited files kept on disk and commented out of `palmares.cabal`; they are
+    not compiled.
   - Shared helpers in `Query/Common.hs`. There is no `liveprojection` flag and no `Query.Live`: governance
     data has no "live" alternative to a view, and attestation reads come from projections only.
 - **`Query/Views.hs`**: embeds `sql/*.sql` with `file-embed` and applies it at boot, so a fresh database is
@@ -52,9 +58,10 @@ Sources in `src/exe/<name>/`.
   `CREATE OR REPLACE` / `CREATE ... IF NOT EXISTS`.
 - **`Query/Refresh.hs`**: the one materialized view's `REFRESH ... CONCURRENTLY` loop, interval from
   `PALMARES_VIEW_REFRESH_SECONDS`.
-- **`Query/Metrics.hs` + `Metrics/Catalog.hs`**: serve `/metrics/formulas` from the embedded
-  `resources/metrics/*.sql`. The SQL file is the single source of truth for a metric; the catalog only
-  names and groups it.
+- **`/metrics/formulas`**: served out of `offchain-lib/Palmares/Metrics/Catalog.hs`, which embeds
+  `resources/metric-formulas.json` and `resources/metrics/*.sql` at compile time. The SQL file is the
+  single source of truth for a metric; the catalog only names and groups it. query-api has no metrics
+  module of its own.
 - **`Query/ServiceStatus.hs`**: `/status` and `/ready`. Readiness is db-sync lag, not process liveness:
   red above `PALMARES_READY_MAX_LAG_SECONDS`, amber above `PALMARES_AMBER_LAG_SECONDS`.
 
@@ -74,8 +81,11 @@ Sources in `src/exe/<name>/`.
 
 - **Config**: `Constants` for defaults. `decodeConfigEnvOrFile`. `getPortFromEnvOrDefault`.
 - **Auth**: `getBasicAuthFromEnv` + `basicAuthServerContext`. `BasicAuth "user-realm" AuthUser :>` for
-  private routes. **query-api's read surface is public** (rate-limited, no Basic auth) — that is a product
-  requirement, not an oversight; only write and admin routes are protected.
+  private routes. **query-api's read surface is public** — no Basic auth, which is a product requirement
+  and not an oversight. It is **not** rate-limited either: `rate_limited` is declared in the error
+  vocabulary and unreachable (`WebAPI/Envelope.hs`), and the limit the spec asks for
+  (`docs/spec/protocol.md` §4.2) belongs to a BFF that does not exist yet. Only write and admin routes are
+  protected.
 - **CORS**: `mkCorsMiddleware` (from env `CORS_ALLOWED_ORIGINS`) as outermost middleware. Empty allowlist
   denies all cross-origin: fail-closed.
 - **Swagger**: Written to `docs/generated/swagger/` on startup. Do not edit by hand.

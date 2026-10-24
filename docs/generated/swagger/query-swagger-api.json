@@ -1609,11 +1609,419 @@
             ],
             "type": "object"
         },
-        "Page": {
+        "Page_ActivityRow": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/ActivityRow"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "limit",
+                "offset"
+            ],
+            "type": "object"
+        },
+        "Page_AttestProfileRow": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/AttestProfileRow"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "limit",
+                "offset"
+            ],
+            "type": "object"
+        },
+        "Page_AttestationRow": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/AttestationRow"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "limit",
+                "offset"
+            ],
+            "type": "object"
+        },
+        "Page_DRepSummary": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/DRepSummary"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "limit",
+                "offset"
+            ],
+            "type": "object"
+        },
+        "Page_DRepUpdateRow": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/DRepUpdateRow"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "limit",
+                "offset"
+            ],
+            "type": "object"
+        },
+        "Page_DelegationRecord": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/DelegationRecord"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "limit",
+                "offset"
+            ],
+            "type": "object"
+        },
+        "Page_DelegatorRow": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/DelegatorRow"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "limit",
+                "offset"
+            ],
+            "type": "object"
+        },
+        "Page_DisputeRow": {
             "properties": {
                 "items": {
                     "items": {
                         "$ref": "#/definitions/DisputeRow"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "limit",
+                "offset"
+            ],
+            "type": "object"
+        },
+        "Page_EpochPowerPoint": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/EpochPowerPoint"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "limit",
+                "offset"
+            ],
+            "type": "object"
+        },
+        "Page_GovActionSummary": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/GovActionSummary"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "limit",
+                "offset"
+            ],
+            "type": "object"
+        },
+        "Page_SPOSummary": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/SPOSummary"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "limit",
+                "offset"
+            ],
+            "type": "object"
+        },
+        "Page_TreasuryWithdrawalRecord": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/TreasuryWithdrawalRecord"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "offset": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                },
+                "total": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "items",
+                "limit",
+                "offset"
+            ],
+            "type": "object"
+        },
+        "Page_VoteRecord": {
+            "properties": {
+                "items": {
+                    "items": {
+                        "$ref": "#/definitions/VoteRecord"
                     },
                     "type": "array"
                 },
@@ -2368,7 +2776,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_ActivityRow"
                         }
                     },
                     "400": {
@@ -2494,7 +2902,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_AttestationRow"
                         }
                     },
                     "400": {
@@ -2700,7 +3108,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_DelegationRecord"
                         }
                     },
                     "400": {
@@ -2775,7 +3183,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_DisputeRow"
                         }
                     },
                     "400": {
@@ -2920,7 +3328,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_DelegatorRow"
                         }
                     },
                     "400": {
@@ -2997,7 +3405,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_EpochPowerPoint"
                         }
                     },
                     "400": {
@@ -3080,7 +3488,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_DRepUpdateRow"
                         }
                     },
                     "400": {
@@ -3300,7 +3708,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_DRepSummary"
                         }
                     },
                     "400": {
@@ -3539,7 +3947,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_GovActionSummary"
                         }
                     },
                     "400": {
@@ -4077,7 +4485,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_AttestProfileRow"
                         }
                     },
                     "400": {
@@ -4136,7 +4544,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_AttestProfileRow"
                         }
                     },
                     "400": {
@@ -4248,7 +4656,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_AttestationRow"
                         }
                     },
                     "400": {
@@ -4457,7 +4865,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_SPOSummary"
                         }
                     },
                     "400": {
@@ -4624,7 +5032,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_TreasuryWithdrawalRecord"
                         }
                     },
                     "400": {
@@ -4825,7 +5233,7 @@
                     "200": {
                         "description": "",
                         "schema": {
-                            "$ref": "#/definitions/Page"
+                            "$ref": "#/definitions/Page_VoteRecord"
                         }
                     },
                     "400": {

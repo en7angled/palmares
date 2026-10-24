@@ -886,7 +886,11 @@ drepMetricsQuery dhid =
     \    SELECT v.gov_action_id, e.action_type, v.vote \
     \    FROM elig e \
     \    JOIN palmares.vote v ON v.gov_action_id = e.gov_action_id \
-    \    WHERE v.drep_voter_id = (SELECT drep_hash_id FROM m) AND v.seq_last = 1 \
+    \    WHERE v.drep_voter_id = (SELECT drep_hash_id FROM m) \
+    \      AND v.voter_role = 'DRep' \
+    \      AND v.voter_id_hash = (SELECT dh.raw FROM public.drep_hash dh \
+    \                             WHERE dh.id = (SELECT drep_hash_id FROM m)) \
+    \      AND v.seq_last = 1 \
     \  ), \
     \  types AS ( \
     \    SELECT t.action_type, \
@@ -941,25 +945,43 @@ drepMetricsQuery dhid =
 -- ledger options carry @target_kind@ of their own in @palmares.drep_epoch_power@ (D-20) and a
 -- hard-coded @'drep'@ returned an empty series for them — which reads as "this target has no
 -- power" for the option holding 46% of preprod's.
+-- __The delegator count comes from the FUNCTION and not from @palmares.drep_epoch_delegators@.__
+-- Joining the view here made this route serve 503: the view's window function forces the whole
+-- chain's delegation history before the outer predicate keeps five rows, measured at 32.9 s for one
+-- credential over five epochs against a 30 s statement timeout — which also stopped the Koios parity
+-- gate, because the reconciler reads this route. @palmares.drep_delegator_counts@ is the same
+-- arithmetic with the one predicate that CAN be pushed through the window: 1.30 s, same counts.
+--
+-- The function needs an epoch range and this route's bounds are optional, so the range is taken from
+-- the power series itself — which is the right range anyway, since a count for an epoch with no
+-- power row has nothing to attach to. An empty series gives @NULL@ bounds, an empty series from the
+-- function, and an empty page: the same answer by a shorter path.
 listEpochPower :: Text -> Int64 -> Maybe Int -> Maybe Int -> SortOrder -> Limit -> SqlPersistT IO [EpochPowerPoint]
 listEpochPower targetKind dhid fromEpoch toEpoch so lim =
   queryJson
     ( "SELECT row_to_json(x)::text FROM ( \
-      \  SELECT p.epoch_no AS epoch, p.amount AS lovelace, dd.delegator_count \
-      \  FROM palmares.drep_epoch_power p \
-      \  LEFT JOIN palmares.drep_epoch_delegators dd \
-      \    ON dd.drep_hash_id = p.drep_hash_id AND dd.epoch_no = p.epoch_no \
-      \  WHERE p.drep_hash_id = ? AND p.target_kind = ? "
+      \  WITH pw AS ( \
+      \    SELECT p.epoch_no, p.amount \
+      \    FROM palmares.drep_epoch_power p \
+      \    WHERE p.drep_hash_id = ? AND p.target_kind = ? "
         <> maybe "" (const " AND p.epoch_no >= ? ") fromEpoch
         <> maybe "" (const " AND p.epoch_no <= ? ") toEpoch
-        <> " ORDER BY p.epoch_no "
+        <> "  ) \
+           \  SELECT pw.epoch_no AS epoch, pw.amount AS lovelace, dd.delegator_count \
+           \  FROM pw \
+           \  LEFT JOIN palmares.drep_delegator_counts( \
+           \      ?, \
+           \      (SELECT min(epoch_no)::int FROM pw), \
+           \      (SELECT max(epoch_no)::int FROM pw) \
+           \    ) dd ON dd.epoch_no = pw.epoch_no \
+           \  ORDER BY pw.epoch_no "
         <> (case so of Asc -> "ASC"; Desc -> "DESC")
         <> " LIMIT ? ) x"
     )
     ( [toPersistValue dhid, toPersistValue targetKind]
         <> maybe [] (\e -> [toPersistValue e]) fromEpoch
         <> maybe [] (\e -> [toPersistValue e]) toEpoch
-        <> [toPersistValue lim]
+        <> [toPersistValue dhid, toPersistValue lim]
     )
 
 -- | Delegator movement over the retention window, by RUNNING the published formula.

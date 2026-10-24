@@ -8,8 +8,15 @@ chain disagree, and which of those disagreements somebody has already explained.
 ## Running it
 
 ```bash
-PALMARES_API=https://gov.cardano.vip/api ./scripts/reconcile_koios.sh
+# PALMARES_API is the QUERY API's base: the reconciler reads /status, /dreps, /gov-actions and
+# /drep/{id}/power from it. The interaction API serves none of them and answers 404.
+PALMARES_API=https://gov.cardano.vip/query ./scripts/reconcile_koios.sh
 ```
+
+The gate needs a caught-up stack on both sides. If it exits 3, our epoch and Koios's differ by more
+than 1 — wait for db-sync rather than reading the table. `GET /status` on the same base URL is where
+to check: `governance.lag_seconds` under 120 and `metrics_as_of_epoch` equal to `governance.epoch` is
+a stack worth comparing.
 
 The wrapper prints the per-row table and **propagates the exit code**. The nightly workflow runs the
 same script against the published `admin` image, by overriding `PALMARES_ADMIN_CMD`.
@@ -62,7 +69,7 @@ never fail a PR, and a PR can never break the reconciliation unnoticed.
    side said — enough to chase one transaction rather than re-run anything.
 2. Re-record the pair at that moment, so the evidence survives the chain moving on:
    ```bash
-   PALMARES_API=https://gov.cardano.vip/api cabal run -v0 admin -- reconcile-koios \
+   PALMARES_API=https://gov.cardano.vip/query cabal run -v0 admin -- reconcile-koios \
      --dump-snapshots test/fixtures/snapshot
    ```
    The replay test then reproduces the finding offline, forever, and the fix has a failing test to

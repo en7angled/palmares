@@ -1963,7 +1963,19 @@ apiSwagger =
     -- action an attestation points at, resolved at read time, with a `status` of `resolved`,
     -- `unresolved` or `malformed` — never hidden, because the datum permanently says the attestation
     -- is about that payment.
-    & info . Data.Swagger.version .~ "1.7.0"
+    -- 1.8.0, MINOR: `route_not_found`, the 404 for a path this API does not serve. It is additive in
+    -- the only two ways a document can be — one more member of the `ErrorCode` enum, and a widened
+    -- 404 description — and it closes the last refusal that answered with no body at all. The 404
+    -- itself was already declared on every operation; what it said was "a well-formed request naming
+    -- something that does not exist", which is the record-lookup case and not this one.
+    --
+    -- Also in 1.8.0, and additive in the same way: `unauthenticated`, `credentials_rejected` and
+    -- `unsupported_media_type` appear in the published `ErrorCode` enum because the vocabulary is
+    -- shared with interaction-api, which is the service that can return them. THIS document now says
+    -- so, and says the same about `rate_limited` — reserved, no throttle built, no 429 declared on
+    -- any operation. Four codes a client could have written an unreachable branch for; now four
+    -- codes whose reachability is stated beside them. No route of this service changed.
+    & info . Data.Swagger.version .~ "1.8.0"
     & info . Data.Swagger.description
       ?~ "Read-only queries over the Cardano governance record: DReps, governance actions, votes, \
          \delegations, the constitutional committee and treasury withdrawals. Every row comes from \
@@ -1997,8 +2009,14 @@ apiSwagger =
     -- ApiError and ErrorCode are declared EXPLICITLY, because nothing in the served API type
     -- mentions them: servant types the success body only, so swagger2 had no reason to emit
     -- either and the error contract was undiscoverable from the document. Every non-2xx body this
-    -- service sends is an ApiError, and the 24 codes are the thing a client branches on, so they
-    -- belong in `definitions` and on the three global responses below.
+    -- service sends is an ApiError, and the codes are the thing a client branches on, so they
+    -- belong in `definitions` and on the global responses below.
+    --
+    -- NO COUNT IN THIS SENTENCE, on purpose. It said "the 24 codes" and went stale twice without
+    -- anything failing, because prose is the one place a number has no authority. The enum is
+    -- derived from `Generic` over `ErrorCode` and is therefore complete by construction; the count
+    -- is asserted where a wrong one breaks something — `UnitTests.GovDto` over
+    -- `[minBound .. maxBound]`, and `scripts/check_swagger.sh` over the generated enum.
     & definitions %~ (<> execDeclare (declareSchemaRef (Proxy @ApiError)) mempty)
     & allOperations . responses . at 400
       ?~ Inline
@@ -2010,7 +2028,13 @@ apiSwagger =
     & allOperations . responses . at 404
       ?~ Inline
         ( mempty
-            { _responseDescription = "Well-formed request naming something that does not exist",
+            { -- TWO facts under one status, and they are kept apart because a client acts on them
+              -- differently: a different identifier fixes the first, and only different code fixes
+              -- the second.
+              _responseDescription =
+                "Well-formed request naming something that does not exist (the `*_not_found` \
+                \codes), or a path this API does not serve at all (`route_not_found`, from the \
+                \router, before any lookup)",
               _responseSchema = Just apiErrorRef
             }
         )
@@ -2065,12 +2089,16 @@ apiSwagger =
          \request, `method_not_allowed` is 405 and `not_acceptable` 406, the 404 group a \
          \well-formed request naming nothing, 429 a rate limit, the 503 group an index that is not \
          \ready yet, and internal_error a bug here. \
-         \\n`method_not_allowed` and `not_acceptable` are the two that come out of the ROUTER \
-         \rather than a handler, and both used to be served with an empty body and no content \
-         \type -- so a client calling `.json()` on a failure path threw a parse error instead of \
-         \reading a code. `not_acceptable` is the reachable one in practice: six list routes \
-         \produce `text/csv` and seven do not, and asking the wrong one for it is a real mistake \
-         \with a real answer. \
+         \\n`method_not_allowed`, `not_acceptable` and `route_not_found` are the three that come \
+         \out of the ROUTER rather than a handler, and all three used to be served with an empty \
+         \body and no content type -- so a client calling `.json()` on a failure path threw a \
+         \parse error instead of reading a code. `not_acceptable` is the reachable one in \
+         \practice: six list routes produce `text/csv` and seven do not, and asking the wrong one \
+         \for it is a real mistake with a real answer. \
+         \\n`route_not_found` is the only 404 here that is NOT about a missing record -- nothing \
+         \was looked up, the path matched no route. The `*_not_found` codes mean \"try another \
+         \identifier\"; this one means the caller is built against a surface this server does not \
+         \have. \
          \\n`invalid_credential` is /profiles/by-credential's own 400: a CIP-105 id, a bare hex \
          \hash, or an identifier whose header byte disagrees with its HRP. `invalid_drep_id` keeps \
          \its narrower meaning on the governance routes, where a DRep identifier is what was \
@@ -2078,7 +2106,18 @@ apiSwagger =
          \\n`invalid_asset_class` is /profiles/by-user-token's own 400 -- an asset class that is \
          \not the CIP-68 user half of a profile. The three asset-class CAPTURES \
          \(/profiles/{profile-id}, /attestations/{attestation-id}, /disputes/{dispute-id}) parse \
-         \through Atlas's codec and answer `invalid_parameter` instead."
+         \through Atlas's codec and answer `invalid_parameter` instead. \
+         \\n\n**Four of these codes cannot be returned by THIS service, and the enum is shared \
+         \rather than wrong.** `unauthenticated`, `credentials_rejected` and \
+         \`unsupported_media_type` belong to the Interaction API: this surface is public and takes \
+         \no request bodies, so no credential and no Content-Type of yours is ever consulted here. \
+         \They are in one vocabulary because one middleware carries them on both services. \
+         \\n`rate_limited` is **reserved and cannot be returned by either service today**: rate \
+         \limiting is not implemented, nothing counts requests, and no operation in this document \
+         \declares a 429 -- check `responses` on any route and you will not find one. Do not write \
+         \a branch for it expecting traffic; the 429 is declared in the same release that ships the \
+         \throttle. It is published only because withdrawing an already-published tag would be a \
+         \breaking change for the clients that already switch exhaustively."
     & definitions . at "ApiError" . mapped . description
       ?~ "The body of every non-2xx response."
     & definitions . at "SyncStatus" . mapped . description

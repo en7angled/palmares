@@ -239,8 +239,10 @@ govDtoTests =
       testCase "ApiError is {code,message}" $
         encode (ApiError DrepNotFound "No DRep with that identifier")
           @?= "{\"code\":\"drep_not_found\",\"message\":\"No DRep with that identifier\"}",
-      -- The grouping IS the documentation: nothing here is a 401 or a 403, because the read
-      -- surface is public.
+      -- The grouping IS the documentation. It used to say "nothing here is a 401 or a 403, because
+      -- the read surface is public" — true of query-api and never true of the shared enum, which
+      -- interaction-api draws from too. Both statuses are in it now, as the auth boundary's, and the
+      -- read surface still cannot produce either.
       testCase "every ErrorCode maps to its documented status" $
         map
           errorCodeToHttpStatus
@@ -257,8 +259,18 @@ govDtoTests =
             InvalidCredential,
             InvalidTimeRange,
             InvalidEpochRange,
+            -- The auth boundary, interaction-api's alone. TWO statuses because servant's BasicAuth
+            -- answers with two: no credentials is 401 with a challenge, rejected credentials is 403
+            -- without one. Measured on the running service, which is how the 403 was found at all.
+            Unauthenticated,
+            CredentialsRejected,
             MethodNotAllowed,
             NotAcceptable,
+            UnsupportedMediaType,
+            -- First of the EIGHT 404s and the only one that is not a missing record: the router
+            -- matched no path, so nothing was looked up. Grouped with them anyway, because the
+            -- status is the same and the status is what this case is about.
+            RouteNotFound,
             DrepNotFound,
             GovActionNotFound,
             SpoNotFound,
@@ -272,11 +284,17 @@ govDtoTests =
             DbUnavailable,
             InternalError
           ]
-          @?= replicate 13 400 <> [405, 406] <> replicate 7 404 <> [429] <> replicate 3 503 <> [500],
+          @?= replicate 13 400
+            <> [401, 403]
+            <> [405, 406, 415]
+            <> replicate 8 404
+            <> [429]
+            <> replicate 3 503
+            <> [500],
       -- Every code must be listed above. Without this, adding a code and forgetting it leaves it
       -- untested rather than failing.
       testCase "the status map covers every ErrorCode" $
-        length ([minBound .. maxBound] :: [ErrorCode]) @?= 27,
+        length ([minBound .. maxBound] :: [ErrorCode]) @?= 31,
       -- The decode boundary: this exact object is what Query.Gov's projection builds, so a
       -- renamed view column fails here rather than silently reaching a client as null.
       testCase "queryJson's row shape decodes into SyncStatus" $

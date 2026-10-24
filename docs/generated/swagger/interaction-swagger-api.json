@@ -813,7 +813,7 @@
             "name": "Apache-2.0"
         },
         "title": "Palmares Interaction API",
-        "version": "3.5.0"
+        "version": "3.6.0"
     },
     "paths": {
         "/accept-attestation": {
@@ -845,8 +845,14 @@
                     "400": {
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
+                    "401": {
+                        "description": "No credentials, or credentials that could not be read. Code: unauthenticated. The response carries a WWW-Authenticate challenge naming the Basic realm; send HTTP Basic credentials."
+                    },
+                    "403": {
+                        "description": "Credentials were supplied and are not accepted. Code: credentials_rejected. This is an authentication failure under a 403 because that is the status servant's BasicAuth answers with; it is NOT a permission check, and this API has none."
+                    },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
@@ -855,7 +861,7 @@
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
                     },
                     "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json. Code: unsupported_media_type."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -899,8 +905,14 @@
                     "400": {
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
+                    "401": {
+                        "description": "No credentials, or credentials that could not be read. Code: unauthenticated. The response carries a WWW-Authenticate challenge naming the Basic realm; send HTTP Basic credentials."
+                    },
+                    "403": {
+                        "description": "Credentials were supplied and are not accepted. Code: credentials_rejected. This is an authentication failure under a 403 because that is the status servant's BasicAuth answers with; it is NOT a permission check, and this API has none."
+                    },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
@@ -909,7 +921,7 @@
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
                     },
                     "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json. Code: unsupported_media_type."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -953,8 +965,14 @@
                     "400": {
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
+                    "401": {
+                        "description": "No credentials, or credentials that could not be read. Code: unauthenticated. The response carries a WWW-Authenticate challenge naming the Basic realm; send HTTP Basic credentials."
+                    },
+                    "403": {
+                        "description": "Credentials were supplied and are not accepted. Code: credentials_rejected. This is an authentication failure under a 403 because that is the status servant's BasicAuth answers with; it is NOT a permission check, and this API has none."
+                    },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
@@ -963,7 +981,7 @@
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
                     },
                     "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json. Code: unsupported_media_type."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -1007,8 +1025,14 @@
                     "400": {
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
+                    "401": {
+                        "description": "No credentials, or credentials that could not be read. Code: unauthenticated. The response carries a WWW-Authenticate challenge naming the Basic realm; send HTTP Basic credentials."
+                    },
+                    "403": {
+                        "description": "Credentials were supplied and are not accepted. Code: credentials_rejected. This is an authentication failure under a 403 because that is the status servant's BasicAuth answers with; it is NOT a permission check, and this API has none."
+                    },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
@@ -1017,7 +1041,7 @@
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
                     },
                     "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json. Code: unsupported_media_type."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -1061,8 +1085,14 @@
                     "400": {
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
+                    "401": {
+                        "description": "No credentials, or credentials that could not be read. Code: unauthenticated. The response carries a WWW-Authenticate challenge naming the Basic realm; send HTTP Basic credentials."
+                    },
+                    "403": {
+                        "description": "Credentials were supplied and are not accepted. Code: credentials_rejected. This is an authentication failure under a 403 because that is the status servant's BasicAuth answers with; it is NOT a permission check, and this API has none."
+                    },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
@@ -1071,7 +1101,7 @@
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
                     },
                     "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json. Code: unsupported_media_type."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -1103,16 +1133,13 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
                     },
                     "406": {
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
-                    },
-                    "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -1156,8 +1183,14 @@
                     "400": {
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
+                    "401": {
+                        "description": "No credentials, or credentials that could not be read. Code: unauthenticated. The response carries a WWW-Authenticate challenge naming the Basic realm; send HTTP Basic credentials."
+                    },
+                    "403": {
+                        "description": "Credentials were supplied and are not accepted. Code: credentials_rejected. This is an authentication failure under a 403 because that is the status servant's BasicAuth answers with; it is NOT a permission check, and this API has none."
+                    },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
@@ -1166,7 +1199,7 @@
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
                     },
                     "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json. Code: unsupported_media_type."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -1210,8 +1243,14 @@
                     "400": {
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
+                    "401": {
+                        "description": "No credentials, or credentials that could not be read. Code: unauthenticated. The response carries a WWW-Authenticate challenge naming the Basic realm; send HTTP Basic credentials."
+                    },
+                    "403": {
+                        "description": "Credentials were supplied and are not accepted. Code: credentials_rejected. This is an authentication failure under a 403 because that is the status servant's BasicAuth answers with; it is NOT a permission check, and this API has none."
+                    },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
@@ -1220,7 +1259,7 @@
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
                     },
                     "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json. Code: unsupported_media_type."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -1252,16 +1291,13 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
                     },
                     "406": {
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
-                    },
-                    "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -1305,8 +1341,14 @@
                     "400": {
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
+                    "401": {
+                        "description": "No credentials, or credentials that could not be read. Code: unauthenticated. The response carries a WWW-Authenticate challenge naming the Basic realm; send HTTP Basic credentials."
+                    },
+                    "403": {
+                        "description": "Credentials were supplied and are not accepted. Code: credentials_rejected. This is an authentication failure under a 403 because that is the status servant's BasicAuth answers with; it is NOT a permission check, and this API has none."
+                    },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
@@ -1315,7 +1357,7 @@
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
                     },
                     "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json. Code: unsupported_media_type."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -1347,16 +1389,13 @@
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
                     },
                     "406": {
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
-                    },
-                    "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -1400,8 +1439,14 @@
                     "400": {
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
+                    "401": {
+                        "description": "No credentials, or credentials that could not be read. Code: unauthenticated. The response carries a WWW-Authenticate challenge naming the Basic realm; send HTTP Basic credentials."
+                    },
+                    "403": {
+                        "description": "Credentials were supplied and are not accepted. Code: credentials_rejected. This is an authentication failure under a 403 because that is the status servant's BasicAuth answers with; it is NOT a permission check, and this API has none."
+                    },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
@@ -1410,7 +1455,7 @@
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
                     },
                     "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json. Code: unsupported_media_type."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -1450,17 +1495,20 @@
                     "400": {
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
+                    "401": {
+                        "description": "No credentials, or credentials that could not be read. Code: unauthenticated. The response carries a WWW-Authenticate challenge naming the Basic realm; send HTTP Basic credentials."
+                    },
+                    "403": {
+                        "description": "Credentials were supplied and are not accepted. Code: credentials_rejected. This is an authentication failure under a 403 because that is the status servant's BasicAuth answers with; it is NOT a permission check, and this API has none."
+                    },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
                     },
                     "406": {
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
-                    },
-                    "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -1504,8 +1552,14 @@
                     "400": {
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
+                    "401": {
+                        "description": "No credentials, or credentials that could not be read. Code: unauthenticated. The response carries a WWW-Authenticate challenge naming the Basic realm; send HTTP Basic credentials."
+                    },
+                    "403": {
+                        "description": "Credentials were supplied and are not accepted. Code: credentials_rejected. This is an authentication failure under a 403 because that is the status servant's BasicAuth answers with; it is NOT a permission check, and this API has none."
+                    },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
@@ -1514,7 +1568,7 @@
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
                     },
                     "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json. Code: unsupported_media_type."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."
@@ -1558,8 +1612,14 @@
                     "400": {
                         "description": "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"
                     },
+                    "401": {
+                        "description": "No credentials, or credentials that could not be read. Code: unauthenticated. The response carries a WWW-Authenticate challenge naming the Basic realm; send HTTP Basic credentials."
+                    },
+                    "403": {
+                        "description": "Credentials were supplied and are not accepted. Code: credentials_rejected. This is an authentication failure under a 403 because that is the status servant's BasicAuth answers with; it is NOT a permission check, and this API has none."
+                    },
                     "404": {
-                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"
+                        "description": "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."
                     },
                     "405": {
                         "description": "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."
@@ -1568,7 +1628,7 @@
                         "description": "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."
                     },
                     "415": {
-                        "description": "The request body was not sent as application/json. Set Content-Type: application/json."
+                        "description": "The request body was not sent as application/json. Set Content-Type: application/json. Code: unsupported_media_type."
                     },
                     "500": {
                         "description": "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."

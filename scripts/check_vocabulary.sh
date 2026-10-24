@@ -21,15 +21,24 @@ fail=0
 
 # Everything we own. dist-newstyle and .git excluded; `docs/` excluded because a historical note may
 # legitimately say what the Belt System called something.
-# The dormant emulator modules are comment-prefixed out of the test-suite's `other-modules`, so
-# nothing compiles them, and plan B's T-ATTEST-5 rewrites them wholesale. Excluded by name rather
-# than by pattern, so that re-landing one in the cabal file brings it under this guard with no edit
-# here: the exclusion is a list of files, and a file dropped from the list is covered again.
-# query-api's three attestation read modules are dormant for the same reason and, unlike the test
-# modules, are already broken against the live DTOs — Query/Projected.hs reads
-# `searchResultsPractitioners`, a field QueryResponses.hs no longer has. A mechanical rename would not
-# make them compile, so T-ATTEST-9 rebuilds them over palmares_attest instead.
-DORMANT='src/test/TestRuns.hs src/test/Test/Fixtures.hs src/test/UnitTests/Attestation.hs src/test/UnitTests/Cleanup.hs src/test/UnitTests/Oracle.hs src/exe/query-api/Query/Projected.hs src/exe/query-api/Query/Aggregates.hs src/exe/query-api/Query/Pages.hs'
+#
+# WHAT THIS LIST IS, and what it is not. A file on it is one that NOTHING COMPILES, so the words in
+# it can reach no user. Excluded by name rather than by pattern, so that re-landing one in the cabal
+# file brings it under this guard with no edit here: a file dropped from the list is covered again.
+#
+# IT WENT STALE, WHICH IS WHY IT IS NOW ASSERTED BELOW. It named five LIVE modules —
+# src/test/TestRuns.hs, src/test/Test/Fixtures.hs and src/test/UnitTests/{Attestation,Cleanup,
+# Oracle}.hs — each an uncommented entry in palmares.cabal's test-suite `other-modules`
+# (:500, :488, :512, :514, :538) and three of them wired into src/test/UnitTests.hs. So five modules
+# the test binary builds were exempt from every grep below, and nothing said so: an exemption that
+# nobody re-checks is worse than a missing check, because it reads as a decision somebody took.
+#
+# query-api's three attestation read modules are the real thing: comment-prefixed out of the
+# executable's `other-modules` (palmares.cabal:360,367,368) and, unlike the test modules, already
+# broken against the live DTOs — Query/Projected.hs reads `searchResultsPractitioners`, a field
+# QueryResponses.hs no longer has. A mechanical rename would not make them compile, so T-ATTEST-9
+# rebuilds them over palmares_attest instead.
+DORMANT='src/exe/query-api/Query/Projected.hs src/exe/query-api/Query/Aggregates.hs src/exe/query-api/Query/Pages.hs'
 
 sources() {
   find src sql scripts config -type f \( -name '*.hs' -o -name '*.sql' -o -name '*.sh' -o -name '*.json' -o -name '*.yaml' \) \
@@ -55,6 +64,34 @@ banned() {
 }
 
 echo "# Vocabulary — $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+# The exemption list, checked before the greps it exempts files from. This is the assertion that
+# would have caught the five live modules described above.
+#
+# Each file's module name is read out of THE FILE, never derived from its path. A path-derived name
+# that is wrong matches nothing in the cabal file, which would pass this check and leave the file
+# exempt — the same silent failure, reintroduced by the fix for it. A missing file, or one with no
+# module header, fails here too: both mean nothing can say what builds it.
+stale_exempt=0
+for f in $DORMANT; do
+  if [ ! -f "$f" ]; then
+    echo "FAIL the exemption list names $f, which does not exist"
+    stale_exempt=1
+    fail=1
+    continue
+  fi
+  mod="$(sed -n 's/^module \([A-Za-z0-9_.]*\).*/\1/p' "$f" | head -1)"
+  if [ -z "$mod" ]; then
+    echo "FAIL $f is exempt from the greps below but declares no module, so nothing says what builds it"
+    stale_exempt=1
+    fail=1
+  elif grep -qE "^[[:space:]]*${mod//./\\.}[[:space:]]*$" palmares.cabal; then
+    echo "FAIL $f is exempt from the greps below, but palmares.cabal builds $mod — drop it from DORMANT"
+    stale_exempt=1
+    fail=1
+  fi
+done
+[ "$stale_exempt" = 0 ] && echo "ok   every exempted file is one nothing compiles"
 
 # The noun. This is the whole point of the rename: one word for the thing the registry records.
 banned "no source says achievement" '[Aa]chievement'

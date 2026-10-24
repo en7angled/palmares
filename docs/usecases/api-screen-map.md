@@ -921,8 +921,12 @@ Every error body is exactly:
 **Match on `code`.** `message` is display text and may be reworded at any time — a client that
 string-matched it breaks on a typo fix.
 
-The 24 codes, their statuses and what the UI should do
-(`Envelope.hs:118-206`, `Errors.hs:81-105`):
+The codes, their statuses and what the UI should do. **`ErrorCode` in
+`src/lib/webapi-lib/Palmares/WebAPI/Envelope.hs` is the authority — read the enum, do not trust a
+count in prose.** It is derived from `Generic` and asserted in two gates, so the enum cannot grow
+without a test noticing; a number written here can, and has. (This document said "24" until
+2026-10-24, when the enum was 31. That is the fourth count-in-prose in this repo to go stale and
+then get defended by the next reader, so the number is deliberately not repeated.)
 
 | `code` | HTTP | `message` | UI action |
 | --- | --- | --- | --- |
@@ -951,6 +955,30 @@ The 24 codes, their statuses and what the UI should do
 | `db_unavailable` | 503 | Service temporarily unavailable | Retry with backoff — **but see the warning below.** |
 | `internal_error` | 500 | Internal server error | Generic failure. Report it. |
 
+**Six codes are decided *before* a handler runs**, so they can arrive on any route and none of them
+is a `TxBuildingException`. Added 2026-10-24, and **check which are live on the deployment you are
+pointing at**, because they did not all land together:
+
+| `code` | HTTP | Live on `:8082` as of 2026-10-24 | UI action |
+| --- | --- | --- | --- |
+| `route_not_found` | 404 | **yes** — measured `{"code":"route_not_found","message":"That path is not served"}` | **Bug in your client**, or a stale base URL. Not a user-visible empty state. |
+| `method_not_allowed` | 405 | **yes** — measured | Bug in your client. Log it. |
+| `not_acceptable` | 406 | **yes** — measured, on an `Accept: application/xml` | Bug in your client: drop the `Accept` header or ask for JSON. |
+| `unauthenticated` | 401 | **not yet** — the response is still zero bytes with no content type, and `WWW-Authenticate: Basic realm="user-realm"` | Never let this reach a document context: the realm header pops the browser's native credential dialog. Route writes through a BFF (§5.10). |
+| `credentials_rejected` | 403 | **not yet** — still zero bytes | The credentials were *present and wrong*. Do not retry with the same ones. |
+| `unsupported_media_type` | 415 | **not yet** — still zero bytes | Bug in your client: send `Content-Type: application/json`. |
+
+> **Do not conflate `credentials_rejected` (403) with `invalid_credential` (400).** They are one
+> plural apart and mean unrelated things: `credentials_rejected` is *your Basic-auth credentials were
+> refused*, `invalid_credential` is *the CIP-129 governance credential in the path is not one*. The
+> first is an auth problem for the operator, the second a field error for the user.
+
+> **"Every non-2xx carries `{code, message}` as `application/json`" is true of the write service for
+> the 404/405/406 group and NOT YET for 401/403/415** — measured against the running binary on
+> 2026-10-24, where those three are still zero-byte with no content type. The code for all six exists
+> in the tree. So **do not write a client that assumes `.json()` will parse on every error path**:
+> guard it, at least until a deployment you have measured says otherwise.
+
 **The distinction that matters most:** `invalid_*` (400) means *the id is not an id* — show a field
 error. `*_not_found` (404) means *the id is well formed and names nothing* — show an empty state.
 Measured, on the same route: `/drep/garbage` → `400 invalid_drep_id`, while a well-formed but
@@ -966,9 +994,21 @@ non-existent CIP-129 id → `404 drep_not_found`.
 > container limited to 0.75 of a CPU."* **Retry at most once, with a long backoff, and never retry
 > in parallel.** If a 503 arrives at ~30 s, treat it as a timeout, not an outage.
 
-Four codes are **declared but unreachable today**: `profile_not_found`, `attestation_not_found`,
-`dispute_not_found`, `rate_limited`. They are published anyway so a client that already handles them
-needs no release when the features land. Handle them now.
+**Corrected 2026-10-24: three of the four codes this paragraph called unreachable are live.** It
+read "Four codes are declared but unreachable today: `profile_not_found`, `attestation_not_found`,
+`dispute_not_found`, `rate_limited`."
+
+- `profile_not_found` and `attestation_not_found` fire on the attestation read routes, which now
+  serve real rows (`/profiles` `total: 6`, `/attestations` `total: 7`, `/disputes` `total: 1`).
+- `dispute_not_found` became reachable when `GET /disputes/{dispute-id}` was added, and
+  `scripts/smoke_query_api.sh` asserts it against the running service.
+- **`rate_limited` is the only one still unreachable, and it is now reserved on purpose** — see the
+  429 note in `governance-read-surface.md` §3. Nothing counts requests, no handler raises it, and
+  **neither generated document declares a 429 on any operation**; a standing gate fails if one ever
+  does, so the declaration cannot ship ahead of the throttle by accident.
+
+Handle all four anyway: three because they will reach you, and `rate_limited` because handling a code
+you cannot yet trigger costs nothing and a BFF in front of you may well produce it.
 
 ### Write surface (`interaction-api`) — a different vocabulary
 
@@ -1562,22 +1602,25 @@ async function writeFlow(route: string, payload: object, wallet: BrowserWallet) 
 
 Ordered by how much it blocks.
 
-## 5.1 BLOCKER — `/drep/{drep-id}` always times out
+## 5.1 ~~BLOCKER~~ CLOSED — `/drep/{drep-id}` always times out
+
+> **Closed 2026-10-24.** The rewrites the blockquote below called "in flight" landed (`ccaa2a1`,
+> `b65ae24`). Re-measured against the running service on the first id `/dreps` returns
+> (`drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm`): **`200` in 0.682 s and 0.653 s**,
+> two consecutive requests. Was 5/5 `503 db_unavailable` at ~30.3 s. The 30 s cliff is gone and the
+> four-call workaround below is unnecessary — do not build it.
+>
+> **One clause of the old finding survives as a much smaller thing:** `docs/spec/metrics.md`'s
+> intended ceiling is a 500 ms p95, and 0.65–0.68 s is still over it. That is ~1.3× the ceiling, not
+> the 40× the row recorded, and it no longer blocks a screen.
 
 | | |
 | --- | --- |
 | **Screen needs** | DRep detail: identity, every metric, power series, delegator movement, top delegators, certificate history, CIP-119 metadata — in one call, as designed. |
-| **What exists** | The route, documented as "One DRep's whole public record in a single request". |
-| **What is missing** | It works. Measured **5/5 times `503 db_unavailable` at ~30.3 s**, across all three id forms, both under load and serially with nothing else running. `/pages/drep/{id}` is the same handler and fails identically. 30 s is the `statement_timeout` (`Query/Gov.hs:250-270`). |
-| **Workaround today** | 4 calls: a `/dreps` row + `/drep/{id}/power` (6.6 s) + `/drep/{id}/updates` (0.4 s) + `/drep/{id}/delegators` (2.3 s). All three sub-resources are healthy. **Loses the CIP-119 metadata block and the delegator-movement series.** |
-| **Backend change** | Query-level. The composite assembles several aggregates in one transaction and at least one has no usable index. Likely a missing index or a CTE that needs splitting; the sub-resources proving fast says the data is reachable. **Medium** — a day of `EXPLAIN`, not a redesign. A cheaper interim fix: have the handler drop the slowest block and return the rest. |
-
-> **Query work is in flight as of this writing.** The working tree holds uncommitted rewrites to
-> `Query/Gov.hs` (the epoch-power query, now a CTE plus a `palmares.drep_delegator_counts(…)`
-> set-returning function) and 83 new lines in `sql/020_views.sql`. **None of it is in the running
-> service** — every timing in this document is against the deployed binary. **Re-measure before you
-> build the 4-call workaround**; it may already be unnecessary:
-> `curl -s -o /dev/null -w '%{http_code} %{time_total}\n' http://127.0.0.1:8083/drep/<a-cip129-id>`
+| **What exists** | The route, answering in 0.65–0.68 s with every block. |
+| **What was missing** | It worked. Measured **5/5 times `503 db_unavailable` at ~30.3 s**, across all three id forms, both under load and serially with nothing else running. `/pages/drep/{id}` is the same handler and failed identically. 30 s is the `statement_timeout` (`Query/Gov.hs:250-270`). |
+| **What closed it** | The epoch-power query became a CTE plus a `palmares.drep_delegator_counts(…)` set-returning function, with the supporting shape in `sql/020_views.sql`. Re-measured against the running binary, not inferred from the diff. |
+| **Workaround** | None needed. The 4-call fan-out (`/dreps` row + `/drep/{id}/power` + `/updates` + `/delegators`) is dead advice — it costs four round trips and still loses the CIP-119 block. |
 
 ## 5.2 ~~BLOCKER~~ CLOSED — no way to find the connected wallet's own profile
 
@@ -1654,15 +1697,26 @@ Ordered by how much it blocks.
 | **Workaround** | Always send a narrowing filter; never render this route on a cold cache in a user-facing path; use `/pages/dashboard`'s `closing_soon` for the common "what's open" view (it is fast and uses the same query). |
 | **Backend change** | Indexing, same family as §5.1. **Medium.** |
 
-## 5.7 Attestation, dispute and profile screens have no data to build against
+## 5.7 ~~Attestation, dispute and profile screens have no data to build against~~ CLOSED
+
+> **Closed 2026-10-24.** `scripts/smoke_attest_flow.sh` ran end to end against preprod and left its
+> records behind. Measured on the running service: `/profiles` `total: 6`, `/attestations`
+> `total: 4`, `/disputes` `total: 1`. Every shape this document marked `UNVERIFIED:` is now a real
+> captured row, and three of them answered a question the shapes alone could not:
+>
+> - `AttestationRow` carries `credential` — set on a `credential_claim`, `null` on a `role_held`.
+>   That is the §7 open question about whether the projection honours `Mc2`/`Mc4`: it does.
+> - `DisputeRow` carries `stale_after` (`2026-11-23T16:40:49Z` against `opened_at`
+>   `2026-10-24T16:40:49Z`), so the deadline is read, not computed.
+> - `GET /attestations/{id}` carries `level1_anchor`, `null` on an unanchored attestation — the
+>   list row does **not** carry it, which is worth knowing before you design a badge for it.
 
 | | |
 | --- | --- |
 | **Screen needs** | Attestation list/detail, dispute list, profile track record. |
-| **What exists** | All seven routes, returning correct empty envelopes. |
-| **What is missing** | Data. Measured: `/attestations` `total: 0`, `/disputes` `total: 0`, `/profiles` `total: 1` (a smoke-test artefact created today). `/attestations/{id}` and the `DisputeRow` shape are therefore **`UNVERIFIED:`** — I never saw a populated row. |
-| **Workaround** | Build from the swagger definitions and `scripts/smoke_attest_flow.sh`, which creates two profiles, one accepted attestation and one resolved dispute and leaves them behind on purpose. **Run it before coding these screens.** |
-| **Backend change** | None — run the seed script. **Trivial, but do it first:** a shape you have not seen is a shape you will get wrong. |
+| **What exists** | All seven routes, with populated rows behind them. |
+| **What was missing** | Data. Measured at the time: `/attestations` `total: 0`, `/disputes` `total: 0`, `/profiles` `total: 1`. |
+| **Workaround** | None needed. If a re-index empties the projections again (ADR 0007 wipes them on a schema bump), re-run `scripts/smoke_attest_flow.sh` — it creates two profiles, a credential claim, an accepted attestation and a resolved dispute and leaves them behind on purpose. |
 
 ## 5.8 No two-party signing flow for `/claim-credential`
 
@@ -1674,28 +1728,35 @@ Ordered by how much it blocks.
 | **Workaround** | Out-of-band: one party builds, signs, and hands the hex plus their witness to the other through a channel the app does not provide. Fine when both keys are in one wallet; otherwise manual. |
 | **Backend change** | Either `tx_wit` accepts an array of witness sets, or a small "pending transaction" store with a shareable link. **Medium.** Note the `ScriptCredentialHasNoUtxo` case is a separate, documented limitation: a Plutus script that only votes holds no UTxO at its own address, so there is nothing to spend and the claim is refused. |
 
-## 5.9 `X-Attest-*` headers are invisible to the browser
+## 5.9 ~~`X-Attest-*` headers are invisible to the browser~~ CLOSED in code — and read the caveat
+
+> **Closed 2026-10-24 in source, and committed.** `freshnessExposedHeaders` now lists all eight
+> names: the three `X-Attest-*` are at `src/lib/webapi-lib/Palmares/WebAPI/CORS.hs:61-63`, carried
+> into `corsExposedHeaders` at `:78`. The comment the old row called ironic is still above the list,
+> now with the three names under it naming the failure they caused.
+>
+> **The caveat, because it is not the same claim.** This could NOT be confirmed against the running
+> service, and the reason is a different finding rather than a doubt about this one: `corsPolicy`
+> emits **no CORS headers at all** for an origin outside the allowlist (`CORS.hs:68-84`), and this
+> deployment's allowlist is empty — `Origin: http://localhost:5173`, `:3000` and `:8080` each came
+> back with no `Access-Control-Expose-Headers` line. So the fix is in the binary and unobservable
+> until `CORS_ALLOWED_ORIGINS` is set. That empty-allowlist silent deny is audit finding `DC-06`,
+> still open. The three headers themselves are sent on every response — measured: `X-Attest-Slot:
+> 137178579`, `X-Attest-Lag-Seconds: 14`, `X-Attest-State: following`.
 
 | | |
 | --- | --- |
 | **Screen needs** | A per-response "attestation data may be incomplete" badge, read off the page you are already loading. |
-| **What exists** | All three headers are sent on every response. Measured: `X-Attest-Slot`, `X-Attest-Lag-Seconds`, `X-Attest-State: following`. |
-| **What is missing** | They are not in `Access-Control-Expose-Headers`, so `headers.get()` returns `null` cross-origin. Measured. `freshnessExposedHeaders` lists five names (`CORS.hs:51-57`); the trio is built at `Query/Gov.hs:644-646` and was never added to that list. The irony is explicit in the source comment above the list — *"Without this list the server would send the chain point on every cross-origin response and the staleness chip would silently show nothing — a failure with no error anywhere to find it by"* — which is exactly what happened to the three headers added later. |
-| **Workaround** | Read `.attestation.state` from `GET /status` (body, therefore readable). Costs a second request and is per-poll rather than per-response. |
-| **Backend change** | **Three strings in one list.** Trivial. |
-
-> **Being fixed as of this writing.** The working tree already adds the three names to
-> `freshnessExposedHeaders` (uncommitted change to `CORS.hs`). **The running service does not have
-> it** — the measurement above is against the deployed binary. Re-measure after the next deploy
-> before you delete the `/status` fallback:
-> `curl -sD - -o /dev/null -H 'Origin: <your-origin>' http://127.0.0.1:8083/status | grep -i expose`
+| **What exists** | All three headers sent on every response, and all three in the expose list. |
+| **What was missing** | The three names in `Access-Control-Expose-Headers`, so `headers.get()` returned `null` cross-origin. |
+| **Verify before you delete the `/status` fallback** | `curl -sD - -o /dev/null -H 'Origin: <an allowlisted origin>' http://127.0.0.1:8083/status \| grep -i expose` — and set `CORS_ALLOWED_ORIGINS` first, or you will measure the deny path and conclude the fix is absent. |
 
 ## 5.10 The write API cannot be called from a browser as deployed
 
 | | |
 | --- | --- |
 | **Screen needs** | Any write flow from a React app. |
-| **What exists** | CORS allowlists `http://localhost:5173` and permits `Authorization`, so the request mechanically succeeds. |
+| **What exists** | CORS permits `Authorization` once an origin is allowlisted, so the request mechanically succeeds. **Correction 2026-10-24: the claim that it "allowlists `http://localhost:5173`" is not true of this deployment** — `Origin: http://localhost:5173`, `:3000` and `:8080` each drew no CORS headers at all, i.e. `CORS_ALLOWED_ORIGINS` is empty and `corsPolicy` denies silently (`CORS.hs:68-84`, audit `DC-06`). Set it before you conclude anything about CORS here. |
 | **What is missing** | A credential model a browser can hold. Basic auth is a shared username and password: in a browser it is either in your bundle (readable by anyone, and it authorises transaction building) or absent, which means **every write must go through a server-side proxy that holds it**. That proxy does not exist. Three measured aggravations: a 401 carries `WWW-Authenticate: Basic realm="user-realm"`, which pops the browser's **native** credential dialog you cannot style or intercept; wrong credentials are a **403, not a 401**, so `status === 401` reauth logic never fires; and both bodies are **empty**, so `.json()` throws. |
 | **Workaround** | A thin BFF (Vite dev proxy / Next route handler) that holds the credentials, forwards to `:8082`, and never lets a 401 reach a document context. Build this before the first write screen. |
 | **Backend change** | Per-user tokens, or an explicit decision that the write API is server-to-server only and the BFF is part of the architecture. **Medium**, and it is a design decision before it is code. |

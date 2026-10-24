@@ -27,7 +27,7 @@ import Data.ByteString.Lazy (ByteString)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Network.HTTP.Types (Status (..))
-import Network.HTTP.Types.Header (hContentType)
+import Network.HTTP.Types.Header (hContentLength, hContentType)
 import Network.Wai (Middleware, Response, responseHeaders, responseLBS, responseStatus)
 import Palmares.WebAPI.Envelope (ApiError (..), ErrorCode (..), errorCodeFromText, errorCodeToHttpStatus)
 import Servant
@@ -42,12 +42,17 @@ mkServantErrBody status body =
   where
     base = case status of
       400 -> err400
+      -- The five statuses servant's own layers raise and no handler does — the auth combinator's
+      -- 401 and 403, the router's 405, 406 and 415. They are all in 'errorCodeToHttpStatus', and
+      -- without an arm here a caller that passed one of them through 'mkServantErr' would have
+      -- served it as a 500 by falling through to the catch-all. That is not hypothetical: it is
+      -- what the 405 did before it had a line.
+      401 -> err401
+      403 -> err403
       404 -> err404
-      -- The two router statuses. They have no handler that raises them — see 'MethodNotAllowed' —
-      -- but they are in 'errorCodeToHttpStatus' now, and without an arm here a caller that passed
-      -- one of them through 'mkServantErr' would have served a 405 as a 500 by falling through.
       405 -> err405
       406 -> err406
+      415 -> err415
       429 -> err429
       500 -> err500
       502 -> err502
@@ -107,8 +112,19 @@ genericErrorMessage = \case
   InvalidCredential -> "Not a CIP-129 governance credential: expected drep1y..., cc_cold1... or cc_hot1..."
   InvalidTimeRange -> "The time range is empty or reversed"
   InvalidEpochRange -> "The epoch range is empty or reversed"
+  -- Neither of these names the realm, the configured username, or which of the two credentials was
+  -- wrong. The 401's message points at the header because the challenge beside it says how; the
+  -- 403's says only that what arrived was refused, because "wrong password" told to an unauthorised
+  -- caller is an oracle for guessing the username.
+  Unauthenticated -> "No credentials were supplied, or they could not be read"
+  CredentialsRejected -> "Those credentials are not accepted"
   MethodNotAllowed -> "That method is not served on this path"
   NotAcceptable -> "This route cannot produce any of the media types in Accept"
+  UnsupportedMediaType -> "The request body must be sent as application/json"
+  -- Deliberately not "not found": nothing was looked up. The sentence names the PATH, because that
+  -- is the only thing a caller can act on — every other 404 here invites a different identifier,
+  -- and this one invites a different URL.
+  RouteNotFound -> "That path is not served"
   DrepNotFound -> "No DRep with that identifier"
   GovActionNotFound -> "No governance action with that identifier"
   SpoNotFound -> "No stake pool with that identifier"
@@ -136,6 +152,17 @@ genericErrorMessage = \case
 -- message is a path into the document, which is useful to a person and is not a code a client can
 -- switch on. The two parser hooks below keep going through 'errorCodeFromParserMessage', because a
 -- capture and a query parameter DO carry the repo's own code tags in their messages.
+--
+-- __The unrouted 404 is the fourth hook, and it is set here rather than in a middleware precisely
+-- because servant HAS a hook for it.__ 405 and 406 do not have one and go through
+-- 'refusedRequestMiddleware'; this one is @notFoundErrorFormatter@, which the router consults when
+-- no path matched. Measured before it, on both services: @GET \/nope@ answered 404 with zero bytes
+-- and no content type, because servant's default here is a bare @err404@. Setting it in this one
+-- shared value is what gives both services the fix — interaction-api installed no formatters at all
+-- until recently and query-api kept a private copy, which is exactly how the two drifted.
+--
+-- The request is ignored: the answer cannot name what was missing without echoing a client-supplied
+-- path back into a response body, and the path is already in the request line the client sent.
 palmaresErrorFormatters :: ErrorFormatters
 palmaresErrorFormatters =
   defaultErrorFormatters
@@ -143,34 +170,45 @@ palmaresErrorFormatters =
       -- queryParseErrorFormatter to set.
       urlParseErrorFormatter = fromParserMessage,
       headerParseErrorFormatter = fromParserMessage,
-      bodyParserErrorFormatter = \_ _ _ -> mkServantErr 400 InvalidParameter
+      bodyParserErrorFormatter = \_ _ _ -> mkServantErr 400 InvalidParameter,
+      notFoundErrorFormatter = const (mkServantErr (errorCodeToHttpStatus RouteNotFound) RouteNotFound)
     }
   where
     fromParserMessage _ _ msg =
       let code = errorCodeFromParserMessage msg
        in mkServantErr (errorCodeToHttpStatus code) code
 
--- | Give the two refusals servant's ROUTER produces the same @{code, message}@ body as every other
--- non-2xx response.
+-- | Give the five refusals servant decides BEFORE a handler the same @{code, message}@ body as
+-- every other non-2xx response.
 --
--- __Middleware rather than a formatter, because servant offers no hook for either.__
--- 'ErrorFormatters' covers a failing URL piece, a failing header and a malformed body — all three
--- of which happen while a handler is being reached. A 405 and a 406 are decided by the router
--- BEFORE that: @Verb@'s @AllCTRender@ raises @err406@ when content negotiation finds no match, and
--- the method check raises @err405@, both as a @FailFatal@ that no formatter is consulted for. There
--- is no @methodNotAllowedErrorFormatter@ to set.
+-- __Middleware rather than a formatter, because servant offers no hook for any of them.__
+-- 'ErrorFormatters' has four fields: a failing URL piece, a failing header, a malformed body — all
+-- three of which happen while a handler is being reached — and an unrouted path, which
+-- 'palmaresErrorFormatters' answers with @route_not_found@. These five are decided earlier, each as
+-- a @FailFatal@ that no formatter is consulted for, and there is no
+-- @methodNotAllowedErrorFormatter@ or @unauthorizedErrorFormatter@ to set:
 --
--- Measured against the deployed binary: @POST \/dreps@ answered @405@ and
--- @GET \/profiles?limit=1@ with @Accept: text\/csv@ answered @406@, each with @len=0@ and __no
--- content type at all__ — so a browser client that does @res.json()@ on a failure path threw a
--- parse error instead of reading a code. Six list routes serve CSV and seven do not, so the 406 is
--- a mistake a real client makes rather than a theoretical one.
+--   * 405, from the router's method check, and 406, from @Verb@'s @AllCTRender@ when content
+--     negotiation finds no match;
+--   * 415, from @ReqBody@'s own content-type check;
+--   * 401 and 403, from the @BasicAuth@ combinator — which is the one pair that is NOT the router,
+--     and the reason this function's name says \"refused request\" rather than \"router\".
+--
+-- Measured against the deployed binaries, every one with a zero-byte body and __no content type at
+-- all__, so a client doing @res.json()@ on a failure path threw a parse error instead of reading a
+-- code: @POST \/dreps@ → 405; @GET \/profiles?limit=1@ with @Accept: text\/csv@ → 406;
+-- @POST \/build-tx@ with no credentials → 401; the same with a wrong password → __403__; and with
+-- credentials but @Content-Type: text\/plain@ → 415. Six list routes serve CSV and seven do not, so
+-- the 406 is a mistake a real client makes; the 401\/403 pair is the mistake EVERY client makes
+-- first, on the twelve routes behind auth.
 --
 -- __The absence of a content type is the test__, and it is deliberately not a status test alone.
--- Every response this service means to send carries one: a handler's own 4xx goes through
+-- Every response these services mean to send carries one: a handler's own 4xx goes through
 -- 'mkServantErr', which sets @application\/json@, and a success carries whatever was negotiated.
--- The router's refusals carry @errHeaders = []@. So rewriting only the content-type-less ones
--- cannot touch a body a handler built, which a bare @status == 405@ test could.
+-- servant's own refusals carry no content type — 401 carries a @WWW-Authenticate@ and the rest carry
+-- @errHeaders = []@. So rewriting only the content-type-less ones cannot touch a body a handler
+-- built, which a bare @status == 403@ test very much could: 403 is a status a handler could
+-- plausibly raise later, and this guard is what keeps that future handler's body intact.
 --
 -- The body comes from 'mkServantErr' rather than being assembled here, so there is exactly one
 -- place an 'ApiError' is constructed from a code and nothing can drift between the two.
@@ -182,10 +220,34 @@ refusedRequestMiddleware :: Middleware
 refusedRequestMiddleware app req send = app req (send . reshape)
   where
     reshape res = case (statusCode (responseStatus res), lookup hContentType (responseHeaders res)) of
-      (405, Nothing) -> refusal MethodNotAllowed
-      (406, Nothing) -> refusal NotAcceptable
+      (401, Nothing) -> refusal res Unauthenticated
+      (403, Nothing) -> refusal res CredentialsRejected
+      (405, Nothing) -> refusal res MethodNotAllowed
+      (406, Nothing) -> refusal res NotAcceptable
+      (415, Nothing) -> refusal res UnsupportedMediaType
       _ -> res
-    refusal code = serverErrorToResponse (mkServantErr (errorCodeToHttpStatus code) code)
+
+    -- __The refused response's own headers are KEPT, and on the 401 that is load-bearing.__
+    -- servant's @BasicAuth@ raises @err401 { errHeaders = [mkBAChallengerHdr realm] }@, so the
+    -- refusal carries @WWW-Authenticate: Basic realm="user-realm"@ — the header that tells a client
+    -- HOW to authenticate, and the only reason a browser offers a credential prompt at all.
+    -- Building the replacement from 'mkServantErr' alone, as the 405\/406 form of this function
+    -- did, would have dropped it: @mkServantErr@'s @errHeaders@ is exactly
+    -- @[(hContentType, "application\/json")]@ and nothing else. Trading a readable body for a
+    -- broken auth handshake would have been a worse bug than the empty body it fixed.
+    --
+    -- The carried list goes FIRST and the JSON content type last, which is safe for the same reason
+    -- the match above is keyed on it: there is no content type in the carried list, or this response
+    -- would not be here.
+    --
+    -- @Content-Length@ is dropped because the body is no longer the one it measured. Servant's error
+    -- responses do not set it (warp derives it from the lazy body), so this is a framing guard
+    -- rather than an observed bug — and a stale @Content-Length@ truncates a response rather than
+    -- failing it, which is the kind of bug that is found in a client and not here.
+    refusal res code = serverErrorToResponse (e {errHeaders = carried <> errHeaders e})
+      where
+        e = mkServantErr (errorCodeToHttpStatus code) code
+        carried = filter ((/= hContentLength) . fst) (responseHeaders res)
 
 -- | The response warp sends when a request dies of an uncaught exception.
 --

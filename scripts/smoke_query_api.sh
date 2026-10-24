@@ -834,6 +834,16 @@ check "an Accept this API cannot satisfy is 406" \
   "$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: text/csv' "$API/profiles?limit=1")" "406"
 check "  and the 406 body names not_acceptable" \
   "$(curl -s -H 'Accept: text/csv' "$API/profiles?limit=1" | jq -r '.code // "none"')" "not_acceptable"
+# The third of them, and the one that DOES have a servant hook: `notFoundErrorFormatter`, set in
+# `palmaresErrorFormatters`. Measured before it, on this service:
+# `curl -s -o- -w '%{http_code} %{content_type}' /nope` gave `404` with an empty body and no type.
+# The content type is asserted as well as the code, because an empty body is what this was and a
+# `.json()` on a typeless response is what failed.
+check "an unrouted path is 404" "$(code /nope)" "404"
+check "  and the 404 body names route_not_found" \
+  "$(curl -s "$API/nope" | jq -r '.code // "none"')" "route_not_found"
+check "  and it carries application/json, not nothing" \
+  "$(curl -s -o /dev/null -w '%{content_type}' "$API/nope")" "application/json"
 
 echo
 if [ "$fail" = 0 ]; then echo "smoke OK"; else echo "smoke FAILED" >&2; fi

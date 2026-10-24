@@ -128,7 +128,7 @@ One body shape for every refusal (`Envelope.hs:93`): `{"code": "...", "message":
 | --- | --- |
 | 400 | `invalid_parameter`, `query_too_short`, `query_too_long`, `offset_too_large`, `limit_too_large`, `invalid_cursor`, `both_cursors_given`, `invalid_drep_id`, `invalid_gov_action_id`, `invalid_asset_class`, `invalid_time_range`, `invalid_epoch_range` |
 | 404 | `drep_not_found`, `gov_action_not_found`, `spo_not_found`, `committee_not_found`, `profile_not_found`, `attestation_not_found`, `dispute_not_found` |
-| 429 | `rate_limited` (declared; the API itself does not rate-limit — that belongs to a BFF in front) |
+| 429 | `rate_limited` — **reserved on purpose, and guarded.** The API does not rate-limit (that belongs to a BFF in front), nothing counts requests, no handler raises it, and **neither generated document declares a 429 on any operation**. As of 2026-10-24 a standing gate *fails* if one ever does (`scripts/check_swagger.sh:113-116`), so the declaration cannot ship ahead of the throttle by accident — verified: `grep -c '"429"'` is **0** in both generated documents. One caveat on the gate, noted while checking it: its filter is `.paths[].get.responses`, so it inspects **GET operations only** and a 429 declared on a POST would pass. Harmless on this read surface, which is all GETs; worth widening before the write surface relies on it. Treat a 429 you actually receive as coming from something in front of this API, not from it. |
 | 503 | `not_ready`, `indexer_behind`, `db_unavailable` |
 | 500 | `internal_error` |
 
@@ -650,8 +650,11 @@ What a designer must know:
 - **Re-votes are rows, not hidden.** `revote_count` says how many rows exist for that
   (voter, action) pair; `is_final` marks the one a verdict is measured from, `is_first` the one a
   latency is measured from. preprod's worst pair has 21,626 rows. **A "this DRep's votes" table that
-  does not filter `is_final=true` will show one decision twenty thousand times** — and there is no
-  `is_final` query parameter, so the filter has to happen client-side after paging. See §8, gap G-4.
+  does not filter `is_final=true` will show one decision twenty thousand times** — and since
+  2026-10-24 `is_final=true` **is** a query parameter, so do it server-side rather than client-side
+  after paging. (The sentence this replaced said there was no such parameter; stale.) It is fast for
+  the first several pages only — offset 800 is a 9.4 s request. See §8, gap G-4, for the numbers and
+  for where to put the limit.
 - **There is no `has_rationale` parameter.** It is `anchor_status=valid`, which forces the caller to
   say which of the seven anchor outcomes they mean instead of collapsing an unreachable IPFS
   document into "no rationale".
@@ -1481,82 +1484,126 @@ Every row below was produced by calling the live API. These are the screens that
 Each gap: what a screen needs, what exists, what is missing. These are findings, not opinions —
 each was verified against the live API.
 
-### G-1. The dashboard's headline DRep count contradicts the list it links to
+### G-1. ~~The dashboard's headline DRep count contradicts the list it links to~~ CLOSED
 
-**What the screen needs:** "204 DReps" on the dashboard and "204 results" on the DRep list.
+> **Closed 2026-10-24 (`ccaa2a1`).** Measured on the running service: `/pages/dashboard` now returns
+> `total_dreps: 294`, which is exactly the `active 17 + inactive 187 + unknown 90` the default
+> `/dreps` page lists, and it agrees with `/dreps`' own `total: 294`. The dashboard also gained the
+> fourth count the gap asked for — `retired_dreps: 523` — so a client can render the whole registry
+> without a second request. **`total_dreps` is now safe to use as the list's count.**
 
-**What exists:** `/pages/dashboard` returns `total_dreps: 204` (`active_dreps: 17` +
-`inactive_dreps: 187`). `/dreps` with no filter returns `total: 294`. The
-explorer's own facets explain the difference: `status_facets` are
-`active 17, inactive 187, retired 523, unknown 90`, and the default `/dreps` status set is
-`[active, inactive, unknown]` (`Query/Gov.hs:1810`), so the list includes the 90 `unknown`
-credentials while the dashboard's headline drops them.
+**What the screen needs:** "294 DReps" on the dashboard and "294 results" on the DRep list.
 
-**What is missing:** either `dashboardTotalDreps` should be `active + inactive + unknown`, or the
-dashboard needs a fourth count. Today a user who clicks "204 DReps" lands on a list of 294, and the
-route's own description still promises `total_dreps` "is the universe /dreps lists by default".
-Until it is fixed, **the frontend must not use `total_dreps` as the list's count** — fetch
-`/pages/drep-explorer` and use its `total`.
+**What was missing:** `/pages/dashboard` returned `total_dreps: 204` (`active_dreps: 17` +
+`inactive_dreps: 187`) while `/dreps` with no filter returned `total: 294`. The explorer's own
+facets explained the difference: `status_facets` are `active 17, inactive 187, retired 523,
+unknown 90`, and the default `/dreps` status set is `[active, inactive, unknown]`, so the list
+included the 90 `unknown` credentials while the dashboard's headline dropped them.
 
-### G-2. The main profile screen is a 20-second request with a 30-second cliff
+### G-2. ~~The main profile screen is a 20-second request with a 30-second cliff~~ CLOSED
+
+> **Closed 2026-10-24 (`ccaa2a1`, `b65ae24`).** Re-measured against the running service, two
+> consecutive requests on the first id `/dreps` returns: **`200` in 0.682 s and 0.653 s.** Was
+> 19.3/18.6/22.1 s plus four `503 db_unavailable`. The cliff is gone; a React page needs no
+> skeleton, no 30 s timeout and no explicit retry for this route.
+>
+> **What survives, and it is small:** `docs/spec/metrics.md`'s ceiling is a 500 ms p95, and
+> 0.65–0.68 s is still above it. That is ~1.3× rather than the ~40× this gap recorded, it does not
+> block a screen, and it is a tuning item rather than a product gap.
 
 **What the screen needs:** a DRep profile that loads.
 
 **What exists:** `GET /drep/{id}` assembles seven blocks in one transaction — the right correctness
-choice, and it makes the route as slow as its slowest part. Measured today: **19.3 s, 18.6 s,
-22.1 s** for three successful requests, and **`503 db_unavailable` after a 30 s statement timeout**
-on four consecutive attempts while the database was busy. `docs/spec/metrics.md` records the
-intended ceiling: "if `/drep/{id}` p95 exceeds 500 ms on preprod, promote the two CTEs to a
-materialized view". That ceiling is crossed by roughly 40×.
+choice. The slow part was the epoch-power block; it is now a CTE plus a
+`palmares.drep_delegator_counts(…)` set-returning function.
 
-**What is missing:** either the retention CTEs become a materialized view, or the composite is
-split so identity + metrics (fast) render before `delegator_stats` and `power_by_epoch` (slow). As
-the API stands, a React page cannot render progressively — it is one request or nothing. **The
-frontend needs a skeleton, a 30 s+ client timeout, and an explicit retry.**
+### G-3. The largest holder of delegated stake renders its chart now, but takes 11.5 s — PARTIAL
 
-*Caveat:* the database was under heavy concurrent load from an unrelated process during the whole
-measurement window, so the absolute numbers are a worst case. The 30 s timeout being reachable at
-all on the main screen is the finding.
-
-### G-3. The largest holder of delegated stake cannot reliably render its own chart
+> **2026-10-24, re-measured against the running service.** The **`503` is gone**: two consecutive
+> requests both answered `200`, in **11.82 s and 11.51 s**. That is reliable where it was not, and
+> ~2.4× faster than the 28.2 s recorded here.
+>
+> **One number in the repo does not reproduce, and it is worth knowing which.** Commit `0402a3c`'s
+> body states this route "answers in 1.14 s" after the window-function pushdown fix — that was the
+> figure that unblocked the Koios re-record, which had timed out on it at 77.5 s. Measured here
+> twice it is 11.5–11.8 s, an order of magnitude off that claim. Both measurements can be honest
+> (different cache and load state), so treat **1.14 s as a best case, not the route's cost**, and do
+> not size a frontend timeout from it.
 
 **What the screen needs:** a voting-power history for `drep_always_abstain`, which holds 432.9 T
 lovelace — about 46% of preprod's delegated stake, more than every real DRep combined.
 
-**What exists:** `GET /drep/drep_always_abstain/power` returned **`503` four times**, then **200 in
-28.2 s** for the full series and **19.7 s** for a four-epoch window. The sibling
+**What exists:** `GET /drep/drep_always_abstain/power`, answering in ~11.5 s. The sibling
 `drep_always_no_confidence` (40 delegators) returns in under a second. The cost is the
 `drep_epoch_delegators` join scaled by 1,026 delegators.
 
-**What is missing:** an index or a projection for the reserved options' delegator counts, or a way
-to ask for the power series **without** `delegator_count`. There is no parameter to drop that
-column. Narrowing `from_epoch`/`to_epoch` helps but does not get under a second.
+**What is still missing:** a way to ask for the power series **without** `delegator_count` — there
+is still no parameter to drop that column — or a projection for the reserved options' delegator
+counts. 11.5 s is under the 30 s timeout but far over anything a chart should block on, so **keep
+the skeleton and the explicit retry for this one route** even though G-2 no longer needs them.
 
-### G-4. ~~`/votes` cannot filter to final votes~~ CLOSED — and it is the parameter that makes the endpoint usable
+### G-4. `/votes` cannot filter to final votes — HALF CLOSED: the filter exists and is fast only for the first several pages
 
-> **Closed 2026-10-24: `?is_final=true`.** One row per (voter, action) — the vote that counts. On
-> preprod that is **3,244,723 rows → 931**, and 65,000 pages → 19.
+> **Half closed 2026-10-24: `?is_final=true`.** One row per (voter, action) — the vote that counts.
+> On preprod that is **3,244,723 rows → 931**, and 65,000 pages → 19. The filter is the right
+> parameter and it collapses the result set exactly as stated.
 >
-> Expressed the obvious way, `WHERE seq_last = 1`, the same filter costs **7,058 ms**, because a
+> **But it does not make the whole list cheap, and the first version of this note overstated it.**
+> `is_final=true` fixes the first three stages of the query and leaves the fourth untouched: the rows
+> are still read through `palmares.vote` and the read is still partition-complete. Measured on the
+> live service, independently re-measured during the 2026-10-24 re-audit:
+>
+> | page | measured | rows read |
+> |---|---|---|
+> | `is_final=true&offset=0` | **0.51–0.53 s** | 101 partition rows |
+> | `is_final=true&offset=100` | **0.52 s** | 120 rows |
+> | `is_final=true&offset=800` | **9.43–9.57 s** | 1,621,907 rows |
+>
+> The 931 final votes sort by `v.id DESC`, and the epoch-187 stress test's ~150 large partitions land
+> on the **last** pages. Page 1 reads 101 partition rows; page 9 reads **1,621,907** — 18× the
+> latency and ~16,000× the rows for the same 100 results. So the fix in prose is one word: it makes
+> *the first pages of* the route fast.
+>
+> Expressed the obvious way, `WHERE seq_last = 1`, the filter itself costs **7,058 ms**, because a
 > window column is not pushdown-safe and Postgres must compute the window over the whole corpus
-> before it can test it. It reads the pre-aggregation instead and costs **2.4 ms**.
+> before it can test it. It reads the pre-aggregation instead and costs **2.4 ms** — that part of the
+> win is real and is why the shallow pages are sub-second at all.
 >
-> **Deep pages WITHOUT the filter are still slow** — 13 s at offset 1000, 22 s at offset 10000 — and
-> that is a data property, not a query shape: a page of 100 stress-test votes belongs to 70–150
-> partitions of ~20,000 rows each, so `revote_count` for one row is a count over ~20,000 siblings and
-> any partition-complete restriction must read 1.5–3.2 M rows. The shallow pages did get 3.3× faster.
-> A DRep's voting record is `?voter_id=…&is_final=true`, which is 19 pages, not 65,000.
+> **The curve is a step, not a slope, and that is the thing to design against.** Unfiltered,
+> `limit=200` at offsets 0 / 100 / 200 / 400 / 600 measures **0.77 / 1.12 / 1.09 / 1.11 / 1.10 s**,
+> and at offset 800 it is **12.15 s**. The cause is exact: **901 votes are newer than the newest
+> epoch-187 stress-test vote**, and the real corpus is 958 votes. So the feed is fast for essentially
+> the entire body of real governance activity and slow only once a page crosses row 901 — i.e. inside
+> the stress test.
+>
+> **The slow case is only the unfiltered deep feed.** With a `voter_id` filter, offset 10,000
+> measures **3.35 s** against **20.53 s** unfiltered, because `voter_id_hash` is one of the partition
+> columns. "This DRep's voting record" — the screen that exists — is fast at any depth; "every vote
+> ever cast, page 9" is the screen that is slow, and no screen documented in these files asks for it.
+>
+> **Two decisions, so do not plan around them changing.** (1) Deep unfiltered pages are **not** going
+> to be made fast, and (2) the window-free row source is **not** being built. `docs/adr/0009-*.md`
+> carries both decisions and their trigger — read it there rather than re-arguing it here. Note the
+> ceiling is **not** being lowered: capping at 600 would buy uniform speed by permanently refusing
+> page 13 of a 50-row scroll, trading a permanent refusal for a temporary slowness — temporary in a
+> measurable way, because at ~1.5 votes/day the artifact sinks below row 1,000 in about 66 days and
+> the route then settles at ~1.1 s with nobody changing anything.
 
 **What the screen needs:** a DRep's voting record — one row per decision.
 
-**What exists:** `/votes` returns **every** vote row, re-votes included. `revote_count`, `is_final`
-and `is_first` are on the row; **none of them is a query parameter**, and `is_final` is not an
-`order_by` value either. preprod's worst (voter, action) pair has 21,626 rows.
+**What exists:** `?is_final=true`, verified live 2026-10-24: `/votes?is_final=true` reports
+`total: 931` against the unfiltered `total: 3244723`. `revote_count`, `is_final` and `is_first` are
+all on the row as well.
 
-**What is missing:** `is_final=true` (and `is_first=true`) as filters. Without them, a client must
-page the whole history and de-duplicate client-side — which, with a 200-row page ceiling and a
-10,000-row offset cap, it cannot do for the stress-test credentials at all. This is the single
-highest-value missing filter on the surface.
+**What is still missing:** the deep half of the filtered list — offset 800 is a 9.4 s request, see
+the table above. Plus `is_first=true` as a filter and `is_final` as an `order_by` value, neither of
+which landed with `is_final`'s filter; those two are conveniences rather than blockers.
+
+> **Two corrections this section has already needed, recorded so neither is re-made.** (1) Until
+> 2026-10-24 it carried its closure note above a body that still said "**none of them is a query
+> parameter**" — the note and the body contradicted each other and the body was the stale half.
+> (2) The note then claimed the filter made the endpoint usable outright; it makes the **first
+> several pages** usable. Both errors ran in the same direction: a fix recorded as larger than it is.
 
 ### G-5. A malformed pool or committee id is reported as `invalid_drep_id`
 
@@ -1567,6 +1614,14 @@ whatever the user pasted. Verified.
 
 **What is missing:** a role-neutral code (e.g. `invalid_voter_id`), or a message that lists the
 accepted forms. The frontend will have to override the message for this parameter.
+
+**Still open — re-checked 2026-10-24 and here is what was checked**, so nobody re-runs it: a *pool*
+id (`pool1234notreal`) and a *committee* id (`cc_cold1zgqn0rf…`) both answer
+`400 {"code":"invalid_drep_id","message":"Not a DRep identifier"}` on `/votes?voter_id=`. The
+sibling fix that landed on 2026-10-24 does **not** cover this: `/profiles/by-credential/` got the
+new `invalid_credential` code because that route accepts all three claimable roles, and
+`invalid_drep_id` deliberately keeps its narrower, literal meaning on the governance routes — where
+it is still the wrong code, because `voter_id` accepts more than DReps.
 
 ### G-6. There is no "vote against the committee" or "vote against the majority" query
 
@@ -1625,7 +1680,7 @@ can show today is voting power and delegator count.
 | A pool's **ticker** or name | `null` on every row; `off_chain_pool_data` has 0 rows. No pool branding exists. |
 | A committee member's **name** | Absent everywhere. db-sync carries none. |
 | An action's **total active voting power** (the ledger's real denominator) | Absent. `/status.epoch_params` gives the thresholds; the tally gives only cast votes. **A true "will this pass" bar cannot be drawn.** |
-| **`is_final` / `is_first`** as filters | §G-4. |
+| ~~**`is_final`**~~ / **`is_first`** as filters | `is_final=true` shipped 2026-10-24 (fast for the first several pages only); `is_first=true` did not. §G-4. |
 | A DRep's **own stake** vs delegated stake | Absent. `voting_power` is the total; there is no self-delegation breakdown. |
 | **Anchor URL** on a vote | Present, and richer in JSON than in CSV. The JSON row's `anchor` object is `{url, status, cip100_valid}` — verified: `{"url":"https://gateway.pinata.cloud/ipfs/bafkrei…","status":"valid","cip100_valid":true}` and `{"url":"https://raw.githubusercontent.com/…","status":"hash_mismatch","cip100_valid":null}`. The CSV flattens it to `anchor_url` + `anchor_status` and **drops `cip100_valid`**. `anchor: null` means no anchor on that vote. |
 | A **next/previous action** link (the `prev_gov_action_proposal` chain) | The column exists in `palmares.gov_action` but is **not published** on any response, so a constitution/committee lineage cannot be walked. |

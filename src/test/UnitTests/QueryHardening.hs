@@ -22,7 +22,17 @@ import Data.List (nub)
 import Data.Proxy (Proxy (..))
 import Data.Text qualified as T
 import Data.Vector qualified as V
-import Network.HTTP.Types (hContentType, methodNotAllowed405, notAcceptable406, ok200, statusCode)
+import Network.HTTP.Types
+  ( forbidden403,
+    hContentLength,
+    hContentType,
+    methodNotAllowed405,
+    notAcceptable406,
+    ok200,
+    statusCode,
+    unauthorized401,
+    unsupportedMediaType415,
+  )
 import Network.Wai (defaultRequest, responseHeaders, responseLBS, responseStatus, responseToStream)
 import Network.Wai.Internal (ResponseReceived (..))
 import Palmares.DomainTypes.Core.Ids (ccColdIdCip129, ccHotIdCip129, drepIdCip105, drepIdCip129)
@@ -48,12 +58,16 @@ import Palmares.DomainTypes.Transfer.Filters
 import Palmares.DomainTypes.Transfer.OrderBy (DRepsOrderBy (..), SortOrder (..), VotesOrderBy (..))
 import Palmares.WebAPI.CSV (CSV, safeCell)
 import Palmares.WebAPI.Envelope (ApiError (..), ErrorCode (..), Page (..), errorCodeFromText, errorCodeToHttpStatus)
-import Palmares.WebAPI.Errors (errorCodeFromParserMessage, genericErrorMessage, refusedRequestMiddleware)
+import Palmares.WebAPI.Errors (errorCodeFromParserMessage, genericErrorMessage, palmaresErrorFormatters, refusedRequestMiddleware)
 import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.Utils (escapeLikePattern, markNullableFields)
 import Query.Attest (anchorStatusOf, attestationWhere, canonicalGovCredential, credentialIsScript, profileRefOfUserToken)
 import Query.Common
-import Servant (FromHttpApiData (..))
+-- `notFoundErrorFormatter` is a FIELD of `ErrorFormatters`, applied below as the accessor it is.
+-- `errHeaders` comes from the internal module, as it does in `UnitTests.GovDto` and
+-- `UnitTests.ApiHardening`.
+import Servant (FromHttpApiData (..), errBody, errHTTPCode, notFoundErrorFormatter)
+import Servant.Server.Internal.ServerError (errHeaders)
 import Palmares.DomainTypes.Transfer.QueryResponses (ActivityCursor (..), renderCursor)
 import Query.Gov
   ( FeedDir (..),
@@ -816,12 +830,14 @@ at' _ _ = Nothing
 refusalTests :: TestTree
 refusalTests =
   testGroup
-    "405 and 406 carry the documented body"
-    [ -- Measured against the deployed binary before the middleware: POST /dreps answered 405 and
-      -- GET /profiles with `Accept: text/csv` answered 406, each with ZERO bytes and no content
-      -- type — so a browser client doing res.json() on a failure path threw a parse error instead
-      -- of reading a code. Neither is reachable through `ErrorFormatters`: servant's router decides
-      -- both before a handler exists and offers no formatter hook for either.
+    "every refusal servant makes before a handler carries the documented body"
+    [ -- Measured against the deployed binaries before the middleware, EVERY ONE with zero bytes and
+      -- no content type — so a browser client doing res.json() on a failure path threw a parse error
+      -- instead of reading a code: POST /dreps → 405; GET /profiles with `Accept: text/csv` → 406;
+      -- POST /build-tx with no credentials → 401, with wrong ones → 403, and with credentials but
+      -- `Content-Type: text/plain` → 415. None is reachable through `ErrorFormatters`: servant
+      -- decides all five before a handler exists and offers a formatter hook for none of them.
+      -- (The sixth, the unrouted 404, DOES have a hook and is the last case in this group.)
       testCase "an empty 405 becomes {code: method_not_allowed}" $ do
         res <- through (responseLBS methodNotAllowed405 [] "")
         body <- bodyOf res
@@ -847,10 +863,83 @@ refusalTests =
       -- The statuses the two codes are served with, which is what the Swagger document declares
       -- and what `mkServantErrBody` has to have an arm for: without one it would have fallen
       -- through to err500 and served a 405 as a 500.
-      testCase "the two router codes map to 405 and 406" $
-        map errorCodeToHttpStatus [MethodNotAllowed, NotAcceptable] @?= [405, 406],
+      testCase "an empty 415 becomes {code: unsupported_media_type}" $ do
+        res <- through (responseLBS unsupportedMediaType415 [] "")
+        body <- bodyOf res
+        (statusCode (responseStatus res), lookup hContentType (responseHeaders res), body)
+          @?= ( 415,
+                Just "application/json",
+                encode (ApiError UnsupportedMediaType (genericErrorMessage UnsupportedMediaType))
+              ),
+      -- THE AUTH BOUNDARY'S TWO, and the 403 is in this list because the service produces it and
+      -- nobody had looked: `authCheck` returns `Unauthorized`, which servant's BasicAuth maps to
+      -- `err403`, so WRONG credentials are a 403 while ABSENT ones are a 401. Measured on the
+      -- running service — `POST /build-tx` with `-u smoke:wrong` answered 403, zero bytes.
+      testCase "an empty 403 becomes {code: credentials_rejected}" $ do
+        res <- through (responseLBS forbidden403 [] "")
+        body <- bodyOf res
+        (statusCode (responseStatus res), body)
+          @?= (403, encode (ApiError CredentialsRejected (genericErrorMessage CredentialsRejected))),
+      -- __THE REGRESSION THIS CASE EXISTS FOR.__ servant raises the 401 as
+      -- `err401 { errHeaders = [mkBAChallengerHdr realm] }`, and `WWW-Authenticate` is the header
+      -- that tells a client HOW to authenticate — without it a browser shows no credential prompt
+      -- and a generated client cannot tell "authenticate" from "go away". The 405/406 form of the
+      -- middleware built its replacement from `mkServantErr` alone, whose `errHeaders` is the
+      -- content type and nothing else, so adding a 401 row without carrying the refused response's
+      -- own headers would have traded a readable body for a broken auth handshake.
+      --
+      -- Asserted TOGETHER with the body, in one case, because the two are the same decision: it is
+      -- the carried header list plus the content type, and a test that checked only the body would
+      -- pass on exactly the version that drops the challenge.
+      testCase "an empty 401 gains a body AND keeps its WWW-Authenticate challenge" $ do
+        let challenge = ("WWW-Authenticate", "Basic realm=\"user-realm\"")
+        res <- through (responseLBS unauthorized401 [challenge] "")
+        body <- bodyOf res
+        ( statusCode (responseStatus res),
+          lookup "WWW-Authenticate" (responseHeaders res),
+          lookup hContentType (responseHeaders res),
+          body
+          )
+          @?= ( 401,
+                Just "Basic realm=\"user-realm\"",
+                Just "application/json",
+                encode (ApiError Unauthenticated (genericErrorMessage Unauthenticated))
+              ),
+      -- A stale `Content-Length` would describe the body that was replaced, and warp honours one it
+      -- is given — so it has to go, while every other carried header stays.
+      testCase "a stale Content-Length is dropped and other headers survive" $ do
+        res <- through (responseLBS unauthorized401 [(hContentLength, "0"), ("X-Keep", "yes")] "")
+        (lookup hContentLength (responseHeaders res), lookup "X-Keep" (responseHeaders res))
+          @?= (Nothing, Just "yes"),
+      testCase "the five pre-handler codes map to 401, 403, 405, 406 and 415" $
+        map
+          errorCodeToHttpStatus
+          [Unauthenticated, CredentialsRejected, MethodNotAllowed, NotAcceptable, UnsupportedMediaType]
+          @?= [401, 403, 405, 406, 415],
       testCase "and invalid_credential is a 400, like the rest of its group" $
-        errorCodeToHttpStatus InvalidCredential @?= 400
+        errorCodeToHttpStatus InvalidCredential @?= 400,
+      -- `credentials_rejected` is NOT `invalid_credentials`, one plural away from a 400 that means
+      -- "not a CIP-129 governance credential". Pinned as wire tags, because the reason to prefer the
+      -- name is only visible on the wire.
+      testCase "the auth codes cannot be confused with invalid_credential" $
+        map jsonTag [Unauthenticated, CredentialsRejected, InvalidCredential]
+          @?= ["unauthenticated", "credentials_rejected", "invalid_credential"],
+      -- THE THIRD ROUTER REFUSAL, and the only one not reachable through the middleware above:
+      -- servant decides an unrouted path before the response exists, and offers the hook the other
+      -- two lack. So this case goes at the formatter and not at `through`.
+      --
+      -- Measured against both deployed binaries before it:
+      -- `curl -s -o- -w '%{http_code} %{content_type}' /nope` answered `404` with an empty body and
+      -- NO CONTENT TYPE — the last refusal on either service that did. One formatters value, so this
+      -- one case covers both; the live half (that each service's context actually carries it) is in
+      -- the two smoke scripts.
+      testCase "an unrouted path formats to {code: route_not_found}" $
+        let e = notFoundErrorFormatter palmaresErrorFormatters defaultRequest
+         in (errHTTPCode e, lookup hContentType (errHeaders e), errBody e)
+              @?= ( 404,
+                    Just "application/json",
+                    encode (ApiError RouteNotFound (genericErrorMessage RouteNotFound))
+                  )
     ]
   where
     -- Run the middleware over an application that answers exactly this response, and hand back

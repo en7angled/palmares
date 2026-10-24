@@ -13,7 +13,7 @@
 --
 -- __This module was inherited from the Belt System and is now trimmed to this protocol.__ It deployed
 -- five spending validators into a seven-field context; two of those validators (Ranks, Memberships)
--- do not exist here, and the promotion-acceptance attack they existed to test is gone with them. What
+-- do not exist here, and the double-accept attack they existed to test is gone with them. What
 -- survived is the shape: reference-script deployment, the one-shot oracle NFT, and the interaction
 -- runners.
 module TestRuns

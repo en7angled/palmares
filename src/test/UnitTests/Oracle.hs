@@ -42,8 +42,8 @@ import Palmares.Onchain.Protocol.Types (FeeConfig (..), OracleParams (..))
 import Palmares.TxBuilding.Context (DeployedScriptsContext (..), getMintingPolicyRef, getOracleValidatorRef)
 import Palmares.TxBuilding.Lookups (queryOracleParams)
 import Palmares.TxBuilding.Operations (deployedRefScripts, deployedScriptsProblems)
-import Palmares.TxBuilding.Validators (profilesValidatorHashGY)
-import PlutusLedgerApi.V3 (Credential (PubKeyCredential))
+import Palmares.TxBuilding.Validators (profilesValidatorGY, profilesValidatorHashGY)
+import PlutusLedgerApi.V3 (Address (..), Credential (PubKeyCredential), PubKeyHash (..))
 import PlutusTx.Prelude (isNothing)
 import Test.Helpers (assert, failedWithTrace, queryOracle)
 import Test.Tasty
@@ -145,6 +145,7 @@ oracleAdminTests =
     "Oracle Admin Tests"
     [ mkTestFor "Test Case 0.2: Pause and unpause protocol" pauseAndUnpause,
       mkTestFor "Test Case 0.3: Set fees and clear fees" setAndClearFees,
+      mkTestFor "Test Case 0.3b: A script or unpayable fee address is refused off chain" badFeeAddressRefused,
       mkTestFor "Test Case 0.4: Set min UTxO value" setMinUTxOValue,
       mkTestFor "Test Case 0.5: Reprice the dispute deposit" setDisputeDeposit,
       mkTestFor "Test Case 0.6: A non-admin cannot even build an oracle update (required signer)" nonAdminCannotBuild,
@@ -196,6 +197,57 @@ oracleAdminTests =
       assert (isNothing (opFeeConfig params2))
 
       gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Fees set and cleared."
+
+    -- The one address in the oracle datum that nothing validated, and the two things that cost.
+    -- `getFeeSkeleton` pays the fee with `txMustPayValueToAddress`, which builds a DATUM-LESS
+    -- output; the three state validators' permissionless `Cleanup` returns True for an absent datum
+    -- with no token, signature or credential check, and is deliberately not pause-gated. So a fee
+    -- address pointing at `profilesValidator` turns every profile-creation fee into dust anybody may
+    -- sweep, and pausing the protocol would not stop it. An address the ledger cannot carry at all
+    -- is the other half: `addressFromPlutus'` throws, and it throws at the PAYING site, so it takes
+    -- every mint down at once. `O1`/`O5` gate WHO may set the fee configuration and never WHAT is in
+    -- it, so both refusals have to be the builder's — at the SETTING site, because the paying site
+    -- is every mint and by then the user has been charged.
+    --
+    -- The script address is this protocol's OWN profiles validator rather than a synthetic one,
+    -- which is the shape that loses the money to a stranger instead of merely locking it. A Plutus
+    -- V1/V2 address is the same refusal and cannot be told apart here: an address carries a script
+    -- hash and not a Plutus version.
+    --
+    -- `mustFail` and not `mustFailWith`, for the reason 0.6 gives: the refusals are off chain, so
+    -- there is no trace code to name. On the old code both cases FAIL — the transaction builds,
+    -- submits, and the bad address lands in the datum.
+    badFeeAddressRefused :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
+    badFeeAddressRefused TestInfo {..} = do
+      waitNSlots_ 1000
+      ctx <- deployValidators (w1 testWallets)
+      waitNSlots_ 1000
+
+      -- The guard refuses a SHAPE, not the action: a key fee address still lands.
+      let keyFeeConfig = feeConfigPayingTo (w2 testWallets)
+      _ <- adminInteraction ctx (w1 testWallets) (SetFeesAction (Just keyFeeConfig))
+      waitNSlots_ 1
+      params1 <- queryOracle ctx
+      assert (opFeeConfig params1 == Just keyFeeConfig)
+
+      profilesAddr <- scriptAddress profilesValidatorGY
+      let scriptFeeConfig = keyFeeConfig {fcFeeAddress = addressToPlutus profilesAddr}
+      mustFail $ void $ adminInteraction ctx (w1 testWallets) (SetFeesAction (Just scriptFeeConfig))
+
+      -- And the shape that is not an address at all. A credential whose hash is not hash-shaped is
+      -- representable in Plutus data and has no ledger address, so `getFeeSkeleton`'s own
+      -- `addressFromPlutus'` would throw on EVERY mint instead of here. It passes `isKeyAddress` —
+      -- it IS a key credential — so this case is what the second guard is for, and it is reachable
+      -- only because `adminInteraction` takes the action directly: the admin CLI builds this field
+      -- with `addressToPlutus`, which cannot produce one.
+      let unpayableFeeConfig = keyFeeConfig {fcFeeAddress = Address (PubKeyCredential (PubKeyHash "")) Nothing}
+      mustFail $ void $ adminInteraction ctx (w1 testWallets) (SetFeesAction (Just unpayableFeeConfig))
+
+      -- Neither refusal landed anything: the key configuration set above is still the one in force.
+      params2 <- queryOracle ctx
+      assert (opFeeConfig params2 == Just keyFeeConfig)
+
+      gyLogInfo' ("TESTLOG" :: GYLogNamespace) "Script and unpayable fee addresses were both refused off chain."
 
     setMinUTxOValue :: (HasCallStack) => TestInfo -> GYTxMonadClb ()
     setMinUTxOValue TestInfo {..} = do

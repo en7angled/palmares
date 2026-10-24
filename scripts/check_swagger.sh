@@ -32,7 +32,9 @@ echo "== swagger metadata"
 # on `/votes` — the parameter that turns 3,244,723 rows into 931 — plus `GET /disputes/{id}`,
 # `GET /profiles/by-user-token/{id}`, `x-nullable` on all nullable properties, the real
 # `limit`/`offset` bounds, and a `{code, message}` body on the 405 and 406 the router answered empty.
-check "version is 1.7.0" '.info.version == "1.7.0"'
+# 1.8.0 adds `route_not_found`, which is the third of those router refusals and the last one that
+# answered with zero bytes and no content type.
+check "version is 1.8.0" '.info.version == "1.8.0"'
 # D-A. A client that SWITCHES on the verdict gains a case here, and one that renders `expired` as a
 # finding is wrong — which is the whole reason the value is in the published enum rather than left
 # to a null and a comment.
@@ -90,15 +92,33 @@ echo "== the error contract"
 # of these are declared explicitly in apiSwagger. Without them a client cannot discover a single
 # error code from the document, which is the one thing it must branch on.
 check "ApiError is defined" '.definitions | has("ApiError")'
-# 24 -> 27. `invalid_credential` is /profiles/by-credential's own 400, which used to answer
-# `invalid_drep_id` ("Not a DRep identifier") for a perfectly good committee credential;
-# `method_not_allowed` and `not_acceptable` are the two the ROUTER produces, which were being served
-# with an empty body and no content type at all.
-check "ErrorCode has all 27 codes" '.definitions.ErrorCode.enum | length == 27'
+# 24 -> 27 -> 28 -> 31. `invalid_credential` is /profiles/by-credential's own 400, which used to
+# answer `invalid_drep_id` ("Not a DRep identifier") for a perfectly good committee credential. The
+# other six are every refusal servant makes before a handler, each of which was being served with an
+# empty body and no content type at all: `method_not_allowed`, `not_acceptable`,
+# `unsupported_media_type` and `route_not_found` from the router, `unauthenticated` and
+# `credentials_rejected` from the auth combinator.
+check "ErrorCode has all 31 codes" '.definitions.ErrorCode.enum | length == 31'
 check "codes are snake_case tags" '.definitions.ErrorCode.enum | index("invalid_cursor") != null'
 check "both_cursors_given is published" '.definitions.ErrorCode.enum | index("both_cursors_given") != null'
-check "the three codes added for the refusal contract are published" \
-  '.definitions.ErrorCode.enum | (index("invalid_credential") != null) and (index("method_not_allowed") != null) and (index("not_acceptable") != null)'
+# Set difference, not seven `index` calls: `required - published == []` fails naming nothing only
+# when every one of them is there, and it keeps reading as a list when the next code is added.
+check "the codes added for the refusal contract are published" \
+  '(["invalid_credential","method_not_allowed","not_acceptable","route_not_found","unsupported_media_type","unauthenticated","credentials_rejected"] - .definitions.ErrorCode.enum) == []'
+# THREE of those are the WRITE service's and one is reserved, so this document publishes four codes
+# it cannot itself return. That is the `invalid_asset_class` mistake unless the document SAYS so, and
+# this is the line that holds it to saying so.
+check "the ErrorCode description admits the codes this service cannot return" \
+  '.definitions.ErrorCode.description | test("cannot be returned by THIS service") and test("rate_limited") and test("reserved")'
+# And `rate_limited` stays unreachable: no operation may declare a 429 until the throttle exists, at
+# which point this line is the one that has to be deliberately changed.
+check "no 429 is declared while rate limiting is unimplemented" \
+  '[.paths[].get.responses | keys[]] | unique | index("429") == null'
+# `route_not_found` is a 404 and the seven beside it are missing-record codes, so the one thing worth
+# asserting about it separately is that it did not land in the wrong group: the 404 description has
+# to name it, or a reader finds the code in the enum and no status for it anywhere.
+check "the 404 description names route_not_found beside the lookup codes" \
+  '[.paths[].get.responses["404"].description] | (length > 0) and all(test("route_not_found"))'
 # 405, 406 and 500 join the three that were here. Each is a status this service really answers with
 # and did not declare: the first two come out of servant's router (no ErrorFormatters hook exists
 # for either, so `refusedRequestMiddleware` carries the body) and the third is warp's last resort,
@@ -331,14 +351,53 @@ if [ -f "$IDOC" ]; then
   # `allOperations`, so a change that reaches fourteen of the fifteen is exactly the mistake worth
   # catching. The operation count is in the same predicate so the assertion cannot pass vacuously on
   # a document whose paths failed to generate — `[] | all` is true in jq.
-  for s in 200 400 404 405 406 415 500 502 503; do
+  # The statuses that really are a property of EVERY operation: a success, a handler's 400, the two
+  # router refusals, the not-found pair and the two 5xx. 415 is deliberately NOT in this loop any
+  # more — see the partition below.
+  for s in 200 400 404 405 406 500 502 503; do
     icheck "the $s response is declared on every operation" \
       "([.paths[][]] | length == 15) and ([.paths[][] | .responses | has(\"$s\")] | all)"
   done
-  # And the set is CLOSED: a sixteenth status declared on every operation but on no route that can
-  # return it is the same defect pointing the other way, and this is the line that fails for it.
+  # And the vocabulary is CLOSED: a twelfth status declared on some operation that cannot return it
+  # is the same defect pointing the other way, and this is the line that fails for it. Asserted as
+  # the UNION over the whole document rather than as a list of per-route sets, because there are
+  # three distinct sets now and the literal for them is unreadable in a failure message; the two
+  # partitions below are what pin which route gets which.
   icheck "no operation declares a status this service cannot return" \
-    '[.paths[][] | (.responses | keys)] | unique == [["200","400","404","405","406","415","500","502","503"]]'
+    '[.paths[][] | .responses | keys[]] | unique == ["200","400","401","403","404","405","406","415","500","502","503"]'
+  #
+  # TWO partitions, each held by its group SIZES plus a route from each side. Sizes alone would pass
+  # on a document that moved one route across a boundary and another back; a named route alone would
+  # pass on a document that declared the status on all fifteen. Both together fail for either.
+  #
+  # 401/403 come from the `BasicAuth` combinator, so they are on the TWELVE authenticated routes and
+  # not on /health, /ready, /status.
+  icheck "the auth pair is on the twelve authenticated routes and the three public ones are clean" \
+    '[.paths[][] | (.responses | has("401") and has("403"))] | [(map(select(.)) | length), (map(select(. == false)) | length)] == [12, 3]'
+  icheck "/health declares neither 401 nor 403" \
+    '.paths["/health"].get.responses | (has("401") or has("403")) | not'
+  icheck "/build-tx declares both" \
+    '.paths["/build-tx"].post.responses | has("401") and has("403")'
+  # 415 comes from `ReqBody`'s content-type check, so it is on the ELEVEN routes that have a body and
+  # not on the four that do not. It was on all fifteen until this version — the same defect as
+  # publishing a code with no site, and the reason this partition is pinned rather than trusted.
+  icheck "415 is on the eleven routes with a request body and the four without are clean" \
+    '[.paths[][] | (.responses | has("415"))] | [(map(select(.)) | length), (map(select(. == false)) | length)] == [11, 4]'
+  icheck "/build-tx declares 415" '.paths["/build-tx"].post.responses | has("415")'
+  # THE ROUTE THAT FORCED THE SPLIT, and the one assertion neither partition's sizes would catch on
+  # its own: /tx-status is authenticated AND body-less, so it is the single route that declares the
+  # auth pair and must NOT declare 415. A traversal that used "is a POST" as a proxy for "has a body"
+  # would pass everything above and fail exactly here.
+  icheck "/tx-status is authenticated but body-less: 401 and 403, no 415" \
+    '.paths["/tx-status/{txId}"].get.responses | has("401") and has("403") and (has("415") | not)'
+  # The codes, named in the descriptions, because the status alone does not tell a client which of
+  # the two refusals it got and the bodies are what this change added.
+  # `// ""` so a MISSING response reads as a clean failure rather than as a jq type error: `test`
+  # on null aborts, and an aborted predicate reports the same FAIL with a stack trace stapled to it.
+  icheck "the 401 names unauthenticated and the 403 names credentials_rejected" \
+    '((.paths["/build-tx"].post.responses["401"].description // "") | test("unauthenticated")) and ((.paths["/build-tx"].post.responses["403"].description // "") | test("credentials_rejected"))'
+  icheck "the 415 names its code too, now that it has one" \
+    '[.paths[][] | .responses["415"].description | select(. != null)] | unique == ["The request body was not sent as application/json. Set Content-Type: application/json. Code: unsupported_media_type."]'
 
   # ---- the oracle parameters, which are this document's alone -----------------------------------
   #

@@ -65,6 +65,11 @@ What needs attention falls into four groups, in order of urgency:
 Report 05 also carries a 63-row table mapping every on-chain trace code to the test that exercises it,
 and report 06 a table of every environment variable the code reads against README §11.
 
+**Both tables have since been re-derived (2026-10-24, §11).** The trace-code table is 63 rows against
+**74** codes in `onchain-lib` at `f72af4e` — `U2`/`U3` retired with the callerless lookups, and
+`A8 Md9 Mda Ms Pa` arrived with `OC-03`/`OC-06`. The environment table's 14 README rows are now 24,
+with one incomplete row and none wrong; the corrected census is in report 07 §6.
+
 ## 3. Do-first list
 
 Ranked by impact on the product's promise and by how much harder each item becomes after the first
@@ -89,7 +94,7 @@ is that they record what was seen on a given day. So the `Status` column lives h
 | 10 | GV-01 | High | M | hash-gated bootstrap + advisory lock + schema swap (or `WITH NO DATA` then refresh) | `DROP SCHEMA palmares CASCADE` on every boot is a read outage per restart with >1 replica | **CLOSED** — md5 fingerprint gate + `pg_advisory_xact_lock`; an unchanged restart does no DDL |
 | 11 | GV-04 / CS-03 / TD-02 / TD-09 | High | S–M | compose: add `attest-sync`, require `BASIC_USER`/`BASIC_PASS`, run `apply-roles`, use `palmares_ro`/`palmares_owner` DSNs, bind ports to `127.0.0.1`; `PG_CONN_STR` fail-closed | the documented self-host path runs as superuser and cannot serve attestations | **CLOSED** — `attest-sync` + `palmares-roles` added, reads as `palmares_owner`, ports on 127.0.0.1, `BASIC_*` required, `PG_CONN_STR` fail-closed |
 | 12 | TD-01 | High | S | `.dockerignore` `config/config_atlas.json` and the validators config; stop `COPY config` into runtime images | a local `scripts/build-images.sh` ships the Maestro token; ADR 0002 claims the opposite | **CLOSED** — both configs out of the build context, four runtime `COPY ./config` removed, and the build script refuses without the exclusions |
-| 13 | GV-02 | High | S | fetch `/dreps` without the status filter; re-record the snapshot pair; assert status coverage | the nightly parity gate reports 90 false divergences and the fixture hides it | **CLOSED (live half)** — the reconciler sends no status filter, so it rides the API default. Re-recording the stale snapshot needs live Koios: BLOCKED-ON-USER, command in `koios-parity-gate.md` |
+| 13 | GV-02 | High | S | fetch `/dreps` without the status filter; re-record the snapshot pair; assert status coverage | the nightly parity gate reports 90 false divergences and the fixture hides it | **CLOSED** — the reconciler sends no status filter, so it rides the API default. The snapshot half unblocked itself (`0402a3c`): the re-record had been failing on a `ResponseTimeout` against the slowest route (77.5 s), which the window-function pushdown took to 1.14 s. Eleven files, both halves of the pair, `no unexplained divergences`, exit 0 — our index and Koios agree on preprod at epoch 321, voter by voter and action by action |
 | 14 | GV-03 / DC-01 | High | M | one source for the six formulas (generate the matview from the catalog, or publish the matview as the formula); run the 070 agreement in CI | "the SQL you see is the SQL that runs" is the README's first promise and is not true today | **CLOSED** in shape (a)+(b), and the drift it predicted was already real: the matview's `eligible_actions` counted vote ROWS (23 of 809 preprod DReps inflated, one served rate 0.2452 against the formula's 0.5846). Fixed; `UnitTests.MetricAgreement` compares the SERVED response against all five formulas for every DRep in a seeded corpus with a re-vote in it; 070 widened to assert the denominator for every DRep (736 ms); the four prose claims rewritten, swagger 1.3.1. Single-source NOT taken — see the ledger for why |
 | 15 | CS-02 / CS-04 | High | M | verify the cursor's block hash via `/checkpoints/{slot}` each tick, walk back to the common point; treat `spent_at` above the rollback slot as unspent on replay | short forks leave orphaned projections in place | **CLOSED** — `verifyCursor` runs every tick before the slot comparison is trusted; Kupo's non-strict answer IS the newest surviving ancestor (measured against v2.12.0), so one call both detects the orphan and names the rollback target, with the margin kept as the fallback. `rollbackTo` clears a `spent_at` above the rollback slot in the stored snapshot and in the replay. 9 tests; the CS-04 pair fails on the old code with "no row at all" |
 | 16 | OC-09 | Low | M/L | decide the upgrade stance now (`protocolVersion` field, multi-policy chain-sync, or "a fix is a new registry") | the first validator fix after deployment has no path | **CLOSED** — ADR 0007: stance (a) written, the policy-change WIPE removed, history column |
@@ -99,6 +104,20 @@ is that they record what was seen on a given day. So the `Status` column lives h
 | 20 | DC-43 | High | S | commit `docs/spec/` (the spec cited as §2/§3/§4.1/§4.3/§6) and resolve or delete the D-/F-/T- ids | the protocol's requirements are not reviewable from the repository | **CLOSED** — `docs/spec/{protocol,metrics,decisions}.md` + a README. The spec is translated with its numbering frozen, so every `§N` citation resolves; where a later ADR superseded a line the original stays with a `[Superseded: …]` note. All 15 `D-` and 11 `F-` ids cited in the repo have a row. The 8 catalog `spec` fields now point at `docs/spec/metrics.md#<formula_id>` (swagger/metrics doc regenerated); the last `docs/superpowers/` pointer in `config/` is gone |
 | 21 | CS-07 / GV-23 | Medium | M | `palmares_attest.sync_state`; `/status.attestation`; `X-Attest-*` headers; red on absence | `/ready` now sees attestation freshness, `/status` and the headers do not | **CLOSED**, with one deliberate departure — `attest_sync_state` is written on every tick AND after every window (the cursor was written only after a full pass, which is why a first sync left `/ready` green for hours); `/status.attestation` publishes slot, Kupo tip, lag, `state`, `last_sync_at`, `is_ready`, policy and last error; three `X-Attest-*` headers on every response; `GV-23`'s four inputs added too (`drep_distr_epoch`, both lag bands, `metrics_as_of_epoch`); swagger 1.4.0. **NOT red on absence or on `syncing`** — red on an errored tick and on a report that stopped arriving (the one case no lag can see), because a projector mid-backfill is a healthy service serving honest partial pages and red would take a fresh deployment's governance routes out of rotation for hours |
 | 22 | OF-05 | Medium | M | distinct error codes for script failure / shortfall / provider / await; catch `SomeException` at the handler | every build failure is `400 InsufficientFunds`; some provider errors are bare 500s | **CLOSED** — one pure, total `classifyWriteFailure` in `TxBuilding/Exceptions.hs`, with the table pinned by ten cases: a validator refusal is `400 ScriptRefused` **naming the trace codes**, a ceiling is `TxTooExpensive`/`TxTooLarge`, a provider failure is `502 ProviderError`, anything else is a 500 that still carries a `code`. `pollTxConfirmation` catches `GYAwaitTxException` (it is not a `GYTxMonadException`, which is why an unconfirmed tx was a 500). The trace parser is now shared with `Test.Helpers.failedWithTrace`, so ~60 emulator cases are its gate |
+
+**Status as of `f72af4e` (2026-10-24): all 22 rows are CLOSED.** Row 13 was the last
+BLOCKED-ON-USER one and closed itself (`0402a3c`). Row 17's arithmetic has moved again: `TD-04` is now
+measured against **74** trace codes, not 70 or 63 — see §10's corrected arbitration. Row 20 (`DC-43`)
+is confirmed against the committed `docs/spec/`: all eight `spec` fields in
+`resources/metric-formulas.json` resolve to live anchors and `grep -c docs/superpowers docs/metrics.md`
+is 0.
+
+Five items the list does not number also closed in the same window, and they are the ones that made
+the preprod deployment possible: the coordinated redeploy itself (`61e280b` — five reference scripts at
+Atlas's limbo validator, format frozen, verified on chain), the committed
+`config/config_palmares_validators.json`, the committed CIP-57 blueprint (`be8afa0`, closing `PG-12`'s
+first half), the provider-template fix after Maestro withdrew its Cardano API (`075882b`, ADR 0004),
+and the specification (`74d7241`). What remains open is in §11.
 
 The full ranked backlogs (103 code findings, 43 documentation items, 16 product gaps) are at the end of
 each report.
@@ -119,7 +138,9 @@ each report.
 - **The read layer owes the chain several promises.** The on-chain comments delegate presentation rules
   to the read layer: `unclaimed` vs verified (PASS), claimed period labelled as claimed (PASS), disputes
   shown beside the record (PARTIAL — list rows carry no "contested" marker), lineage attestations not
-  shown as pending (FAIL), several claimants of one credential (PARTIAL). Report 06 §2 and `CS-13`.
+  shown as pending (**MOOT since ADR 0006** — `Mg` types the subject by CIP-67 label, so a lineage
+  attestation is refused at the mint and there is nothing to mislabel; `PG-14` goes with it), several
+  claimants of one credential (PARTIAL). Report 06 §2 and `CS-13`.
 - **Two implementations of the same arithmetic.** The matview and the catalog SQL (`GV-03`), the
   on-chain and off-chain pause/fee/dust rules (`OF-03`, `OF-04`, `OF-20`), and the `/ready` vs `/status`
   freshness views (`CS-07`) each pair a rule with a copy that can drift. Where the repository already
@@ -190,6 +211,15 @@ needs a provider token, arm64-only images against an x86_64 mainnet host.
 
 ## 6. What the synthesis re-verified by hand, and what remains open
 
+> **Re-read 2026-10-24.** The first four bullets below were true when verified and are now false: the
+> defects they describe are fixed. They are kept as the record of what was seen, not as a description
+> of HEAD — `TD-01` by `c8ae1bf` (`.dockerignore:1-15`, four runtime `COPY ./config` removed),
+> `TD-02`/`CS-03`/`DC-40` by `ecf5228` (`compose.yaml:285` `palmares-roles`, `:311` `attest-sync`,
+> `:261-262` `BASIC_*` with `:?`), `GV-01` by `38a0d7b` (md5 fingerprint gate; an unchanged restart
+> does no DDL), `GV-04` by `ecf5228` (`compose.yaml:359-360` — query-api serves as `palmares_ro` and
+> keeps `palmares_owner` for the boot DDL and the matview refresh only). The `CS-01` and `OC-03`
+> bullets describe mechanisms that were real and are now guarded.
+
 Re-verified directly in the files, independently of the reviewers ✔:
 
 - `TD-01` — `.dockerignore` excludes `config/*.prv` but not `config/config_atlas.json`; all four service
@@ -251,6 +281,9 @@ Architecture documentation written alongside these reports: [`../architecture/RE
 
 ## 9. Drift since the snapshot (added 2026-10-23)
 
+> **Historical.** This section maps drift to `5d50895` and is two reconciliations behind: §10 covers
+> `2bf5bde` and §11 covers `f72af4e`. Read it for what the eight commits did, not for what is open.
+
 `main` advanced eight commits from the snapshot `4eb9117` to `5d50895` (2026-10-22/23) while these reports
 were being written. None of them touches `docs/audit/` or `docs/architecture/`, and this branch is based on
 `5d50895`, so the code beside these documents is newer than the code they cite; every `path:line` is still
@@ -297,6 +330,16 @@ those findings keep their line numbers exactly as published.
 | `OC-02` un-pausable acceptance | `26d53f7` (decision D-C) | `attestationOracleToken` at `Protocol/Types.hs:445`; `A7` as the **first** conjunct at `AttestationsValidator.hs:139` — the fix this report prescribed, taken as prescribed. Its cost estimate was out by 5×: "~100 script bytes" against a measured **+494**, because `A7` brought this validator's first oracle read |
 | `OC-06` (1) deposits depend on admin liveness | `26d53f7` (decision D-A) | `ExpireDispute` at `DisputesValidator.hs:195-201`, `D9`, `disputeStaleAfter` at `Types.hs:556`. Anyone may close a stale dispute after the deadline, with no key and no oracle read. The owner chose "anyone" over "the opener"; the shapes (2)(3)(4) that lose the deposit are CLOSED too as of 2026-10-24: `Mda` requires the refund address to be a key address, +29 bytes for all three, and the off-chain builder refuses a script `deposit_to` as `DepositAddressIsScript` before the signature |
 | `OC-11` a, b, and most of c | `3654f57` | `Protocol/Id.hs`, `unsafeGetProfile*`, `K3` and four dead helpers are gone |
+| `OC-04` / `OF-16` credential loses its role | `4d1502b`, ADR 0006 | the claimed credential carries its role, so a committee cold key is no longer published as `drep1…`; the profile datum loses three unread hashes in the same commit |
+| `OC-05` untyped ids | `2cc6fc1`, ADR 0006 | per-kind CIP-67 labels (profile 100/222, attestation 1, dispute 2) so `Mg`/`Md4`/`Mr` can type an id; self-attestation refused except for the two credential kinds; **lineage dropped** — `Mg` requires a profile subject (`MintingPolicy.hs:239-245`), which is why `RL-4` and `PG-14` are now MOOT |
+| `OC-09` no upgrade path | `5bbd3d7`, ADR 0007 | stance (a) written; the policy-change WIPE removed, so a redeploy appends to a policy-history column and the previous registry's records stay readable |
+| `DC-01` published-formula claim | `ec3a243` | `docs/metrics.md:12-20` names `palmares.drep_metrics` as a second implementation and `UnitTests.MetricAgreement` + `sql/checks/070_drep_metrics.sql` as its gate; `grep 'Query.Metrics' docs/metrics.md` = 0 |
+| `DC-43` the missing spec | `74d7241` | `docs/spec/{README,protocol,metrics,decisions}.md`; `protocol.md`'s numbering frozen as the citation key; all eight catalog `spec` fields resolve to live anchors |
+| `TD-01` provider config in the image | `c8ae1bf` | `.dockerignore:34-35` excludes both configs from the **build context**, so no stage can copy them; the four runtime `COPY ./config` are narrowed to `config/reconcile-*` (`Dockerfile.admin:55`) |
+| `GV-04` / `CS-03` / `TD-02` / `TD-09` the self-host path | `ecf5228` | `compose.yaml:285` `palmares-roles`, `:311` `attest-sync`, `:261-262` `BASIC_*` with `:?`, `:359-360` the `palmares_ro`/`palmares_owner` split actually wired, every port on `127.0.0.1` |
+| `GV-01` boot DDL | `38a0d7b` | md5 fingerprint gate + `pg_advisory_xact_lock(871237)` (`query-api/Query/Views.hs:130-139`); an unchanged restart does no DDL |
+| `GV-02` Koios parity | `a6ef22d`, `0402a3c` | no status filter, and the snapshot pair re-recorded with an empty divergence report at epoch 321 |
+| `PG-02` / `DC-40` the flow on the documented stack | `ecf5228`, `61e280b` | the preprod deployment is on chain with the format frozen; `config/config_palmares_validators.json` is committed and its minting policy id `648c6a73…` equals the live `/status`'s `policy_id` |
 
 `CS-03`'s grant half (`5d50895`) and `CS-07`/`GV-23`'s wire half (`9a8d79b`, `5978d28`) were already
 recorded in §9 and are confirmed. **`OC-01`'s severity argument loses one clause**: key loss no longer
@@ -318,7 +361,9 @@ then wrote up as findings anyway:
 - **`GV-25`**, one bullet of three — `checks/030_votes.sql:95,98,104-112` does cover `palmares.thresholds`.
 
 Three further items are not wrong but **unusable as written**, and a reader should not apply them
-verbatim: `OC-03` and `OC-07` prescribe trace codes `P8`/`P9`, which ADR 0003 burnt; `OC-05` prescribes
+verbatim — all three have since been superseded by what shipped (`OC-03` as `Pa`/`Ms`/`A8`/`Md9`,
+`OC-05` as ADR 0006's typed labels, `OF-16` as ADR 0006's role-carrying credential), so the fix texts
+below are of historical interest only: `OC-03` and `OC-07` prescribe trace codes `P8`/`P9`, which ADR 0003 burnt; `OC-05` prescribes
 `subject /= issuer` globally, where `Mc1` now requires the opposite for two of the seven kinds; `OF-16`
 prescribes deriving the credential's role from `profileKind`, which is unreachable now that the
 credential lives on an attestation and an attestation has no kind of profile. `TD-08`'s arithmetic is
@@ -379,7 +424,7 @@ deployed:
 
 ### One number this pass had to arbitrate
 
-Three passes counted the on-chain trace codes and got 63, 69 and 70. **70 is right**: a
+Three passes counted the on-chain trace codes and got 63, 69 and 70. **70 was right at `2bf5bde`**: a
 `traceIfFalse`/`traceError` census that reads one line misses every code written on the next line
 (`A1` at `AttestationsValidator.hs:163`, `D2` at `DisputesValidator.hs:231`, `Md2`, `Mj`, `Mp2`, `N2`)
 and also misses `U0`, which is passed to `parseData` at `Utils.hs:60`. `P8` and `P9` appear only in the
@@ -387,16 +432,34 @@ comment that records their burning and are correctly excluded. `K3` and `Mp3` no
 future document publishing a count should derive it from short string literals on non-comment lines, not
 from the call shape.
 
+**Re-derived at `f72af4e` (2026-10-24) by that same method: 74.** The arithmetic from 70 is `-2` for
+`U2`/`U3`, retired with the three callerless lookups, and `+6` for `A8 Md9 Mda Ms Pa Mr`, which
+arrived with `OC-03` and `OC-06`. The call-shape grep now gives **67** on the same tree, so the
+twelve-code spread between the two methods is still the whole dispute — **a published count that does
+not name its method is not a count.** This applies to §2's 63-row coverage table and to report 07 §6,
+which published 63 against the same code.
+
 ### §3's do-first list, as it stands
 
-One of the 22 rows is done (row 6, `OC-02`), two are half done (row 11's grant, row 21's wire), and
-rows 4, 7, 8 need their fix text rewritten before anyone applies them. Row 17 (`TD-04`) is now **21 of
-70** codes untested rather than 22 of 63 — the drop is `K3`'s deletion and nothing else, and all seven
-codes added since the snapshot arrived with validator-level tests. `Mp6` and `O6`, the two security
-fixes of 2026-10-22 that the report singled out as untested, are the two that still matter: `O6` gained
-tests in this pass, `Mp6` has none.
+*(As of `2bf5bde`.)* One of the 22 rows is done (row 6, `OC-02`), two are half done (row 11's grant,
+row 21's wire), and rows 4, 7, 8 need their fix text rewritten before anyone applies them. Row 17
+(`TD-04`) is now **21 of 70** codes untested rather than 22 of 63 — the drop is `K3`'s deletion and
+nothing else, and all seven codes added since the snapshot arrived with validator-level tests. `Mp6`
+and `O6`, the two security fixes of 2026-10-22 that the report singled out as untested, are the two
+that still matter: `O6` gained tests in this pass, `Mp6` has none.
+
+**At `f72af4e` all 22 rows are CLOSED**, including row 13's snapshot half (`0402a3c`) and `Mp6`'s
+missing pair (`a1b3fab`, six pairs in `MutationGuards` with the mutation run that justifies them).
+Row 17's denominator is **74**, not 70. The §3 table above carries each row's evidence; what is still
+open repo-wide is in §11.
 
 ### The architecture set
+
+> **As-of warning (2026-10-24).** `../architecture/README.md:3,9` stamps the set as reconciled against
+> `2bf5bde`, which is now 50 commits back. Its `Mp3`-and-lineage claims still hold, but
+> `system-overview.md:1128-1129` quotes `src/exe/CLAUDE.md` and `docs/metrics.md` defects that have
+> since been fixed (`Query/Metrics.hs`, `Query/Projected.hs`, the `Query.Metrics` sentence), so its
+> drift table reads as current and is not. The stamp says the set is dated; it does not say by how much.
 
 All three reference documents in [`../architecture/`](../architecture/README.md) were kept and
 corrected in place — 134 edits, field/constructor/index level against the current types and
@@ -431,3 +494,58 @@ documented chain was real at `4eb9117`: both profile lookups called
 the Haddock asserting that validators call it — so the finding is that commit's, not the snapshot's,
 and it is `NEW-OC-5`. Both corrections here came from preferring an agent's intermediate notes over its
 final report; the documents themselves never carried either error.
+
+## 11. Re-audit at `f72af4e` (2026-10-24)
+
+`main` advanced **50 commits** past `2bf5bde`, touching nearly every file §10's reconciliation cites,
+so most of report 07's OPEN and PARTIAL verdicts were stale rather than wrong. Each section of report
+07 was re-judged against HEAD by a separate pass, with the live preprod services (`:8082`, `:8083`,
+`:8084`) available this time; the per-row verdicts, with **current** `path:line`, are rewritten in place
+in [`07-reconciliation-2026-10-23.md`](07-reconciliation-2026-10-23.md). The counts below are summary
+only — the per-row detail lives in `07` and is not duplicated here.
+
+**What moved.** All 22 rows of §3 are now closed, the preprod deployment is on chain with the script
+format frozen (`61e280b`), the specification is committed (`74d7241`), the CIP-57 blueprint is
+committed (`be8afa0`), and the four ADRs that the on-chain decisions needed (0004–0008) exist.
+
+**Documentation and product gaps (report 06's slice — 88 ID'd rows).**
+
+| | Count |
+|---|---|
+| Examined | 88 (43 `DC-*`, 16 `PG-*`, 6 `RL-*`, 23 `NEW-DC-*`) plus the environment and version censuses |
+| Stale — the recorded verdict no longer holds | **60** |
+| Closed | **36** (15 `DC-*`, 2 `PG-*`, 19 `NEW-DC-*`) |
+| Partly closed | 20 |
+| Moot | 3 — `PG-10` (never a finding), `PG-14` and `RL-4` (both by ADR 0006) |
+| Genuinely open | **25** |
+| Factually wrong, not merely stale | **5** |
+
+The 25 genuinely open rows are concentrated in two places and neither blocks a deployment: the
+`CLAUDE.md` files, which still name `mkPalmaresApp`, `runPalmaresActionWithPK`, `utxoDatum'`, a
+`CREATE OR REPLACE` idempotence that is a `DROP SCHEMA … CASCADE`, a one-of-two parameterised scripts
+claim and an ~80-line validator bound that two of four validators exceed by 35 and 57 lines; and the
+product gaps that were always F2 — no explorer, no CIP-95 wallet flow exercised, no rate limiting, no
+Prometheus endpoint, no `dispute_count` on list rows. Three rows fail something: `NEW-DC-3`
+(`scripts/smoke_interaction_api.sh:72` asserts Swagger `3.3.0` against a served `3.5.0`, so F1 check
+12's smoke half fails on a correct deployment), `NEW-DC-17`/`NEW-DC-18` (the smoke runbook's step table
+predates `/claim-credential`).
+
+**The five wrong claims**, because they are what a reader would have carried forward:
+
+1. Report 07 §6's preamble listed fifteen files as having "**zero** changes since the snapshot". Thirteen
+   had changed; only `NOTICE` and `webapi-lib/.../Auth.hs` had not.
+2. Its environment census asserted "the set of names the code reads has not drifted … and the README is
+   byte-identical". Two names were added, one deleted, and README §11 went from 14 rows to 24.
+3. That census's "Net: 14 rows, 6 wrong or incomplete, 11 absent" is now 24 rows, 1 incomplete, 0 absent.
+4. `DC-28`'s "measured 19/1/1" is 19 views, **2** matviews, **2** functions — and the fix that landed
+   ("fourteen" → "nineteen") wrote a new wrong number into the same sentence, so every document still
+   says one materialized view where `sql/020_views.sql:221` adds a second.
+5. The trace-code count: 63 was published here and 70 arbitrated in §10. At HEAD the same two methods
+   give **67** and **74**. See §10's corrected arbitration.
+
+**Found by this pass and in no document.** Nothing gates the write Swagger's `info.version`
+(`check_swagger.sh`'s `icheck` block asserts license and title only), which is how `NEW-DC-3` stays
+green in CI. Every document says one materialized view where there are two. The smoke runbook
+(`docs/deployment/attest-flow-smoke.md:93-97`) still apologises for a `GYAddress` description that was
+corrected. `README.md:185` attributes `PALMARES_READY_MAX_LAG_SECONDS` to query-api, while
+`admin/Reconcile.hs:93` reads it as the parity gate's ceiling.

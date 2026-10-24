@@ -92,6 +92,20 @@ errorTests =
       testCase "502 stays 502" $ errHTTPCode (mkServantErrBody 502 "{}") @?= 502,
       testCase "500 stays 500" $ errHTTPCode (mkServantErr 500 InternalError) @?= 500,
       testCase "404 stays 404" $ errHTTPCode (mkServantErr 404 DrepNotFound) @?= 404,
+      -- THE SAME INVARIANT FOR THE PRE-HANDLER REFUSALS, and the reason it is a case and not an
+      -- assumption: `mkServantErrBody`'s `case` ends in a catch-all `_ -> err500`, so a code whose
+      -- status has no arm is served as a 500. That is not hypothetical — it is what the 405 would
+      -- have done before it got a line, and these five were added at the same time as their arms.
+      testCase "the five pre-handler statuses each keep their own" $
+        map
+          (errHTTPCode . uncurry mkServantErr)
+          [ (401, Unauthenticated),
+            (403, CredentialsRejected),
+            (405, MethodNotAllowed),
+            (406, NotAcceptable),
+            (415, UnsupportedMediaType)
+          ]
+          @?= [401, 403, 405, 406, 415],
       -- Unknown status must NOT collapse to 400 — pins the F-30 invariant.
       testCase "unknown status maps to 500, not 400" $ errHTTPCode (mkServantErr 418 InternalError) @?= 500,
       testCase "generic message for 503" $ genericErrorMessage NotReady @?= "Service temporarily unavailable",

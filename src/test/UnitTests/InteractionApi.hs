@@ -343,16 +343,36 @@ interactionApiTests =
       testCase "the Swagger title and version name this product" $ do
         doc <- readSwagger
         (path ["info", "title"] doc, path ["info", "version"] doc)
-          @?= (Just (String "Palmares Interaction API"), Just (String "3.5.0")),
+          @?= (Just (String "Palmares Interaction API"), Just (String "3.6.0")),
       -- The statuses the service can return, as the document declares them. Asserted as the WHOLE
       -- declared set on one operation rather than with `has`, because the defect was an OMISSION:
       -- `index(…) != null` on five keys would have passed on a document that declared four of them
-      -- and dropped the fifth. 405/406/415 come from the router (see `jsonRoutingRefusals`), 500 and
-      -- 502 from a handler, and every one of them was reachable before it was published.
-      testCase "every status the service can return is declared on every operation" $ do
+      -- and dropped the fifth. 405/406/415 come from the router, 401/403 from the `BasicAuth`
+      -- combinator, 500 and 502 from a handler, and every one of them was reachable before it was
+      -- published.
+      --
+      -- THREE operations, and the three together are the assertion. Two statuses here are NOT
+      -- properties of every operation, and each is wrong in a different direction if declared as if
+      -- it were:
+      --
+      --   * 401/403 come from the `BasicAuth` combinator, so they are the twelve authenticated
+      --     routes' and not /health's — which is the mistake that kept 401 out of this document
+      --     altogether, since the fix was read as all-or-nothing;
+      --   * 415 comes from `ReqBody`'s content-type check, so it is the eleven routes WITH A BODY
+      --     and not /tx-status's, even though /tx-status is behind the same auth.
+      --
+      -- /tx-status is therefore the load-bearing case: authenticated and body-less, it is the one
+      -- route that distinguishes the two partitions, and a traversal that used "is a POST" as a
+      -- stand-in for "has a body" would pass the other two cases and fail this one. A
+      -- single-operation check would pass on a document that put everything on all fifteen.
+      testCase "each status is declared exactly where it can fire: auth pair, body-only 415" $ do
         doc <- readSwagger
-        let declaredOn p = sort (objKeys (fromMaybe Null (path ["paths", p, "post", "responses"] doc)))
-        declaredOn "/expire-dispute" @?= ["200", "400", "404", "405", "406", "415", "500", "502", "503"],
+        let declaredOn m p = sort (objKeys (fromMaybe Null (path ["paths", p, m, "responses"] doc)))
+        declaredOn "post" "/expire-dispute"
+          @?= ["200", "400", "401", "403", "404", "405", "406", "415", "500", "502", "503"]
+        declaredOn "get" "/tx-status/{txId}"
+          @?= ["200", "400", "401", "403", "404", "405", "406", "500", "502", "503"]
+        declaredOn "get" "/health" @?= ["200", "400", "404", "405", "406", "500", "502", "503"],
       -- The same defect as the first case, asserted on the artifact a client actually downloads.
       -- This is the one that was measured: both definitions carried `maxProperties: 1`.
       testCase "the published action definitions are tagged objects" $ do

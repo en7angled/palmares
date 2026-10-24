@@ -1119,6 +1119,25 @@ updateOracleTX ::
   Maybe ClaimWitness ->
   m (GYTxSkeleton 'PlutusV3)
 updateOracleTX adminAction mAdminWitness = do
+  -- THE FEE ADDRESS IS CHECKED HERE AND NOWHERE ELSE, because this is the only transaction that can
+  -- write it, and the paying site is every mint — a value discovered to be wrong there has already
+  -- been charged. Two separate mistakes, and an operator needs to know which: an address the ledger
+  -- cannot carry makes `getFeeSkeleton`'s own `addressFromPlutus'` throw on every profile mint and
+  -- every attestation issuance until somebody sets the fees again, and a SCRIPT address makes each
+  -- fee a datum-less output that anybody may sweep from this protocol's own state addresses. See
+  -- 'FeeAddressNotPayable' and 'FeeAddressIsScript' for the whole of each argument.
+  --
+  -- The first is asked by running the SAME conversion the paying site runs, never by enumerating
+  -- the shapes that fail — that set belongs to the ledger. The second uses the predicate `Mda`
+  -- applies to a dispute's refund address. So neither can disagree with the layer it mirrors.
+  case adminAction of
+    SetFeesAction (Just feeConfig) -> do
+      let feeAddr = OnchainTypes.fcFeeAddress feeConfig
+      cardanoFeeAddr <- addressFromPlutusHushedM feeAddr
+      when (isNothing cardanoFeeAddr) $ throwError (GYApplicationException FeeAddressNotPayable)
+      unless (isKeyAddress feeAddr) $ throwError (GYApplicationException FeeAddressIsScript)
+    _ -> return ()
+
   ovRef <- asks getOracleValidatorRef
   (currentParams, oracleRef, oracleValue) <- queryOracleParams
   let actionPlutus = adminActionToOracleAdminAction adminAction

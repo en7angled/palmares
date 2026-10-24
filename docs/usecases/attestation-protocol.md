@@ -933,8 +933,13 @@ name starts with the CIP-67 user-token prefix `000de140`, replace those four byt
 prefix `000643b0`, and look the result up with `GET /profiles/{id}`. That derivation is
 `deriveRefFromUserTN` (`onchain-lib/Palmares/Onchain/CIP68.hs:372-374`). It is implementable but it
 is protocol knowledge pushed into the client, it is N requests for N profiles, and the policy id is
-redeployment-dependent — **and the API publishes the policy id nowhere.** `GET /status` on
-interaction-api returns `{provider, network, deployed_scripts, oracle_paused, version}` and no hashes.
+redeployment-dependent.
+
+*(The clause that used to end this paragraph — "**and the API publishes the policy id nowhere**",
+with `GET /status` returning only `{provider, network, deployed_scripts, oracle_paused, version}` —
+contradicted this section's own closure note and is false. Verified live 2026-10-24: query-api's
+`GET /status` carries `attestation.policy_id`, and interaction-api's carries the whole `oracle`
+object besides. Corrected 2026-10-24.)*
 
 ### G2. An id format the UI must parse to know what it is looking at
 
@@ -949,6 +954,13 @@ CIP-67 label: `000643b0` (profile reference, label 100), `00001070` (attestation
 **What is missing.** No endpoint resolves an arbitrary id to its kind, and nothing publishes the label
 table. The UI must hard-code those four prefixes and branch on them, which also means it silently
 breaks on a redeploy that changes the policy id (ADR 0007, "a redeploy is a new registry").
+
+**Still open — re-checked 2026-10-24, and here is what was checked.** The committed query swagger
+(1.7.0) lists nine attestation-schema paths and none of them is a resolver: `/profiles`,
+`/profiles/{profile-id}`, `/profiles/{profile-id}/attestations`,
+`/profiles/by-credential/{credential}`, `/profiles/by-user-token/{asset-class}`, `/attestations`,
+`/attestations/{attestation-id}`, `/disputes`, `/disputes/{dispute-id}`. The two routes added on
+2026-10-24 both narrow an id you already know the kind of; neither widens to "what is this".
 
 ### G3. Every timestamp on a projection row is a raw slot number
 
@@ -966,36 +978,39 @@ profile card requires the frontend to carry preprod's and mainnet's slot-to-time
 conversion — the exact duplication the API declined to do. And `order_by=registered_at` sorts by a
 value the UI cannot display.
 
-### G4. A dispute's deadline is not published — HALF CLOSED, and the open half is named
+**Still open — re-checked 2026-10-24, and here is what was checked.** A live `AttestProfileRow` is
+exactly `{id, name, description, image_uri, kind, credential, credential_is_script, slot,
+block_hash}`: no timestamp of any kind. `AttestationRow` and `DisputeRow` *did* both grow fields in
+this batch (`credential`, `tx_hash`, `output_index`; `stale_after`) so the DTOs were being edited —
+the profile row's missing time was simply not among them.
 
-> **2026-10-24.** `oracle.dispute_timeout_ms` is now published on interaction-api's `GET /status`, so
-> a client can compute the deadline of a dispute it is **about to open**: `now + dispute_timeout_ms`.
-> `GET /disputes/{id}` also exists now, so a dispute has a detail route at all.
->
-> **What is still missing, exactly.** `disputeStaleAfter` is in the dispute's datum and the
-> **projection drops it** — `DisputeProjection` has `openedAt`, `deposit` and `verdict` and no
-> deadline column. So for an EXISTING dispute the client has to compute `opened_at + timeout`, which
-> is wrong for any dispute opened before a retiming: the datum's deadline is absolute and a reprice
-> cannot move it, which is the very property that makes the computed value unreliable.
->
-> Closing it is a projection column plus a row field, and it costs a **schema-version bump**, which
-> wipes and re-indexes the chain-sync tables (ADR 0007). That is why it is not folded into the batch
-> above: it is worth doing on a re-index that is happening anyway, and not worth one of its own.
+### G4. ~~A dispute's deadline is not published~~ CLOSED — both halves
 
+> **Fully closed 2026-10-24 (`3f0dc00`).** The half this section still called open — the projection
+> dropping `disputeStaleAfter` — landed with the schema bump it was waiting for. Measured on the
+> running service:
+>
+> ```
+> GET /disputes?limit=2
+> → "opened_at":"2026-10-24T16:40:49Z", "stale_after":"2026-11-23T16:40:49Z"
+> ```
+>
+> `stale_after` is in the `DisputeRow` definition of the committed query swagger (1.7.0) beside
+> `opened_at`, `deposit` and `verdict`. So the UI reads the **datum's absolute deadline** and never
+> computes `opened_at + the oracle's current timeout` — which was the whole point, because a reprice
+> cannot move a deadline already written into a datum.
+>
+> `oracle.dispute_timeout_ms` on interaction-api's `GET /status` remains the right source for a
+> dispute you are **about to** open; `stale_after` is the source for one that exists. Use each for
+> its own case — they can legitimately differ, and the row is the authority for an existing dispute.
 
 **The screen needs** "this dispute can be closed by anyone after <date>", and an enabled/disabled state
-for the "close it" button.
+for the "close it" button. Both are now one field read.
 
-**What exists.** `disputeStaleAfter` is written into the dispute's datum at open time and is
-**absolute** — a later admin reprice cannot move it (`onchain-flows.md:416-420`). `D9` and the
-off-chain `DisputeNotStaleYet` both compare against it.
-
-**What is missing.** `DisputeRow` has no `stale_after`, no `expires_at` and no `timeout_ms`. The UI
-cannot compute it either: `opened_at` is published, but `opDisputeTimeoutMs` is an oracle parameter
-that **no HTTP endpoint exposes** (`GET /status` on interaction-api carries only `oracle_paused`). The
-only way to read it is the admin CLI's `query-oracle`, which is what the smoke script does
-(`:448-451`). So a UI can show "open" and nothing more, and the expire button is a blind retry
-against a 400.
+**What exists.** `disputeStaleAfter` is written into the dispute's datum at open time, is
+**absolute** — a later admin reprice cannot move it — projected into `DisputeProjection`, and
+published as `DisputeRow.stale_after`. `D9` and the off-chain `DisputeNotStaleYet` both compare
+against the same value, so the enabled state the UI computes is the one the chain will enforce.
 
 ### G5. Nothing says who the arbiter is — CLOSED
 
@@ -1014,10 +1029,13 @@ against a 400.
 and to tell a reader who holds that power.
 
 **What exists.** `opAdmin` and `opArbiter` are `Credential` fields in the oracle datum, rotatable
-(ADR 0005). `D1` requires the signature on chain.
+(ADR 0005). `D1` requires the signature on chain. Both are published — measured on the running
+service, `GET /status` on interaction-api carries
+`oracle.arbiter: {hash, is_script}` and `oracle.admin: {hash, is_script}`. Compare the connected
+wallet's credential hash against `oracle.arbiter.hash` to decide whether to render the form.
 
-**What is missing.** No endpoint publishes either credential. A UI either shows the resolve form to
-everyone and lets the node refuse, or hides it from everyone and the arbiter uses the CLI.
+*(The paragraph that used to sit here said "No endpoint publishes either credential", contradicting
+this section's own closure note. It was the stale half; corrected 2026-10-24.)*
 
 ### G6. The dispute deposit amount is not published — CLOSED
 
@@ -1034,13 +1052,15 @@ everyone and lets the node refuse, or hides it from everyone and the arbiter use
 commits.
 
 **What exists.** `opDisputeDeposit` lives in the oracle datum and is read by the builder at open time.
-`DisputeRow.deposit` publishes the amount **after** the dispute exists.
+`DisputeRow.deposit` publishes the amount **after** the dispute exists. The current price is
+published **before**: measured on the running service, `GET /status` on interaction-api carries
+`oracle.dispute_deposit_lovelace: 5000000` and `oracle.min_utxo_lovelace: 1000000`, plus
+`profile_creation_fee_lovelace` and `attestation_fee_lovelace` (both `null` in this deployment, i.e.
+no fee configured).
 
-**What is missing.** No read route for the current price. The smoke script gets it from
-`admin query-oracle` (`:448-452`). Same for `opMinUTxOValue`, which is the other part of "what will
-this cost me" on every mint. The honest UI today either omits the number or reads a stale copy of it
-from somewhere else. This is the same missing object as G4 and G5: **an oracle-parameters read route
-would close all three.**
+*(The paragraph that used to sit here said "No read route for the current price", contradicting this
+section's own closure note. The oracle-parameters object it asked for is exactly what shipped, and
+it closed G4, G5 and G6 together as predicted. Corrected 2026-10-24.)*
 
 ### G7. `/issue-attestation` accepts two kinds it cannot build — CLOSED
 
@@ -1065,18 +1085,20 @@ transaction) has no proof to check either.
 two to §2.2 / §2.3. The difference is that sending one anyway is now a clean 400 with a code, not a
 signed transaction the chain throws away.
 
-### G8. The published `GYAddress` description is wrong
+### G8. ~~The published `GYAddress` description is wrong~~ CLOSED
 
-**The screen needs** to send addresses in the form the API accepts.
+> **Closed 2026-10-24.** The description in the committed `interaction-swagger-api.json` (3.5.0) now
+> reads: *"Cardano address as RAW CBOR HEX (114 hex characters), not bech32: this field is parsed
+> with `deserialiseFromRawBytesHex`, so `addr_test1…`/`addr1…` is refused. `admin operator-address`
+> prints the hex form."* It names the parser, the length, both rejected prefixes and where to get a
+> correct value. `format: cbor hex`, `minLength`/`maxLength: 114` and the hex example were already
+> right and are unchanged.
+>
+> This is the same string as audit findings `OF-15` / `DC-33`, which cite it as the API's one
+> actively-misleading published description.
 
-**What exists.** The Swagger `description` says "Bech32-encoded Cardano address (addr_test1... on
-testnet)". The parser is `deserialiseFromRawBytesHex`; `addr_test1…` is **refused**. The same
-definition's `format: cbor hex`, `minLength: 114`, `maxLength: 114` and its hex example are all
-correct.
-
-**What is missing.** A corrected description. **Frontend action:** a CIP-30 wallet's
-`getUsedAddresses`/`getChangeAddress` already return hex — use them as-is and do not bech32-encode.
-A dev who follows the description will get a 400 on every single write.
+**Frontend action, unchanged:** a CIP-30 wallet's `getUsedAddresses`/`getChangeAddress` already
+return hex — use them as-is and do not bech32-encode.
 
 ### G9. The Swagger document does not declare the write routes' auth
 
@@ -1091,6 +1113,15 @@ deliberately excludes the auth wrappers.
 action:** the browser must never hold these credentials — put the interaction-api behind a BFF that
 adds them server-side, which is also what spec §4.5 requires ("no provider keys in the bundle, a BFF
 with a rate limit").
+
+**Still open — re-checked 2026-10-24, and here is what was checked.** In the committed
+`interaction-swagger-api.json` (3.5.0) both `securityDefinitions` and `security` are still `null`.
+Live, a request with no credentials answers `401` with a **zero-byte** body and
+`WWW-Authenticate: Basic realm="user-realm"`; a request with *wrong* credentials answers `403`, also
+zero bytes. Worth separating from its neighbours, because the 2026-10-24 batch *did* give the router's
+other bare refusals a JSON body — `DELETE /profiles` now answers
+`{"code":"method_not_allowed","message":"That method is not served on this path"}` — so the
+`{code, message}` envelope reached the 405 and 406 and not the 401/403.
 
 ### G10. A committee credential cannot be verified in reverse — CLOSED
 
@@ -1109,22 +1140,24 @@ with a rate limit").
 **The screen needs** the verify direction for a `Committee` profile: "given `cc_cold1…`, which profiles
 claim it". This is the same screen as for a DRep, and committees are a named target audience (spec §2).
 
-**What exists.** `/profiles/by-credential/{credential}` accepts **DRep ids only**. Measured live:
+**What exists.** `/profiles/by-credential/{credential}` accepts all three claimable roles, key and
+script. Measured live 2026-10-24, a malformed value now answers the role-neutral code:
 
 ```
-GET /profiles/by-credential/cc_cold1zgqn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32q0e9tgc
-→ 400 {"code":"invalid_drep_id","message":"Not a DRep identifier"}
+GET /profiles/by-credential/not-a-credential
+→ 400 {"code":"invalid_credential",
+       "message":"Not a CIP-129 governance credential: expected drep1y..., cc_cold1... or cc_hot1..."}
 ```
 
-The handler calls `canonicalDrepCredential`, which is `parseDrepIdAny`, which requires the HRP
-`drep` (`query-api/Query/Attest.hs:121-125`; `DomainTypes/Core/Ids.hs:97-111`).
+*(The block that used to sit here showed a `cc_cold1…` id drawing `invalid_drep_id`, contradicting
+this section's own closure note. It was the stale half; corrected 2026-10-24.)*
 
-**What is missing.** A reverse lookup for `cc_cold1…` and `cc_hot1…`. This is not a parsing nicety: ADR
-0006 made all three roles claimable precisely so a committee's claim would be verifiable, and the write
-path accepts them today — so the registry can hold a claim that no route can resolve. There is no
-workaround through `/attestations` either: that route has no `credential` filter
-(`Transfer/Filters.hs:460-466`), and the derived `credential` column on `/profiles` has no filter of
-its own exposed as a query parameter.
+**One clause of the old "what is missing" survives and is worth keeping:** there is still no
+`credential` filter on `/attestations` (`DisputeFilter`'s sibling `AttestationFilter` exposes none),
+so the append-only claim/withdrawal **history** for a credential cannot be queried — only the
+current binding, through this route. `AttestationRow` does now publish `credential` (verified live:
+set on a `credential_claim`, `null` on a `role_held`), so a client can filter client-side over a
+page; it cannot ask the server to.
 
 ### G11. A script claim needs a second signature with no route for it
 
@@ -1155,6 +1188,13 @@ they arrive"). `GET /disputes?target=<id>` is the paged view, one attestation at
 `/disputes` sweep the client joins itself — and `/disputes` has no `target IN (…)` filter, so the sweep
 is "page everything and filter locally".
 
+**Still open — re-checked 2026-10-24, and here is what was checked.** A live `AttestationRow` is
+`{id, subject, issuer, kind, date, claimed_period, credential, accepted, name, description,
+image_uri, other_metadata, slot, block_hash, tx_hash, output_index}` — three fields more than the
+audit recorded, and none of them a dispute marker. `GET /disputes`' parameters are still
+`limit, offset, target, resolved, sort_order`, so `target` remains single-valued. On the current
+corpus the sweep is cheap (one dispute in total); the finding is about the shape, not today's size.
+
 ### G13. No "disputes I opened" and no verdict filter
 
 **The screen needs** a disputer's own history, and "show me upheld findings".
@@ -1164,9 +1204,18 @@ is "page everything and filter locally".
 and `expired` together — and the DTO's own description warns that a client wanting findings only must
 read the verdict value, not the flag.
 
-**What is missing.** `opened_by` and `verdict` as query parameters. There is also no
-`/disputes/{dispute-id}` detail route at all (confirmed against the Swagger `paths`), so a dispute is
-only reachable through its target attestation or by paging the whole list.
+**What is missing.** `opened_by` and `verdict` as query parameters — **still open, and here is what
+was checked** so nobody re-checks it: the committed query swagger (1.7.0) lists exactly `limit`,
+`offset`, `target`, `resolved`, `sort_order` on `GET /disputes`, and `DisputeFilter`
+(`DomainTypes/Transfer/Filters.hs:492-495`) still has exactly the two fields
+`disputeFilterTarget` and `disputeFilterResolved`.
+
+**The second half of this gap is CLOSED and its claim was wrong by 2026-10-24.** It said "there is
+also no `/disputes/{dispute-id}` detail route at all (confirmed against the Swagger `paths`)".
+There is: `/disputes/{dispute-id}` is in the swagger `paths` and answers `200` live, which also
+makes the previously-unreachable `dispute_not_found` code reachable. G4's closure note in this same
+document already said so — the two sections disagreed, and this was the stale one. A dispute is now
+reachable directly by id.
 
 ### G14. No "attestations I issued that are still pending"
 
@@ -1190,37 +1239,62 @@ omitted `description` as "keep the current one". So the form must pre-fill `imag
 field, so the UI cannot detect that someone else edited the profile between the read and the write, and
 cannot distinguish a projected no-op edit from an edit that has not landed yet.
 
-### G16. Two documentation residues a dev will trip on
+**Still open — re-checked 2026-10-24, and here is what was checked.** `UpdateProfileRequest`
+(`src/exe/interaction-api/ServiceRequests.hs:75-81`) is still
+`{uprProfileId, uprUserAddresses, uprRecipient :: Maybe, uprDescription :: Maybe, uprImageURI :: Text}` —
+`image_uri` is the one non-optional metadata field, and its published description still says nothing
+about keep-current semantics while `description`'s says "omit to keep current". The revision half is
+unchanged too: `AttestProfileRow` has no `updated_at` and no revision counter.
 
-**`/claim-profile`'s published description still documents a `credential` field it no longer has.** The
-route's Swagger text, the request schema's description and a `describeField "credential"` for a
-property that does not exist all survive ADR 0003 (`onchain-flows.md:223-228`). A client reading the
-published document will send fields the route ignores.
+### G16. Two documentation residues — one CLOSED, one still in `onchain-flows.md`
 
-**`onchain-flows.md` §3.7 is stale about `deposit_to`.** Its table says "default = `change_address`" and
-finding F4 says `Md8` has no off-chain mirror. Both were true and are not: `Interactions.hs:167-178`
-passes the field through undefaulted so the *builder* can default it to the user-token address, and
-`Exceptions.hs:36-55` is the off-chain mirror, shipped as `DepositAddressNotSpendable` /
-`DepositAddressIsScript`. **Trust the Swagger text and `ServiceRequests.hs:249-266` over §3.7** on this
-one field.
+**~~`/claim-profile`'s published description still documents a `credential` field it no longer
+has.~~ CLOSED 2026-10-24.** Verified in the committed `interaction-swagger-api.json` (3.5.0):
+`ClaimProfileRequest.properties` is exactly `[description, image_uri, kind, name, recipient,
+user_addresses]` — no `credential`, no `witness` — and the description now reads *"Mint a profile.
+It claims no credential: since ADR 0003 a binding is its own record, so bind the profile with POST
+/claim-credential afterwards."* The route description says the same. The `describeField
+"credential"` silent no-op is gone with it. This is audit finding `NEW-OF-1` / `NEW-DC-5`.
+
+**`onchain-flows.md` §3.7 is still stale about `deposit_to` — and the code is now definitively on
+this section's side.** That document's table at `:417` still says "`deposit_to` | request field,
+default = `change_address`", and its finding `F4` still reads "No off-chain mirror of `Md8`". Both
+are false at HEAD, and this is the verification:
+
+- `Interactions.hs:184-188` passes `mDepositTo` through **undefaulted**, with a comment naming the
+  reason: "The default belongs in the builder because only the builder knows which address holds the
+  opener's user NFT, and that is the one address `Md8` is satisfied by for free."
+- `Operations.hs:857-863` **is** the off-chain mirror — `isKeyAddress` fails to
+  `DepositAddressIsScript`, `notElem ownAddrs` fails to `DepositAddressNotSpendable`, both mapped to
+  `400` at `Exceptions.hs:285-286`.
+
+**Trust the Swagger text and `ServiceRequests.hs` over §3.7** on this field. (Noted while
+re-auditing on 2026-10-24: §3.7's sequence diagram also still says "required signer =
+`opAdminPkh`", a field ADR 0005 replaced with a `Credential`. Same document, same class of residue,
+and it is not fixed here.)
 
 ---
 
 ## 7. What this document could not establish
 
-- **UNVERIFIED: live response bodies for the attestation read routes.** The running deployment's
-  projections are empty (`GET /profiles?limit=2` → `{"items":[],"total":0,…}`) and `GET /status`
-  reports `attestation: null` — no projector is running against this database. Every response **shape**
-  in §2.10 is taken from the query-api Swagger `definitions`, which is generated from the same types the
-  handlers return, and from the field names the handlers and DTOs declare in source. No real populated
-  row was read, and no example response body in this document is a live capture.
+- **~~UNVERIFIED: live response bodies for the attestation read routes.~~ RESOLVED 2026-10-24.** The
+  premise is now false in both halves: `GET /status` reports a live projector
+  (`attestation.state: "following"`, `lag_seconds: 0`, `kupo_tip_slot` equal to its own slot), and the
+  projections hold real records — `/profiles` `total: 6`, `/attestations` `total: 4`, `/disputes`
+  `total: 1`. Populated rows of all three shapes were read against the running service, so §2.10's
+  shapes are confirmed against data and not only against the Swagger `definitions`. Two things the
+  shapes alone could not tell you, now measured: `AttestationRow` carries `credential` and
+  `DisputeRow` carries `stale_after`, and `level1_anchor` is on `GET /attestations/{id}` only, not on
+  the list row.
 - **UNVERIFIED: the exact trace-code → message text** for the `ScriptRefused` arm. The codes are parsed
   out of the rendered Plutus failure (`Exceptions.hs:325-341`) and the format is
   `"A validator refused this transaction: <codes>. …"`, but no refusal was triggered against the live
   service, because doing so means POSTing a transaction.
 - **UNVERIFIED: the on-chain codes `Mda` and `U0`/`U1`** are named in `onchain-flows.md` but their
   exact conjunct text was not read in the validator sources.
-- **UNVERIFIED: whether `attestation.credential` is published on an `AttestationRow` for the five
-  ordinary kinds.** The DTO declares the field optional and the on-chain rules (`Mc2`/`Mc4`) require it
-  present on a credential record and absent elsewhere, so it should be `null` on the other five — but
-  no populated row was available to confirm the projection does that.
+- **~~UNVERIFIED: whether `attestation.credential` is published on an `AttestationRow` for the five
+  ordinary kinds.~~ RESOLVED 2026-10-24: the projection does exactly that.** Measured over the four
+  attestations on chain — the two `credential_claim` rows carry
+  `credential: "drep1yfdqa29j3hhsf9lsj490j59t7cgf0k5la5q8nqgkqkahpwq5hl35n"` and the two `role_held`
+  rows carry `credential: null`. So the read surface honours `Mc2`/`Mc4`'s split, and a client may
+  treat a non-null `credential` as "this row is a credential record" without consulting `kind`.

@@ -333,6 +333,39 @@ WHERE h.raw IS NOT NULL;
 -- `proposed_proto_major` instead would silently shrink every participation denominator;
 -- that column is kept for display and audit only.
 CREATE VIEW palmares.action_window AS
+-- Wrapped in a subquery for ONE column: `power_epoch` is computed from `last_votable_epoch`, and
+-- the alias is not in scope in the SELECT that defines it. The alternative was to spell the LEAST a
+-- THIRD time — this view already spells it twice and the comment below says why that is how the two
+-- drifted apart in the first place — so the wrapper is the cheaper of two evils and the only one
+-- that keeps a single source for the bound.
+SELECT
+  w.*,
+  -- The epoch whose stake distribution weighed this action's votes. Read by `palmares.vote_tally`
+  -- and, through `palmares.gov_action`, by `/votes` — ONE definition, because before it existed the
+  -- two computed their own and disagreed by an epoch, so the same vote carried a different weight
+  -- depending on which route a client asked.
+  --
+  -- __`ratified_epoch` when there is one, `last_votable_epoch + 1` otherwise.__ A ratified action was
+  -- decided at the boundary INTO `ratified_epoch`, on the distribution written for that epoch, so
+  -- `+ 1` reads the epoch AFTER the decision — post-ratification reality, not the vote. MEASURED on
+  -- preprod: action 23 ratified in epoch 228 with 100,110,000,000,000 lovelace of DRep power behind
+  -- its votes, and epoch 229 holds 110,000,000,000 for the same voters — **910× less**. All nine
+  -- ratified actions with DRep votes showed it; two by an order of magnitude.
+  --
+  -- The ratio survived on preprod only because every ratified action here was unanimous and 1.0 is
+  -- 1.0 at either epoch. That is luck: the ratio is a quotient of two sums from the wrong
+  -- distribution, and the first contested ratification would have published a wrong VERDICT.
+  --
+  -- CLAMPED to the newest published distribution, because for an action still in flight
+  -- `last_votable_epoch + 1` is in the future and no row exists for it — which made the power
+  -- lookups miss and `COALESCE(…, 0)` turn "not yet known" into "zero stake". Measured: action 131,
+  -- a live ParameterChange, served 40 DRep votes with `yes_power: 0`. The epoch is published beside
+  -- the power, so a reader is never told it came from an epoch it did not.
+  LEAST(
+    COALESCE(w.ratified_epoch, w.last_votable_epoch + 1),
+    (SELECT ss.drep_distr_epoch FROM palmares.sync_state ss)
+  ) AS power_epoch
+FROM (
 SELECT
   g.id AS gov_action_id,
   g.type AS action_type,
@@ -402,10 +435,14 @@ SELECT
     )
     ELSE TRUE
   END AS spo_votable,
-  g.param_proposal
+  g.param_proposal,
+  -- Carried for `power_epoch` above and for nothing else: the lifecycle columns a consumer wants are
+  -- published by `palmares.gov_action`, which has all four.
+  g.ratified_epoch
 FROM public.gov_action_proposal g
 JOIN public.tx ON tx.id = g.tx_id
-JOIN public.block b ON b.id = tx.block_id;
+JOIN public.block b ON b.id = tx.block_id
+) w;
 
 -- ---------------------------------------------------------------------------------------------
 -- palmares.thresholds — the governance parameters of each epoch, and only those.

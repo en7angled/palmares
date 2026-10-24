@@ -1405,7 +1405,7 @@
             "type": "object"
         },
         "ErrorCode": {
-            "description": "Every reason this API refuses or fails a request, as a stable snake_case tag. Branch on this, never on the message: the message is for people and may be reworded, the code is the contract. The status each one is served with is fixed -- the 400 group is a bad request, `method_not_allowed` is 405 and `not_acceptable` 406, the 404 group a well-formed request naming nothing, 429 a rate limit, the 503 group an index that is not ready yet, and internal_error a bug here. \n`method_not_allowed` and `not_acceptable` are the two that come out of the ROUTER rather than a handler, and both used to be served with an empty body and no content type -- so a client calling `.json()` on a failure path threw a parse error instead of reading a code. `not_acceptable` is the reachable one in practice: six list routes produce `text/csv` and seven do not, and asking the wrong one for it is a real mistake with a real answer. \n`invalid_credential` is /profiles/by-credential's own 400: a CIP-105 id, a bare hex hash, or an identifier whose header byte disagrees with its HRP. `invalid_drep_id` keeps its narrower meaning on the governance routes, where a DRep identifier is what was asked for. \n`invalid_asset_class` is /profiles/by-user-token's own 400 -- an asset class that is not the CIP-68 user half of a profile. The three asset-class CAPTURES (/profiles/{profile-id}, /attestations/{attestation-id}, /disputes/{dispute-id}) parse through Atlas's codec and answer `invalid_parameter` instead.",
+            "description": "Every reason this API refuses or fails a request, as a stable snake_case tag. Branch on this, never on the message: the message is for people and may be reworded, the code is the contract. The status each one is served with is fixed -- the 400 group is a bad request, `method_not_allowed` is 405 and `not_acceptable` 406, the 404 group a well-formed request naming nothing, 429 a rate limit, the 503 group an index that is not ready yet, and internal_error a bug here. \n`method_not_allowed`, `not_acceptable` and `route_not_found` are the three that come out of the ROUTER rather than a handler, and all three used to be served with an empty body and no content type -- so a client calling `.json()` on a failure path threw a parse error instead of reading a code. `not_acceptable` is the reachable one in practice: six list routes produce `text/csv` and seven do not, and asking the wrong one for it is a real mistake with a real answer. \n`route_not_found` is the only 404 here that is NOT about a missing record -- nothing was looked up, the path matched no route. The `*_not_found` codes mean \"try another identifier\"; this one means the caller is built against a surface this server does not have. \n`invalid_credential` is /profiles/by-credential's own 400: a CIP-105 id, a bare hex hash, or an identifier whose header byte disagrees with its HRP. `invalid_drep_id` keeps its narrower meaning on the governance routes, where a DRep identifier is what was asked for. \n`invalid_asset_class` is /profiles/by-user-token's own 400 -- an asset class that is not the CIP-68 user half of a profile. The three asset-class CAPTURES (/profiles/{profile-id}, /attestations/{attestation-id}, /disputes/{dispute-id}) parse through Atlas's codec and answer `invalid_parameter` instead. \n\n**Four of these codes cannot be returned by THIS service, and the enum is shared rather than wrong.** `unauthenticated`, `credentials_rejected` and `unsupported_media_type` belong to the Interaction API: this surface is public and takes no request bodies, so no credential and no Content-Type of yours is ever consulted here. They are in one vocabulary because one middleware carries them on both services. \n`rate_limited` is **reserved and cannot be returned by either service today**: rate limiting is not implemented, nothing counts requests, and no operation in this document declares a 429 -- check `responses` on any route and you will not find one. Do not write a branch for it expecting traffic; the 429 is declared in the same release that ships the throttle. It is published only because withdrawing an already-published tag would be a breaking change for the clients that already switch exhaustively.",
             "enum": [
                 "invalid_parameter",
                 "query_too_short",
@@ -1420,8 +1420,12 @@
                 "invalid_credential",
                 "invalid_time_range",
                 "invalid_epoch_range",
+                "unauthenticated",
+                "credentials_rejected",
                 "method_not_allowed",
                 "not_acceptable",
+                "unsupported_media_type",
+                "route_not_found",
                 "drep_not_found",
                 "gov_action_not_found",
                 "spo_not_found",
@@ -2889,7 +2893,7 @@
             "name": "Apache-2.0"
         },
         "title": "Palmares Query API",
-        "version": "1.7.0"
+        "version": "1.8.0"
     },
     "paths": {
         "/activity": {
@@ -2981,7 +2985,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -3129,7 +3133,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -3190,7 +3194,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -3243,7 +3247,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -3393,7 +3397,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -3490,7 +3494,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -3551,7 +3555,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -3612,7 +3616,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -3736,7 +3740,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -3833,7 +3837,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -3938,7 +3942,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -4180,7 +4184,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -4241,7 +4245,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -4459,7 +4463,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -4512,7 +4516,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -4568,7 +4572,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -4653,7 +4657,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -4888,7 +4892,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -4949,7 +4953,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -5010,7 +5014,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -5137,7 +5141,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -5218,7 +5222,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -5279,7 +5283,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -5340,7 +5344,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -5431,7 +5435,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -5484,7 +5488,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -5572,7 +5576,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -5700,7 +5704,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -5753,7 +5757,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -5907,7 +5911,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }
@@ -6136,7 +6140,7 @@
                         }
                     },
                     "404": {
-                        "description": "Well-formed request naming something that does not exist",
+                        "description": "Well-formed request naming something that does not exist (the `*_not_found` codes), or a path this API does not serve at all (`route_not_found`, from the router, before any lookup)",
                         "schema": {
                             "$ref": "#/definitions/ApiError"
                         }

@@ -74,30 +74,40 @@ instance ToSchema TxStatusResponse where
 
 ------------------------------------------------------------------------------------------------
 
-type Transactions =
-  -- Build tx endpoint
-  ( Summary "Build Transaction"
-      :> Description "Builds Transaction for Interaction and returns it as a hex encoded CBOR"
-      :> "build-tx"
-      :> ReqBody '[JSON] Interaction
-      :> Post '[JSON] String
-  )
-    :<|>
-    -- Submit tx endpoint
-    ( Summary "Submits Signed Transaction"
-        :> Description "Submits Signed Transaction and returns the transaction id"
-        :> "submit-tx"
-        :> ReqBody '[JSON] AddWitAndSubmitParams
-        :> Post '[JSON] GYTxId
-    )
-    :<|>
-    -- Poll tx status endpoint
-    ( Summary "Poll Transaction Status"
-        :> Description "Polls the confirmation status of a submitted transaction. Returns whether the transaction has been confirmed on-chain."
-        :> "tx-status"
-        :> Capture "txId" GYTxId
-        :> Get '[JSON] TxStatusResponse
-    )
+-- | Build tx endpoint.
+type BuildTxRoute =
+  Summary "Build Transaction"
+    :> Description "Builds Transaction for Interaction and returns it as a hex encoded CBOR"
+    :> "build-tx"
+    :> ReqBody '[JSON] Interaction
+    :> Post '[JSON] String
+
+-- | Submit tx endpoint.
+type SubmitTxRoute =
+  Summary "Submits Signed Transaction"
+    :> Description "Submits Signed Transaction and returns the transaction id"
+    :> "submit-tx"
+    :> ReqBody '[JSON] AddWitAndSubmitParams
+    :> Post '[JSON] GYTxId
+
+-- | Poll tx status endpoint — __the only authenticated route with no @ReqBody@__, which is why it
+-- has a name of its own: it is the exception that makes 'requestBodyOperations' necessary, because
+-- it shares the auth boundary with the other eleven and cannot answer a 415 like them.
+type TxStatusRoute =
+  Summary "Poll Transaction Status"
+    :> Description "Polls the confirmation status of a submitted transaction. Returns whether the transaction has been confirmed on-chain."
+    :> "tx-status"
+    :> Capture "txId" GYTxId
+    :> Get '[JSON] TxStatusResponse
+
+-- | The three routes of the transaction API.
+--
+-- __The three halves are named rather than inlined so that a SUBSET of them can be spoken about__ —
+-- 'requestBodyOperations' needs \"build-tx and submit-tx but not tx-status\", and a type is the only
+-- way to say that without a hand-kept list of paths. Spelled right-associatively, exactly as the
+-- inline version parsed (@a ':<|>' b ':<|>' c@ is @a ':<|>' (b ':<|>' c)@), so 'ServerT' has the same
+-- shape and 'transactionsServer' below is unchanged.
+type Transactions = BuildTxRoute :<|> SubmitTxRoute :<|> TxStatusRoute
 
 -- Health handlers moved to WebAPI.Health
 
@@ -236,6 +246,42 @@ type PublicAPI = ProbeAPI :<|> StatusAPI :<|> Transactions :<|> ServiceAPI
 proxyPublicAPI :: Proxy PublicAPI
 proxyPublicAPI = Proxy
 
+-- | The twelve routes behind @BasicAuth@, as a traversal into the generated document.
+--
+-- __This exists because @allOperations@ is the wrong tool for the 401 and the 403.__ Those two are
+-- a property of the AUTH BOUNDARY, not of asking for a path the wrong way: @\/health@, @\/ready@ and
+-- @\/status@ are outside 'PrivateTransactions' and 'PrivateServiceAPI' and cannot answer either, so
+-- declaring them on every operation would describe a refusal three routes do not make — which is
+-- the reason 401 was left out of this document altogether, and leaving a status every client meets
+-- first undeclared turned out to be the worse of the two errors.
+--
+-- @Transactions :<|> ServiceAPI@ is exactly the authenticated set, and 'subOperations' resolves it
+-- against 'PublicAPI' by matching path and method, so the split is derived from the API type rather
+-- than from a hand-kept list of paths. The eleven POSTs and @GET \/tx-status\/{txId}@ are the twelve.
+authenticatedOperations :: Traversal' Swagger Operation
+authenticatedOperations = subOperations (Proxy :: Proxy (Transactions :<|> ServiceAPI)) proxyPublicAPI
+
+-- | The eleven routes that accept a request body, as a traversal into the generated document.
+--
+-- A 415 comes from @ReqBody@'s own content-type check, so it is a property of HAVING a body and of
+-- nothing else. Declared on 'allOperations' it landed on four routes that cannot produce it —
+-- @\/health@, @\/ready@, @\/status@ and @GET \/tx-status\/{txId}@ — which is the same defect as
+-- publishing @invalid_asset_class@ with no site: a branch a generated client writes and never
+-- exercises.
+--
+-- __Derived from the API type, not from a list of paths__, which is the whole reason 'BuildTxRoute'
+-- and 'SubmitTxRoute' have names: a path list is the thing that goes stale silently, and this one
+-- would have gone stale on the next route added. @\/tx-status@ is the route that makes this traversal
+-- different from 'authenticatedOperations' — authenticated, so it declares 401 and 403, and
+-- body-less, so it does not declare 415.
+--
+-- Every one of the eleven is a @POST@ and every @POST@ here has a body, so a traversal over POSTs
+-- would select the same set today. It is not written that way on purpose: that coincidence is not a
+-- fact about @ReqBody@, and the first body-less POST would quietly re-open the defect.
+requestBodyOperations :: Traversal' Swagger Operation
+requestBodyOperations =
+  subOperations (Proxy :: Proxy (BuildTxRoute :<|> SubmitTxRoute :<|> ServiceAPI)) proxyPublicAPI
+
 apiSwagger :: Swagger
 apiSwagger =
   toSwagger proxyPublicAPI
@@ -269,7 +315,26 @@ apiSwagger =
     -- because query-api carries no Cardano provider and the db-sync behind it is indexed without
     -- UTxOs. Also additive: every nullable field in this document now carries `x-nullable`, so a
     -- generated client stops typing an optional field as non-null.
-    & info . Data.Swagger.version .~ "3.5.0"
+    -- 3.6.0, MINOR: every refusal this service makes now answers `{code, message}`, and the two
+    -- statuses it never admitted to are declared.
+    --
+    --   * The unrouted 404 answers `route_not_found` instead of an empty body with no content type.
+    --     The STATUS was already declared on every operation and the description already said "or no
+    --     route matches the path"; what it could not do was name a code, because there was none.
+    --   * The 415 answers `unsupported_media_type`. Declared since 3.4.0, bodiless until now — and
+    --     NARROWED to the eleven routes that have a request body. It was on all fifteen, four of
+    --     which cannot produce it (`/health`, `/ready`, `/status`, `GET /tx-status/{txId}`). A
+    --     REMOVED declaration is the one non-additive edit in this version, and it is additive in
+    --     the direction that matters: no client loses a response it could receive, four of them stop
+    --     carrying a branch for one they could not.
+    --   * 401 and 403 are DECLARED, on the twelve authenticated routes only, and answer
+    --     `unauthenticated` and `credentials_rejected`. Both were reachable from the first request
+    --     any client makes and appeared nowhere in this document; both answered zero bytes with no
+    --     content type. The 401 keeps its `WWW-Authenticate` challenge — see `refusedRequestMiddleware`.
+    --
+    -- Nothing about a request changed, and no status moved. What changed is that a generated client
+    -- has a branch for each of these and can read a code out of all of them.
+    & info . Data.Swagger.version .~ "3.6.0"
     & info . Data.Swagger.description ?~ "This is the Palmares Interaction API — transaction building, submission, and the dedicated per-action service endpoints."
     -- Apache-2.0, which is what `palmares.cabal`, `LICENSE` and the README say. This published
     -- "GPL-3.0 license" for as long as the document has existed — inherited, never looked at, and
@@ -283,27 +348,45 @@ apiSwagger =
     -- "hex-encoded unsigned transaction CBOR" about all of them.
     & allOperations . responses . at 200 . mapped . _Inline . description .~ ("Success. The write routes return the hex-encoded unsigned transaction CBOR — sign it with your wallet and submit it via /submit-tx; the probe, status and tx-status routes return the JSON object their schema names." :: Text)
     & allOperations . responses . at 400 ?~ Inline (mempty {_responseDescription = "Validation error (invalid dates, wrong profile type, conflicting state, etc.)"})
-    & allOperations . responses . at 404 ?~ Inline (mempty {_responseDescription = "Referenced entity not found (profile, attestation, or NFT), or no route matches the path"})
+    -- Two facts under one status, and the codes are what tells them apart: a referenced entity the
+    -- handler looked for and did not find, or a path the router never matched. Only the second has a
+    -- code from this library's vocabulary (`route_not_found`); the first carries whichever
+    -- `TxBuildingException` tag the lookup raised, like every other handler error here.
+    & allOperations . responses . at 404 ?~ Inline (mempty {_responseDescription = "Referenced entity not found (profile, attestation, or NFT), or no route matches the path. Code: route_not_found for the latter, a TxBuildingException tag for the former."})
     & allOperations . responses . at 503 ?~ Inline (mempty {_responseDescription = "Protocol is paused or deployed validator scripts are not yet available"})
     -- The five statuses the service could always return and the document never admitted to. A
     -- generated client branches on what it is given, so an undeclared status is a branch that does
     -- not exist — and 502 was the one that mattered: it is what a submission the node rejected
     -- answers, which is NOT the caller's fault and is the one error worth retrying.
     --
-    -- 405, 406 and 415 are the ROUTER's and not a handler's, which is why they are declared on every
-    -- operation rather than on any one of them: they are a property of asking for a path the wrong
-    -- way, and every path can be asked for the wrong way. The first two carry the same
-    -- `{code, message}` body as everything else here — `method_not_allowed`, `not_acceptable`, from
-    -- `refusedRequestMiddleware` — which they did not before this version. The 415 is declared with
-    -- no code named, because it is the one refusal still answering with an empty body; see the note
-    -- on `mkWebApp`.
+    -- 405 and 406 are servant's and not a handler's, which is why they are declared on every
+    -- operation: they are a property of asking for a path the wrong way, and every path can be asked
+    -- for the wrong way. Both carry the same `{code, message}` body as everything else here —
+    -- `method_not_allowed`, `not_acceptable`, from `refusedRequestMiddleware`.
     --
-    -- 401 is deliberately absent: this document is generated from `PublicAPI`, which excludes the
-    -- `BasicAuth` combinator on purpose, so declaring 401 on /health and /ready would describe a
-    -- refusal those routes do not make.
+    -- THE 415 IS NOT ONE OF THEM, and used to be declared as if it were. It comes from `ReqBody`'s
+    -- content-type check, so only a route that HAS a body can produce it — see
+    -- `requestBodyOperations`, which is the eleven of them. On `allOperations` it was published on
+    -- four routes that cannot answer it, which is the `invalid_asset_class` mistake and is now
+    -- fixed in the same spirit that one was. It also used to be declared with no code named, because
+    -- it was the one refusal still answering with an empty body; it is a row in that middleware's
+    -- table now, so it names its code like the rest. See the note on `mkWebApp`.
     & allOperations . responses . at 405 ?~ Inline (mempty {_responseDescription = "Wrong HTTP method for this path. Code: method_not_allowed. Every write route is a POST; /health, /ready, /status and /tx-status are GETs."})
     & allOperations . responses . at 406 ?~ Inline (mempty {_responseDescription = "The Accept header asked for a media type this service does not produce; it serves application/json only. Code: not_acceptable."})
-    & allOperations . responses . at 415 ?~ Inline (mempty {_responseDescription = "The request body was not sent as application/json. Set Content-Type: application/json."})
+    & requestBodyOperations . responses . at 415 ?~ Inline (mempty {_responseDescription = "The request body was not sent as application/json. Set Content-Type: application/json. Code: unsupported_media_type."})
+    -- THE AUTH BOUNDARY, on the twelve authenticated routes and not on the three public ones — see
+    -- `authenticatedOperations` for why this is not `allOperations`.
+    --
+    -- 401 USED TO BE ABSENT ALTOGETHER, justified by `PublicAPI` excluding the `BasicAuth`
+    -- combinator. That argument covered /health, /ready and /status and silently covered the twelve
+    -- routes it should not have: a client generated from this document had no branch for the first
+    -- response it was ever going to receive. Measured: `POST /build-tx` with no credentials is 401,
+    -- and with WRONG credentials is 403 — two statuses, because servant's `BasicAuth` answers with
+    -- two, and neither was declared or carried a body.
+    & authenticatedOperations . responses . at 401
+      ?~ Inline (mempty {_responseDescription = "No credentials, or credentials that could not be read. Code: unauthenticated. The response carries a WWW-Authenticate challenge naming the Basic realm; send HTTP Basic credentials."})
+    & authenticatedOperations . responses . at 403
+      ?~ Inline (mempty {_responseDescription = "Credentials were supplied and are not accepted. Code: credentials_rejected. This is an authentication failure under a 403 because that is the status servant's BasicAuth answers with; it is NOT a permission check, and this API has none."})
     & allOperations . responses . at 500 ?~ Inline (mempty {_responseDescription = "A bug here, never a condition the request can fix: an unclassified failure (InternalError, or internal_error from the last-resort handler), or a datum this protocol wrote and cannot now parse (OracleDatumInvalid, DatumParseError)."})
     & allOperations . responses . at 502 ?~ Inline (mempty {_responseDescription = "The chain provider could not be reached, or the node rejected the submission. Code: ProviderError. The request was well formed and may be worth retrying."})
     -- Shared type descriptions
@@ -399,11 +482,20 @@ proxyServerContext = Proxy
 -- 'provideOptions' inside, so a CORS preflight is answered 200 by that middleware and never reaches
 -- a layer that looks at bodiless responses.
 --
--- __One refusal is still bodiless, deliberately left to its owner:__ a 415 (a POST whose
--- @Content-Type@ is not @application\/json@) and an unrouted 404 come out of the same routing layer
--- with the same empty body. Both are two rows in 'refusedRequestMiddleware'\''s own table, which is
--- in @webapi-lib@; adding them here would be the second copy this comment exists to avoid. The 415
--- IS declared in the document below, because the service does return it.
+-- __No refusal this service makes is bodiless any more, and the last three closed together.__ The
+-- 415 (a POST whose @Content-Type@ is not @application\/json@) and the 401\/403 pair from the
+-- @BasicAuth@ combinator are three more rows in 'refusedRequestMiddleware'\''s own table, which is
+-- in @webapi-lib@ — adding them here would be the second copy this comment exists to avoid. The
+-- 401's @WWW-Authenticate@ challenge survives the rewrite, which is why that table carries the
+-- refused response's headers instead of building fresh ones.
+--
+-- The unrouted 404 is closed differently, and deliberately: it is the only one servant gives a hook
+-- for — @notFoundErrorFormatter@, the fourth field of @ErrorFormatters@ — so
+-- 'palmaresErrorFormatters' answers it with @route_not_found@ and this service gains that from the
+-- context entry below rather than from the middleware.
+--
+-- Which means the ordering note above now matters for the 401 as well: the middleware sits inside
+-- CORS, so a browser that is refused for credentials can still read the body it is given.
 mkWebApp :: CorsConfig -> InteractionAppContext -> Application
 mkWebApp corsCfg ctx =
   mkCorsMiddleware corsCfg $

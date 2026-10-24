@@ -273,36 +273,28 @@ WITH final_votes AS (
     v.voter_hot_hash,
     v.vote,
     a.last_votable_epoch,
+    a.power_epoch,
     a.action_type
   FROM palmares.vote v
   JOIN palmares.action_window a ON a.gov_action_id = v.gov_action_id
   WHERE v.seq_last = 1
 ),
--- The epoch the power is read at, CLAMPED to the newest distribution the ledger has published.
+-- The epoch the power is read at comes from `palmares.action_window.power_epoch`, which is the ONE
+-- definition — see its comment there for why a ratified action reads `ratified_epoch` and everything
+-- else reads `last_votable_epoch + 1`, and for the 910× measurement that forced the distinction.
 --
--- `last_votable_epoch` is in the FUTURE for an action still in flight, and neither `drep_distr` nor
--- `pool_stat` has a row for an epoch that has not happened — so the lookups below missed, the
--- `COALESCE(…, 0)` turned "not yet known" into "zero stake", and every open action was published
--- with zero power behind every vote and `ratio: null`. Measured: action 131, a live
--- ParameterChange, served 40 DRep votes with `yes_power: 0`; 3 of 93 DRep tally rows and 1 of 17 SPO
--- rows were in that state, which is precisely the set a governance dashboard exists to show.
+-- The clamp lives there too, and the reason is this view's: `last_votable_epoch + 1` is in the FUTURE
+-- for an action still in flight, and neither `drep_distr` nor `pool_stat` has a row for an epoch that
+-- has not happened — so the lookups below missed, the `COALESCE(…, 0)` turned "not yet known" into
+-- "zero stake", and every open action was published with zero power behind every vote and
+-- `ratio: null`. Measured: action 131, a live ParameterChange, served 40 DRep votes with
+-- `yes_power: 0`; 3 of 93 DRep tally rows and 1 of 17 SPO rows were in that state, which is
+-- precisely the set a governance dashboard exists to show.
 --
--- Clamped rather than left NULL because the most recent distribution IS the best available estimate
--- of the weight behind a vote cast today, and it is the number every other surface already uses.
--- The clamped epoch is what the view publishes as `epoch`, so a reader is never told the power came
--- from an epoch it did not.
--- @last_votable_epoch + 1@, because THE RATIFICATION EPOCH IS NOT THE LAST VOTABLE ONE. The ledger
--- weighs the votes at the boundary AFTER the window closes, which is the distribution written for
--- that next epoch. This read `last_votable_epoch` directly, and that was right only while
--- `last_votable_epoch` was itself one too high: correcting the eligibility bound moved the power
--- lookup an epoch earlier with it, and 28 settled tallies that had carried power lost it. Measured:
--- 4 zero-power tallies before, 32 after, 0 once the two questions were separated.
-clamped AS (
-  SELECT
-    f.*,
-    LEAST(f.last_votable_epoch + 1, (SELECT ss.drep_distr_epoch FROM palmares.sync_state ss)) AS power_epoch
-  FROM final_votes f
-),
+-- __What used to be here was a second clamp, and it was wrong.__ A local `clamped` CTE recomputed
+-- `last_votable_epoch + 1` for every action including the ratified ones, which is how the two
+-- surfaces came to weigh the same vote at two different epochs. The CTE is gone; `power_epoch`
+-- arrives on the row.
 weighted AS (
   SELECT
     f.*,
@@ -319,7 +311,7 @@ weighted AS (
           AND ps.epoch_no = f.power_epoch), 0)
       ELSE 0
     END AS power
-  FROM clamped f
+  FROM final_votes f
 )
 SELECT
   w.gov_action_id,
@@ -431,6 +423,10 @@ SELECT
   aw.proposed_at,
   aw.expiration,
   aw.last_votable_epoch,
+  -- One definition, in `palmares.action_window` — see it for why a ratified action reads
+  -- `ratified_epoch` and for the 910× measurement that forced the distinction. Republished here
+  -- because `/votes` joins THIS view, so both surfaces read the same column rather than two.
+  aw.power_epoch,
   CASE
     WHEN g.enacted_epoch IS NOT NULL THEN 'enacted'
     WHEN g.expired_epoch IS NOT NULL THEN 'expired'

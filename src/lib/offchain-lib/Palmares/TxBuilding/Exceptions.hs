@@ -128,6 +128,49 @@ data TxBuildingException
     OracleNotFound
   | OracleDatumInvalid
   | ProtocolPaused
+  | -- | The fee address a @SetFeesAction@ names is a SCRIPT address, so every fee the protocol
+    -- charges from then on is lost.
+    --
+    -- A fee is paid by @getFeeSkeleton@ through @txMustPayValueToAddress@, which builds a
+    -- DATUM-LESS output — spendable by a key, never by a script. At a Plutus V1\/V2 address the fee
+    -- is stuck for ever; at one of this protocol's own three state addresses it is worse, because
+    -- the permissionless @Cleanup@ redeemer returns 'True' for an absent datum with no token,
+    -- signature or credential check, and is deliberately not pause-gated — so every fee becomes
+    -- dust anybody may sweep, and pausing the protocol would not stop it.
+    --
+    -- __Refused where the value is SET__, in the one transaction that can write it
+    -- (@updateOracleTX@). The paying site is every profile mint and every attestation issuance, so
+    -- an address discovered to be wrong there has already been charged. Nothing on chain re-checks
+    -- it: @O1@ and @O5@ gate WHO may set the fee configuration and never WHAT is in it, and a
+    -- per-mint conjunct would spend ExUnits on every transaction to re-police a write the protocol
+    -- already trusts.
+    --
+    -- The treatment @disputeDepositTo@ has had since @OC-06@ — @Mda@ on chain and
+    -- 'DepositAddressIsScript' off it — for the one address in the oracle datum that had no check
+    -- anywhere.
+    FeeAddressIsScript
+  | -- | The fee address cannot be built as a ledger address at all, so no output can be made to it
+    -- — and the failure would land on every mint rather than on the admin who named it.
+    --
+    -- @getFeeSkeleton@ resolves the address with @addressFromPlutus'@, which THROWS. So a value
+    -- that is representable in Plutus data and not on the ledger — a credential whose hash is not
+    -- hash-shaped, a pointer whose components do not fit their words — takes down every profile
+    -- mint and every attestation issuance at once, and stays down until a human notices and sets
+    -- the fee configuration again. One keystroke for an outage on a public registry, which is why
+    -- it is refused where the value is written.
+    --
+    -- __A 400, and that is the reason this is a constructor rather than a let-it-throw.__ Letting
+    -- @addressFromPlutus'@ fail at the setting site would refuse it too, but 'classifyWriteFailure'
+    -- has no arm for the @GYConversionException@ that comes out and answers @500 InternalError@ —
+    -- a lie about whose mistake it is, for an argument the caller chose.
+    --
+    -- Asked by running the same conversion the paying site runs (@addressFromPlutusHushedM@), never
+    -- by enumerating the shapes that fail: that set belongs to the ledger, and a predicate of our
+    -- own would drift from it.
+    --
+    -- Separate from 'FeeAddressIsScript' because the mistakes are different: that one is \"a script
+    -- cannot spend what you send it\", this one is \"nothing can be sent at all\".
+    FeeAddressNotPayable
   | -- \* Script / Infrastructure Errors
     DeployedScriptsNotReady
   | -- \* UTxO / Asset Errors
@@ -192,6 +235,15 @@ instance Exception TxBuildingException where
   displayException OracleNotFound = "Oracle UTxO not found"
   displayException OracleDatumInvalid = "Oracle datum invalid or unparseable"
   displayException ProtocolPaused = "Protocol is paused"
+  displayException FeeAddressIsScript =
+    "The fee address is a script address. A protocol fee is paid as a plain output with no datum, \
+    \which a script cannot spend, so it would be lost — and at one of this protocol's own validator \
+    \addresses the permissionless cleanup sweep lets anybody take it. Name a key address, or clear \
+    \the fee configuration to charge nothing."
+  displayException FeeAddressNotPayable =
+    "The fee address cannot receive a payment: there is no ledger address for it, so an output to it \
+    \cannot be built at all — and a protocol fee is an ordinary output. Name an address a wallet can \
+    \hold and show you, or clear the fee configuration to charge nothing."
   displayException DeployedScriptsNotReady = "Deployed scripts are not ready"
   displayException InvalidAssetClass = "Invalid asset class"
   displayException NFTNotFound = "UTxO with this NFT not found"
@@ -211,13 +263,14 @@ instance IsGYApiError TxBuildingException
 -- Used by the interaction API to return structured error responses.
 --
 -- __TOTAL, and no wildcard arm — that is the fix.__ This ended in @_ = 400@, which is defensible as
--- a default and indefensible as a MECHANISM. MEASURED on the 26 constructors of
--- 'TxBuildingException': twelve of them reached a client through that one line, and only five had
--- their status or their code asserted anywhere in the test suite (thirteen were not named in it at
--- all) — so a constructor added for a 404 or a 503 inherited a 400 in silence, and nothing could
--- tell a chosen 400 from an inherited one.
+-- a default and indefensible as a MECHANISM. MEASURED when this fix landed, on the 26 constructors
+-- 'TxBuildingException' then had: twelve of them reached a client through that one line, and only
+-- five had their status or their code asserted anywhere in the test suite (thirteen were not named
+-- in it at all) — so a constructor added for a 404 or a 503 inherited a 400 in silence, and nothing
+-- could tell a chosen 400 from an inherited one. The type has grown since; the count that matters is
+-- never written down here, because @UnitTests.WritePath@ reads it off 'Generic'.
 --
--- Enumerating every arm costs twelve lines once and buys the one thing a default cannot: GHC reports
+-- Enumerating every arm costs one line per constructor and buys the one thing a default cannot: GHC reports
 -- a new constructor here, because @-Wall@ is on for every stanza in this project and this function
 -- then has an incomplete pattern — so a new error's status is a decision somebody takes in a
 -- reviewed diff instead of a value nobody picked. @UnitTests.WritePath@ pins the resulting table by
@@ -233,11 +286,16 @@ txBuildingExceptionToHttpStatus AttestationOtherMetadataReservedKeys = 400
 txBuildingExceptionToHttpStatus OracleNotFound = 404
 txBuildingExceptionToHttpStatus DeployedScriptsNotReady = 503
 txBuildingExceptionToHttpStatus ProtocolPaused = 503
+-- Two 400s, chosen here rather than in the block below: neither came through the wildcard, because
+-- neither existed then. The caller named the address and can name another one — which is also why
+-- 'FeeAddressNotPayable' is not the 500 that letting the conversion throw would have produced.
+txBuildingExceptionToHttpStatus FeeAddressIsScript = 400
+txBuildingExceptionToHttpStatus FeeAddressNotPayable = 400
 txBuildingExceptionToHttpStatus NoDustFound = 404
 txBuildingExceptionToHttpStatus NFTNotFound = 404
 txBuildingExceptionToHttpStatus OracleDatumInvalid = 500
 txBuildingExceptionToHttpStatus DatumParseError = 500
--- The twelve that used to arrive here through @_ = 400@. Every one of them IS a 400 — the request is
+-- The ones that used to arrive here through @_ = 400@. Every one of them IS a 400 — the request is
 -- the thing that is wrong and the client is the one who can fix it — so the values below are what
 -- the catch-all was already serving. What changed is that they are now written down:
 --

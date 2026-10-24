@@ -174,8 +174,8 @@ constructorsOf = gConstructorCount @(Rep a)
 -- __This is the table the audit asked for, and it is a second, independent spelling of
 -- 'txBuildingExceptionToHttpStatus' on purpose.__ A test that recomputed the status from the
 -- function it is checking would pass on whatever that function happened to return. MEASURED before
--- this list existed: of the 26 constructors, five had their status or their code asserted anywhere
--- in the suite and thirteen were not named in it at all — while twelve reached a client through a
+-- this list existed, on the 26 constructors the type then had: five had their status or their code
+-- asserted anywhere in the suite and thirteen were not named in it at all — while twelve reached a client through a
 -- @_ = 400@ in the mapping. So the published answer for most of this type was a value nobody had
 -- chosen and nothing could contradict.
 --
@@ -219,6 +219,13 @@ publishedErrorTable =
     -- for `DatumParseError` below.
     (OracleDatumInvalid, 500, "OracleDatumInvalid"),
     (ProtocolPaused, 503, "ProtocolPaused"),
+    -- A 400: the admin named a fee address this protocol cannot be paid at, and naming another one
+    -- is the fix. The refusal is the oracle datum's, so the only caller that can see it is the admin
+    -- CLI — `AdminActionType`'s `FromJSON` always fails, so no HTTP body reaches it.
+    (FeeAddressIsScript, 400, "FeeAddressIsScript"),
+    -- Also a 400, and the reason it is a row at all: the alternative was letting the address
+    -- conversion throw, which `classifyWriteFailure` answers 500 to.
+    (FeeAddressNotPayable, 400, "FeeAddressNotPayable"),
     (DeployedScriptsNotReady, 503, "DeployedScriptsNotReady"),
     (InvalidAssetClass, 400, "InvalidAssetClass"),
     (NFTNotFound, 404, "NFTNotFound"),
@@ -347,17 +354,19 @@ writePathTests =
       ---- the whole published error table -------------------------------------------------------
       --
       -- Every constructor, by value, with no catch-all on either side. The failure label is the
-      -- code, so a wrong row names itself instead of printing two 26-element lists.
+      -- code, so a wrong row names itself instead of printing two lists the length of the type.
       testCase "every TxBuildingException serves the status and the code the table publishes" $
         mapM_
           ( \(e, status, code) ->
               assertEqual code (status, code) (txBuildingExceptionToHttpStatus e, txBuildingExceptionCode e)
           )
           publishedErrorTable,
-      -- The DOMAIN of the table, structurally. 'constructorsOf' reads the number off the type's
-      -- 'Generic' representation, so a twenty-seventh constructor fails HERE, with the row count it
-      -- expected and the one it found — rather than inheriting a status nobody chose and being
-      -- discovered by a client. This is the assertion the @_ = 400@ made impossible to write.
+      -- The DOMAIN of the table, structurally. 'constructorsOf' reads the count off the type's
+      -- 'Generic' representation — never a number written down here, which is how the ordinal that
+      -- used to stand in this sentence came to be wrong twice — so the next constructor added
+      -- without a row fails HERE, with the row count it expected and the one it found, rather than
+      -- inheriting a status nobody chose and being discovered by a client. This is the assertion the
+      -- @_ = 400@ made impossible to write.
       testCase "the table covers every constructor of TxBuildingException, each exactly once" $ do
         assertEqual
           "a constructor was added to TxBuildingException and not to publishedErrorTable"

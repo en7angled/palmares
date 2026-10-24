@@ -1414,9 +1414,16 @@ voteSortSpec = \case
 
 -- | The FROM clause the page and the count share.
 --
--- The power join reads @palmares.drep_epoch_power@ at the action's LAST VOTABLE EPOCH, not at the
+-- The power join reads @palmares.drep_epoch_power@ at @palmares.gov_action.power_epoch@, not at the
 -- vote's own epoch: that is the epoch the ledger weighs the vote in, and a DRep's stake moves
 -- between the two.
+--
+-- __Shared with @palmares.vote_tally@, and it was not.__ This read @last_votable_epoch@ while the
+-- tally read @last_votable_epoch + 1@, so the same vote carried a different weight depending on
+-- whether a client asked @\/votes@ or @\/gov-action\/{id}@ — and for a RATIFIED action both were
+-- wrong, because the ledger decided at the boundary into @ratified_epoch@ and the epoch after it
+-- reflects post-ratification reality. The epoch now has one definition, on the view both surfaces
+-- already join, with the 910× measurement that forced it recorded beside it.
 --
 -- __The @palmares.drep@ join excludes @never_registered@, or it fans out.__ Two preprod credentials
 -- exist twice in @drep_hash@ — once as a key hash and once as a script hash over the same raw bytes
@@ -1432,7 +1439,7 @@ voteFrom =
   \ LEFT JOIN palmares.anchor a ON a.voting_anchor_id = v.voting_anchor_id \
   \ LEFT JOIN palmares.drep_epoch_power p \
   \   ON p.target_kind = 'drep' AND p.drep_raw = v.voter_id_hash \
-  \  AND p.epoch_no = w.last_votable_epoch \
+  \  AND p.epoch_no = w.power_epoch \
   \ LEFT JOIN palmares.drep d ON d.drep_raw = v.voter_id_hash \
   \  AND d.registration_status <> 'never_registered' "
 
@@ -1686,7 +1693,7 @@ voteProjection =
   \      ELSE json_build_object('url', a.url, 'status', a.verdict, 'cip100_valid', a.cip100_valid) \
   \      END AS anchor, \
   \ p.amount AS voting_power, \
-  \ CASE WHEN p.amount IS NULL THEN NULL ELSE w.last_votable_epoch END AS voting_power_epoch "
+  \ CASE WHEN p.amount IS NULL THEN NULL ELSE w.power_epoch END AS voting_power_epoch "
 
 -- ---------------------------------------------------------------------------------------------
 

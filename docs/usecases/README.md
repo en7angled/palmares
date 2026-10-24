@@ -27,10 +27,10 @@ measurement, and the ones below marked **CLOSED** in their own heading are updat
 
 | What a document says | What is true now |
 |---|---|
-| `/drep/{id}` is a 20 s request with a 30 s cliff, or 503s outright | **1.8 s** (`ccaa2a1`, `ea90f48`) |
-| `/drep/{id}/power` always 503s; the biggest stake holder cannot render | **0.02 s**, and 1.1 s for that holder |
+| `/drep/{id}` is a 20 s request with a 30 s cliff, or 503s outright | **0.65–0.68 s** (`ccaa2a1`, `ea90f48`), re-measured 2026-10-24 — faster than the 1.8 s this row first recorded |
+| `/drep/{id}/power` always 503s; the biggest stake holder cannot render | **0.018–0.029 s** for an ordinary DRep. **For `drep_always_abstain` the "1.1 s" this row claimed does not reproduce: re-measured twice, `200` in 11.82 s and 11.51 s.** The 503 is gone and that is the real win; the latency is not under a second. See G-3, which now carries the measurement and stays PARTIAL |
 | `/pages/dashboard.total_dreps` is 204 while `/dreps` is 294 | both **294** |
-| `X-Attest-*` headers are sent but not CORS-exposed, so `headers.get()` is null | **exposed** |
+| `X-Attest-*` headers are sent but not CORS-exposed, so `headers.get()` is null | **exposed** — all three in `freshnessExposedHeaders` (`CORS.hs:61-63`), carried into `corsExposedHeaders` at `:78`. **Not observable on this deployment**, because `CORS_ALLOWED_ORIGINS` is empty and `corsPolicy` then emits no CORS headers at all (`CORS.hs:68-84`) — set an origin before you test it, or you will measure the deny path and conclude the fix is absent |
 | `/status.attestation` is `null`; this database has no projector | **published**, with `state`, `is_ready` and `policy_id` |
 | every list route's `items` are typed `DisputeRow` in the committed Swagger | **13 per-element `Page_*` schemas**, asserted by `scripts/check_swagger.sh` |
 | the published `GYAddress` description says bech32 | the description is corrected; **the hex requirement itself stands** |
@@ -41,7 +41,7 @@ measurement, and the ones below marked **CLOSED** in their own heading are updat
 | a committee credential can be claimed but `/profiles/by-credential/` refuses to resolve it | **all three roles**, key and script; and `credential_is_script` stopped publishing `null` for every committee credential, which was the same bug's silent half |
 | no route exposes the oracle's parameters | interaction-api's `/status.oracle` — deposit, dispute timeout, min-UTxO, both fees, admin and arbiter. query-api **cannot** publish them: it carries no Cardano provider by a documented boot contract, and its db-sync is indexed without UTxOs, so the oracle UTxO is not in that database |
 | `/disputes/{id}` does not exist, and `dispute_not_found` is a published code with no site | the route exists and the code is reachable |
-| `/votes` has `is_final` in its rows and no filter on it | `?is_final=true` keeps one row per (voter, action): **3,244,723 rows → 931**, 65 k pages → 19 |
+| `/votes` has `is_final` in its rows and no filter on it | `?is_final=true` keeps one row per (voter, action): **3,244,723 rows → 931**, 65 k pages → 19. **Half closed, not closed** — the filter fixes three of the query's four stages and the fourth still reads `palmares.vote` partition-complete, so offset 0 is **0.51 s** and offset 800 is **9.43 s**. The 931 rows sort `v.id DESC` and the stress test's big partitions land on the LAST pages: page 9 of 19 is a ten-second request. See G-4 |
 | nullable fields are typed non-null in both documents | `x-nullable` on all of them — **127** properties in the read document, not the ~30 first counted, asserted as a two-way invariant |
 | `limit`/`offset` are published as the full `Int64` range | the real per-endpoint bounds, published as references to the values the handler clamps with |
 | a 405 or a 406 answers with an empty body and no content type | `{code, message}` JSON on both services, via a WAI middleware — servant's `ErrorFormatters` has no hook for either |
@@ -52,11 +52,28 @@ measurement, and the ones below marked **CLOSED** in their own heading are updat
   still cross the 30 s read timeout. The partition-complete restriction made shallow pages 3.3× faster
   (1.5 s → 0.45 s) and deep ones only 12–18%, because this is a data property rather than a query
   shape: preprod's five epoch-187 stress actions hold 99.97% of the corpus, so a page of 100 votes
-  belongs to 70–150 partitions of ~20,000 rows each and `revote_count` for one row is a count over
-  ~20,000 siblings. **Use `is_final=true`**, which is the parameter that makes the endpoint usable.
-- A dispute's own deadline is still not published: the datum's `disputeStaleAfter` is dropped by the
-  projection, so an existing dispute's deadline can only be computed as `opened_at + timeout` and
-  that is wrong for any dispute opened before a retiming. See G4.
+  belongs to 70–150 partitions of ~20,000 rows each. **The curve is a step, not a slope:** unfiltered
+  `limit=200` measures 0.77 / 1.12 / 1.09 / 1.11 / 1.10 s at offsets 0 / 100 / 200 / 400 / 600, then
+  **12.15 s at offset 800**. The cause is exact — **901 votes are newer than the newest epoch-187
+  stress-test vote** and the real corpus is 958 — so the feed is fast for essentially all real
+  governance activity and slow only once a page crosses row 901, inside the stress test.
+  **Two decided items, not backlog:** deep unfiltered pages are not going to be made fast, and the
+  window-free row source is not being built. `docs/adr/0009-*.md` carries both. The offset ceiling is
+  **not** being lowered — capping at 600 would permanently refuse page 13 of a 50-row scroll to buy
+  speed against a slowness that is temporary anyway (at ~1.5 votes/day the artifact sinks below row
+  1,000 in ~66 days and the route settles at ~1.1 s on its own).
+- **Only the UNFILTERED deep feed is slow.** With a `voter_id` filter, offset 10,000 is **3.35 s**
+  against **20.53 s** unfiltered, because `voter_id_hash` is a partition column. "This DRep's voting
+  record" is fast at any depth; "every vote ever cast, page 9" is the slow screen, and nothing in
+  these documents asks for it.
+- **`is_final=true` makes *the first pages of* the route fast — that is the whole claim.** 0.51 s at
+  offset 0 reading 101 partition rows; **9.43–9.57 s at offset 800 reading 1,621,907** — 18× the
+  latency and ~16,000× the rows for the same 100 results. It fixes three of the query's four stages
+  and the fourth still reads `palmares.vote` partition-complete. See G-4.
+- ~~A dispute's own deadline is still not published.~~ **CLOSED 2026-10-24 (`3f0dc00`) — this entry
+  was stale.** `disputeStaleAfter` is projected and published as `DisputeRow.stale_after`; measured
+  live, `opened_at: 2026-10-24T16:40:49Z` beside `stale_after: 2026-11-23T16:40:49Z`. No client
+  computes `opened_at + timeout` any more. See G4, now closed in both halves.
 - The write API is Basic-auth only, so it cannot be called from a browser without a BFF.
 - A script-credential claim needs a second signature and nothing collects or stores a partial one.
 - An unrouted path answers `404` with an empty body on both services — the same defect class as the

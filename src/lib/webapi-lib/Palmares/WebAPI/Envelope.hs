@@ -122,15 +122,29 @@ instance ToSchema ApiError where
             { AesonTypes.fieldLabelModifier = AesonTypes.camelTo2 '_' . drop (length ("apiError" :: String))
             }
 
--- | Every reason this API refuses or fails a request.
+-- | Every reason either API refuses or fails a request.
 --
 -- Grouped by the status they map to, and the grouping is the documentation: a reader can see at a
--- glance that nothing here is a 401 or a 403, because the read surface is public.
+-- glance which statuses exist at all.
 --
--- Four of them — @profile_not_found@, @attestation_not_found@, @dispute_not_found@ and
--- @rate_limited@ — are unreachable in Plan A. They are declared anyway because a code is part of
--- the published contract and adding one later is a Swagger change; a client that can already
--- handle @attestation_not_found@ needs no release when attestations land.
+-- __One vocabulary, two surfaces, and three codes are unreachable on the read one.__ query-api is
+-- public and takes no request bodies, so @unauthenticated@, @credentials_rejected@ and
+-- @unsupported_media_type@ cannot fire there — they belong to interaction-api, and they are in this
+-- shared enum because 'Palmares.WebAPI.Errors.refusedRequestMiddleware' carries all three and both
+-- services install it. query-api's document says so in its own @ErrorCode@ description rather than
+-- leaving a reader to discover three dead branches.
+--
+-- __@rate_limited@ is RESERVED, and it is the one code here with no site anywhere.__ Rate limiting
+-- is not implemented: nothing counts requests, no handler raises it, and NEITHER DOCUMENT DECLARES A
+-- 429 ON ANY OPERATION — so a client branching on it waits for a response that cannot arrive. It is
+-- kept rather than deleted because withdrawing a published tag is the breaking half of a contract
+-- change, but the reservation is written down here and in the document instead of letting the code
+-- read as live. __The 429 declaration lands with the throttle, in the same change, and not before.__
+--
+-- The three @*_not_found@ codes that used to be reserved beside it are live now, which is why the
+-- reservation is stated per code rather than as a count: @profile_not_found@ and
+-- @attestation_not_found@ fire on the attestation read routes, and @dispute_not_found@ is asserted
+-- against the running service by @scripts\/smoke_query_api.sh@.
 --
 -- __That argument has a limit, and @invalid_asset_class@ was past it.__ A code nothing can produce
 -- is a branch a client writes and never exercises, and after the attestation surface landed this
@@ -156,12 +170,33 @@ data ErrorCode
   | InvalidCredential
   | InvalidTimeRange
   | InvalidEpochRange
-  | -- 405/406: the route exists, the request's method or its @Accept@ does not
+  | -- 401/403: the caller is not authenticated. interaction-api only — query-api has no auth.
     --
-    -- __Both come out of servant's ROUTER, not out of a handler__, which is why they are the only
-    -- two codes in this enum that no @throwApi@ ever raises: the router builds the response before
-    -- a handler is reached and before 'Palmares.WebAPI.Errors.palmaresErrorFormatters' is
-    -- consulted — servant has no formatter hook for either. They are carried by
+    -- __Two statuses because servant's @BasicAuth@ answers with two__, and the split is servant's
+    -- rather than a choice made here: no @Authorization@ header (or one that does not decode) is
+    -- @err401@ WITH a @WWW-Authenticate@ challenge, while a header that decodes and whose
+    -- credentials @Palmares.WebAPI.Auth.authCheck@ rejects is @err403@ with no challenge. MEASURED
+    -- on the running service: @POST \/build-tx@ with no credentials answered 401, the same request
+    -- with a wrong password answered __403__, and both carried zero bytes and no content type.
+    --
+    -- @credentials_rejected@ and NOT @invalid_credentials@: 'InvalidCredential' already exists, is a
+    -- 400, and means \"not a CIP-129 governance credential\". Two codes one plural apart, with
+    -- different statuses and unrelated meanings, is a trap for every client and reader; this name
+    -- cannot be confused with it and says what happened — credentials arrived and were refused.
+    --
+    -- It is a 403 that means an AUTHENTICATION failure, which is HTTP's own muddle and not ours.
+    -- There is still no code for a known caller who lacks permission, because this API has no such
+    -- refusal: see the @ExpireDispute@ note in @TxBuilding.Exceptions@, which is a 400 for exactly
+    -- that reason.
+    Unauthenticated
+  | CredentialsRejected
+  | -- 405/406/415: the route exists, the request's method, its @Accept@ or its @Content-Type@ does not
+    --
+    -- __All three come out of servant's ROUTER, not out of a handler__, which is why they — with
+    -- the 401\/403 pair above and @route_not_found@ below — are the codes in this enum that no
+    -- @throwApi@ ever raises: the router builds the response before a handler is reached and before
+    -- 'Palmares.WebAPI.Errors.palmaresErrorFormatters' is consulted, and servant has no formatter
+    -- hook for any of the three. They are carried by
     -- 'Palmares.WebAPI.Errors.refusedRequestMiddleware', which is the only producer.
     --
     -- Measured before it: @POST \/dreps@ and @GET \/profiles@ with @Accept: text\/csv@ both answered
@@ -169,10 +204,30 @@ data ErrorCode
     -- @.json()@ on either threw. @not_acceptable@ is the reachable one of the two in practice — six
     -- list routes serve CSV and seven do not, and asking the wrong one for it is the mistake
     -- @docs\/usecases\/api-screen-map.md@ §5.11 records a frontend already making.
+    --
+    -- @unsupported_media_type@ is interaction-api's alone: query-api has no request bodies, so no
+    -- @Content-Type@ of a caller's is ever consulted there. MEASURED on the write service, with
+    -- credentials so that auth could not answer first: @POST \/build-tx@ under
+    -- @Content-Type: text\/plain@ answered a bare @415@, zero bytes, no content type.
     MethodNotAllowed
   | NotAcceptable
+  | UnsupportedMediaType
   | -- 404: the request is well formed and names nothing
-    DrepNotFound
+    --
+    -- __The first one is not about a record, and that is why it is not spelled @*_not_found@ after
+    -- a thing.__ The seven below are the answer to a lookup that ran and returned no row, so a
+    -- client's fix is a different identifier. @route_not_found@ is the answer when NOTHING was
+    -- looked up: the router matched no path at all, so the request never reached a handler and the
+    -- absent thing is the ROUTE. A client's fix is different code, not different input — usually a
+    -- client generated from an older document, or a typo in a base URL.
+    --
+    -- Measured before it: @GET \/nope@ answered @404@ with __zero bytes and no content type__ on
+    -- both services, so a client doing @res.json()@ on any failure threw a parse error on the one
+    -- refusal it is most likely to hit while being wired up. Unlike the two above, this one HAS a
+    -- servant hook — @notFoundErrorFormatter@, the fourth field of @ErrorFormatters@ — which is
+    -- where 'Palmares.WebAPI.Errors.palmaresErrorFormatters' sets it.
+    RouteNotFound
+  | DrepNotFound
   | GovActionNotFound
   | SpoNotFound
   | CommitteeNotFound
@@ -235,8 +290,12 @@ errorCodeToHttpStatus = \case
   InvalidCredential -> 400
   InvalidTimeRange -> 400
   InvalidEpochRange -> 400
+  Unauthenticated -> 401
+  CredentialsRejected -> 403
   MethodNotAllowed -> 405
   NotAcceptable -> 406
+  UnsupportedMediaType -> 415
+  RouteNotFound -> 404
   DrepNotFound -> 404
   GovActionNotFound -> 404
   SpoNotFound -> 404

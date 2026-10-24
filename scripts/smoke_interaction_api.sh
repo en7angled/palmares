@@ -120,16 +120,20 @@ case "$got" in
 esac
 
 echo
-# The router's own refusals, which are the two this API answers with no handler involved.
+# The router's own refusals, which are the three this API answers with no handler involved.
 #
 # Why they need a live assertion rather than a unit test: 405 and 406 are a `FailFatal` from
 # servant's router, so no `ErrorFormatters` hook can reach them — `ErrorFormatters` has exactly four
 # fields and none of them is the method or the negotiation. They are rewritten by a WAI middleware
 # instead, which means the only thing that proves the middleware is installed, in the right order
-# relative to CORS, and not shadowed by `provideOptions`, is a request to the running service.
+# relative to CORS, and not shadowed by `provideOptions`, is a request to the running service. The
+# unrouted 404 is the one of the three that DOES have a hook — the fourth field,
+# `notFoundErrorFormatter` — and it needs a live assertion for the same reason pointed the other way:
+# what it proves is that this service's context carries `palmaresErrorFormatters` at all.
 #
-# Both carried a ZERO-BYTE body with no content type at all until this was fixed. A client cannot
-# branch on that, and a client written against the documented `{code, message}` shape crashes on it.
+# All three carried a ZERO-BYTE body with no content type at all until this was fixed. A client
+# cannot branch on that, and a client written against the documented `{code, message}` shape crashes
+# on it.
 echo "== the router's refusals carry a code, not an empty body"
 check "GET on a POST-only route is 405" "$(code /expire-dispute)" "405"
 check "the 405 body names method_not_allowed" \
@@ -138,6 +142,54 @@ check "an Accept this API cannot satisfy is 406" \
   "$(curl -s -o /dev/null -w '%{http_code}' -u "$AUTH" -H 'Accept: text/csv' "$API/status")" "406"
 check "the 406 body names not_acceptable" \
   "$(curl -s -u "$AUTH" -H 'Accept: text/csv' "$API/status" | jq -r '.code // "none"')" "not_acceptable"
+# Measured before the formatter, on this service:
+# `curl -s -o- -w '%{http_code} %{content_type}' /nope` gave `404` with an empty body and no type.
+# The content type is asserted too, because the absent one is what broke `.json()`.
+check "an unrouted path is 404" "$(code /nope)" "404"
+check "the 404 body names route_not_found" \
+  "$(curl -s -u "$AUTH" "$API/nope" | jq -r '.code // "none"')" "route_not_found"
+check "the unrouted 404 carries application/json, not nothing" \
+  "$(curl -s -o /dev/null -w '%{content_type}' -u "$AUTH" "$API/nope")" "application/json"
+# The 415, which needs CREDENTIALS to reach: auth fires before the content-type check, so an
+# unauthenticated probe measures the 401 and reports it as a 415 failure. Measured with them:
+# `POST /build-tx` under `Content-Type: text/plain` answered a bare 415, zero bytes, no type.
+bad_ct() {
+  curl -s -o /dev/null -w '%{http_code}' -u "$AUTH" -X POST -H 'Content-Type: text/plain' --data-binary x "$API$1"
+}
+check "a non-JSON Content-Type is 415" "$(bad_ct /build-tx)" "415"
+check "the 415 body names unsupported_media_type" \
+  "$(curl -s -u "$AUTH" -X POST -H 'Content-Type: text/plain' --data-binary x "$API/build-tx" | jq -r '.code // "none"')" \
+  "unsupported_media_type"
+
+echo
+# THE AUTH BOUNDARY, and the two statuses are not a choice of ours: servant's `BasicAuth` answers
+# NO credentials with 401 plus a `WWW-Authenticate` challenge, and credentials `authCheck` rejects
+# with 403 and no challenge. The 403 is the one nobody had looked at — it is what every wrong
+# password gets, and it was undeclared and bodiless like the rest.
+#
+# WHY THE CHALLENGE IS ASSERTED: the middleware rewrites the body of a content-type-less refusal, and
+# an earlier form of it built the replacement from scratch and would have DROPPED the header. Without
+# `WWW-Authenticate` a browser shows no credential prompt, which is a worse regression than the empty
+# body this fixed. Only a live request proves it survived the middleware in the deployed order.
+echo "== the auth boundary carries a code, and keeps its challenge"
+noauth() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' "$API$1"; }
+check "no credentials on a write route is 401" "$(noauth /build-tx)" "401"
+check "the 401 body names unauthenticated" \
+  "$(curl -s -X POST -H 'Content-Type: application/json' -d '{}' "$API/build-tx" | jq -r '.code // "none"')" \
+  "unauthenticated"
+check "the 401 STILL carries WWW-Authenticate after the rewrite" \
+  "$(curl -s -o /dev/null -D - -X POST -H 'Content-Type: application/json' -d '{}' "$API/build-tx" \
+    | tr -d '\r' | awk 'tolower($1) == "www-authenticate:" {print "present"}')" \
+  "present"
+check "WRONG credentials are 403, not 401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -u "${BASIC_USER:-}:definitely-not-the-password" \
+    -X POST -H 'Content-Type: application/json' -d '{}' "$API/build-tx")" "403"
+check "the 403 body names credentials_rejected" \
+  "$(curl -s -u "${BASIC_USER:-}:definitely-not-the-password" \
+    -X POST -H 'Content-Type: application/json' -d '{}' "$API/build-tx" | jq -r '.code // "none"')" \
+  "credentials_rejected"
+# A public route must NOT be behind any of this, or the probes stop answering a load balancer.
+check "a probe needs no credentials" "$(code /health)" "200"
 
 echo
 if [ "$fail" = 0 ]; then echo "all checks passed"; else echo "FAILURES above"; exit 1; fi

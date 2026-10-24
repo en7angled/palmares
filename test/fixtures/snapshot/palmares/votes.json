@@ -207,8 +207,8 @@
             "voter_id": "drep1y0gwzvemqj60lepzmy2zpeaxslqkgjlk6krk5fny2wet45spxskxu",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 14246777460,
-            "voting_power_epoch": 254
+            "voting_power": 14251654244,
+            "voting_power_epoch": 253
         },
         {
             "anchor": null,
@@ -231,8 +231,8 @@
             "voter_id": "drep1y0gwzvemqj60lepzmy2zpeaxslqkgjlk6krk5fny2wet45spxskxu",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 17767159167,
-            "voting_power_epoch": 250
+            "voting_power": null,
+            "voting_power_epoch": null
         },
         {
             "anchor": null,
@@ -255,8 +255,8 @@
             "voter_id": "drep1y0gwzvemqj60lepzmy2zpeaxslqkgjlk6krk5fny2wet45spxskxu",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 14246777460,
-            "voting_power_epoch": 254
+            "voting_power": 14251654244,
+            "voting_power_epoch": 253
         },
         {
             "anchor": null,
@@ -279,8 +279,8 @@
             "voter_id": "drep1y0gwzvemqj60lepzmy2zpeaxslqkgjlk6krk5fny2wet45spxskxu",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 17767159167,
-            "voting_power_epoch": 250
+            "voting_power": null,
+            "voting_power_epoch": null
         },
         {
             "anchor": null,
@@ -303,8 +303,8 @@
             "voter_id": "drep1y0gwzvemqj60lepzmy2zpeaxslqkgjlk6krk5fny2wet45spxskxu",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 17767159167,
-            "voting_power_epoch": 250
+            "voting_power": null,
+            "voting_power_epoch": null
         },
         {
             "anchor": null,
@@ -327,8 +327,8 @@
             "voter_id": "drep1y0gwzvemqj60lepzmy2zpeaxslqkgjlk6krk5fny2wet45spxskxu",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 17767159167,
-            "voting_power_epoch": 250
+            "voting_power": null,
+            "voting_power_epoch": null
         },
         {
             "anchor": null,
@@ -351,8 +351,8 @@
             "voter_id": "drep1y0gwzvemqj60lepzmy2zpeaxslqkgjlk6krk5fny2wet45spxskxu",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 14246777460,
-            "voting_power_epoch": 254
+            "voting_power": 14251654244,
+            "voting_power_epoch": 253
         }
     ],
     "drep1y0gy6wwyuj6za8kamwm5rwmxxe5rk6pz4ckx3hmsfdjuujsr70shz": [
@@ -453,8 +453,8 @@
             "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
             "voter_name": "Bitcows",
             "voter_role": "drep",
-            "voting_power": 3901077453443,
-            "voting_power_epoch": 319
+            "voting_power": 3888350022213,
+            "voting_power_epoch": 318
         },
         {
             "anchor": null,
@@ -477,8 +477,8 @@
             "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
             "voter_name": "Bitcows",
             "voter_role": "drep",
-            "voting_power": 3875575567905,
-            "voting_power_epoch": 317
+            "voting_power": 3853195596327,
+            "voting_power_epoch": 316
         },
         {
             "anchor": null,
@@ -501,8 +501,8 @@
             "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
             "voter_name": "Bitcows",
             "voter_role": "drep",
-            "voting_power": 3875575567905,
-            "voting_power_epoch": 317
+            "voting_power": 3853195596327,
+            "voting_power_epoch": 316
         },
         {
             "anchor": null,
@@ -525,8 +525,8 @@
             "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
             "voter_name": "Bitcows",
             "voter_role": "drep",
-            "voting_power": 3782933459396,
-            "voting_power_epoch": 312
+            "voting_power": 3759473771441,
+            "voting_power_epoch": 311
         },
         {
             "anchor": null,
@@ -549,8 +549,8 @@
             "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
             "voter_name": "Bitcows",
             "voter_role": "drep",
-            "voting_power": 3539380710970,
-            "voting_power_epoch": 294
+            "voting_power": 3536695673892,
+            "voting_power_epoch": 293
         },
         {
             "anchor": null,
@@ -649,8 +649,8 @@
             "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
             "voter_name": "Bitcows",
             "voter_role": "drep",
-            "voting_power": 3261000612940,
-            "voting_power_epoch": 254
+            "voting_power": 3269976844813,
+            "voting_power_epoch": 253
         },
         {
             "anchor": null,
@@ -673,8 +673,8 @@
             "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
             "voter_name": "Bitcows",
             "voter_role": "drep",
-            "voting_power": 3125143225970,
-            "voting_power_epoch": 250
+            "voting_power": 3119053129366,
+            "voting_power_epoch": 249
         },
         {
             "anchor": null,
@@ -697,8 +697,8 @@
             "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
             "voter_name": "Bitcows",
             "voter_role": "drep",
-            "voting_power": 3073519835305,
-            "voting_power_epoch": 247
+            "voting_power": 2981657377858,
+            "voting_power_epoch": 246
         },
         {
             "anchor": {
@@ -725,8 +725,8 @@
             "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
             "voter_name": "Bitcows",
             "voter_role": "drep",
-            "voting_power": 2910345928657,
-            "voting_power_epoch": 242
+            "voting_power": 2888178480147,
+            "voting_power_epoch": 241
         },
         {
             "anchor": null,
@@ -749,8 +749,8 @@
             "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
             "voter_name": "Bitcows",
             "voter_role": "drep",
-            "voting_power": 2721511084177,
-            "voting_power_epoch": 235
+            "voting_power": 2699491998079,
+            "voting_power_epoch": 234
         },
         {
             "anchor": null,
@@ -797,8 +797,8 @@
             "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
             "voter_name": "Bitcows",
             "voter_role": "drep",
-            "voting_power": 2327917524187,
-            "voting_power_epoch": 223
+            "voting_power": 2306106977601,
+            "voting_power_epoch": 222
         },
         {
             "anchor": null,
@@ -821,8 +821,8 @@
             "voter_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
             "voter_name": "Bitcows",
             "voter_role": "drep",
-            "voting_power": 2181968833140,
-            "voting_power_epoch": 214
+            "voting_power": 2180276463860,
+            "voting_power_epoch": 213
         }
     ],
     "drep1y2tqpgfsagdhhmvn9t288tghk57jxhenr53kvjxc500ce3sv623vp": [
@@ -848,7 +848,7 @@
             "voter_name": "john",
             "voter_role": "drep",
             "voting_power": 7449063880,
-            "voting_power_epoch": 235
+            "voting_power_epoch": 234
         },
         {
             "anchor": null,
@@ -871,8 +871,8 @@
             "voter_id": "drep1y2tqpgfsagdhhmvn9t288tghk57jxhenr53kvjxc500ce3sv623vp",
             "voter_name": "john",
             "voter_role": "drep",
-            "voting_power": 7445495200,
-            "voting_power_epoch": 230
+            "voting_power": null,
+            "voting_power_epoch": null
         },
         {
             "anchor": null,
@@ -895,8 +895,8 @@
             "voter_id": "drep1y2tqpgfsagdhhmvn9t288tghk57jxhenr53kvjxc500ce3sv623vp",
             "voter_name": "john",
             "voter_role": "drep",
-            "voting_power": 7445495200,
-            "voting_power_epoch": 230
+            "voting_power": null,
+            "voting_power_epoch": null
         }
     ],
     "drep1y2urtnpqef68w3dm2xrggdsfpp98h00xmkf4qj78r70r3xq8lekef": [
@@ -921,8 +921,8 @@
             "voter_id": "drep1y2urtnpqef68w3dm2xrggdsfpp98h00xmkf4qj78r70r3xq8lekef",
             "voter_name": "InputEndorsers",
             "voter_role": "drep",
-            "voting_power": 2974343609960,
-            "voting_power_epoch": 242
+            "voting_power": 2981064406985,
+            "voting_power_epoch": 241
         },
         {
             "anchor": null,
@@ -945,8 +945,8 @@
             "voter_id": "drep1y2urtnpqef68w3dm2xrggdsfpp98h00xmkf4qj78r70r3xq8lekef",
             "voter_name": "InputEndorsers",
             "voter_role": "drep",
-            "voting_power": 2476650851227,
-            "voting_power_epoch": 223
+            "voting_power": 2105617673741,
+            "voting_power_epoch": 222
         }
     ],
     "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev": [
@@ -975,8 +975,8 @@
             "voter_id": "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 3145682116292,
-            "voting_power_epoch": 302
+            "voting_power": 3133664335131,
+            "voting_power_epoch": 301
         },
         {
             "anchor": {
@@ -1003,8 +1003,8 @@
             "voter_id": "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 3145682116292,
-            "voting_power_epoch": 302
+            "voting_power": 3133664335131,
+            "voting_power_epoch": 301
         },
         {
             "anchor": {
@@ -1031,8 +1031,8 @@
             "voter_id": "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 3145682116292,
-            "voting_power_epoch": 302
+            "voting_power": 3133664335131,
+            "voting_power_epoch": 301
         },
         {
             "anchor": {
@@ -1059,8 +1059,8 @@
             "voter_id": "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 3145682116292,
-            "voting_power_epoch": 302
+            "voting_power": 3133664335131,
+            "voting_power_epoch": 301
         },
         {
             "anchor": null,
@@ -1083,8 +1083,8 @@
             "voter_id": "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 3131742365941,
-            "voting_power_epoch": 300
+            "voting_power": 3129786696917,
+            "voting_power_epoch": 299
         },
         {
             "anchor": null,
@@ -1107,8 +1107,8 @@
             "voter_id": "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 3145682116292,
-            "voting_power_epoch": 302
+            "voting_power": 3133664335131,
+            "voting_power_epoch": 301
         },
         {
             "anchor": {
@@ -1159,8 +1159,8 @@
             "voter_id": "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 3131742365941,
-            "voting_power_epoch": 300
+            "voting_power": 3129786696917,
+            "voting_power_epoch": 299
         },
         {
             "anchor": {
@@ -1187,8 +1187,8 @@
             "voter_id": "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 3131742365941,
-            "voting_power_epoch": 300
+            "voting_power": 3129786696917,
+            "voting_power_epoch": 299
         },
         {
             "anchor": null,
@@ -1211,8 +1211,8 @@
             "voter_id": "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 3108784823811,
-            "voting_power_epoch": 294
+            "voting_power": null,
+            "voting_power_epoch": null
         },
         {
             "anchor": {
@@ -1469,32 +1469,8 @@
             "voter_id": "drep1ydmraa6kv8cvmry059v608tehl50nfmg0z764lmsqkvwurs40sw2z",
             "voter_name": "Logical Mechanism dRep",
             "voter_role": "drep",
-            "voting_power": 5049365534535,
-            "voting_power_epoch": 172
-        },
-        {
-            "anchor": null,
-            "cast_at": {
-                "epoch": 165,
-                "slot": 69981768,
-                "time": "2024-09-06T23:22:48Z",
-                "tx_hash": "e239058473ab5ab1f5829b9058a93cbd0daaf72f9252cc16b34925cd87b37d35"
-            },
-            "gov_action_bech32": "gov_action14lefp8upwhhq92xph7t075txshf9huxxh9d2ey05ml2n5hqgvlxqqp92kfl",
-            "gov_action_id": "aff2909f8175ee02a8c1bf96ff516685d25bf0c6b95aac91f4dfd53a5c0867cc#0",
-            "gov_action_title": null,
-            "gov_action_type": "info_action",
-            "is_final": true,
-            "is_first": true,
-            "latency_hours": 5.444444444444444e-2,
-            "revote_count": 1,
-            "verdict": "yes",
-            "voter_hot_hash": "763ef75661f0cd8c8fa159a79d79bfe8f9a76878bdaaff700598ee0e",
-            "voter_id": "drep1ydmraa6kv8cvmry059v608tehl50nfmg0z764lmsqkvwurs40sw2z",
-            "voter_name": null,
-            "voter_role": "drep",
-            "voting_power": 5049365534535,
-            "voting_power_epoch": 172
+            "voting_power": 5035963782826,
+            "voting_power_epoch": 171
         }
     ],
     "drep1yf3dqjh8gfhffd2qn6tteth65pwpcmsvt8pfyzq2rj6weyg0r9z64": [
@@ -1623,8 +1599,8 @@
             "voter_id": "drep1yf3yx7ptr0hks02d7k8c8xfq58jn68nje5emscvv7a9ngpqudkpdh",
             "voter_name": "ADAtainment (Preprod)",
             "voter_role": "drep",
-            "voting_power": 1101376244926,
-            "voting_power_epoch": 317
+            "voting_power": 1101112517675,
+            "voting_power_epoch": 316
         },
         {
             "anchor": {
@@ -1651,8 +1627,8 @@
             "voter_id": "drep1yf3yx7ptr0hks02d7k8c8xfq58jn68nje5emscvv7a9ngpqudkpdh",
             "voter_name": "ADAtainment (Preprod)",
             "voter_role": "drep",
-            "voting_power": 1095127719870,
-            "voting_power_epoch": 304
+            "voting_power": 957421690754,
+            "voting_power_epoch": 303
         },
         {
             "anchor": {
@@ -1679,8 +1655,8 @@
             "voter_id": "drep1yf3yx7ptr0hks02d7k8c8xfq58jn68nje5emscvv7a9ngpqudkpdh",
             "voter_name": "ADAtainment (Preprod)",
             "voter_role": "drep",
-            "voting_power": 898388945957,
-            "voting_power_epoch": 302
+            "voting_power": 887903499389,
+            "voting_power_epoch": 301
         },
         {
             "anchor": null,
@@ -1703,8 +1679,8 @@
             "voter_id": "drep1yf3yx7ptr0hks02d7k8c8xfq58jn68nje5emscvv7a9ngpqudkpdh",
             "voter_name": "ADAtainment (Preprod)",
             "voter_role": "drep",
-            "voting_power": 898388945957,
-            "voting_power_epoch": 302
+            "voting_power": 887903499389,
+            "voting_power_epoch": 301
         },
         {
             "anchor": null,
@@ -1727,8 +1703,8 @@
             "voter_id": "drep1yf3yx7ptr0hks02d7k8c8xfq58jn68nje5emscvv7a9ngpqudkpdh",
             "voter_name": "ADAtainment (Preprod)",
             "voter_role": "drep",
-            "voting_power": 898388945957,
-            "voting_power_epoch": 302
+            "voting_power": 887903499389,
+            "voting_power_epoch": 301
         },
         {
             "anchor": {
@@ -1755,8 +1731,8 @@
             "voter_id": "drep1yf3yx7ptr0hks02d7k8c8xfq58jn68nje5emscvv7a9ngpqudkpdh",
             "voter_name": "ADAtainment (Preprod)",
             "voter_role": "drep",
-            "voting_power": 887410451756,
-            "voting_power_epoch": 300
+            "voting_power": 877789956459,
+            "voting_power_epoch": 299
         },
         {
             "anchor": {
@@ -1783,8 +1759,8 @@
             "voter_id": "drep1yf3yx7ptr0hks02d7k8c8xfq58jn68nje5emscvv7a9ngpqudkpdh",
             "voter_name": "ADAtainment (Preprod)",
             "voter_role": "drep",
-            "voting_power": 898388945957,
-            "voting_power_epoch": 302
+            "voting_power": 887903499389,
+            "voting_power_epoch": 301
         },
         {
             "anchor": {
@@ -1811,8 +1787,8 @@
             "voter_id": "drep1yf3yx7ptr0hks02d7k8c8xfq58jn68nje5emscvv7a9ngpqudkpdh",
             "voter_name": "ADAtainment (Preprod)",
             "voter_role": "drep",
-            "voting_power": 887410451756,
-            "voting_power_epoch": 300
+            "voting_power": 877789956459,
+            "voting_power_epoch": 299
         }
     ],
     "drep1yfmg4kvf7vcg4uzgyn0dskumkhccr8rr935z0lfhsep7etgvrh34k": [
@@ -2012,7 +1988,7 @@
             "voter_name": null,
             "voter_role": "drep",
             "voting_power": 2497104603,
-            "voting_power_epoch": 317
+            "voting_power_epoch": 316
         },
         {
             "anchor": {
@@ -2040,7 +2016,7 @@
             "voter_name": null,
             "voter_role": "drep",
             "voting_power": 2497104603,
-            "voting_power_epoch": 317
+            "voting_power_epoch": 316
         }
     ],
     "drep1yg8u749fa6jwtx2y5akuvjump2gjammvaf9cvfr8zpt49kqc8l9yp": [
@@ -2065,8 +2041,8 @@
             "voter_id": "drep1yg8u749fa6jwtx2y5akuvjump2gjammvaf9cvfr8zpt49kqc8l9yp",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 8761856316,
-            "voting_power_epoch": 235
+            "voting_power": null,
+            "voting_power_epoch": null
         },
         {
             "anchor": null,
@@ -2089,8 +2065,8 @@
             "voter_id": "drep1yg8u749fa6jwtx2y5akuvjump2gjammvaf9cvfr8zpt49kqc8l9yp",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 8761856316,
-            "voting_power_epoch": 235
+            "voting_power": null,
+            "voting_power_epoch": null
         },
         {
             "anchor": {
@@ -2117,8 +2093,8 @@
             "voter_id": "drep1yg8u749fa6jwtx2y5akuvjump2gjammvaf9cvfr8zpt49kqc8l9yp",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 8761856316,
-            "voting_power_epoch": 235
+            "voting_power": null,
+            "voting_power_epoch": null
         }
     ],
     "drep1yger3n5rm7dn9uqyktfgxddlajwjg8tcxtn60xsgk9ql9lcc97wv5": [
@@ -2337,8 +2313,8 @@
             "voter_id": "drep1ygg7ul4yxxvdwfj7der264k2lag4h96d62h5luwz2c4y7sctvw67v",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 9979946582,
-            "voting_power_epoch": 184
+            "voting_power": 9990115339,
+            "voting_power_epoch": 183
         }
     ],
     "drep1ygnw2fxf00pqwd3dmnluhf3vd06lrmmvxpmx8chjup4x3pcafs46n": [
@@ -2393,8 +2369,8 @@
             "voter_id": "drep1ygv58mrmlrye9vu0tussycey3vm2rva2c5djx0e66r3wzuqq5w275",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 5243366806747,
-            "voting_power_epoch": 242
+            "voting_power": 5393383663471,
+            "voting_power_epoch": 241
         }
     ],
     "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm": [
@@ -2539,8 +2515,8 @@
             "voter_id": "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 200324435687716,
-            "voting_power_epoch": 292
+            "voting_power": 200324424710360,
+            "voting_power_epoch": 291
         },
         {
             "anchor": null,
@@ -3351,8 +3327,8 @@
             "voter_id": "drep1ytenukatzrvc2a8kyalzj67us4ms568f6jy8p8qu3luw07gjdmlar",
             "voter_name": "₳rturo",
             "voter_role": "drep",
-            "voting_power": 345724656183,
-            "voting_power_epoch": 230
+            "voting_power": 345617722610,
+            "voting_power_epoch": 229
         }
     ],
     "drep1ytgmll84qz9qt7gs8smfqn66drfk9t4d0dpen3dpeepqu5q2gp8d4": [
@@ -3377,8 +3353,8 @@
             "voter_id": "drep1ytgmll84qz9qt7gs8smfqn66drfk9t4d0dpen3dpeepqu5q2gp8d4",
             "voter_name": null,
             "voter_role": "drep",
-            "voting_power": 11295612237,
-            "voting_power_epoch": 184
+            "voting_power": 11286303359,
+            "voting_power_epoch": 183
         }
     ],
     "drep1ytk3r5ddfk2cq66ygdtkwf9yck6hhy7uzhk2tgl5d53448skyutw7": [

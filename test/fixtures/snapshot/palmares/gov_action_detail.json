@@ -39,7 +39,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 293,
+                "epoch": 294,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -54,7 +54,7 @@
                 "abstain_count": 2,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 293,
+                "epoch": 294,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -63,13 +63,13 @@
                 "threshold": 0.6,
                 "threshold_param": "dvt_hard_fork_initiation",
                 "yes_count": 4,
-                "yes_power": 207354880364526
+                "yes_power": 210468464276635
             },
             {
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 293,
+                "epoch": 294,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -78,7 +78,7 @@
                 "threshold": 0.51,
                 "threshold_param": "pvt_hard_fork_initiation",
                 "yes_count": 12,
-                "yes_power": 1120449343281128
+                "yes_power": 1120582482314822
             }
         ],
         "withdrawals": []
@@ -91,7 +91,7 @@
             "deposit": 100000000000,
             "expires_epoch": 235,
             "id": "7eda5a5fae5f2c6d101b946336b828f38cd8d04dc88e747440b1af3e9642b227#1",
-            "last_votable_epoch": 235,
+            "last_votable_epoch": 234,
             "lifecycle": {
                 "dropped_epoch": 236,
                 "enacted_epoch": null,
@@ -189,7 +189,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 295,
+                "epoch": 296,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 1,
                 "no_power": 0,
@@ -198,7 +198,7 @@
                 "threshold": 0.75,
                 "threshold_param": "dvt_p_p_gov_group",
                 "yes_count": 1,
-                "yes_power": 3111540337327
+                "yes_power": 3123827948915
             }
         ],
         "withdrawals": []
@@ -211,7 +211,7 @@
             "deposit": 100000000000,
             "expires_epoch": 172,
             "id": "aff2909f8175ee02a8c1bf96ff516685d25bf0c6b95aac91f4dfd53a5c0867cc#0",
-            "last_votable_epoch": 172,
+            "last_votable_epoch": 171,
             "lifecycle": {
                 "dropped_epoch": 173,
                 "enacted_epoch": null,
@@ -332,7 +332,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 288,
+                "epoch": 289,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -347,7 +347,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 288,
+                "epoch": 289,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -356,7 +356,7 @@
                 "threshold": 0.67,
                 "threshold_param": "dvt_p_p_technical_group",
                 "yes_count": 1,
-                "yes_power": 200341072215038
+                "yes_power": 200340503502986
             }
         ],
         "withdrawals": []
@@ -406,7 +406,7 @@
                 "abstain_count": 3,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 304,
+                "epoch": 305,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -428,7 +428,7 @@
             "deposit": 100000000000,
             "expires_epoch": 235,
             "id": "2cd8cfb5c531f0c7d0055452426c384412978b9b66f64f4447d0c2c73f99ed86#1",
-            "last_votable_epoch": 235,
+            "last_votable_epoch": 234,
             "lifecycle": {
                 "dropped_epoch": 236,
                 "enacted_epoch": null,
@@ -526,7 +526,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 179,
+                "epoch": 180,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 2,
                 "no_power": 0,
@@ -580,7 +580,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 231,
+                "epoch": 232,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -595,7 +595,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 231,
+                "epoch": 232,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -604,7 +604,7 @@
                 "threshold": 0.51,
                 "threshold_param": "pvt_committee_normal",
                 "yes_count": 3,
-                "yes_power": 899788232488329
+                "yes_power": 899690726987395
             }
         ],
         "withdrawals": []
@@ -752,7 +752,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 180,
+                "epoch": 181,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -767,7 +767,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 180,
+                "epoch": 181,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -776,7 +776,7 @@
                 "threshold": 0.51,
                 "threshold_param": "pvt_hard_fork_initiation",
                 "yes_count": 32,
-                "yes_power": 186398753984181
+                "yes_power": 186682781536385
             }
         ],
         "withdrawals": []
@@ -826,7 +826,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 295,
+                "epoch": 296,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -841,7 +841,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 295,
+                "epoch": 296,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 1,
                 "no_power": 0,
@@ -850,13 +850,13 @@
                 "threshold": 0.75,
                 "threshold_param": "dvt_p_p_gov_group",
                 "yes_count": 1,
-                "yes_power": 400524311478281
+                "yes_power": 400524315914557
             },
             {
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 295,
+                "epoch": 296,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -865,7 +865,7 @@
                 "threshold": 0.51,
                 "threshold_param": "pvtpp_security_group",
                 "yes_count": 3,
-                "yes_power": 861834979195121
+                "yes_power": 861982476913379
             }
         ],
         "withdrawals": []
@@ -915,7 +915,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 232,
+                "epoch": 233,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -930,7 +930,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 232,
+                "epoch": 233,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -939,7 +939,7 @@
                 "threshold": 0.75,
                 "threshold_param": "dvt_p_p_gov_group",
                 "yes_count": 2,
-                "yes_power": 34937523403347
+                "yes_power": 2987624001261
             }
         ],
         "withdrawals": []
@@ -989,7 +989,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 312,
+                "epoch": 313,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -1043,7 +1043,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 303,
+                "epoch": 304,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -1052,13 +1052,13 @@
                 "threshold": 0.67,
                 "threshold_param": "dvt_committee_normal",
                 "yes_count": 1,
-                "yes_power": 400599926701051
+                "yes_power": 400600067685466
             },
             {
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 303,
+                "epoch": 304,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -1067,7 +1067,7 @@
                 "threshold": 0.51,
                 "threshold_param": "pvt_committee_normal",
                 "yes_count": 3,
-                "yes_power": 863047698672473
+                "yes_power": 863191711519430
             }
         ],
         "withdrawals": []
@@ -1112,7 +1112,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 228,
+                "epoch": 229,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -1121,13 +1121,13 @@
                 "threshold": 0.67,
                 "threshold_param": "dvt_committee_normal",
                 "yes_count": 2,
-                "yes_power": 100110000000000
+                "yes_power": 110000000000
             },
             {
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 228,
+                "epoch": 229,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -1136,7 +1136,7 @@
                 "threshold": 0.51,
                 "threshold_param": "pvt_committee_normal",
                 "yes_count": 3,
-                "yes_power": 1003432701197546
+                "yes_power": 3335297223230
             }
         ],
         "withdrawals": []
@@ -1241,7 +1241,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 179,
+                "epoch": 180,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -1263,7 +1263,7 @@
             "deposit": 100000000000,
             "expires_epoch": 283,
             "id": "b2252c6279ebd251b55b5aa431726aea42ea7ca5d22d1e8ffc6e7392d3987863#0",
-            "last_votable_epoch": 283,
+            "last_votable_epoch": 282,
             "lifecycle": {
                 "dropped_epoch": 284,
                 "enacted_epoch": null,
@@ -1351,7 +1351,7 @@
             "deposit": 100000000000,
             "expires_epoch": 170,
             "id": "0ecc74fe26532cec1ab9a299f082afc436afc888ca2dc0fc6acda431c52dc60d#0",
-            "last_votable_epoch": 170,
+            "last_votable_epoch": 169,
             "lifecycle": {
                 "dropped_epoch": 171,
                 "enacted_epoch": null,
@@ -1405,7 +1405,7 @@
             "deposit": 100000000000,
             "expires_epoch": 219,
             "id": "0f20e19828fe09f2a40b14fbce148f274afae8f1f84707d8c4e828b808ffadc4#0",
-            "last_votable_epoch": 219,
+            "last_votable_epoch": 218,
             "lifecycle": {
                 "dropped_epoch": 220,
                 "enacted_epoch": null,
@@ -1503,7 +1503,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 304,
+                "epoch": 305,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -1518,7 +1518,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 304,
+                "epoch": 305,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -1527,13 +1527,13 @@
                 "threshold": 0.67,
                 "threshold_param": "greatest(dvt_p_p_network_group, dvt_p_p_economic_group)",
                 "yes_count": 1,
-                "yes_power": 400600067685466
+                "yes_power": 400600178710512
             },
             {
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 304,
+                "epoch": 305,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -1542,7 +1542,7 @@
                 "threshold": 0.51,
                 "threshold_param": "pvtpp_security_group",
                 "yes_count": 4,
-                "yes_power": 1156882925007899
+                "yes_power": 1157087224526766
             }
         ],
         "withdrawals": []
@@ -1555,7 +1555,7 @@
             "deposit": 100000000000,
             "expires_epoch": 235,
             "id": "30d744759efa2874f532f6e550619f154b2d9d6ddf361ecc9331772503526aba#5",
-            "last_votable_epoch": 235,
+            "last_votable_epoch": 234,
             "lifecycle": {
                 "dropped_epoch": 236,
                 "enacted_epoch": null,
@@ -1665,7 +1665,7 @@
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 251,
+                "epoch": 252,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -1680,7 +1680,7 @@
                 "abstain_count": 1,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 251,
+                "epoch": 252,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -1689,13 +1689,13 @@
                 "threshold": 0.67,
                 "threshold_param": "dvt_p_p_network_group",
                 "yes_count": 2,
-                "yes_power": 73503650124398
+                "yes_power": 73536297512439
             },
             {
                 "abstain_count": 0,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 251,
+                "epoch": 252,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 0,
                 "no_power": 0,
@@ -1704,7 +1704,7 @@
                 "threshold": 0.51,
                 "threshold_param": "pvtpp_security_group",
                 "yes_count": 3,
-                "yes_power": 1028292913526097
+                "yes_power": 1028296301485685
             }
         ],
         "withdrawals": []
@@ -1766,10 +1766,10 @@
                 "abstain_count": 1,
                 "abstain_power": 0,
                 "basis": "cast_votes_only",
-                "epoch": 251,
+                "epoch": 252,
                 "formula_id": "tally_cast_votes_v1",
                 "no_count": 1,
-                "no_power": 3193650124398,
+                "no_power": 3226297512439,
                 "ratio": 0.0,
                 "role": "drep",
                 "threshold": 0.67,

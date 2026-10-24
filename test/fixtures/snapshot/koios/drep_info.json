@@ -1,7 +1,7 @@
 [
     {
         "active": false,
-        "amount": "20593181674",
+        "amount": "20609050123",
         "deposit": "500000000",
         "drep_id": "drep1yg426qd7amkmjkcwrwvacdnj8wj0k3rd8nwlwq7yw9wgjyc2zl96g",
         "drep_status": "registered",
@@ -40,7 +40,7 @@
     },
     {
         "active": false,
-        "amount": "8367942053",
+        "amount": "8372413603",
         "deposit": "500000000",
         "drep_id": "drep1yg4w7mw52p2nup6e7vvk6knu8tglpruwnpgazfulucurymgdvdkkz",
         "drep_status": "registered",
@@ -79,7 +79,7 @@
     },
     {
         "active": false,
-        "amount": "5819305685",
+        "amount": "5822490554",
         "deposit": "500000000",
         "drep_id": "drep1ygxyaqshqx8kdjq94sydg96hpsyxwpuh90ljcwmrwctt2sq0a92uz",
         "drep_status": "registered",
@@ -157,7 +157,7 @@
     },
     {
         "active": false,
-        "amount": "47826866217",
+        "amount": "47835423810",
         "deposit": "500000000",
         "drep_id": "drep1yg9pwq6v9szel2e8p23gvyhhxev3ncccn3lwjm8uayuwsxg97yhns",
         "drep_status": "registered",
@@ -183,7 +183,7 @@
     },
     {
         "active": false,
-        "amount": "20812079",
+        "amount": "20823469",
         "deposit": "500000000",
         "drep_id": "drep1yg8u749fa6jwtx2y5akuvjump2gjammvaf9cvfr8zpt49kqc8l9yp",
         "drep_status": "registered",
@@ -196,7 +196,7 @@
     },
     {
         "active": false,
-        "amount": "83070245623",
+        "amount": "83097196635",
         "deposit": "500000000",
         "drep_id": "drep1yvy0zyhz8f2vul0w80zdt663653jykggkm7lsnlccvtmwjq9ggwnt",
         "drep_status": "registered",
@@ -235,7 +235,7 @@
     },
     {
         "active": false,
-        "amount": "7694621441",
+        "amount": "7694626090",
         "deposit": "500000000",
         "drep_id": "drep1ygytfjy863rx34wqlhjs3kpk8sxzehl2dullf7h0kpdajdgrga7lc",
         "drep_status": "registered",
@@ -248,14 +248,14 @@
     },
     {
         "active": false,
-        "amount": "830773382067",
+        "amount": "832286981107",
         "deposit": "500000000",
         "drep_id": "drep1ygpuetneftlmufa97hm5mf3xvqpdkyw656hyg6h20qaewtg3csnkc",
         "drep_status": "registered",
         "expires_epoch_no": 219,
         "has_script": false,
         "hex": "03ccae794affbe27a5f5f74da6266002db11daa6ae446aea783b972d",
-        "live_delegator_count": 16,
+        "live_delegator_count": 17,
         "meta_hash": null,
         "meta_url": null
     },
@@ -274,7 +274,7 @@
     },
     {
         "active": false,
-        "amount": "22083682988",
+        "amount": "22092940674",
         "deposit": "500000000",
         "drep_id": "drep1ygrgnsrwpvpk7727700xgafw2v957z40cx45fskxa3925scpuqyke",
         "drep_status": "registered",
@@ -287,7 +287,7 @@
     },
     {
         "active": true,
-        "amount": "400639368460676",
+        "amount": "400644627419166",
         "deposit": "500000000",
         "drep_id": "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm",
         "drep_status": "registered",
@@ -300,7 +300,7 @@
     },
     {
         "active": false,
-        "amount": "80980280761",
+        "amount": "81035540506",
         "deposit": "500000000",
         "drep_id": "drep1ygzgs3qcrxct09tx0av04lfm85d6mdxlds2haccs4maavvskytcpk",
         "drep_status": "registered",
@@ -313,20 +313,20 @@
     },
     {
         "active": false,
-        "amount": "1317008130",
+        "amount": "1467008130",
         "deposit": "500000000",
         "drep_id": "drep1ygzqwwtgcewhzvxu942xufzl4pg7gnttw9h4e0agm30fnwsqcv00v",
         "drep_status": "registered",
         "expires_epoch_no": 227,
         "has_script": false,
         "hex": "04073968c65d7130dc2d546e245fa851e44d6b716f5cbfa8dc5e99ba",
-        "live_delegator_count": 1,
+        "live_delegator_count": 2,
         "meta_hash": "81f8629731896e3edbfb5b5a1d78f1f090989edcfd5a1a1f3bc10c3ae8c6992a",
         "meta_url": "https://example.com/my-drep-info.json"
     },
     {
         "active": false,
-        "amount": "231122418",
+        "amount": "231248909",
         "deposit": "500000000",
         "drep_id": "drep1ygv58mrmlrye9vu0tussycey3vm2rva2c5djx0e66r3wzuqq5w275",
         "drep_status": "registered",
@@ -339,7 +339,7 @@
     },
     {
         "active": false,
-        "amount": "3018891135",
+        "amount": "3038891135",
         "deposit": "500000000",
         "drep_id": "drep1yg046arfltalnxtearmvv8hhuzphqcudlfaywzm852fmycc92qyve",
         "drep_status": "registered",
@@ -443,7 +443,7 @@
     },
     {
         "active": false,
-        "amount": "20532481199",
+        "amount": "20544401802",
         "deposit": "500000000",
         "drep_id": "drep1yv3gtnxt7vzu5fhxpx97ngfmgh3ez8vgrkzvx5p0sgeqejs2pdywf",
         "drep_status": "registered",
@@ -508,7 +508,7 @@
     },
     {
         "active": false,
-        "amount": "7258699760357",
+        "amount": "7264462090316",
         "deposit": "500000000",
         "drep_id": "drep1ygnl9fjlz3pahx5vd2m6y4ya0562n8ttqzss9ncacu6l6pqwm2php",
         "drep_status": "registered",
@@ -547,7 +547,7 @@
     },
     {
         "active": false,
-        "amount": "60594036964149",
+        "amount": "60594158706858",
         "deposit": "500000000",
         "drep_id": "drep1yg3j4dkpz3j0eh4e9d5l3uy43sf5ndz2wv4c2fywgdcu4wsjmj5wp",
         "drep_status": "registered",
@@ -586,7 +586,7 @@
     },
     {
         "active": false,
-        "amount": "11096083148",
+        "amount": "11104633436",
         "deposit": "500000000",
         "drep_id": "drep1ygg7ul4yxxvdwfj7der264k2lag4h96d62h5luwz2c4y7sctvw67v",
         "drep_status": "registered",
@@ -664,7 +664,7 @@
     },
     {
         "active": false,
-        "amount": "7938751871",
+        "amount": "7941828467",
         "deposit": "500000000",
         "drep_id": "drep1yfg78cr2pnljhzqhlf2ja5my4r4tq8s04v4jlm06kufpa5c4u4zwz",
         "drep_status": "registered",
@@ -677,7 +677,7 @@
     },
     {
         "active": true,
-        "amount": "20694882814",
+        "amount": "20710829631",
         "deposit": "500000000",
         "drep_id": "drep1ydg4wfrglppa2ltatp5xlkzq5f0jeydd7tkl5989rjuew7ga0r8p8",
         "drep_status": "registered",
@@ -742,7 +742,7 @@
     },
     {
         "active": true,
-        "amount": "19996730189",
+        "amount": "20015765926",
         "deposit": "500000000",
         "drep_id": "drep1ygucyyfvzezxu5993n0ls25tfp5f5lvfxavmcl3s58jwsmgkgwmfz",
         "drep_status": "registered",
@@ -794,7 +794,7 @@
     },
     {
         "active": false,
-        "amount": "372866934112",
+        "amount": "373154253497",
         "deposit": "500000000",
         "drep_id": "drep1yvhx50y2w0cuy7yw5ucn3dn3f24qmshu84g06q69sglrk7gtl0mvn",
         "drep_status": "registered",
@@ -807,7 +807,7 @@
     },
     {
         "active": false,
-        "amount": "9714424887",
+        "amount": "9719741530",
         "deposit": "500000000",
         "drep_id": "drep1ygk7mvxc8x44kgn6zl5jter700ewtxqezgm05cgpavvuarspj0gqc",
         "drep_status": "registered",
@@ -833,7 +833,7 @@
     },
     {
         "active": false,
-        "amount": "62785248027",
+        "amount": "62825962401",
         "deposit": "500000000",
         "drep_id": "drep1yfxkjhxln8y495cekpqxsz8mnqpr7pve6qv4wepv0cs4j9gjsjarj",
         "drep_status": "registered",
@@ -976,7 +976,7 @@
     },
     {
         "active": false,
-        "amount": "281400726287",
+        "amount": "281475313174",
         "deposit": "500000000",
         "drep_id": "drep1yfdlaustgvf3ch9gwzzxk4s77neettw3yqv7n3ay0a6k63qw9dmhd",
         "drep_status": "registered",
@@ -1067,7 +1067,7 @@
     },
     {
         "active": true,
-        "amount": "15418801206",
+        "amount": "15429180493",
         "deposit": "500000000",
         "drep_id": "drep1yfde55wgcz6nnal4dzx89m0xqvqyy5eczld0rfqatmzwnpsa8ldy5",
         "drep_status": "registered",
@@ -1093,7 +1093,7 @@
     },
     {
         "active": false,
-        "amount": "12616432916",
+        "amount": "12625772691",
         "deposit": "500000000",
         "drep_id": "drep1yfvt035glmmvejkudm9z44xhgzpv8scppmgpujgnn7tzygsk0aypg",
         "drep_status": "registered",
@@ -1132,7 +1132,7 @@
     },
     {
         "active": true,
-        "amount": "1220018402519",
+        "amount": "1220615445909",
         "deposit": "500000000",
         "drep_id": "drep1yf3yx7ptr0hks02d7k8c8xfq58jn68nje5emscvv7a9ngpqudkpdh",
         "drep_status": "registered",
@@ -1210,7 +1210,7 @@
     },
     {
         "active": false,
-        "amount": "9144967822",
+        "amount": "9149972804",
         "deposit": "500000000",
         "drep_id": "drep1yg64tn0n90l78k624x7jm0wsqwqsp4wn7j5003trd5u6vzs0gtvcu",
         "drep_status": "registered",
@@ -1223,7 +1223,7 @@
     },
     {
         "active": false,
-        "amount": "199820365",
+        "amount": "199974340",
         "deposit": "500000000",
         "drep_id": "drep1ygmm57h2xaqm25s0ynl4pu47gp4vglje6few3u5wpwncpmchm9k53",
         "drep_status": "registered",
@@ -1275,7 +1275,7 @@
     },
     {
         "active": false,
-        "amount": "4958658088",
+        "amount": "4958740233",
         "deposit": "500000000",
         "drep_id": "drep1ygc02uul808jejn9lc8k0acs7eflvqd6tt0qdn0jv697fdc5e5qp5",
         "drep_status": "registered",
@@ -1301,7 +1301,7 @@
     },
     {
         "active": false,
-        "amount": "46128470836",
+        "amount": "46172354433",
         "deposit": "500000000",
         "drep_id": "drep1yfa29m0p05k4332488d2se4ezvcfm200uv5kwxjhh05f9scr43vku",
         "drep_status": "registered",
@@ -1340,7 +1340,7 @@
     },
     {
         "active": false,
-        "amount": "9499282003",
+        "amount": "9499282929",
         "deposit": "500000000",
         "drep_id": "drep1yf72u38pl5zh05w4hfap5v9xmk0rhhu7lp4mzhsqhujeccqjxywhd",
         "drep_status": "registered",
@@ -1418,7 +1418,7 @@
     },
     {
         "active": false,
-        "amount": "1279371007672",
+        "amount": "1279403393649",
         "deposit": "500000000",
         "drep_id": "drep1y29h2q6cst2pvkl2sqqvf5ljcy36uv7pmy482xnczddzgqshus24w",
         "drep_status": "registered",
@@ -1457,7 +1457,7 @@
     },
     {
         "active": false,
-        "amount": "236024470215",
+        "amount": "236206343155",
         "deposit": "500000000",
         "drep_id": "drep1y2xuj82kwvjrnrgzsesh2yezg30neehkzwd9ed9kd20f2asze2l6z",
         "drep_status": "registered",
@@ -1522,7 +1522,7 @@
     },
     {
         "active": false,
-        "amount": "12849052505",
+        "amount": "12854095608",
         "deposit": "500000000",
         "drep_id": "drep1yf47eqyv5nawx32g5cuyu7dlrzrhj99qfdta2q3d2cq86xcjj7sv8",
         "drep_status": "registered",
@@ -1574,7 +1574,7 @@
     },
     {
         "active": false,
-        "amount": "135264235852",
+        "amount": "135286457070",
         "deposit": "500000000",
         "drep_id": "drep1yf49tsm8w6f2tepdmwg7kkjjfj32x60xnmyuknfskq3mskgfvuvhp",
         "drep_status": "registered",
@@ -1587,7 +1587,7 @@
     },
     {
         "active": false,
-        "amount": "8645656897",
+        "amount": "8648675065",
         "deposit": "500000000",
         "drep_id": "drep1yf58yyq70kh5pwnmll80pcgyjzml45az4n2c7pfffd7gxng24wp2s",
         "drep_status": "registered",
@@ -1600,7 +1600,7 @@
     },
     {
         "active": false,
-        "amount": "10248994002",
+        "amount": "10256891550",
         "deposit": "500000000",
         "drep_id": "drep1yfkrzm9mdsd5u5j7fyklh03j04drmw6p3rugyt0nhqq5sncr40sak",
         "drep_status": "registered",
@@ -1626,7 +1626,7 @@
     },
     {
         "active": false,
-        "amount": "27228475544",
+        "amount": "27243120095",
         "deposit": "500000000",
         "drep_id": "drep1y2fgxycu78q496nj2mzkf2qqedfhv8evw46jd6nus659z0g3n4n6r",
         "drep_status": "registered",
@@ -1678,7 +1678,7 @@
     },
     {
         "active": false,
-        "amount": "151303178515",
+        "amount": "151308163971",
         "deposit": "500000000",
         "drep_id": "drep1y2g0k5ygsf9pcm7klft5vw5684e9e2u93uzzml6vauj2j4qmhr6m5",
         "drep_status": "registered",
@@ -1717,7 +1717,7 @@
     },
     {
         "active": false,
-        "amount": "9336461510",
+        "amount": "9336484487",
         "deposit": "500000000",
         "drep_id": "drep1y2rkxlpexklnr37x7gsu9m8tuxpc6pjpeje6h87pfqctpkgpx5kfm",
         "drep_status": "registered",
@@ -1743,7 +1743,7 @@
     },
     {
         "active": false,
-        "amount": "4984027999",
+        "amount": "4986755725",
         "deposit": "500000000",
         "drep_id": "drep1y2q96n4hf0d8jnf6cf7h84z0tr0fn35wh7uv0q4w4hpzckqr8a70c",
         "drep_status": "registered",
@@ -1769,7 +1769,7 @@
     },
     {
         "active": false,
-        "amount": "19135814821",
+        "amount": "19149363774",
         "deposit": "500000000",
         "drep_id": "drep1y2pdndmjcg6yxyqwnkdp5qfzwntk97ctp573lpxma5kgzyscsddps",
         "drep_status": "registered",
@@ -1808,7 +1808,7 @@
     },
     {
         "active": true,
-        "amount": "3923709956713",
+        "amount": "3946287099252",
         "deposit": "500000000",
         "drep_id": "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg",
         "drep_status": "registered",
@@ -1873,7 +1873,7 @@
     },
     {
         "active": false,
-        "amount": "10138783024",
+        "amount": "10145564003",
         "deposit": "500000000",
         "drep_id": "drep1yfc7r6nhp677jpte8d7e2hvypljp7867hpqzxr9dugm0pyguk42yc",
         "drep_status": "registered",
@@ -1886,7 +1886,7 @@
     },
     {
         "active": false,
-        "amount": "309012897645",
+        "amount": "310032065971",
         "deposit": "500000000",
         "drep_id": "drep1yfm474fdqxgnnynxdyg99ll2ad3x0cjuuyqeyxdumarl6xcfe4tyr",
         "drep_status": "registered",
@@ -1899,7 +1899,7 @@
     },
     {
         "active": false,
-        "amount": "5937875560062",
+        "amount": "5942176444940",
         "deposit": "500000000",
         "drep_id": "drep1ydmraa6kv8cvmry059v608tehl50nfmg0z764lmsqkvwurs40sw2z",
         "drep_status": "registered",
@@ -1925,7 +1925,7 @@
     },
     {
         "active": false,
-        "amount": "20659834562",
+        "amount": "20673947749",
         "deposit": "500000000",
         "drep_id": "drep1yfeca6n9gqykszywcnd532mju38dwx6jr6q50y72sdr3k8qsyt328",
         "drep_status": "registered",
@@ -1938,7 +1938,7 @@
     },
     {
         "active": false,
-        "amount": "117807303838",
+        "amount": "117711227056",
         "deposit": "500000000",
         "drep_id": "drep1yfcc3krxw9tssn9rwqn5rtqfuq4cwckx7a69vct54jmy5cqkneh34",
         "drep_status": "registered",
@@ -1951,7 +1951,7 @@
     },
     {
         "active": false,
-        "amount": "28351892019",
+        "amount": "28367852644",
         "deposit": "500000000",
         "drep_id": "drep1y242puwtydjtldyg34j9j9ujnhmdyeusmlh7r94hsuep6vgzm9hk6",
         "drep_status": "registered",
@@ -2003,7 +2003,7 @@
     },
     {
         "active": false,
-        "amount": "8462498983",
+        "amount": "8468158837",
         "deposit": "500000000",
         "drep_id": "drep1yw4pn9j90q8szpddpzmusa06gksn6lns5kp748gz5kw3n0c8tfgtd",
         "drep_status": "registered",
@@ -2119,7 +2119,7 @@
         "meta_url": null
     },
     {
-        "active": true,
+        "active": false,
         "amount": "0",
         "deposit": "500000000",
         "drep_id": "drep1y2hnq9tmun69pu4jyrlck34hj36pnt5al6r9gvqhna9xf4su2dd6m",
@@ -2172,7 +2172,7 @@
     },
     {
         "active": false,
-        "amount": "10726296591",
+        "amount": "10734560024",
         "deposit": "500000000",
         "drep_id": "drep1y2j502uqsjl7ujrg5e73mxc2up2wu963r6eg44zdglzanncytjpxy",
         "drep_status": "registered",
@@ -2185,7 +2185,7 @@
     },
     {
         "active": false,
-        "amount": "12722788698",
+        "amount": "12732592473",
         "deposit": "500000000",
         "drep_id": "drep1y2n20dqhrjx5p8n8m38hulgev5ddsmj04qyaqe3w6f8ujagjgzlht",
         "drep_status": "registered",
@@ -2250,7 +2250,7 @@
     },
     {
         "active": false,
-        "amount": "41054959093",
+        "amount": "41081376918",
         "deposit": "500000000",
         "drep_id": "drep1y2386pkjxd4n48d3hkx0ppm573dwunhze83mdwaaay90w5c2hplp3",
         "drep_status": "registered",
@@ -2263,7 +2263,7 @@
     },
     {
         "active": false,
-        "amount": "10780004243",
+        "amount": "10785904070",
         "deposit": "500000000",
         "drep_id": "drep1ywjte4u22h3vjqyez7y7wrner04dgped8h35pddyq7rxvkcsa9ws6",
         "drep_status": "registered",
@@ -2276,7 +2276,7 @@
     },
     {
         "active": false,
-        "amount": "28650138587",
+        "amount": "28655039539",
         "deposit": "500000000",
         "drep_id": "drep1y23nc498g205wtvp9esysyxam0n7msusm5d734xqlzhvkgq3pn5r7",
         "drep_status": "registered",
@@ -2393,7 +2393,7 @@
     },
     {
         "active": true,
-        "amount": "9201266434",
+        "amount": "7924661942",
         "deposit": "500000000",
         "drep_id": "drep1y2e20afmrjh8wz02w92880qwdqephacyqlahqyp5n6rgnhg2egjc8",
         "drep_status": "registered",
@@ -2458,7 +2458,7 @@
     },
     {
         "active": false,
-        "amount": "226571537358",
+        "amount": "226571546335",
         "deposit": "500000000",
         "drep_id": "drep1y2cpz8kmr83z0vumpq5r8zxqpcjnhaqg8h4tt5u4wlhntssndylla",
         "drep_status": "registered",
@@ -2497,7 +2497,7 @@
     },
     {
         "active": false,
-        "amount": "16808281992",
+        "amount": "16818020450",
         "deposit": "500000000",
         "drep_id": "drep1yw06l722xlrwnjwzrqvpf5lwgqvnunve2t75dv6mlw00zwcyts525",
         "drep_status": "registered",
@@ -2536,7 +2536,7 @@
     },
     {
         "active": false,
-        "amount": "81879356804",
+        "amount": "81882023107",
         "deposit": "500000000",
         "drep_id": "drep1y2dy2zzfy4jqzfq6tkensdrcmt50d4sv63q62wqek0dgaus24jr6j",
         "drep_status": "registered",
@@ -2549,7 +2549,7 @@
     },
     {
         "active": false,
-        "amount": "59324546814",
+        "amount": "59358546601",
         "deposit": "500000000",
         "drep_id": "drep1y2wm4hrmq2cyyzkkxp8z8t2llhhku8yjk6s2pcj3ymdc94qsakyd6",
         "drep_status": "registered",
@@ -2562,7 +2562,7 @@
     },
     {
         "active": false,
-        "amount": "3237439470939",
+        "amount": "3239436862427",
         "deposit": "500000000",
         "drep_id": "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev",
         "drep_status": "registered",
@@ -2575,7 +2575,7 @@
     },
     {
         "active": false,
-        "amount": "1512477454722",
+        "amount": "1513357689544",
         "deposit": "500000000",
         "drep_id": "drep1y2vpdk6ees7wlsk5rhg9lh5uqj6qz2huwjae6qrjetnj7ygllepll",
         "drep_status": "registered",
@@ -2588,7 +2588,7 @@
     },
     {
         "active": false,
-        "amount": "443655676630",
+        "amount": "443923588999",
         "deposit": "500000000",
         "drep_id": "drep1y20snwn9zyycd9muqr0umlk3pmrlllrx50lrxjfe2ja3qkqtymdys",
         "drep_status": "registered",
@@ -2601,7 +2601,7 @@
     },
     {
         "active": false,
-        "amount": "9965029832",
+        "amount": "9970815258",
         "deposit": "500000000",
         "drep_id": "drep1yt256ew6k5p3jwpwqa6mm72m6awmfvjs4jj4xx0y277700qf7pr93",
         "drep_status": "registered",
@@ -2653,7 +2653,7 @@
     },
     {
         "active": false,
-        "amount": "13343930087",
+        "amount": "13352460895",
         "deposit": "500000000",
         "drep_id": "drep1y0gwzvemqj60lepzmy2zpeaxslqkgjlk6krk5fny2wet45spxskxu",
         "drep_status": "registered",
@@ -2666,7 +2666,7 @@
     },
     {
         "active": false,
-        "amount": "12488814334",
+        "amount": "12498437816",
         "deposit": "500000000",
         "drep_id": "drep1ytgmll84qz9qt7gs8smfqn66drfk9t4d0dpen3dpeepqu5q2gp8d4",
         "drep_status": "registered",
@@ -2679,7 +2679,7 @@
     },
     {
         "active": false,
-        "amount": "10267617309",
+        "amount": "10271238236",
         "deposit": "500000000",
         "drep_id": "drep1ytg3f3uc0xda26q0q5fkg47dhlmdspm4hl3md8k6gcjk7zccfvsqc",
         "drep_status": "registered",
@@ -2731,7 +2731,7 @@
     },
     {
         "active": true,
-        "amount": "1002316485",
+        "amount": "1002865046",
         "deposit": "500000000",
         "drep_id": "drep1ytrurplgfmy35xjyufps9v27ucmq9tyw560x6jkfqqu8n8sj6sm7m",
         "drep_status": "registered",
@@ -2757,7 +2757,7 @@
     },
     {
         "active": false,
-        "amount": "86778955160",
+        "amount": "86798175115",
         "deposit": "500000000",
         "drep_id": "drep1ytqdcp8h75nlr6lvqamp5nztn7ce2m7yjt9hdqmn7565uhgmmudx6",
         "drep_status": "registered",
@@ -2783,7 +2783,7 @@
     },
     {
         "active": false,
-        "amount": "379992712815",
+        "amount": "379992714853",
         "deposit": "500000000",
         "drep_id": "drep1ytp6z22jf7gckpsla6k0dwkv88zhgwvqzhdmvgyggjdvvdg885jvw",
         "drep_status": "registered",
@@ -2913,7 +2913,7 @@
     },
     {
         "active": false,
-        "amount": "1455796537828",
+        "amount": "1456674094796",
         "deposit": "500000000",
         "drep_id": "drep1ytxptk94rze67kzxcmfe3wmvudatj409f756zhhd986l9ec03e37k",
         "drep_status": "registered",
@@ -2978,7 +2978,7 @@
     },
     {
         "active": false,
-        "amount": "58842687689",
+        "amount": "58842725854",
         "deposit": "500000000",
         "drep_id": "drep1y2lff3fpxdkhema82seuw96w0pdnxzmpgp4j6mk6pa333ms0sc6qn",
         "drep_status": "registered",
@@ -3030,7 +3030,7 @@
     },
     {
         "active": false,
-        "amount": "4071413604807",
+        "amount": "4072403243401",
         "deposit": "500000000",
         "drep_id": "drep1y2urtnpqef68w3dm2xrggdsfpp98h00xmkf4qj78r70r3xq8lekef",
         "drep_status": "registered",
@@ -3082,7 +3082,7 @@
     },
     {
         "active": false,
-        "amount": "156701076094",
+        "amount": "156701076721",
         "deposit": "500000000",
         "drep_id": "drep1y26fjl28ps423ccyxfvvcvjzsjedcaa8mvuqzxrxxc9nwjglc0uju",
         "drep_status": "registered",
@@ -3160,7 +3160,7 @@
     },
     {
         "active": false,
-        "amount": "10204452985",
+        "amount": "10210037817",
         "deposit": "500000000",
         "drep_id": "drep1ytwmxkpejt0wam5mpvuc83edyzqst7w6dnmkthln7hxnthqcnz6sq",
         "drep_status": "registered",
@@ -3172,7 +3172,7 @@
         "meta_url": "https://raw.githubusercontent.com/remigiusz-antczak/DRep_test/refs/heads/main/Remi-test-ledger.jsonld"
     },
     {
-        "active": true,
+        "active": false,
         "amount": "124747342919",
         "deposit": "500000000",
         "drep_id": "drep1ytwmwvtd0a8lr45ssner2tjxzv5y8q03w3606yeald9mdmgmwecja",
@@ -3186,7 +3186,7 @@
     },
     {
         "active": true,
-        "amount": "435773780",
+        "amount": "435793756",
         "deposit": "500000000",
         "drep_id": "drep1yt0wq3kmauvt8e46upds8t72el0ppwv046pt3muj49ju3sca4u3ra",
         "drep_status": "registered",
@@ -3199,7 +3199,7 @@
     },
     {
         "active": false,
-        "amount": "20120147752",
+        "amount": "20135651697",
         "deposit": "500000000",
         "drep_id": "drep1ytvd8c8wj7p8vypgazgevngkvxj97rh4hg8wpjf0mhvxwngmswgym",
         "drep_status": "registered",
@@ -3225,7 +3225,7 @@
     },
     {
         "active": false,
-        "amount": "10183196361",
+        "amount": "10191043207",
         "deposit": "500000000",
         "drep_id": "drep1ytdj6xmf855q44nrrfr4faatakuq4l4zyqscdp3df4evtucjfp0nu",
         "drep_status": "registered",
@@ -3277,7 +3277,7 @@
     },
     {
         "active": false,
-        "amount": "74810920812",
+        "amount": "77386285489",
         "deposit": "500000000",
         "drep_id": "drep1ytmrtaa3hm9ldj4zeyqwcw9k9r78exgnqn2gnxcx5zuadhckq3er5",
         "drep_status": "registered",
@@ -3368,7 +3368,7 @@
     },
     {
         "active": false,
-        "amount": "11858270183",
+        "amount": "11864648029",
         "deposit": "500000000",
         "drep_id": "drep1ytcw6qzpqqclx2yd0zy64ztvlkkhnf6yrzza8whgnq4vz5gh89626",
         "drep_status": "registered",
@@ -3394,7 +3394,7 @@
     },
     {
         "active": false,
-        "amount": "235552400510",
+        "amount": "235572352481",
         "deposit": "500000000",
         "drep_id": "drep1ytenukatzrvc2a8kyalzj67us4ms568f6jy8p8qu3luw07gjdmlar",
         "drep_status": "registered",
@@ -3420,7 +3420,7 @@
     },
     {
         "active": false,
-        "amount": "19595850604",
+        "amount": "19600909713",
         "deposit": "500000000",
         "drep_id": "drep1yt4lyf0fwlrz8k6j5evd3rxw0sqp67qkh36su98a97q3qsc0h03y4",
         "drep_status": "registered",
@@ -3498,7 +3498,7 @@
     },
     {
         "active": true,
-        "amount": "5626579571",
+        "amount": "5630186216",
         "deposit": "500000000",
         "drep_id": "drep1ythgzfqw6y5qdu953983hczlyvqvmrtr2ycy47c7sd8nymctkx3pq",
         "drep_status": "registered",
@@ -3563,7 +3563,7 @@
     },
     {
         "active": false,
-        "amount": "20370468002",
+        "amount": "20381616629",
         "deposit": "500000000",
         "drep_id": "drep1yt5vg6rkd5666m9cvns5llfahfw4q94j00ren47t6njtlxq29m2t6",
         "drep_status": "registered",
@@ -3576,7 +3576,7 @@
     },
     {
         "active": false,
-        "amount": "133615944563",
+        "amount": "133633331479",
         "deposit": "500000000",
         "drep_id": "drep1yt5trmh3zk8gunqn6qs2w5h8acpsssax4z07meem529zgkcrz3fmy",
         "drep_status": "registered",
@@ -3588,7 +3588,7 @@
         "meta_url": null
     },
     {
-        "active": true,
+        "active": false,
         "amount": "0",
         "deposit": "500000000",
         "drep_id": "drep1yt73a8a38mu6f0wsclj84mctlsr9ajnvftymvyuxrn8jpjcsxfsf0",
@@ -3654,7 +3654,7 @@
     },
     {
         "active": true,
-        "amount": "26697616298",
+        "amount": "26715472090",
         "deposit": "500000000",
         "drep_id": "drep1ytah77nvma8thq037ynn9sqf59rpsjfpnq2a0rtltfnyvjchvqhux",
         "drep_status": "registered",
@@ -3667,20 +3667,20 @@
     },
     {
         "active": true,
-        "amount": "145524277431",
+        "amount": "155535482250",
         "deposit": "500000000",
         "drep_id": "drep1ytax4rwzvdwamnu67j2uk9z00660lpzcvmlys6266l9kt5c262k7m",
         "drep_status": "registered",
         "expires_epoch_no": 334,
         "has_script": false,
         "hex": "fa6a8dc2635dddcf9af495cb144f7eb4ff845866fe48695ad7cb65d3",
-        "live_delegator_count": 2,
+        "live_delegator_count": 3,
         "meta_hash": null,
         "meta_url": null
     },
     {
         "active": false,
-        "amount": "169916954",
+        "amount": "169955823",
         "deposit": "500000000",
         "drep_id": "drep1ytap5jgyh0u48ur20w4kvf9w8mnv2wmrmrm7ggpa3qglq4gmkdr2t",
         "drep_status": "registered",
@@ -3706,7 +3706,7 @@
     },
     {
         "active": false,
-        "amount": "10221235706",
+        "amount": "10226829723",
         "deposit": "500000000",
         "drep_id": "drep1yt7wsgvjnpf37pu2vr4ql7kxkhau66zwv3ea7jzwc7auu2g3aknn7",
         "drep_status": "registered",
@@ -3719,7 +3719,7 @@
     },
     {
         "active": false,
-        "amount": "110146481762",
+        "amount": "110221725246",
         "deposit": "500000000",
         "drep_id": "drep1ytuvlac65kf3p0twvtf3spwd7js7hnfx9j7kaf2m36ccv6gk2paj0",
         "drep_status": "registered",
@@ -3758,7 +3758,7 @@
     },
     {
         "active": false,
-        "amount": "60551581",
+        "amount": "60556393",
         "deposit": "500000000",
         "drep_id": "drep1ytnglv2y7s8dxpmylw35egsum63yqzcm0upvkf7qffg4hhqnhj0yh",
         "drep_status": "registered",

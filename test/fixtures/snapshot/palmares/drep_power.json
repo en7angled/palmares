@@ -8,11 +8,6 @@
     "drep1y0gwzvemqj60lepzmy2zpeaxslqkgjlk6krk5fny2wet45spxskxu": [
         {
             "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 13301450172
-        },
-        {
-            "delegator_count": 2,
             "epoch": 316,
             "lovelace": 13311521630
         },
@@ -30,6 +25,11 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 13336070315
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 13343930087
         }
     ],
     "drep1y0gy6wwyuj6za8kamwm5rwmxxe5rk6pz4ckx3hmsfdjuujsr70shz": [],
@@ -40,11 +40,6 @@
     "drep1y0wymd8w6f073j94hpnv9uekwy2y7f4cytnez4q0uze4wkczp53sn": [],
     "drep1y20e8y7mdgd72jlv5qajdmzzs6lagyf5vlhfq6zj7axv0egyg98hl": [],
     "drep1y20pfp4s4h4l7karnc2v04y0nc7ru5ar65n9xptp3sjdz4gmjfpre": [
-        {
-            "delegator_count": 4,
-            "epoch": 315,
-            "lovelace": 39663713449
-        },
         {
             "delegator_count": 4,
             "epoch": 316,
@@ -64,14 +59,14 @@
             "delegator_count": 4,
             "epoch": 319,
             "lovelace": 39663713449
+        },
+        {
+            "delegator_count": 4,
+            "epoch": 320,
+            "lovelace": 39663713449
         }
     ],
     "drep1y20snwn9zyycd9muqr0umlk3pmrlllrx50lrxjfe2ja3qkqtymdys": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 442072678965
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -91,14 +86,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 443301011780
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 443655676630
         }
     ],
     "drep1y22clarm9znp62ahuu328r7e5hql9fpfdant46esaz7jf4czg8lrz": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 0
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -118,14 +113,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 0
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 0
         }
     ],
     "drep1y22y7e70anzrjy8dker0k8q7350gu49dtrd3gpwgc5f84zq80yv0z": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 28469580854
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -145,14 +140,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 24866495510
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 24866495510
         }
     ],
     "drep1y234g844rmuhq6fcdmpd6dgjq4fjhuhppmfg4j9ysmwka4gz4ws0u": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9497807263
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -172,14 +167,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 9497807263
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 9497807263
         }
     ],
     "drep1y2386pkjxd4n48d3hkx0ppm573dwunhze83mdwaaay90w5c2hplp3": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 40905736118
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -199,14 +194,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 41025816474
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 41054959093
         }
     ],
     "drep1y23g2qwza40luyhe0p3mxlljd7uu3js53mtwl9gtphyzhjs6ac5um": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 8492341971
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -226,15 +221,15 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 8492341971
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 8492341971
         }
     ],
     "drep1y23k2z86wejlcssndz5xtt35hm3h8q4tnp8yqkm47ecx2ss4a3rcg": [],
     "drep1y23nc498g205wtvp9esysyxam0n7msusm5d734xqlzhvkgq3pn5r7": [
-        {
-            "delegator_count": 4,
-            "epoch": 315,
-            "lovelace": 28622305935
-        },
         {
             "delegator_count": 4,
             "epoch": 316,
@@ -254,14 +249,14 @@
             "delegator_count": 4,
             "epoch": 319,
             "lovelace": 28646350092
+        },
+        {
+            "delegator_count": 4,
+            "epoch": 320,
+            "lovelace": 28650138587
         }
     ],
     "drep1y242puwtydjtldyg34j9j9ujnhmdyeusmlh7r94hsuep6vgzm9hk6": [
-        {
-            "delegator_count": 4,
-            "epoch": 315,
-            "lovelace": 28267976824
-        },
         {
             "delegator_count": 4,
             "epoch": 316,
@@ -281,14 +276,14 @@
             "delegator_count": 4,
             "epoch": 319,
             "lovelace": 28337780438
+        },
+        {
+            "delegator_count": 4,
+            "epoch": 320,
+            "lovelace": 28351892019
         }
     ],
     "drep1y24dr4fp3c2xyamt2rmpzsvj4x8uwqeuteuk6tljhzm4mrgtd720a": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9497309220
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -307,17 +302,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 9497309220
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 9497309220
         }
     ],
     "drep1y25j98kvqf7t3tj4pvxwrjr2728dsrfekptgg3kxqrr56qqcny8sn": [
         {
             "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 123865375955
-        },
-        {
-            "delegator_count": 2,
             "epoch": 316,
             "lovelace": 123865375955
         },
@@ -335,14 +330,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 123865375955
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 123865375955
         }
     ],
     "drep1y26fjl28ps423ccyxfvvcvjzsjedcaa8mvuqzxrxxc9nwjglc0uju": [
-        {
-            "delegator_count": 7,
-            "epoch": 315,
-            "lovelace": 156701072841
-        },
         {
             "delegator_count": 7,
             "epoch": 316,
@@ -362,14 +357,14 @@
             "delegator_count": 7,
             "epoch": 319,
             "lovelace": 156701075379
+        },
+        {
+            "delegator_count": 7,
+            "epoch": 320,
+            "lovelace": 156701076094
         }
     ],
     "drep1y26xrktxrqqsd7yqs8tfpgvraynw29hsvzrkl5mgqnqffwsv8dyvz": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 27704340237
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -389,14 +384,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 23283057632
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 23157072379
         }
     ],
     "drep1y26yjpk52pyww3vlad0640pr2xlssxm52mn98llrtr0u9esdpc4wp": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 16658098929
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -415,17 +410,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 16658098929
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 16658098929
         }
     ],
     "drep1y27lkyu3aksd5mh3pmkzf37q06r9c8sps6wm6h6hqg2f3kqrhrpdm": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 8488880
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 8488880
         },
@@ -442,17 +437,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 511314051
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 511314051
         }
     ],
     "drep1y28wyfxwyywajenkfcy0s9r3fqkvufm4stpxy80j4234qzsl80wwe": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 21159978308
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 21159978308
         },
@@ -470,14 +465,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 21159978308
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 21159978308
         }
     ],
     "drep1y29h2q6cst2pvkl2sqqvf5ljcy36uv7pmy482xnczddzgqshus24w": [
-        {
-            "delegator_count": 27,
-            "epoch": 315,
-            "lovelace": 1279064293895
-        },
         {
             "delegator_count": 27,
             "epoch": 316,
@@ -497,15 +492,15 @@
             "delegator_count": 27,
             "epoch": 319,
             "lovelace": 1279344563878
+        },
+        {
+            "delegator_count": 27,
+            "epoch": 320,
+            "lovelace": 1279371007672
         }
     ],
     "drep1y29qfhmxg7x756qa5j64c90w0480qgcvs7qhvvv39w9072gk7jat3": [],
     "drep1y2a8cl8r846xx5jlwmm0ea6avcdd9qxj050n44ycyve094qrylwxw": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 21992516198
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -525,6 +520,11 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 21992516198
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 21809077871
         }
     ],
     "drep1y2aas36r3epqrz0gehkkkjm9yerwngm53lfsp83szymdtdq2whufp": [],
@@ -532,11 +532,6 @@
     "drep1y2chj5wktflvn8gq35au3z93npsg3vnvg3ujvvdahv5u30g4azqte": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 0
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 0
         },
@@ -554,14 +549,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 0
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 0
         }
     ],
     "drep1y2cpz8kmr83z0vumpq5r8zxqpcjnhaqg8h4tt5u4wlhntssndylla": [
-        {
-            "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 226571482709
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -581,14 +576,14 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 226571531420
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 226571537358
         }
     ],
     "drep1y2dy2zzfy4jqzfq6tkensdrcmt50d4sv63q62wqek0dgaus24jr6j": [
-        {
-            "delegator_count": 11,
-            "epoch": 315,
-            "lovelace": 81865127619
-        },
         {
             "delegator_count": 11,
             "epoch": 316,
@@ -608,6 +603,11 @@
             "delegator_count": 11,
             "epoch": 319,
             "lovelace": 81876672649
+        },
+        {
+            "delegator_count": 11,
+            "epoch": 320,
+            "lovelace": 81879356804
         }
     ],
     "drep1y2e20afmrjh8wz02w92880qwdqephacyqlahqyp5n6rgnhg2egjc8": [
@@ -620,15 +620,15 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 9694710174
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 9201266434
         }
     ],
     "drep1y2es05523reht57vc5cqqtf05eajj2cjf7ezp8ux2tl059qtyaem5": [],
     "drep1y2eztr2x36592856hkxrnc924zkqyfuwqnyu5awv5y9wpdcd0vwuv": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 0
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -648,14 +648,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 0
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 0
         }
     ],
     "drep1y2fgxycu78q496nj2mzkf2qqedfhv8evw46jd6nus659z0g3n4n6r": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 27136139659
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -675,14 +675,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 27207699946
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 27228475544
         }
     ],
     "drep1y2g0k5ygsf9pcm7klft5vw5684e9e2u93uzzml6vauj2j4qmhr6m5": [
-        {
-            "delegator_count": 14,
-            "epoch": 315,
-            "lovelace": 151274702050
-        },
         {
             "delegator_count": 14,
             "epoch": 316,
@@ -702,6 +702,11 @@
             "delegator_count": 14,
             "epoch": 319,
             "lovelace": 151301220737
+        },
+        {
+            "delegator_count": 14,
+            "epoch": 320,
+            "lovelace": 151303178515
         }
     ],
     "drep1y2g3nnu6j7vvu39gq4lpmts6hzamtu72lyw9t6nyf46t87c7t84uj": [],
@@ -710,11 +715,6 @@
     "drep1y2hl6uz4s82a92mtjl2w89s66r98a4xcmrw09jaltlluejgtflf86": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9497807263
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 9497807263
         },
@@ -731,6 +731,11 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 9497807263
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 9497807263
         }
     ],
@@ -739,11 +744,6 @@
     "drep1y2hwv2gu6uw6nrjwhn6dg0kcx0j9jqg2ggatpps5ylxx9sqcmg3e3": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 1925107552
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 1925107552
         },
@@ -761,14 +761,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 1925107552
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 1925107552
         }
     ],
     "drep1y2j502uqsjl7ujrg5e73mxc2up2wu963r6eg44zdglzanncytjpxy": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 10686204960
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -788,14 +788,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 10718102182
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 10726296591
         }
     ],
     "drep1y2jhttudc52fdch9vhv2hgp4kc5evrjx62jjeygxuunrqpsn3lur3": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 146869826
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -814,17 +814,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 146869826
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 146869826
         }
     ],
     "drep1y2k0sdhwm62hum8w45ryehg7dwrxqpht067f4chxhzegrrqn3923u": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9497421789
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 9497421789
         },
@@ -841,17 +841,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 9497421789
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 9497421789
         }
     ],
     "drep1y2kfh60trq9nvswc258x0cgwrmnxup6at3s2htl7tc9jj8sl7s5dv": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 73762004522
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 73762004522
         },
@@ -868,17 +868,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 73762004522
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 73762004522
         }
     ],
     "drep1y2kwgtd4x7kg0fsrrxc7whefznt8ta20d2azdhhrjye8jfc4jsu9e": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 497807439
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 497807439
         },
@@ -896,14 +896,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 497807439
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 497807439
         }
     ],
     "drep1y2lff3fpxdkhema82seuw96w0pdnxzmpgp4j6mk6pa333ms0sc6qn": [
-        {
-            "delegator_count": 8,
-            "epoch": 315,
-            "lovelace": 58842502552
-        },
         {
             "delegator_count": 8,
             "epoch": 316,
@@ -923,15 +923,15 @@
             "delegator_count": 8,
             "epoch": 319,
             "lovelace": 58842649851
+        },
+        {
+            "delegator_count": 8,
+            "epoch": 320,
+            "lovelace": 58842687689
         }
     ],
     "drep1y2mup8lz34e07wm74q4zrcp6x692q0pg6leyvfmy3nvklzc2l6v73": [],
     "drep1y2n20dqhrjx5p8n8m38hulgev5ddsmj04qyaqe3w6f8ujagjgzlht": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 12675231412
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -951,14 +951,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 12713069049
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 12722788698
         }
     ],
     "drep1y2pdndmjcg6yxyqwnkdp5qfzwntk97ctp573lpxma5kgzyscsddps": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 19070089992
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -978,14 +978,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 19122382131
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 19135814821
         }
     ],
     "drep1y2pvx9qdhma9qyrm8y9zzk57jrwnw8psur9yckjwdfxenfgvlyqdk": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 297807439
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -1005,14 +1005,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 297807439
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 297807439
         }
     ],
     "drep1y2q96n4hf0d8jnf6cf7h84z0tr0fn35wh7uv0q4w4hpzckqr8a70c": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 4968537160
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -1032,14 +1032,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 4981919434
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 4984027999
         }
     ],
     "drep1y2qemqmkys34sxarx9zys2rfgj493w26edn7kzllcgwev3qfdsua3": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 497807439
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -1059,14 +1059,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 497807439
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 497807439
         }
     ],
     "drep1y2qn0rf74zdk3u8upx2yk8un7tlts5f33uvklx96gq5a32qmwj3xg": [
-        {
-            "delegator_count": 13,
-            "epoch": 315,
-            "lovelace": 3850835118640
-        },
         {
             "delegator_count": 13,
             "epoch": 316,
@@ -1086,14 +1086,14 @@
             "delegator_count": 13,
             "epoch": 319,
             "lovelace": 3901077453443
+        },
+        {
+            "delegator_count": 13,
+            "epoch": 320,
+            "lovelace": 3923709956713
         }
     ],
     "drep1y2qnlpfrgvzj3gj2rfcdkt374auejrnt9j7r9ara7r4993s28uxhl": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 179155755
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -1112,17 +1112,17 @@
         {
             "delegator_count": 2,
             "epoch": 319,
+            "lovelace": 179155755
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
             "lovelace": 179155755
         }
     ],
     "drep1y2r2u342st5f7s6xz79u4s0wl74f6puhneyhpzuv67ssxwqk8jtpn": [
         {
             "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 29445067521
-        },
-        {
-            "delegator_count": 3,
             "epoch": 316,
             "lovelace": 29445067521
         },
@@ -1140,14 +1140,14 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 29445067521
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 29445067521
         }
     ],
     "drep1y2rkxlpexklnr37x7gsu9m8tuxpc6pjpeje6h87pfqctpkgpx5kfm": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 9336330999
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -1167,14 +1167,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 9336443749
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 9336461510
         }
     ],
     "drep1y2ryqrfwkmsqfhe97hlq7ljxwkk8l6qxplz4axnqq7enx3ccfzldg": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9374100088
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -1193,17 +1193,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 9374100088
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 9374100088
         }
     ],
     "drep1y2s34xas2lc3thyct8tg26dda4ufprlep42hk8qpr0amd9gdcsdcf": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 4958634531
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 4958634531
         },
@@ -1220,17 +1220,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 4958634531
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 4958634531
         }
     ],
     "drep1y2sald0yhwg8x0y5l0txprpvaxn9lzmsv8m5v94etvv7mxcvzz370": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 0
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 0
         },
@@ -1247,17 +1247,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 0
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 0
         }
     ],
     "drep1y2sjnnzqz044lxmelk3zusats3edy4m8kz2n9eyhttftc0ggh0j38": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 47820331
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 47820331
         },
@@ -1274,6 +1274,11 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 47820331
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 47820331
         }
     ],
@@ -1281,11 +1286,6 @@
     "drep1y2tqpgfsagdhhmvn9t288tghk57jxhenr53kvjxc500ce3sv623vp": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 3442217191
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 3442217191
         },
@@ -1303,15 +1303,15 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 3442217191
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 3442217191
         }
     ],
     "drep1y2uccen8sqvdgp0z9d2c0rf57mh2vq85yesmjnqcqvv0szcq9nxvv": [],
     "drep1y2urtnpqef68w3dm2xrggdsfpp98h00xmkf4qj78r70r3xq8lekef": [
-        {
-            "delegator_count": 18,
-            "epoch": 315,
-            "lovelace": 4053989502476
-        },
         {
             "delegator_count": 18,
             "epoch": 316,
@@ -1331,14 +1331,14 @@
             "delegator_count": 18,
             "epoch": 319,
             "lovelace": 4069868954705
+        },
+        {
+            "delegator_count": 18,
+            "epoch": 320,
+            "lovelace": 4071413604807
         }
     ],
     "drep1y2v8w544v5teexvycd6zqgh2686yz7050tdv834yegpt0gsnampev": [
-        {
-            "delegator_count": 17,
-            "epoch": 315,
-            "lovelace": 3216197480308
-        },
         {
             "delegator_count": 17,
             "epoch": 316,
@@ -1358,6 +1358,11 @@
             "delegator_count": 17,
             "epoch": 319,
             "lovelace": 3225668441557
+        },
+        {
+            "delegator_count": 17,
+            "epoch": 320,
+            "lovelace": 3237439470939
         }
     ],
     "drep1y2va86t5c49curh07rdsthuqxvzva4ctcpcatz5swnevsmq6hjks2": [
@@ -1375,14 +1380,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 9498230690
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 9498230690
         }
     ],
     "drep1y2vpdk6ees7wlsk5rhg9lh5uqj6qz2huwjae6qrjetnj7ygllepll": [
-        {
-            "delegator_count": 4,
-            "epoch": 315,
-            "lovelace": 1508108526275
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -1402,14 +1407,14 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 1511520823258
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 1512477454722
         }
     ],
     "drep1y2wm4hrmq2cyyzkkxp8z8t2llhhku8yjk6s2pcj3ymdc94qsakyd6": [
-        {
-            "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 59156450631
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -1429,15 +1434,15 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 59315346557
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 59324546814
         }
     ],
     "drep1y2x66qysdrp6pts09y4uulcpewg7zmx7xt5z830lpvjeyvs5s85am": [],
     "drep1y2x752qmhhp0xk8qxte2kuz9zaarqf9gt0s9ge0mp3pdx3qxhemve": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 497807439
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -1457,14 +1462,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 497807439
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 497807439
         }
     ],
     "drep1y2xuj82kwvjrnrgzsesh2yezg30neehkzwd9ed9kd20f2asze2l6z": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 235142219942
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -1484,17 +1489,17 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 235844157925
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 236024470215
         }
     ],
     "drep1yd0ps49yv4s6fgs45s97xak65yvjyvt74p6n4w6tnt2fkngr36m27": [],
     "drep1ydd5e5a08g7knhprhjtflzcws0tx9fcgq8eppgcl8chzvyq29gty4": [],
     "drep1ydd9xqy7arm8nlgv8zljnevk844zkymykp2cazvj9g6tkjqsjynsj": [],
     "drep1ydg4wfrglppa2ltatp5xlkzq5f0jeydd7tkl5989rjuew7ga0r8p8": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 20617893094
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -1514,16 +1519,16 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 20679072837
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 20694882814
         }
     ],
     "drep1ydht9ma7txjcc8e6tygwhpxzccdkjx9jce3qtu69tsjvcmqt0nezh": [],
     "drep1ydlwu4ydnj4cmvw2dangmzuzkz7rk67ue0kfds4zpd4avygauls68": [],
     "drep1ydmraa6kv8cvmry059v608tehl50nfmg0z764lmsqkvwurs40sw2z": [
-        {
-            "delegator_count": 5,
-            "epoch": 315,
-            "lovelace": 5914902920642
-        },
         {
             "delegator_count": 5,
             "epoch": 316,
@@ -1543,14 +1548,14 @@
             "delegator_count": 5,
             "epoch": 319,
             "lovelace": 5933433550288
+        },
+        {
+            "delegator_count": 5,
+            "epoch": 320,
+            "lovelace": 5937875560062
         }
     ],
     "drep1yf36e6gz9qp6sa3nfktwwy06n7x5wyzzckakdw5l4md027sfqrr27": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 6827692636
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -1570,16 +1575,16 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 6827692636
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 6827692636
         }
     ],
     "drep1yf3dqjh8gfhffd2qn6tteth65pwpcmsvt8pfyzq2rj6weyg0r9z64": [],
     "drep1yf3uyl8adk8lmnjcmssmdcpmyksfw76tvqs8xapxny9hffq9f3rxu": [],
     "drep1yf3yx7ptr0hks02d7k8c8xfq58jn68nje5emscvv7a9ngpqudkpdh": [
-        {
-            "delegator_count": 16,
-            "epoch": 315,
-            "lovelace": 950739165675
-        },
         {
             "delegator_count": 16,
             "epoch": 316,
@@ -1599,14 +1604,14 @@
             "delegator_count": 17,
             "epoch": 319,
             "lovelace": 1212347021535
+        },
+        {
+            "delegator_count": 17,
+            "epoch": 320,
+            "lovelace": 1220018402519
         }
     ],
     "drep1yf449phu0hf3cdtw3jenx70kz9w983hw7z7qutf7rfya4qqcx7kae": [
-        {
-            "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 4683950278
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -1626,14 +1631,14 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 2621981187
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 2621981187
         }
     ],
     "drep1yf47eqyv5nawx32g5cuyu7dlrzrhj99qfdta2q3d2cq86xcjj7sv8": [
-        {
-            "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 12819111960
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -1653,14 +1658,14 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 12842376399
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 12849052505
         }
     ],
     "drep1yf49tsm8w6f2tepdmwg7kkjjfj32x60xnmyuknfskq3mskgfvuvhp": [
-        {
-            "delegator_count": 13,
-            "epoch": 315,
-            "lovelace": 135112634982
-        },
         {
             "delegator_count": 13,
             "epoch": 316,
@@ -1680,14 +1685,14 @@
             "delegator_count": 13,
             "epoch": 319,
             "lovelace": 135232066771
+        },
+        {
+            "delegator_count": 13,
+            "epoch": 320,
+            "lovelace": 135264235852
         }
     ],
     "drep1yf4gftmrr8kjk5l2vk7kh5lumy66ck54ru7az0klmmgg77qfp67se": [
-        {
-            "delegator_count": 4,
-            "epoch": 315,
-            "lovelace": 20382867204
-        },
         {
             "delegator_count": 4,
             "epoch": 316,
@@ -1707,15 +1712,15 @@
             "delegator_count": 4,
             "epoch": 319,
             "lovelace": 20382867204
+        },
+        {
+            "delegator_count": 4,
+            "epoch": 320,
+            "lovelace": 20382867204
         }
     ],
     "drep1yf526lwk7u9psnjqe6ad6t9cujy68vecmk8tkuzv5vczdxgxkmlrk": [],
     "drep1yf58yyq70kh5pwnmll80pcgyjzml45az4n2c7pfffd7gxng24wp2s": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 8630114391
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -1735,14 +1740,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 8641647774
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 8645656897
         }
     ],
     "drep1yf6rudz7w9kz4etshj0njg7fjtd0c4frgsds6f8e6ep47ygl6sw74": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 9692770299
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -1762,14 +1767,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 9692770299
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 9692770299
         }
     ],
     "drep1yf72u38pl5zh05w4hfap5v9xmk0rhhu7lp4mzhsqhujeccqjxywhd": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 9499277533
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -1789,6 +1794,11 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 9499281192
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 9499282003
         }
     ],
     "drep1yf7hpl8q50dksr9zc7myvup5wqz2udzl3pzplmtuz9xprlsh0ye4s": [
@@ -1806,11 +1816,6 @@
     "drep1yf7qf88m4303t08q3da89lg8cvywlqwazskfdh4rukve5kgyr0u3a": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 8561931417
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 8561931417
         },
@@ -1827,17 +1832,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 8561931417
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 8561931417
         }
     ],
     "drep1yf8alqfwsrkqn50njnzw4h832k8yhh3p6c55nxvmj5hw0kqs7vmx3": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9497812895
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 9497812895
         },
@@ -1855,15 +1860,15 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 9497812895
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 9497812895
         }
     ],
     "drep1yf9akyq8r0xeclxxat4w3hvv2x2werawk85l38yacxvys2qnqn45g": [],
     "drep1yfa29m0p05k4332488d2se4ezvcfm200uv5kwxjhh05f9scr43vku": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 45984727108
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -1883,14 +1888,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 46108717390
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 46128470836
         }
     ],
     "drep1yfc7r6nhp677jpte8d7e2hvypljp7867hpqzxr9dugm0pyguk42yc": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 10102452141
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -1910,14 +1915,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 10131770585
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 10138783024
         }
     ],
     "drep1yfcc3krxw9tssn9rwqn5rtqfuq4cwckx7a69vct54jmy5cqkneh34": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 116843133321
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -1937,14 +1942,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 117810740850
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 117807303838
         }
     ],
     "drep1yfde55wgcz6nnal4dzx89m0xqvqyy5eczld0rfqatmzwnpsa8ldy5": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 15516717983
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -1964,14 +1969,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 15408030550
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 15418801206
         }
     ],
     "drep1yfdlaustgvf3ch9gwzzxk4s77neettw3yqv7n3ay0a6k63qw9dmhd": [
-        {
-            "delegator_count": 27,
-            "epoch": 315,
-            "lovelace": 278841483380
-        },
         {
             "delegator_count": 27,
             "epoch": 316,
@@ -1991,14 +1996,14 @@
             "delegator_count": 27,
             "epoch": 319,
             "lovelace": 281332555170
+        },
+        {
+            "delegator_count": 27,
+            "epoch": 320,
+            "lovelace": 281400726287
         }
     ],
     "drep1yfdrmn2u0kxqnchdypj3e02nlfqdqpnvpyy7txp68aup90svf0zzh": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 4492940871
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -2018,14 +2023,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 4492940871
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 4492940871
         }
     ],
     "drep1yfeca6n9gqykszywcnd532mju38dwx6jr6q50y72sdr3k8qsyt328": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 20582854633
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -2045,14 +2050,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 20645581555
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 20659834562
         }
     ],
     "drep1yfg78cr2pnljhzqhlf2ja5my4r4tq8s04v4jlm06kufpa5c4u4zwz": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 7932325247
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -2072,14 +2077,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 7936295465
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 7938751871
         }
     ],
     "drep1yfkrzm9mdsd5u5j7fyklh03j04drmw6p3rugyt0nhqq5sncr40sak": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 10210683665
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -2099,14 +2104,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 10241164223
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 10248994002
         }
     ],
     "drep1yfleuad6rwdgk5y640aa3d4jc3gdukyq5vcxc84lx8mlklcw50hva": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 7009495872731
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -2126,15 +2131,15 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 7009495872731
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 7009495872731
         }
     ],
     "drep1yfllq5f9yr6uyjf3vzqcyu6akkdhdee3nnppxczdexxvf2skkjq4w": [],
     "drep1yfm474fdqxgnnynxdyg99ll2ad3x0cjuuyqeyxdumarl6xcfe4tyr": [
-        {
-            "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 442389632473
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -2154,17 +2159,17 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 307934790708
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 309012897645
         }
     ],
     "drep1yfmg4kvf7vcg4uzgyn0dskumkhccr8rr935z0lfhsep7etgvrh34k": [],
     "drep1yfn6q06fjpz6zum860tzgdfnvapznmaysytn2zsrqjxxtsgqp0cdu": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9490957785
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 1490765884
         },
@@ -2181,17 +2186,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 1490765884
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 1490765884
         }
     ],
     "drep1yfn7xe93yx9q0svuh7lpqpxn0e5u60dkrv7ytrfwkw2ayucmmu5gy": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 497807439
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 497807439
         },
@@ -2208,17 +2213,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 497807439
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 497807439
         }
     ],
     "drep1yfq7xf6pjq5gj0fk2wzls2erdm92szuamfx2g92jrl2q07sp5a0jv": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9497634986
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 9497634986
         },
@@ -2235,17 +2240,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 9497634986
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 9497634986
         }
     ],
     "drep1yfqwzjh8vemdymfn0a6lxyzj6undzvv8pptat2cxpdjjsucedpt04": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 120309572
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 120309572
         },
@@ -2262,6 +2267,11 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 120309572
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 120309572
         }
     ],
@@ -2269,11 +2279,6 @@
     "drep1yfrr09kj5wtz8f2yr602k9v5ctfpl9kj54z0f8uzhsprhlcw09j6x": [
         {
             "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 10590625651
-        },
-        {
-            "delegator_count": 2,
             "epoch": 316,
             "lovelace": 10590625651
         },
@@ -2291,14 +2296,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 10590625651
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 10590625651
         }
     ],
     "drep1yfrud5mk40ttv4z5l4ltvcgfstmjzwyv73hczmmpue4dv0gus8kge": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 150829798
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -2323,11 +2328,6 @@
     "drep1yfs2e9c42nq5fv2ac9ygxrhxllgaz9ms2g0xynaj7dpd58qwg2030": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 14900059995
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 14900059995
         },
@@ -2344,6 +2344,11 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 14900059995
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 14900059995
         }
     ],
@@ -2351,11 +2356,6 @@
     "drep1yfshmj2hkjlsq6tmju5z38rqna30nca6j0c2nhe67xzj07cr63pa3": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 997653598
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 997653598
         },
@@ -2372,17 +2372,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 997653598
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 997653598
         }
     ],
     "drep1yft6dawdh6wdu7hjmpm6s4nh2x4rdymcng9rjwf5fzy5a6qx96r6d": [
         {
             "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 10494290256
-        },
-        {
-            "delegator_count": 2,
             "epoch": 316,
             "lovelace": 10494290256
         },
@@ -2399,17 +2399,17 @@
         {
             "delegator_count": 2,
             "epoch": 319,
+            "lovelace": 10494290256
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
             "lovelace": 10494290256
         }
     ],
     "drep1yftr2094dxeszxy944y9n5ms5eg3md28adlvk0vqwcn4pgc7kq6wr": [
         {
             "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 2499597848
-        },
-        {
-            "delegator_count": 2,
             "epoch": 316,
             "lovelace": 2499597848
         },
@@ -2426,17 +2426,17 @@
         {
             "delegator_count": 2,
             "epoch": 319,
+            "lovelace": 2499597848
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
             "lovelace": 2499597848
         }
     ],
     "drep1yfu2n4837qxt6jpgd9agwt50c3j8wu8myegnv66rqxdl0ngtgw60w": [
         {
             "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 95648406
-        },
-        {
-            "delegator_count": 2,
             "epoch": 316,
             "lovelace": 95648406
         },
@@ -2454,16 +2454,16 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 95648406
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 95648406
         }
     ],
     "drep1yfuems4sqpzfmg0ux90mq2nv8k9zl2fyz5z35dfh90r6z8c7ddcme": [],
     "drep1yfvngdk5pv943zx2z5kun2e5hqmjdx5ns60x3rauyxd300s93rjrx": [],
     "drep1yfvt035glmmvejkudm9z44xhgzpv8scppmgpujgnn7tzygsk0aypg": [
-        {
-            "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 12571126456
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -2483,14 +2483,14 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 12607173285
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 12616432916
         }
     ],
     "drep1yfw46tqht9x7jqg4laydpqd5mmvp5egrjhqhzs35hws4plsvpw954": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9852179193
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -2510,16 +2510,16 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 9852179193
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 9852179193
         }
     ],
     "drep1yfwa2ner69uwwxd3qudu45g3fgaw69y3thl0qtn8djvc20s7jkzen": [],
     "drep1yfxavrjwluy2yzdgfun94sjxkvxgygn5j6tvke9u6enyw6s3323mw": [],
     "drep1yfxkjhxln8y495cekpqxsz8mnqpr7pve6qv4wepv0cs4j9gjsjarj": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 62886561707
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -2539,17 +2539,17 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 62765030470
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 62785248027
         }
     ],
     "drep1yfxnlm9dpw6v9xlwkxmzrfw3awdtlrmyuw3ruzpzv2u4cqqa74ck9": [],
     "drep1yfy9wajz7mrc6x5a4s23x5vttztqea6ajx9v83xcr6c5xlqxjx05p": [
         {
             "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 4090971373
-        },
-        {
-            "delegator_count": 2,
             "epoch": 316,
             "lovelace": 4090971373
         },
@@ -2566,17 +2566,17 @@
         {
             "delegator_count": 2,
             "epoch": 319,
+            "lovelace": 4090971373
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
             "lovelace": 4090971373
         }
     ],
     "drep1yfzsk8cc9kc3qcmmzy0kc4pc225g38h9240qgkxnjlxtvjqn9rm6v": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 2497104603
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 2497104603
         },
@@ -2593,17 +2593,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 2497104603
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 2497104603
         }
     ],
     "drep1yg00w6th30cu2l5h7873ffef2eex427rrv87s8jah9jqauq64flyt": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 0
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 0
         },
@@ -2620,6 +2620,11 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 0
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 0
         }
     ],
@@ -2638,17 +2643,17 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 3019059452
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 3018891135
         }
     ],
     "drep1yg0uxpuek2g5xtc64hnn5n5kpckjy5glrfuh6lz8545ahgg5yd4tg": [],
     "drep1yg204l56u28trkgw2dejq0q7ac4kwgkrrku6rjeytrzwy3g9tuxfz": [],
     "drep1yg2l5w3hfzy3ww7anmhap7y2dcdjhlfu2s3hr4zpsyks9sqv2s5sf": [],
     "drep1yg3j4dkpz3j0eh4e9d5l3uy43sf5ndz2wv4c2fywgdcu4wsjmj5wp": [
-        {
-            "delegator_count": 417,
-            "epoch": 315,
-            "lovelace": 60594462596686
-        },
         {
             "delegator_count": 417,
             "epoch": 316,
@@ -2668,15 +2673,15 @@
             "delegator_count": 417,
             "epoch": 319,
             "lovelace": 60593873392769
+        },
+        {
+            "delegator_count": 417,
+            "epoch": 320,
+            "lovelace": 60594036964149
         }
     ],
     "drep1yg3mcc7w6njqkgkafes9rsjchgud2euas83n7d87tewdkngpgk07n": [],
     "drep1yg426qd7amkmjkcwrwvacdnj8wj0k3rd8nwlwq7yw9wgjyc2zl96g": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 20516205165
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -2696,14 +2701,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 20577449392
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 20593181674
         }
     ],
     "drep1yg4w7mw52p2nup6e7vvk6knu8tglpruwnpgazfulucurymgdvdkkz": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 8342547992
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -2723,14 +2728,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 8364485492
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 8367942053
         }
     ],
     "drep1yg64tn0n90l78k624x7jm0wsqwqsp4wn7j5003trd5u6vzs0gtvcu": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9116544380
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -2750,14 +2755,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 9141098911
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 9144967822
         }
     ],
     "drep1yg72tju5h0wjky7w3etzc5esjss2zlajnq4v6jw3v0h73agp97k0g": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9497813687
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -2776,17 +2781,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 9497813687
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 9497813687
         }
     ],
     "drep1yg8flsxc8lj7dw60wg4mcfsg6s9k59esgcdnrjtgvp76wys2dfqpj": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 23982780485
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 23982780485
         },
@@ -2804,14 +2809,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 22921795685
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 17921627412
         }
     ],
     "drep1yg8u749fa6jwtx2y5akuvjump2gjammvaf9cvfr8zpt49kqc8l9yp": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 20747396
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -2831,15 +2836,15 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 20803275
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 20812079
         }
     ],
     "drep1yg8yhhtf3dxv9uh9rz6tr7j3jrgtc4n2cshe8snfsmk257gl87pyg": [],
     "drep1yg9pwq6v9szel2e8p23gvyhhxev3ncccn3lwjm8uayuwsxg97yhns": [
-        {
-            "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 47795039237
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -2859,14 +2864,14 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 47813445218
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 47826866217
         }
     ],
     "drep1ygc02uul808jejn9lc8k0acs7eflvqd6tt0qdn0jv697fdc5e5qp5": [
-        {
-            "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 4958157660
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -2886,14 +2891,14 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 4958593316
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 4958658088
         }
     ],
     "drep1yge5qzj9ggvk77rz0vcmq2rpzcgq563e6fmydjngelxtnmgz2g54e": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 126773903979
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -2912,6 +2917,11 @@
         {
             "delegator_count": 2,
             "epoch": 319,
+            "lovelace": 126773903979
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
             "lovelace": 126773903979
         }
     ],
@@ -2920,11 +2930,6 @@
     "drep1ygeace557eucst8legz7d8q28wk9047ua2u45zn6026yn0chzncke": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 1097774892
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 1097774892
         },
@@ -2941,6 +2946,11 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 137955142
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 137955142
         }
     ],
@@ -2948,11 +2958,6 @@
     "drep1ygfda3a78e39afk879495hf92rm5eknfan0jkdyaapxqc8qnqcu90": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 18015213403
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 18015213403
         },
@@ -2969,17 +2974,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 18015213403
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 18015213403
         }
     ],
     "drep1ygftagwxegse49et409zkrnu9twvdu4dlvapk0v7wx9xcmsqhu0gf": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 12696605460
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 12696605460
         },
@@ -2997,14 +3002,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 12696605460
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 12696605460
         }
     ],
     "drep1ygg7ul4yxxvdwfj7der264k2lag4h96d62h5luwz2c4y7sctvw67v": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 11054606424
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3024,16 +3029,16 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 11087606230
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 11096083148
         }
     ],
     "drep1yghkc0fgv4wkqt8j5dux3e7luuw7vhx95u9w9hz9upf8agsxc4vzd": [],
     "drep1ygk3nr6y3j5hyje8e8mx3zucn3k3wt997t6wm86dzr2c6jcvmx4j9": [],
     "drep1ygk7mvxc8x44kgn6zl5jter700ewtxqezgm05cgpavvuarspj0gqc": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9684231518
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3053,14 +3058,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 9710315059
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 9714424887
         }
     ],
     "drep1ygl4ya9u636y7wle73jepfzp8ptdlam8laqpnp4cswmnjuqhhgrnq": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 0
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3079,17 +3084,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 0
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 0
         }
     ],
     "drep1ygla0erh6c4ujhcdnpw69xjxc3hwfhdmk8m68zkchx846vqpa5zta": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 116688166752
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 116688166752
         },
@@ -3107,14 +3112,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 116688166752
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 116688166752
         }
     ],
     "drep1ygmm57h2xaqm25s0ynl4pu47gp4vglje6few3u5wpwncpmchm9k53": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 199073448
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3134,14 +3139,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 199667712
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 199820365
         }
     ],
     "drep1ygne46zv9vp2utuw50c6xex5dtr2mcqetjc6wp0djrke4ys0slh40": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 13208691698
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3160,17 +3165,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 12648202642
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 12648202642
         }
     ],
     "drep1ygneszm3h3qwvyzxjpm2fzp37ydjxfdxc0v07z9cudk4tkc2tp5pn": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 19991714235
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 19991714235
         },
@@ -3188,14 +3193,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 19991714235
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 19991714235
         }
     ],
     "drep1ygnl9fjlz3pahx5vd2m6y4ya0562n8ttqzss9ncacu6l6pqwm2php": [
-        {
-            "delegator_count": 5,
-            "epoch": 315,
-            "lovelace": 7230724459524
-        },
         {
             "delegator_count": 5,
             "epoch": 316,
@@ -3215,16 +3220,16 @@
             "delegator_count": 5,
             "epoch": 319,
             "lovelace": 7252985728451
+        },
+        {
+            "delegator_count": 5,
+            "epoch": 320,
+            "lovelace": 7258699760357
         }
     ],
     "drep1ygnshajy8m7cjpafmen4fnwuwmsdgcz0htxr484sujuqensu7y5sz": [],
     "drep1ygnw2fxf00pqwd3dmnluhf3vd06lrmmvxpmx8chjup4x3pcafs46n": [],
     "drep1ygpuetneftlmufa97hm5mf3xvqpdkyw656hyg6h20qaewtg3csnkc": [
-        {
-            "delegator_count": 16,
-            "epoch": 315,
-            "lovelace": 829743508700
-        },
         {
             "delegator_count": 16,
             "epoch": 316,
@@ -3244,14 +3249,14 @@
             "delegator_count": 16,
             "epoch": 319,
             "lovelace": 830756067101
+        },
+        {
+            "delegator_count": 17,
+            "epoch": 320,
+            "lovelace": 830773382067
         }
     ],
     "drep1ygrgnsrwpvpk7727700xgafw2v957z40cx45fskxa3925scpuqyke": [
-        {
-            "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 22048951750
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -3271,6 +3276,11 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 22072899933
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 22083682988
         }
     ],
     "drep1ygucyyfvzezxu5993n0ls25tfp5f5lvfxavmcl3s58jwsmgkgwmfz": [
@@ -3288,14 +3298,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 19988156362
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 19996730189
         }
     ],
     "drep1ygv0zq5zkfts3vaxmh4smgvrmmwwru4lrdaak5l8mfc43xc03ymz9": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9497818879
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3315,14 +3325,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 9497818879
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 9497818879
         }
     ],
     "drep1ygv58mrmlrye9vu0tussycey3vm2rva2c5djx0e66r3wzuqq5w275": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 230404070
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3342,14 +3352,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 231024639
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 231122418
         }
     ],
     "drep1ygwr9f9uze80w492tagl3s76njc2zpr52f4jkyy4rsrtdhc3jdgjf": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 10722506188
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3368,17 +3378,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 10722506188
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 10722506188
         }
     ],
     "drep1ygxrsv290wwpyw3nker4c358kyh0f7vgrl3mrg2wmjn93sgmqfxml": [
         {
             "delegator_count": 4,
-            "epoch": 315,
-            "lovelace": 80777275
-        },
-        {
-            "delegator_count": 4,
             "epoch": 316,
             "lovelace": 80777275
         },
@@ -3395,17 +3405,17 @@
         {
             "delegator_count": 4,
             "epoch": 319,
+            "lovelace": 80777275
+        },
+        {
+            "delegator_count": 4,
+            "epoch": 320,
             "lovelace": 80777275
         }
     ],
     "drep1ygxsm0d0uhcpppsc02s4vjmfare09vt4ggayc3ec7550cmgkjghed": [
         {
             "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 125382483689
-        },
-        {
-            "delegator_count": 2,
             "epoch": 316,
             "lovelace": 125382483689
         },
@@ -3422,17 +3432,17 @@
         {
             "delegator_count": 2,
             "epoch": 319,
+            "lovelace": 125382483689
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
             "lovelace": 125382483689
         }
     ],
     "drep1ygxtpry4wt64cnemuavznvf0lf387la4anaf9ykxar7vjpgv9gpzd": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 2396412151
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 2396412151
         },
@@ -3449,17 +3459,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 2396412151
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 2396412151
         }
     ],
     "drep1ygxxtc2t03ra7mfywle407mujjg5qjd3x646x9azqtev6ycn3ntd0": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 115885864
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 115885864
         },
@@ -3477,14 +3487,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 115885864
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 115885864
         }
     ],
     "drep1ygxyaqshqx8kdjq94sydg96hpsyxwpuh90ljcwmrwctt2sq0a92uz": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 5801218724
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3504,14 +3514,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 5816843744
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 5819305685
         }
     ],
     "drep1ygytfjy863rx34wqlhjs3kpk8sxzehl2dullf7h0kpdajdgrga7lc": [
-        {
-            "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 8727127581
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -3531,14 +3541,14 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 7694617370
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 7694621441
         }
     ],
     "drep1ygz54qurh5le3apy6uklsnwxzteh2xf72590kyjhfw37kgql25sfg": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 53135035
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3558,14 +3568,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 53135035
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 53135035
         }
     ],
     "drep1ygzgs3qcrxct09tx0av04lfm85d6mdxlds2haccs4maavvskytcpk": [
-        {
-            "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 80678868242
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -3585,14 +3595,14 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 80924473557
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 80980280761
         }
     ],
     "drep1ygzlzlzj8r9c3zutlgh9ugqx958cwr6q704xtt9j5uf4lzsz9rwhm": [
-        {
-            "delegator_count": 16,
-            "epoch": 315,
-            "lovelace": 400619348022478
-        },
         {
             "delegator_count": 17,
             "epoch": 316,
@@ -3612,14 +3622,14 @@
             "delegator_count": 18,
             "epoch": 319,
             "lovelace": 400629211124332
+        },
+        {
+            "delegator_count": 19,
+            "epoch": 320,
+            "lovelace": 400639368460676
         }
     ],
     "drep1ygzqwwtgcewhzvxu942xufzl4pg7gnttw9h4e0agm30fnwsqcv00v": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 1334357466
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3639,14 +3649,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 1341382428
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 1317008130
         }
     ],
     "drep1yt0wq3kmauvt8e46upds8t72el0ppwv046pt3muj49ju3sca4u3ra": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 435572910
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3666,14 +3676,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 435734627
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 435773780
         }
     ],
     "drep1yt256ew6k5p3jwpwqa6mm72m6awmfvjs4jj4xx0y277700qf7pr93": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9933280829
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3693,14 +3703,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 9958736792
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 9965029832
         }
     ],
     "drep1yt4lyf0fwlrz8k6j5evd3rxw0sqp67qkh36su98a97q3qsc0h03y4": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 19581857684
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -3720,14 +3730,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 19589882686
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 19595850604
         }
     ],
     "drep1yt5498apq2xmuvugmf0jdd5kp5zd3ccpezn6m2mzsvuh3pqn8x06l": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 30056395265
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3747,15 +3757,15 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 30056226728
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 30056226728
         }
     ],
     "drep1yt5acdusshm5fz7lyxmkdewgag02469fn9pa4u5urm5skugx7qafj": [],
     "drep1yt5trmh3zk8gunqn6qs2w5h8acpsssax4z07meem529zgkcrz3fmy": [
-        {
-            "delegator_count": 16,
-            "epoch": 315,
-            "lovelace": 133535258365
-        },
         {
             "delegator_count": 16,
             "epoch": 316,
@@ -3775,14 +3785,14 @@
             "delegator_count": 16,
             "epoch": 319,
             "lovelace": 133600198441
+        },
+        {
+            "delegator_count": 16,
+            "epoch": 320,
+            "lovelace": 133615944563
         }
     ],
     "drep1yt5vg6rkd5666m9cvns5llfahfw4q94j00ren47t6njtlxq29m2t6": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 20307154620
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3802,14 +3812,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 20361849980
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 20370468002
         }
     ],
     "drep1yt6053ehtqedekuemrkd7wawkwy3kwvnj9y0t8wk3r6y2qs5hcnk4": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 45039537737
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -3828,6 +3838,11 @@
         {
             "delegator_count": 2,
             "epoch": 319,
+            "lovelace": 45039537737
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
             "lovelace": 45039537737
         }
     ],
@@ -3835,11 +3850,6 @@
     "drep1yt7sxjtqkp4vvkv8xt3rcj2puhn8t9q0ksdplahqfypy4sgx8syuc": [
         {
             "delegator_count": 4,
-            "epoch": 315,
-            "lovelace": 42274225565
-        },
-        {
-            "delegator_count": 4,
             "epoch": 316,
             "lovelace": 42274225565
         },
@@ -3857,14 +3867,14 @@
             "delegator_count": 4,
             "epoch": 319,
             "lovelace": 42274225565
+        },
+        {
+            "delegator_count": 4,
+            "epoch": 320,
+            "lovelace": 42274225565
         }
     ],
     "drep1yt7wsgvjnpf37pu2vr4ql7kxkhau66zwv3ea7jzwc7auu2g3aknn7": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 10189467120
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3884,17 +3894,17 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 10216911464
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 10221235706
         }
     ],
     "drep1yt9hayuujan80qd4lx9ppyqxpc08rvszm873jvp00crc85s8sfq66": [],
     "drep1yt9s73nt6388jgalpp3dz60qnwchhw5xcatfqmw7pg6ay9c2ztrt5": [],
     "drep1yt9vx24sfcxux9j5dzc93y4crtptpjzhh559d4st8pdxmzs30dr3m": [],
     "drep1ytah77nvma8thq037ynn9sqf59rpsjfpnq2a0rtltfnyvjchvqhux": [
-        {
-            "delegator_count": 5,
-            "epoch": 315,
-            "lovelace": 26595966556
-        },
         {
             "delegator_count": 5,
             "epoch": 316,
@@ -3914,14 +3924,14 @@
             "delegator_count": 4,
             "epoch": 319,
             "lovelace": 26679151019
+        },
+        {
+            "delegator_count": 4,
+            "epoch": 320,
+            "lovelace": 26697616298
         }
     ],
     "drep1ytap5jgyh0u48ur20w4kvf9w8mnv2wmrmrm7ggpa3qglq4gmkdr2t": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 169671879
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -3941,14 +3951,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 169861812
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 169916954
         }
     ],
     "drep1ytax4rwzvdwamnu67j2uk9z00660lpzcvmlys6266l9kt5c262k7m": [
-        {
-            "delegator_count": 4,
-            "epoch": 315,
-            "lovelace": 10590604284
-        },
         {
             "delegator_count": 4,
             "epoch": 316,
@@ -3968,15 +3978,15 @@
             "delegator_count": 5,
             "epoch": 319,
             "lovelace": 130341806976
+        },
+        {
+            "delegator_count": 5,
+            "epoch": 320,
+            "lovelace": 145524277431
         }
     ],
     "drep1ytchrruc9hdtlqsyqsga6n7nufkl4l37e5mjpwefxlh7c0q2w53s7": [],
     "drep1ytcw6qzpqqclx2yd0zy64ztvlkkhnf6yrzza8whgnq4vz5gh89626": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 11818056994
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -3996,14 +4006,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 11849222205
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 11858270183
         }
     ],
     "drep1ytdj6xmf855q44nrrfr4faatakuq4l4zyqscdp3df4evtucjfp0nu": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 10145131973
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -4023,16 +4033,16 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 10175416848
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 10183196361
         }
     ],
     "drep1ytdnkw2l4q7uy2d7d7sj9fhgsun56zg2uleqlfqx2lvcc6gusnw9c": [],
     "drep1yte4f8guvvxl8umwj5d5fepwh5p0jgjpea72zlr28spslzgv2eexu": [],
     "drep1ytenukatzrvc2a8kyalzj67us4ms568f6jy8p8qu3luw07gjdmlar": [
-        {
-            "delegator_count": 9,
-            "epoch": 315,
-            "lovelace": 235458161149
-        },
         {
             "delegator_count": 9,
             "epoch": 316,
@@ -4052,14 +4062,14 @@
             "delegator_count": 9,
             "epoch": 319,
             "lovelace": 235532662835
+        },
+        {
+            "delegator_count": 9,
+            "epoch": 320,
+            "lovelace": 235552400510
         }
     ],
     "drep1ytesfw7n2pq5ys2rk0m7fxxd2dyagf820wy24d82rdd9yxqfm4qjg": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 997820771
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -4078,17 +4088,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 997820771
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 997820771
         }
     ],
     "drep1ytett72fzlmudmq55sn95lm5qcks3ekmwpzq5czfswtustqkxs77v": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9497460993
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 9497460993
         },
@@ -4105,17 +4115,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 9497460993
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 9497460993
         }
     ],
     "drep1ytf4q24ua4hnw8gq0cnhtzp7wt39f8sdet6vmpy5p8lnh6c6f7x47": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 147807439
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 147807439
         },
@@ -4133,14 +4143,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 147807439
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 147807439
         }
     ],
     "drep1ytg3f3uc0xda26q0q5fkg47dhlmdspm4hl3md8k6gcjk7zccfvsqc": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 10245960622
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -4160,14 +4170,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 10265950518
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 10267617309
         }
     ],
     "drep1ytgmll84qz9qt7gs8smfqn66drfk9t4d0dpen3dpeepqu5q2gp8d4": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 12442131635
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -4187,15 +4197,15 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 12479273431
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 12488814334
         }
     ],
     "drep1yth4v9tf5n5qccfmv6la6cq3ycyhp3wxljq23mg3rvqjurst59k8e": [],
     "drep1ythgzfqw6y5qdu953983hczlyvqvmrtr2ycy47c7sd8nymctkx3pq": [
-        {
-            "delegator_count": 4,
-            "epoch": 315,
-            "lovelace": 5608471811
-        },
         {
             "delegator_count": 4,
             "epoch": 316,
@@ -4215,14 +4225,14 @@
             "delegator_count": 4,
             "epoch": 319,
             "lovelace": 5623017150
+        },
+        {
+            "delegator_count": 4,
+            "epoch": 320,
+            "lovelace": 5626579571
         }
     ],
     "drep1ytk3r5ddfk2cq66ygdtkwf9yck6hhy7uzhk2tgl5d53448skyutw7": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 0
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -4241,17 +4251,17 @@
         {
             "delegator_count": 2,
             "epoch": 319,
+            "lovelace": 0
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
             "lovelace": 0
         }
     ],
     "drep1ytk9yeea42azx496cqp7nlercjtj95tms52asr3x0eh0n6qjlpj50": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 8497456945
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 8497456945
         },
@@ -4268,6 +4278,11 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 8497456945
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 8497456945
         }
     ],
@@ -4276,11 +4291,6 @@
     "drep1ytl6uvunzvpy6fc6vv99dqw8qfw5g6htzneevwasd28rrascgdztg": [
         {
             "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 173454863345
-        },
-        {
-            "delegator_count": 3,
             "epoch": 316,
             "lovelace": 173454863345
         },
@@ -4297,17 +4307,17 @@
         {
             "delegator_count": 3,
             "epoch": 319,
+            "lovelace": 173454863345
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
             "lovelace": 173454863345
         }
     ],
     "drep1ytlf69wakmx78jja8rp6gusx2yprnqvp4zmw3lfwqqednhqnkkjag": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 10661736583
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 10661736583
         },
@@ -4324,6 +4334,11 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 10661736583
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 10661736583
         }
     ],
@@ -4331,11 +4346,6 @@
     "drep1ytmjq592y5kvc6lh2ar3sjgsczunsc5czem9d7f466mvy6sgv2s2k": [
         {
             "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 30617712234
-        },
-        {
-            "delegator_count": 2,
             "epoch": 316,
             "lovelace": 30617712234
         },
@@ -4353,14 +4363,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 30617712234
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 30617712234
         }
     ],
     "drep1ytmrtaa3hm9ldj4zeyqwcw9k9r78exgnqn2gnxcx5zuadhckq3er5": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 61957232320
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -4380,15 +4390,15 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 72269716811
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 74810920812
         }
     ],
     "drep1ytmynjuzanlvaxqx5w75y89e9yqpz6whyg6r36ghantdu6shy25n9": [],
     "drep1ytnglv2y7s8dxpmylw35egsum63yqzcm0upvkf7qffg4hhqnhj0yh": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 10528235
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -4408,15 +4418,15 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 60546810
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 60551581
         }
     ],
     "drep1ytnvp4423epwmulxzqc8cqsh5zj8syevw2fgwalthg86d5cw3eea7": [],
     "drep1ytp6z22jf7gckpsla6k0dwkv88zhgwvqzhdmvgyggjdvvdg885jvw": [
-        {
-            "delegator_count": 5,
-            "epoch": 315,
-            "lovelace": 380013038911
-        },
         {
             "delegator_count": 5,
             "epoch": 316,
@@ -4436,14 +4446,14 @@
             "delegator_count": 5,
             "epoch": 319,
             "lovelace": 379992710770
+        },
+        {
+            "delegator_count": 5,
+            "epoch": 320,
+            "lovelace": 379992712815
         }
     ],
     "drep1ytpk4mka2ccqqtappe5r025cyys4l8rmq7eufkzg4208hhgdyyz3u": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 9497807263
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -4462,17 +4472,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 9497807263
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 9497807263
         }
     ],
     "drep1ytq6c48wfs5waclwtqa7f8tjcyzpxgy4rlqx8wuazhh0u7gy0l39h": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 13724233490
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 13724233490
         },
@@ -4489,17 +4499,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 13724233490
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 13724233490
         }
     ],
     "drep1ytqc6htdna9x2kklyk35jk6dxwaecqzscrgvtls2mpqje6cuqcl9k": [
         {
             "delegator_count": 4,
-            "epoch": 315,
-            "lovelace": 29402399147
-        },
-        {
-            "delegator_count": 4,
             "epoch": 316,
             "lovelace": 29402399147
         },
@@ -4517,14 +4527,14 @@
             "delegator_count": 4,
             "epoch": 319,
             "lovelace": 29402399147
+        },
+        {
+            "delegator_count": 4,
+            "epoch": 320,
+            "lovelace": 29402399147
         }
     ],
     "drep1ytqdcp8h75nlr6lvqamp5nztn7ce2m7yjt9hdqmn7565uhgmmudx6": [
-        {
-            "delegator_count": 11,
-            "epoch": 315,
-            "lovelace": 86667895650
-        },
         {
             "delegator_count": 11,
             "epoch": 316,
@@ -4544,14 +4554,14 @@
             "delegator_count": 11,
             "epoch": 319,
             "lovelace": 86760021223
+        },
+        {
+            "delegator_count": 11,
+            "epoch": 320,
+            "lovelace": 86778955160
         }
     ],
     "drep1ytr8nful8w054zzvd38dw0jytdletazsqkchtc3uv2kr4ash34rrz": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 497807439
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -4571,16 +4581,16 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 497807439
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 497807439
         }
     ],
     "drep1ytrp82cxq383ywzr4u6jfeckl3mxvmc5g2ux54mhhk4ar8cqzz9n0": [],
     "drep1ytrs50sd7xvzklj988f8ar34drz4223ahdl7p60rqzhccusgnk04w": [],
     "drep1ytrurplgfmy35xjyufps9v27ucmq9tyw560x6jkfqqu8n8sj6sm7m": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 999201192
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -4600,14 +4610,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 1001892441
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 1002316485
         }
     ],
     "drep1ytrut8y02x74hzk5xpjywalsdrx5nmjlvy9qfztjahr2s5q3vjepf": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 498824504
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -4626,17 +4636,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 498824504
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 498824504
         }
     ],
     "drep1yts7508qmacpn0u02m63ngh2257qyle0eguff2qvkvfgrysgl2rkx": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 497807439
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 497807439
         },
@@ -4653,17 +4663,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 497807439
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 497807439
         }
     ],
     "drep1ytsy6uatehlmxymymrwuycph0s6ewwn0jxsnyfq6vs47h4sflw0dg": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 2404433728
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 2404433728
         },
@@ -4680,17 +4690,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 2404433728
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 2404433728
         }
     ],
     "drep1yttxa9wghs3rhral72zmj99smd7kn9hpyhg536gj2lqzl5g484sxy": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 4493844588
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 4493844588
         },
@@ -4708,14 +4718,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 4493844588
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 4493844588
         }
     ],
     "drep1ytum6zu2ey3w6gpdr6655dlahpdq0c5upwfrpgu7fjgxrsscx35f3": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 8555886021
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -4735,14 +4745,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 9967251010
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 9967251010
         }
     ],
     "drep1ytuvlac65kf3p0twvtf3spwd7js7hnfx9j7kaf2m36ccv6gk2paj0": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 109736068571
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -4762,14 +4772,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 110070492839
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 110146481762
         }
     ],
     "drep1ytvawtjqsp9zlkcazx07644dhusaxtrct0z53mzpq4fdgzqqd9g7f": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 27468986389
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -4789,14 +4799,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 27468986389
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 27468986389
         }
     ],
     "drep1ytvd8c8wj7p8vypgazgevngkvxj97rh4hg8wpjf0mhvxwngmswgym": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 20044939427
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -4816,17 +4826,17 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 20104776847
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 20120147752
         }
     ],
     "drep1ytvk344upvkmxpnucggm4usffgvgf4ytrrudpnu5d2685cc3xkedh": [],
     "drep1ytvmms2xv3az4ank3sq65pmdhxkkfvecjmdkmd8q8surlfs2uhrvu": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 5195037362
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 5195037362
         },
@@ -4843,17 +4853,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 5195037362
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 5195037362
         }
     ],
     "drep1ytw4sejk7q74kwc3t8wx6e7rn9lx8tcdvlss47hh48ck34cm8p9hw": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 2986710059
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 2986710059
         },
@@ -4870,17 +4880,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 2986710059
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 2986710059
         }
     ],
     "drep1ytwmwvtd0a8lr45ssner2tjxzv5y8q03w3606yeald9mdmgmwecja": [
         {
             "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 124747342919
-        },
-        {
-            "delegator_count": 2,
             "epoch": 316,
             "lovelace": 124747342919
         },
@@ -4898,14 +4908,14 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 124747342919
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 124747342919
         }
     ],
     "drep1ytwmxkpejt0wam5mpvuc83edyzqst7w6dnmkthln7hxnthqcnz6sq": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 10172736561
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -4925,14 +4935,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 10200135843
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 10204452985
         }
     ],
     "drep1ytx9895ya9qh8jsvwmuwehe5s62k73nkj8l42exfcr0ydhsk30696": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 7497455977
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -4952,15 +4962,15 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 7497455977
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 7497455977
         }
     ],
     "drep1ytxlknra9m637sdg078mgpmqu0xut3wmeadjp9dc7x4pv6qwhvj2c": [],
     "drep1ytxptk94rze67kzxcmfe3wmvudatj409f756zhhd986l9ec03e37k": [
-        {
-            "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 1450587370386
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -4980,14 +4990,14 @@
             "delegator_count": 3,
             "epoch": 319,
             "lovelace": 1454635357162
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
+            "lovelace": 1455796537828
         }
     ],
     "drep1ytxymcaa430qedvkaxcpp3zck3afcrj0tt6e7gy83x3084cchj55v": [
-        {
-            "delegator_count": 3,
-            "epoch": 315,
-            "lovelace": 250643486593
-        },
         {
             "delegator_count": 3,
             "epoch": 316,
@@ -5006,17 +5016,17 @@
         {
             "delegator_count": 3,
             "epoch": 319,
+            "lovelace": 250643486593
+        },
+        {
+            "delegator_count": 3,
+            "epoch": 320,
             "lovelace": 250643486593
         }
     ],
     "drep1ytyqt4kd9ac2v7gl0tvx2dfssf4em8r735yxmwx765dd3fq6u6ln7": [
         {
             "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 247807439
-        },
-        {
-            "delegator_count": 1,
             "epoch": 316,
             "lovelace": 247807439
         },
@@ -5034,15 +5044,15 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 247807439
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 247807439
         }
     ],
     "drep1yv0adahffetszp9fg84qj8lek7vpvr5chga2ljtumu6fx0q2kggvm": [],
     "drep1yv3gtnxt7vzu5fhxpx97ngfmgh3ez8vgrkzvx5p0sgeqejs2pdywf": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 20467063850
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -5062,6 +5072,11 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 20519514681
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 20532481199
         }
     ],
     "drep1yv4kgvp4t8l4u6rk2069fsktv8v9gv0pf0ehr9wj5a8ukdshdl8u4": [],
@@ -5070,11 +5085,6 @@
     "drep1yv8emzd9yc5g3sqlwkv2rucmr56xfadsujke6x6knz58kks38c0gq": [],
     "drep1yvdqkkms3pj32u4w50w6gevjpaec9a4j28erzgcacdmzsqcagvlf2": [],
     "drep1yvhx50y2w0cuy7yw5ucn3dn3f24qmshu84g06q69sglrk7gtl0mvn": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 371473172040
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -5094,14 +5104,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 372582080212
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 372866934112
         }
     ],
     "drep1yvj9cn7cwc3wyrt3lclk2ua92lxd8uxqzju0qza8ky380uqjpzm8s": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 4512052827
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -5120,17 +5130,17 @@
         {
             "delegator_count": 1,
             "epoch": 319,
+            "lovelace": 4512052827
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
             "lovelace": 4512052827
         }
     ],
     "drep1yvk5ed5qkh6qp56jr5njks546cg4pc807w2saapg2sr2j5c940gff": [
         {
             "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 13005407358
-        },
-        {
-            "delegator_count": 2,
             "epoch": 316,
             "lovelace": 13005407358
         },
@@ -5147,6 +5157,11 @@
         {
             "delegator_count": 2,
             "epoch": 319,
+            "lovelace": 13005407358
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
             "lovelace": 13005407358
         }
     ],
@@ -5157,11 +5172,6 @@
     "drep1yvvxuvh64q9zdqgrjt76d42eclk5wgdxtnsun4808cwg0dquhj65s": [],
     "drep1yvxzu7n5jdeytfa30w7cvtux6f77gc5z76sqc0l0hzxejhcqlgn4l": [],
     "drep1yvy0zyhz8f2vul0w80zdt663653jykggkm7lsnlccvtmwjq9ggwnt": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 42986192415
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -5181,14 +5191,14 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 83038953949
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 83070245623
         }
     ],
     "drep1yw06l722xlrwnjwzrqvpf5lwgqvnunve2t75dv6mlw00zwcyts525": [
-        {
-            "delegator_count": 2,
-            "epoch": 315,
-            "lovelace": 16760432923
-        },
         {
             "delegator_count": 2,
             "epoch": 316,
@@ -5208,15 +5218,15 @@
             "delegator_count": 2,
             "epoch": 319,
             "lovelace": 16798627100
+        },
+        {
+            "delegator_count": 2,
+            "epoch": 320,
+            "lovelace": 16808281992
         }
     ],
     "drep1yw4543wxryyfhayplasch6gjmhht73ufn7d2l47jghf43rcxtwee6": [],
     "drep1yw4pn9j90q8szpddpzmusa06gksn6lns5kp748gz5kw3n0c8tfgtd": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 8432174824
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -5236,6 +5246,11 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 8456645938
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 8462498983
         }
     ],
     "drep1yw50yenfxldukk9u5cxv3pjpdnlecpt0mz5dyz8n8h3p8qcw8d2hm": [],
@@ -5244,11 +5259,6 @@
     "drep1ywg9s2vqew6t6yx0a5u4zpxl430s0zcu8tt5j6x0svw5zjsy40z8w": [],
     "drep1ywh0tqtkkws5ck5x45tvcqn7rsdzmelwtwqzhgnl05tz2xc0j363g": [],
     "drep1ywjte4u22h3vjqyez7y7wrner04dgped8h35pddyq7rxvkcsa9ws6": [
-        {
-            "delegator_count": 1,
-            "epoch": 315,
-            "lovelace": 10746498950
-        },
         {
             "delegator_count": 1,
             "epoch": 316,
@@ -5268,6 +5278,11 @@
             "delegator_count": 1,
             "epoch": 319,
             "lovelace": 10775443606
+        },
+        {
+            "delegator_count": 1,
+            "epoch": 320,
+            "lovelace": 10780004243
         }
     ],
     "drep1ywl9h4y6lzskqsp8rjnws9fas84ad4j9tgh2e4uxvp3k2pcx5mqtx": [],
@@ -5278,11 +5293,6 @@
     "drep1ywxpj2ktns07rd9t6t45hzht4fk4x8lscj8ldatvqyuz35qsej0em": [],
     "drep1ywxwg66ujf7wgycagwe3qpqruu83f97yt0e9dxprz8wpqzscc5q5t": [],
     "drep_always_abstain": [
-        {
-            "delegator_count": 978,
-            "epoch": 315,
-            "lovelace": 431820180184875
-        },
         {
             "delegator_count": 982,
             "epoch": 316,
@@ -5302,14 +5312,14 @@
             "delegator_count": 1017,
             "epoch": 319,
             "lovelace": 431863790957959
+        },
+        {
+            "delegator_count": 1020,
+            "epoch": 320,
+            "lovelace": 432730293365956
         }
     ],
     "drep_always_no_confidence": [
-        {
-            "delegator_count": 39,
-            "epoch": 315,
-            "lovelace": 337215349553
-        },
         {
             "delegator_count": 37,
             "epoch": 316,
@@ -5329,6 +5339,11 @@
             "delegator_count": 38,
             "epoch": 319,
             "lovelace": 325390800383
+        },
+        {
+            "delegator_count": 39,
+            "epoch": 320,
+            "lovelace": 330505955747
         }
     ]
 }

@@ -1,4 +1,18 @@
 {
+    "amber_lag_seconds": 120,
+    "attest_lag_seconds": 0,
+    "attestation": {
+        "is_ready": true,
+        "kupo_tip_slot": 137170090,
+        "lag_seconds": 0,
+        "last_error": null,
+        "last_sync_at": "2026-10-24T14:48:16.931509Z",
+        "policy_id": "648c6a732aa55efec29815bdd25cf65c565cf92619aadde1d31496d3",
+        "slot": 137170090,
+        "source": "attest-sync/kupo",
+        "state": "following"
+    },
+    "drep_distr_epoch": 321,
     "epoch_params": {
         "committee_max_term_length": 146,
         "committee_min_size": 3,
@@ -46,7 +60,7 @@
                 0.67
             ]
         ],
-        "epoch": 320,
+        "epoch": 321,
         "gov_action_deposit": 1000000000,
         "gov_action_lifetime": 6,
         "pool_thresholds": [
@@ -73,12 +87,14 @@
         ]
     },
     "governance": {
-        "block_time": "2026-10-20T22:02:54Z",
-        "epoch": 320,
+        "block_time": "2026-10-24T14:48:10Z",
+        "epoch": 321,
         "is_ready": true,
-        "lag_seconds": 10,
-        "slot": 136850574,
+        "lag_seconds": 11,
+        "slot": 137170090,
         "source": "cardano-db-sync"
     },
-    "network": "preprod"
+    "metrics_as_of_epoch": 321,
+    "network": "preprod",
+    "ready_max_lag_seconds": 300
 }

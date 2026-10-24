@@ -39,6 +39,7 @@ module Query.Gov
     -- * Readiness
     ReadyInputs (..),
     readyVerdict,
+    attestStatusOf,
     readyMaxLagDefault,
     amberLagDefault,
     readyMaxLagFromEnv,
@@ -56,6 +57,7 @@ module Query.Gov
     -- * Queries
     freshnessQuery,
     epochParamsQuery,
+    metricsAsOfEpochQuery,
 
     -- * DReps
     drepSortSpec,
@@ -212,6 +214,7 @@ import Palmares.DomainTypes.Transfer.QueryResponses
   ( ActivityCursor (..),
     ActivityRow (..),
     AnchorContent,
+    AttestationStatus (..),
     CommitteeResponse,
     DelegationRecord,
     DelegatorRow,
@@ -235,7 +238,7 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     VoteTally,
   )
 import Palmares.Metrics.Catalog (lookupMetricSql)
-import Palmares.Storage (attestCursorSlot)
+import Palmares.Storage (AttestSyncState (..), attestSyncStateRow)
 import Palmares.Utils (jsonTag)
 import Palmares.WebAPI.Envelope (Cursor (..), ErrorCode (..), Page (..))
 import Query.Common (Limit, Offset, SortSpec (..), likePat, orderClause)
@@ -314,7 +317,15 @@ data ReadyInputs = ReadyInputs
     readyExpectedNetwork :: Text,
     -- | The attestation projector's lag in seconds, or 'Nothing' for no evidence either way. See
     -- 'startFreshnessPoll' for why absence is not a failure.
-    readyAttestLagSeconds :: Maybe Int
+    readyAttestLagSeconds :: Maybe Int,
+    -- | The projector's own word for what it is doing, when it has written one — `CS-07`.
+    readyAttestState :: Maybe Text,
+    -- | How long ago the projector last wrote its row, in seconds.
+    --
+    -- This is the evidence the cursor lag cannot give: a projector that DIED leaves a cursor that
+    -- stops moving, and if db-sync has also stopped there is no lag at all to notice. A report that
+    -- stopped arriving is unambiguous.
+    readyAttestReportAgeSeconds :: Maybe Int
   }
   deriving (Show, Eq)
 
@@ -358,6 +369,20 @@ readyVerdict maxLag ReadyInputs {..}
   -- implies `readyLagSeconds <= maxLag`, so this is strictly stronger than the check it replaces
   -- and can only ever turn a PASS into a 503 — never the reverse.
   | Just lag <- readyAttestLagSeconds, readyLagSeconds + lag > maxLag = Just IndexerBehind
+  -- `CS-07`. Both guards fire only when the projector HAS written a row, so a governance-only
+  -- deployment is untouched — absence still passes, for the reason the record's field says.
+  --
+  -- A projector whose last tick raised is not serving honest pages: whatever it could not apply is
+  -- missing, and `attest_dead_letter` says what.
+  | readyAttestState == Just "error" = Just IndexerBehind
+  -- And a projector that stopped REPORTING is dead, whatever its cursor says. This is the case the
+  -- lag guard above cannot see: a dead projector plus a stalled db-sync is two frozen numbers whose
+  -- difference is zero.
+  | Just age <- readyAttestReportAgeSeconds, age > maxLag = Just IndexerBehind
+  -- `syncing` is deliberately NOT red. A projector mid-pass is a healthy service answering honest
+  -- partial pages, and `/status.attestation.state` plus `X-Attest-State` are how a client knows to
+  -- say so. Red here would take a fresh deployment's governance routes — which are complete and
+  -- correct — out of rotation for the hours the attestation backfill takes.
   | otherwise = Nothing
 
 -- | The lag at which @\/ready@ turns red: 300 s, about thirteen preprod blocks.
@@ -439,6 +464,20 @@ freshnessQuery =
 --
 -- The threshold lists are built as @[name, value]@ pairs with db-sync's own column names, so a
 -- reader can look any of them up in @palmares.thresholds@ and check our arithmetic.
+-- | The epoch @palmares.drep_metrics@ was last refreshed for — `GV-23`.
+--
+-- One scalar off the matview, which check 070 asserts holds exactly one distinct value: every metric
+-- on a DRep response is "as of" this epoch, and it trails @governance.epoch@ by up to the refresh
+-- interval. A reader comparing a metric against a vote cast this epoch needs to know which.
+--
+-- 'Nothing' when the matview is empty, which is a database with no blocks rather than an error.
+metricsAsOfEpochQuery :: SqlPersistT IO (Maybe Int)
+metricsAsOfEpochQuery = do
+  rows <- rawSql "SELECT as_of_epoch FROM palmares.drep_metrics LIMIT 1" []
+  pure $ case rows of
+    (Single e : _) -> Just e
+    [] -> Nothing
+
 epochParamsQuery :: SqlPersistT IO (Maybe EpochParamsSummary)
 epochParamsQuery =
   queryJson1
@@ -485,27 +524,29 @@ readFreshness = readTVarIO
 -- connection should not make the whole service report itself unready. The poll is seeded
 -- synchronously before the thread starts, so the first request never sees an empty 'TVar' on a
 -- healthy database.
--- __The second 'TVar' is the ATTESTATION PROJECTOR's lag__, in seconds, and it is a separate
--- reading because it comes from a separate service. Everything above is about db-sync's
--- governance index; none of it says anything about whether @attest-sync@ is still running. Without
--- it a probe could report @ready@ while every attestation route served a projection frozen hours
--- ago — the one failure this surface cannot detect from its own data.
+-- __The second 'TVar' is the ATTESTATION PROJECTOR's own report__, and it is a separate reading
+-- because it comes from a separate service. Everything above is about db-sync's governance index;
+-- none of it says anything about whether @attest-sync@ is still running. Without it a probe could
+-- report @ready@ while every attestation route served a projection frozen hours ago — the one
+-- failure this surface cannot detect from its own data.
 --
--- @Nothing@ means NO EVIDENCE, not \"fine\": the cursor table is absent, or unreadable, or the
--- projector has never written a row. It is deliberately not a readiness failure, because a
--- governance-only deployment runs no projector and would otherwise be permanently out of rotation.
+-- @Nothing@ means NO EVIDENCE, not \"fine\": the table is absent, or unreadable, or the projector
+-- has never written a row. It is deliberately not a readiness failure, because a governance-only
+-- deployment runs no projector and would otherwise be permanently out of rotation.
 --
--- __So absence is currently SILENT, and that is a known half of this.__ A projector that stopped is
--- caught, because its cursor stops advancing and the lag grows; a projector that never started is
--- not distinguishable on the wire from a deployment that has none. Closing that means a field on
--- the @\/status@ body, which is a DTO change, a Swagger version bump and an update to
--- @scripts\/check_swagger.sh@ — a follow-up, deliberately not smuggled in here. Until then the only
--- signal for an unreadable cursor is the stderr line below.
+-- __It reads the ROW and no longer the cursor — `CS-07`.__ The paragraph that stood here said
+-- absence was silent and named the follow-up: a field on the @\/status@ body, a Swagger bump and an
+-- update to @scripts\/check_swagger.sh@. That is what landed. The cursor is written only after a
+-- window has been applied in full, so it could not distinguish \"never started\" from \"caught
+-- up\"; the projector now writes @attest_sync_state@ on every tick, carrying its own @state@ and
+-- the moment it last wrote one, and @\/status.attestation@ publishes the lot. The age of that
+-- report is also the only evidence of a projector that DIED while db-sync was stalled too — two
+-- frozen slot numbers whose difference is zero.
 --
 -- The lag is measured against db-sync's tip rather than the wall clock, because both numbers then
 -- come from the same source and a slow database shows up once rather than twice. Clamped at zero:
 -- the projector reads from Kupo and can legitimately be AHEAD of db-sync.
-startFreshnessPoll :: ConnectionPool -> Int -> IO (TVar (Maybe Freshness), TVar (Maybe Int), ThreadId)
+startFreshnessPoll :: ConnectionPool -> Int -> IO (TVar (Maybe Freshness), TVar (Maybe AttestationStatus), ThreadId)
 startFreshnessPoll pool pollMs = do
   tv <- newTVarIO Nothing
   av <- newTVarIO Nothing
@@ -532,14 +573,39 @@ startFreshnessPoll pool pollMs = do
     -- `readyVerdict` compares the SUM to its ceiling. The parameter was named `tipSlot`, which
     -- shadowed the top-level `tipSlot` that really is the tip (`max(slot_no) FROM public.block`),
     -- and the two differ by exactly the quantity this function is measuring.
+    -- `CS-07`: the ROW, not the cursor. The cursor is written once a window has been applied in
+    -- full, so it cannot distinguish "never started" from "caught up"; the row carries the
+    -- projector's own state and the moment it last wrote one.
     pollAttest av dbSyncSlot = do
-      r <- try (runGovRead pool attestCursorSlot)
+      r <- try (runGovRead pool attestSyncStateRow)
       case r of
-        Right (Just cursor) ->
-          atomically (writeTVar av (Just (fromIntegral (max 0 (dbSyncSlot - cursor)))))
+        Right (Just row) -> do
+          atomically (writeTVar av (Just (attestStatusOf dbSyncSlot row)))
         Right Nothing -> atomically (writeTVar av Nothing)
         Left (e :: SomeException) ->
-          hPutStrLn stderr ("[freshness] attestation cursor unreadable, reporting unknown: " <> show e)
+          hPutStrLn stderr ("[freshness] attestation sync-state unreadable, reporting unknown: " <> show e)
+
+-- | The projector's stored row as the API publishes it — `CS-07`.
+--
+-- The lag is computed HERE and not stored, because its reference is db-sync's cursor: the projector
+-- writes what it knows (its own slot and Kupo's tip) and the read side subtracts, which keeps one
+-- definition of the number @\/ready@ judges. Clamped at zero, because the projector follows a
+-- narrow Kupo match while db-sync indexes every block, so being AHEAD is the normal case.
+attestStatusOf :: Integer -> AttestSyncState -> AttestationStatus
+attestStatusOf dbSyncSlot row =
+  AttestationStatus
+    { attestSyncSlot = attestSyncStateCursorSlot row,
+      attestSyncKupoTipSlot = attestSyncStateKupoTipSlot row,
+      attestSyncLagSeconds = fromIntegral (max 0 (dbSyncSlot - attestSyncStateCursorSlot row)),
+      attestSyncState = attestSyncStateState row,
+      attestSyncLastSyncAt = attestSyncStateLastSyncAt row,
+      -- The projector's own verdict and not the service's: a completed pass with the cursor at
+      -- Kupo's tip is the only state in which an attestation page is complete.
+      attestSyncIsReady = attestSyncStateState row == "following",
+      attestSyncPolicyId = attestSyncStatePolicyHexText row,
+      attestSyncLastError = attestSyncStateLastError row,
+      attestSyncSource = "attest-sync/kupo"
+    }
 
 -- | Stamp every response with the chain point its data came from.
 --
@@ -547,10 +613,10 @@ startFreshnessPoll pool pollMs = do
 -- applies to every response including the ones that are an error body, and because a client can
 -- then show a staleness chip without parsing anything. They are added on the way out, so a
 -- handler cannot forget them.
-freshnessMiddleware :: IO (Maybe Freshness) -> Middleware
+freshnessMiddleware :: IO (Maybe Freshness, Maybe AttestationStatus) -> Middleware
 freshnessMiddleware readFresh app req respond = do
-  mf <- readFresh
-  app req (respond . mapResponseHeaders (<> maybe [] freshnessHeaders mf))
+  (mf, ma) <- readFresh
+  app req (respond . mapResponseHeaders (<> maybe [] freshnessHeaders mf <> maybe [] attestHeaders ma))
 
 freshnessHeaders :: Freshness -> [Header]
 freshnessHeaders f =
@@ -562,6 +628,22 @@ freshnessHeaders f =
     ("X-Chain-Block-Time", b (iso8601Show (freshBlockTime f))),
     ("X-Data-Lag-Seconds", b (show (freshLagSeconds f))),
     ("X-Data-Source", "cardano-db-sync")
+  ]
+  where
+    b = BS8.pack
+
+-- | The attestation projector's own three, added only when there is a projector — `CS-07`.
+--
+-- __Why on every response and not only on the attestation routes.__ The middleware does not know
+-- which handler answered, and a client scrolling @\/attestations@ needs the state on the page it is
+-- reading rather than on a second request to @\/status@. Three headers rather than five: the
+-- projector publishes a cursor, so there is no epoch and no block time to stamp without inventing
+-- one.
+attestHeaders :: AttestationStatus -> [Header]
+attestHeaders a =
+  [ ("X-Attest-Slot", b (show (attestSyncSlot a))),
+    ("X-Attest-Lag-Seconds", b (show (attestSyncLagSeconds a))),
+    ("X-Attest-State", b (T.unpack (attestSyncState a)))
   ]
   where
     b = BS8.pack

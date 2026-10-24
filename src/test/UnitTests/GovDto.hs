@@ -13,7 +13,7 @@
 -- BIP-173 reference implementation in @UnitTests.GovIds@.
 module UnitTests.GovDto (govDtoTests) where
 
-import Data.Aeson (Value (Null, Number, Object), decode, encode, toJSON)
+import Data.Aeson (Value (Bool, Null, Number, Object, String), decode, encode, toJSON)
 import Data.Aeson.KeyMap qualified as KM
 import Data.Text (Text)
 import Data.Time (UTCTime)
@@ -21,7 +21,8 @@ import Data.Aeson (eitherDecode)
 import Network.HTTP.Types.Header (hContentType)
 import Palmares.DomainTypes.Core.Types
 import Palmares.DomainTypes.Transfer.QueryResponses
-  ( EpochParamsSummary (..),
+  ( AttestationStatus (..),
+    EpochParamsSummary (..),
     StatusResponse (..),
     SyncStatus (..),
   )
@@ -58,12 +59,39 @@ actionCanonical = actionTxHex <> "#0"
 -- because 'StatusResponse' cannot be encoded without them. The numbers are preprod's, so a reader
 -- who checks them finds them plausible rather than wondering what they encode.
 statusObject :: Maybe Int -> KM.KeyMap Value
-statusObject lag = case toJSON (StatusResponse "preprod" sync lag params) of
-  Object o -> o
-  v -> error ("StatusResponse did not encode as a JSON object: " <> show v)
+statusObject lag = statusObjectWith lag Nothing
+
+-- | The same body with the projector's own report chosen — `CS-07`.
+statusObjectWith :: Maybe Int -> Maybe AttestationStatus -> KM.KeyMap Value
+statusObjectWith lag attest =
+  case toJSON (StatusResponse "preprod" sync lag attest (Just 319) 120 300 (Just 320) params) of
+    Object o -> o
+    v -> error ("StatusResponse did not encode as a JSON object: " <> show v)
   where
     sync = SyncStatus 320 84233900 (read "2026-10-19 08:14:02 UTC") 42 True "cardano-db-sync"
     params = EpochParamsSummary 320 6 100000000000 500000000 20 7 146 [] []
+
+-- | A projector's row as the API publishes it, parameterised by the one field a reader branches on.
+attestStatus :: Text -> AttestationStatus
+attestStatus state =
+  AttestationStatus
+    { attestSyncSlot = 84233880,
+      attestSyncKupoTipSlot = 84233900,
+      attestSyncLagSeconds = 20,
+      attestSyncState = state,
+      attestSyncLastSyncAt = read "2026-10-19 08:14:00 UTC",
+      attestSyncIsReady = state == "following",
+      attestSyncPolicyId = "d9e5c3c0b1a2f3e4d5c6b7a8998877665544332211aabbccddeeff00",
+      attestSyncLastError = Nothing,
+      attestSyncSource = "attest-sync/kupo"
+    }
+
+-- | The seven-field form every case below was written against. `CS-07` added two more inputs — the
+-- projector's state and the age of its report — and 'Nothing' for both is exactly the evidence those
+-- cases had: none. Spelled out here rather than in sixteen places.
+inputs7 :: Bool -> Int -> Int -> Int -> Text -> Text -> Maybe Int -> ReadyInputs
+inputs7 dbOk lag epoch distr net expected attest =
+  ReadyInputs dbOk lag epoch distr net expected attest Nothing Nothing
 
 govDtoTests :: TestTree
 govDtoTests =
@@ -270,13 +298,13 @@ govDtoTests =
       testCase "readiness verdict: all five checks, 300 s red" $
         map
           (readyVerdict readyMaxLagDefault)
-          [ ReadyInputs True 42 320 320 "preprod" "preprod" Nothing,
-            ReadyInputs True 301 320 320 "preprod" "preprod" Nothing,
+          [ inputs7 True 42 320 320 "preprod" "preprod" Nothing,
+            inputs7 True 301 320 320 "preprod" "preprod" Nothing,
             -- the ledger produces drep_distr one epoch behind, so 319 is normal and 318 is not
-            ReadyInputs True 42 320 318 "preprod" "preprod" Nothing,
-            ReadyInputs True 42 320 319 "preprod" "preprod" Nothing,
-            ReadyInputs True 42 320 320 "mainnet" "preprod" Nothing,
-            ReadyInputs False 42 320 320 "preprod" "preprod" Nothing
+            inputs7 True 42 320 318 "preprod" "preprod" Nothing,
+            inputs7 True 42 320 319 "preprod" "preprod" Nothing,
+            inputs7 True 42 320 320 "mainnet" "preprod" Nothing,
+            inputs7 False 42 320 320 "preprod" "preprod" Nothing
           ]
           @?= [Nothing, Just IndexerBehind, Just IndexerBehind, Nothing, Just NotReady, Just DbUnavailable],
       -- THE FIFTH CHECK IS ABOUT A DIFFERENT SERVICE, and the three cases below are the whole of
@@ -290,11 +318,49 @@ govDtoTests =
       testCase "the attestation projector: current passes, stale fails, unknown passes" $
         map
           (readyVerdict readyMaxLagDefault)
-          [ ReadyInputs True 42 320 320 "preprod" "preprod" (Just 42),
-            ReadyInputs True 42 320 320 "preprod" "preprod" (Just 301),
-            ReadyInputs True 42 320 320 "preprod" "preprod" Nothing
+          [ inputs7 True 42 320 320 "preprod" "preprod" (Just 42),
+            inputs7 True 42 320 320 "preprod" "preprod" (Just 301),
+            inputs7 True 42 320 320 "preprod" "preprod" Nothing
           ]
           @?= [Nothing, Just IndexerBehind, Nothing],
+      -- `CS-07`. The lag alone cannot see these three, which is why the projector now writes a row
+      -- on every tick rather than only a cursor after every pass.
+      testCase "the projector's own report: syncing passes, error fails, a dead reporter fails" $
+        map
+          (readyVerdict readyMaxLagDefault)
+          [ -- `syncing` is honest, not broken: the pages it serves are partial and `/status` and
+            -- `X-Attest-State` say so. Red here would take a fresh deployment's governance routes
+            -- out of rotation for the hours an attestation backfill takes.
+            (inputs7 True 42 320 320 "preprod" "preprod" (Just 10)) {readyAttestState = Just "syncing", readyAttestReportAgeSeconds = Just 5},
+            -- A tick that raised left something unapplied; `attest_dead_letter` says what.
+            (inputs7 True 42 320 320 "preprod" "preprod" (Just 10)) {readyAttestState = Just "error", readyAttestReportAgeSeconds = Just 5},
+            -- THE CASE NO LAG COULD CATCH: the projector is dead and db-sync has stopped too, so
+            -- the cursor difference is zero and reads as perfectly current. The report's age is the
+            -- only evidence.
+            (inputs7 True 42 320 320 "preprod" "preprod" (Just 0)) {readyAttestState = Just "following", readyAttestReportAgeSeconds = Just 3600},
+            -- And a healthy projector still passes, so the three above are not passing on something
+            -- shared.
+            (inputs7 True 42 320 320 "preprod" "preprod" (Just 10)) {readyAttestState = Just "following", readyAttestReportAgeSeconds = Just 5}
+          ]
+          @?= [Nothing, Just IndexerBehind, Just IndexerBehind, Nothing],
+      testCase "a database with no attestation pipeline encodes attestation: null, not an object" $
+        KM.lookup "attestation" (statusObject Nothing) @?= Just Null,
+      testCase "the projector's report encodes under snake_case names a client can branch on" $
+        case KM.lookup "attestation" (statusObjectWith (Just 20) (Just (attestStatus "syncing"))) of
+          Just (Object a) -> do
+            KM.lookup "state" a @?= Just (String "syncing")
+            KM.lookup "is_ready" a @?= Just (Bool False)
+            KM.lookup "lag_seconds" a @?= Just (Number 20)
+            KM.lookup "source" a @?= Just (String "attest-sync/kupo")
+            assertBool "last_sync_at is present" (KM.member "last_sync_at" a)
+            assertBool "kupo_tip_slot is present" (KM.member "kupo_tip_slot" a)
+          other -> assertFailure ("attestation did not encode as an object: " <> show other),
+      testCase "GV-23's four inputs are on the body, not only inside the verdict" $ do
+        let o = statusObject Nothing
+        KM.lookup "drep_distr_epoch" o @?= Just (Number 319)
+        KM.lookup "amber_lag_seconds" o @?= Just (Number 120)
+        KM.lookup "ready_max_lag_seconds" o @?= Just (Number 300)
+        KM.lookup "metrics_as_of_epoch" o @?= Just (Number 320),
       -- THE CASE THE FIRST FORM OF THAT CHECK LET THROUGH, and the reason the guard now sums the
       -- two lags. The projector's number is its distance from db-sync's CURSOR, not from the tip
       -- (`startFreshnessPoll` passes `freshSlot f` as the reference), so comparing it alone to the
@@ -306,18 +372,18 @@ govDtoTests =
       -- The second element is the contrast that keeps this honest: same db-sync lag, projector 40 s
       -- behind it, 290 s total, still ready. So this pins the boundary and not merely "it fails now".
       testCase "a projector inside the ceiling but stale once db-sync's own lag is added is a 503" $
-        ( readyVerdict 300 (ReadyInputs True 250 320 320 "preprod" "preprod" (Just 100)),
-          readyVerdict 300 (ReadyInputs True 250 320 320 "preprod" "preprod" (Just 40))
+        ( readyVerdict 300 (inputs7 True 250 320 320 "preprod" "preprod" (Just 100)),
+          readyVerdict 300 (inputs7 True 250 320 320 "preprod" "preprod" (Just 40))
         )
           @?= (Just IndexerBehind, Nothing),
       -- PALMARES_READY_MAX_LAG_SECONDS has to be able to change the verdict, or it is decorative.
       -- It governs the projector's ceiling too, which is deliberate: one knob, because an operator
       -- who widens the tolerance for a slow database means the whole read surface, not half of it.
       testCase "the configured ceiling overrides the default in both directions" $
-        ( readyVerdict 30 (ReadyInputs True 42 320 320 "preprod" "preprod" Nothing),
-          readyVerdict 600 (ReadyInputs True 301 320 320 "preprod" "preprod" Nothing),
-          readyVerdict 30 (ReadyInputs True 1 320 320 "preprod" "preprod" (Just 42)),
-          readyVerdict 600 (ReadyInputs True 1 320 320 "preprod" "preprod" (Just 301))
+        ( readyVerdict 30 (inputs7 True 42 320 320 "preprod" "preprod" Nothing),
+          readyVerdict 600 (inputs7 True 301 320 320 "preprod" "preprod" Nothing),
+          readyVerdict 30 (inputs7 True 1 320 320 "preprod" "preprod" (Just 42)),
+          readyVerdict 600 (inputs7 True 1 320 320 "preprod" "preprod" (Just 301))
         )
           @?= (Just IndexerBehind, Nothing, Just IndexerBehind, Nothing),
       testCase "amber is 120 s and is a UI band, never the probe" $

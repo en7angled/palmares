@@ -27,12 +27,15 @@ import Palmares.DomainTypes.Core.Types
     attestationSubjectProfileId,
   )
 import Palmares.Storage
-  ( AttestationProjection (..),
+  ( AttestSyncState (..),
+    AttestationProjection (..),
     attestSchema,
+    attestSyncStateRow,
     chainSyncTableNames,
     currentSchemaVersion,
     ensureAttestSchema,
     parsePolicyHistory,
+    putAttestSyncState,
     putStoredPolicyHistory,
     readSchemaProbe,
     putAttestationProjection,
@@ -153,6 +156,43 @@ tests =
           runAttest pool runMigrations
           created <- tablesIn pool attestSchema
           created @?= sort (map T.toLower chainSyncTableNames),
+      -- `CS-07`. The row the projector writes on every tick, and the reason the table has to be in
+      -- `chainSyncTableNames`: the wipe drops by that list, so a table missing from it survives a
+      -- version bump and `migrateAll` then meets a table it did not create.
+      testCase "the projector's liveness row has its own table, with the fields a probe reads" $
+        withScratchDb $ \pool -> do
+          runPg pool ensureAttestSchema
+          runAttest pool runMigrations
+          cols <- columnsIn pool attestSchema "attest_sync_state"
+          let shown = show cols
+          mapM_
+            (\c -> assertBool (T.unpack c <> " missing: " <> shown) (c `elem` cols))
+            ["cursor_slot", "cursor_hash", "kupo_tip_slot", "state", "last_sync_at", "policy_hex_text", "schema_version", "service_version", "last_error"],
+      -- And it reads back as what was written: the probe branches on `state`, so a round trip that
+      -- lost it would make every readiness answer "following".
+      testCase "the liveness row round-trips, and the singleton key keeps it to one row" $
+        withScratchDb $ \pool -> do
+          runPg pool ensureAttestSchema
+          runAttest pool runMigrations
+          let row st =
+                AttestSyncState
+                  { attestSyncStateSingleton = True,
+                    attestSyncStateCursorSlot = 84233880,
+                    attestSyncStateCursorHash = "0f0f",
+                    attestSyncStateKupoTipSlot = 84233900,
+                    attestSyncStateState = st,
+                    attestSyncStateLastSyncAt = read "2026-10-19 08:14:00 UTC",
+                    attestSyncStatePolicyHexText = "d9e5c3c0",
+                    attestSyncStateSchemaVersion = currentSchemaVersion,
+                    attestSyncStateServiceVersion = "0.1.0",
+                    attestSyncStateLastError = Nothing
+                  }
+          runAttest pool (putAttestSyncState (row "syncing"))
+          runAttest pool (putAttestSyncState (row "following"))
+          got <- runAttest pool attestSyncStateRow
+          fmap attestSyncStateState got @?= Just "following"
+          [Single (n :: Int)] <- runAttest pool (rawSql "SELECT count(*)::int FROM attest_sync_state" [])
+          n @?= 1,
       -- The schema-version TRIPWIRE, and it is honest about being one rather than a proof.
       --
       -- `currentSchemaVersion` is what makes a deployed attest-sync wipe and re-sync, and a column

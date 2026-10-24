@@ -1,9 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | Core chain-sync logic: tip comparison and batch match fetching against
 -- the Kupo indexer.
 module ChainSyncLogic
   ( evaluateChainSyncState,
+    reportSyncState,
     CursorCheck (..),
     classifyCursor,
     verifyCursor,
@@ -16,6 +18,7 @@ where
 
 import ChainsyncAPI (ChainSyncState (..), SyncMetrics (..))
 import Control.Concurrent (threadDelay)
+import Control.Exception (SomeException, try)
 import Control.Concurrent.MVar (MVar, modifyMVar_)
 import Control.Monad.IO.Class (liftIO)
 import Data.Text qualified as T
@@ -23,7 +26,17 @@ import Data.Time (getCurrentTime)
 import Database.Persist.Sql (ConnectionPool)
 import GeniusYield.Types (GYMintingPolicyId, GYNetworkId, mintingPolicyIdToText)
 import Palmares.ChainSync.KupoClient (KupoCheckpoint (..), runKupoCheckpointBySlot, runKupoCheckpointsList, runKupoMatches)
-import Palmares.Storage (ChainCursor (..), applyMatches, getCursorValue, putCursor, runAttest)
+import Palmares.Constants (appVersion)
+import Palmares.Storage
+  ( AttestSyncState (..),
+    ChainCursor (..),
+    applyMatches,
+    currentSchemaVersion,
+    getCursorValue,
+    putAttestSyncState,
+    putCursor,
+    runAttest,
+  )
 
 -- | Slot gap beyond which the local tip is considered "way behind" the chain
 -- (drives the 'Behind' flag that selects bulk vs incremental fetching).
@@ -88,6 +101,40 @@ verifyCursor kupoUrl cursor
           putStrLn "Kupo client error while verifying the cursor's block (treating it as on-chain)"
           return CursorOnChain
         Right ancestor -> return (classifyCursor cursor ancestor)
+
+-- | Write the projector's liveness row — `CS-07`.
+--
+-- Called on every tick and again after every fetch window, which is the whole point: the CURSOR is
+-- written only once a window has been applied in full, so a first sync left @\/ready@ green and
+-- @\/profiles@ serving partial pages for hours. This row says what the projector is doing while it
+-- is doing it.
+--
+-- A write failure here must not stop the projector: this is a report about syncing, not part of it.
+-- It is logged and the tick continues.
+reportSyncState :: ConnectionPool -> GYMintingPolicyId -> T.Text -> KupoCheckpoint -> Integer -> Maybe T.Text -> IO ()
+reportSyncState pool ourPolicy state cursor kupoTipSlot mErr = do
+  now <- getCurrentTime
+  r <-
+    try $
+      runAttest
+        pool
+        ( putAttestSyncState
+            AttestSyncState
+              { attestSyncStateSingleton = True,
+                attestSyncStateCursorSlot = ck_slot_no cursor,
+                attestSyncStateCursorHash = ck_header_hash cursor,
+                attestSyncStateKupoTipSlot = kupoTipSlot,
+                attestSyncStateState = state,
+                attestSyncStateLastSyncAt = now,
+                attestSyncStatePolicyHexText = mintingPolicyIdToText ourPolicy,
+                attestSyncStateSchemaVersion = currentSchemaVersion,
+                attestSyncStateServiceVersion = T.pack appVersion,
+                attestSyncStateLastError = mErr
+              }
+        )
+  case r of
+    Right () -> return ()
+    Left (e :: SomeException) -> putStrLn ("Could not write the sync-state row (continuing): " <> show e)
 
 -- | Persist the given checkpoint as the new local tip in the database.
 updateLocalTip :: ConnectionPool -> KupoCheckpoint -> IO ()
@@ -158,13 +205,21 @@ fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool start e
           False
           True
       case eMatches of
-        Left _err -> do
+        Left err -> do
           putStrLn "Kupo client error while fetching matches (retrying)"
           putStrLn "Retrying in 10 seconds"
+          -- The one failure an operator cannot otherwise see: the projector is alive, the window is
+          -- being retried for ever, and every number on `/status` is the one from before it started.
+          reportSyncState pool ourPolicy "error" (KupoCheckpoint start "") end (Just (T.pack (show err)))
           threadDelay 10000000
           fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool start end batchSize
         Right matches -> do
           applyMatches networkId ourPolicy pool matches
           now <- getCurrentTime
           modifyMVar_ metricsVar $ \m -> pure m {smLocalTip = endInterval, smLastSyncTime = now}
+          -- Per WINDOW, with an empty hash: the applied slot is known here and the header is not —
+          -- only a completed pass knows which block it stopped at, and `updateLocalTip` writes that.
+          -- `syncing` is the honest state inside a window even when this is the last one, because
+          -- the pass has not returned yet.
+          reportSyncState pool ourPolicy "syncing" (KupoCheckpoint endInterval "") end Nothing
           fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool endInterval end batchSize

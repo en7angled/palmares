@@ -135,11 +135,23 @@ the deployment under it.
 The read surface is fed by `attest-sync`, asynchronously, so the script polls with a bounded
 timeout (`ATTEST_SMOKE_TIMEOUT`, default 600s) rather than sleeping a guess.
 
-**Neither service reports `attest-sync`'s lag.** `query-api`'s `/ready` and `/status` speak for the
-*governance* index over db-sync (`governance.is_ready`, `governance.lag_seconds`); the three
-`palmares_attest` projection tables have no freshness field anywhere on the read surface. So a
-query-api that passes preflight can still sit in front of a dead projector, and the first poll in
-step 2 is what catches it. That is what its timeout message says to go and check.
+**The projector now reports itself, and `query-api` publishes it** (`CS-07`). `attest-sync` writes a
+singleton `palmares_attest.attest_sync_state` row on every tick and again after every fetch window,
+and `/status` carries it as `attestation`: the applied slot, Kupo's tip as the projector last saw it,
+the lag, `state` (`syncing` | `following` | `rolled_back` | `error`), `last_sync_at`, `is_ready`
+(a pass completed with the cursor at Kupo's tip), the policy it follows and the last error. The same
+three facts travel on every response as `X-Attest-Slot`, `X-Attest-Lag-Seconds` and
+`X-Attest-State`.
+
+So a poll that times out in step 2 is now diagnosable from one request: `attestation: null` means
+this database has no projector at all, `state: "syncing"` means the backfill is still running,
+`state: "error"` means a tick raised and `attest_dead_letter` says what, and a `last_sync_at` minutes
+old means the projector is dead whatever its cursor says.
+
+`/ready` turns red on the last two — an errored tick and a report that stopped arriving — and
+deliberately NOT on `syncing`: a projector mid-backfill is a healthy service serving honest partial
+attestation pages, and taking the governance routes out of rotation for the hours a backfill takes
+would be the worse answer. The old `attest_lag_seconds` field stays beside the new block.
 
 ## What it leaves behind
 

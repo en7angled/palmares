@@ -124,7 +124,10 @@ serve = do
   port <- getPortFromEnvOrDefault 8083
 
   let settings = setHost (fromString host :: HostPreference) $ setPort port defaultSettings
-      webApp = mkWebApp corsCfg (readTVarIO freshTv) appContext
+      -- Both caches, because the response headers now carry the attestation projector's state
+      -- too (`CS-07`): a client scrolling an attestation page sees `X-Attest-State` on the page it is
+      -- reading rather than on a second request.
+      webApp = mkWebApp corsCfg ((,) <$> readTVarIO freshTv <*> readTVarIO attestTv) appContext
 
   putStrLn $ "Started Query API server at " <> host <> " " <> show port
   putStrLn $ "Postgres: " <> redactConnStr connStr

@@ -28,7 +28,7 @@ check() {
 }
 
 echo "== swagger metadata"
-check "version is 1.3.0" '.info.version == "1.3.0"'
+check "version is 1.4.0" '.info.version == "1.4.0"'
 # D-A. A client that SWITCHES on the verdict gains a case here, and one that renders `expired` as a
 # finding is wrong — which is the whole reason the value is in the published enum rather than left
 # to a null and a comment.
@@ -144,7 +144,18 @@ check "/status publishes the attestation projector's lag separately" \
 # Asserted as the WHOLE required set rather than as `index(…) == null`, which would also pass if the
 # `required` array disappeared entirely: `null | index("x")` is null in jq, and null == null is true.
 check "attest_lag_seconds is not in required (optional; nullability is pinned by the encoder test)" \
-  '.definitions.StatusResponse.required == ["network","governance","epoch_params"]'
+  '.definitions.StatusResponse.required == ["network","governance","amber_lag_seconds","ready_max_lag_seconds","epoch_params"]'
+
+# `CS-07`: the projector's own report, which is what tells "no pipeline here" from "behind". The
+# block is optional for the same reason `attest_lag_seconds` is — a governance-only deployment has
+# none — and `state` is the field a client branches on, so it is asserted by name.
+check "/status publishes the projector's own report" \
+  '.definitions.StatusResponse.properties | has("attestation")'
+check "the report carries the state a client branches on" \
+  '.definitions.AttestationStatus.properties | has("state") and has("last_sync_at") and has("is_ready") and has("policy_id")'
+# `GV-23`: four numbers `/ready` already decided with and the body did not publish.
+check "/status publishes the readiness inputs, not only the verdict" \
+  '.definitions.StatusResponse.properties | has("drep_distr_epoch") and has("amber_lag_seconds") and has("ready_max_lag_seconds") and has("metrics_as_of_epoch")'
 
 echo "== enums a client switches on"
 check "VoterRole is the wire spelling" \

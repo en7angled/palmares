@@ -40,6 +40,7 @@ module Palmares.DomainTypes.Transfer.QueryResponses
     TopOrganizationResponse (..),
     topOrganizationResponse,
     SyncStatus (..),
+    AttestationStatus (..),
     EpochParamsSummary (..),
     StatusResponse (..),
     DRepSummary (..),
@@ -537,6 +538,55 @@ data EpochParamsSummary = EpochParamsSummary
 instance ToSchema EpochParamsSummary where
   declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "epochParams")
 
+-- | What the ATTESTATION projector last reported about itself — `CS-07`.
+--
+-- __Why a block and not the one lag number that was here.__ @attest_lag_seconds@ answered one
+-- question (how far behind the cursor is) and was silent about the two that matter more: whether a
+-- projector exists at all, and whether it has ever finished a pass. The cursor is written only after
+-- a full window, so on a first sync — or after any wipe — the projection tables fill for hours while
+-- the cursor still reads its pre-sync value. @\/profiles@ then answers with confident, partial
+-- pages and nothing on the wire says so. The projector now writes a row on every tick, and this is
+-- that row.
+--
+-- The old field stays beside this one: it is the same number, and removing it would break a client
+-- for no gain.
+data AttestationStatus = AttestationStatus
+  { -- | The slot the projector has applied up to.
+    attestSyncSlot :: Integer,
+    -- | Kupo's tip as the projector last saw it. Its own reference, not db-sync's.
+    attestSyncKupoTipSlot :: Integer,
+    -- | Seconds between db-sync's newest block and the projector's cursor, clamped at zero. The same
+    -- quantity as @attest_lag_seconds@ on this response, and measured against the same reference —
+    -- see that field for why it is db-sync's cursor and not the chain tip.
+    attestSyncLagSeconds :: Int,
+    -- | @syncing@, @following@, @rolled_back@ or @error@ — the projector's own word for what it is
+    -- doing, which is the field a reader should branch on. Two equal slot numbers cannot distinguish
+    -- "caught up" from "never started"; this can.
+    attestSyncState :: Text,
+    -- | When the projector last wrote this row. A dead projector is visible here even when the
+    -- cursor lag is small — which is the case the lag alone could not catch, because a cursor that
+    -- stopped moving while db-sync also stopped moving produces no lag at all.
+    attestSyncLastSyncAt :: UTCTime,
+    -- | The projector's own verdict: it has completed a pass and its cursor is at Kupo's tip. NOT
+    -- the service's readiness, which is @governance.is_ready@ — a projector mid-sync is a healthy
+    -- service serving honest partial attestation pages, and this flag is how a client knows to say
+    -- so.
+    attestSyncIsReady :: Bool,
+    -- | The minting policy the projector is following. A redeploy is a new registry (ADR 0007), so a
+    -- client comparing this against the policy in an id can tell "not indexed yet" from "belongs
+    -- to an older registry".
+    attestSyncPolicyId :: Text,
+    -- | Whatever stopped the last tick, when one did.
+    attestSyncLastError :: Maybe Text,
+    attestSyncSource :: Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON)
+    via CustomJSON '[FieldLabelModifier '[StripPrefix "attestSync", CamelToSnake]] AttestationStatus
+
+instance ToSchema AttestationStatus where
+  declareNamedSchema = genericDeclareNamedSchema (mkStripPrefixSchemaOptions "attestSync")
+
 -- | @GET \/status@: what this service is, how fresh it is, and the parameters its numbers mean
 -- something against.
 data StatusResponse = StatusResponse
@@ -579,6 +629,23 @@ data StatusResponse = StatusResponse
     -- It is NOT \"behind\": a probe that failed on absence would take a governance-only deployment
     -- permanently out of rotation. It is also not a zero, which would read as maximally healthy.
     statusAttestLagSeconds :: Maybe Int,
+    -- | The projector's own report — `CS-07`. @null@ means this database has no attestation
+    -- pipeline, which is the one thing @attest_lag_seconds@ could never say.
+    statusAttestation :: Maybe AttestationStatus,
+    -- | The epoch the ledger's DRep stake distribution has been computed for. `/ready` already
+    -- fails when it trails the tip epoch by more than one, and publishing it is what lets a reader
+    -- see that verdict coming — it is also the "ledger is enabled" signal, since
+    -- @ledger: disable@ leaves @drep_distr@ empty and this @null@ (`GV-23`).
+    statusDrepDistrEpoch :: Maybe Int,
+    -- | The lag at which a UI should warn, in seconds. A BAND and never the probe: it was parsed
+    -- from the environment and never published, so every client had to hard-code its own (`GV-23`).
+    statusAmberLagSeconds :: Int,
+    -- | The lag at which @\/ready@ turns red. Published for the same reason: a client showing a
+    -- freshness chip should not have to guess where the service's own line is.
+    statusReadyMaxLagSeconds :: Int,
+    -- | The epoch @palmares.drep_metrics@ was last refreshed for. Every metric on a DRep response is
+    -- "as of" this epoch, and it can trail @governance.epoch@ by the refresh interval (`GV-23`).
+    statusMetricsAsOfEpoch :: Maybe Int,
     statusEpochParams :: EpochParamsSummary
   }
   deriving stock (Show, Eq, Generic)

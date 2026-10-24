@@ -193,25 +193,35 @@ main = do
             )
         runAttest pool (rollbackTo networkId ourPolicy target)
         updateLocalTip pool (fromMaybe (KupoCheckpoint target "") ancestor)
+        reportSyncState pool ourPolicy "rolled_back" (fromMaybe (KupoCheckpoint target "") ancestor) (ck_slot_no blockchainTip) Nothing
         liftIO $ threadDelay 1000000
       CursorOnChain -> case chainSyncState of
         UpToDate -> do
           liftIO $ putStrLn "Chain is up to date"
+          -- `following` is claimed HERE and nowhere else: the cursor equals Kupo's tip, which is the
+          -- only state in which a reader may treat a projection as complete.
+          reportSyncState pool ourPolicy "following" localTip (ck_slot_no blockchainTip) Nothing
           liftIO $ putStrLn "Sleeping for 10 seconds"
           liftIO $ threadDelay 10000000
         Behind _isWayBehind -> do
           liftIO $ putStrLn "Chain is behind"
           liftIO $ putStrLn "Fetching matches"
+          -- Before the fetch, so the row says `syncing` for the whole of a pass that may run for
+          -- hours. `fetchingMatches` then advances the slot per window.
+          reportSyncState pool ourPolicy "syncing" localTip (ck_slot_no blockchainTip) Nothing
           fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool (ck_slot_no localTip) (ck_slot_no blockchainTip) fetchBatchSize
           updateLocalTip pool blockchainTip
+          reportSyncState pool ourPolicy "following" blockchainTip (ck_slot_no blockchainTip) Nothing
         Ahead -> do
           liftIO $ putStrLn "Chain is ahead"
           let rollbackSlot = max 0 (ck_slot_no blockchainTip - rollbackMargin)
           runAttest pool (rollbackTo networkId ourPolicy rollbackSlot)
           updateLocalTip pool (KupoCheckpoint rollbackSlot "")
+          reportSyncState pool ourPolicy "rolled_back" (KupoCheckpoint rollbackSlot "") (ck_slot_no blockchainTip) Nothing
           liftIO $ putStrLn ("Rolled back to slot " <> show rollbackSlot <> "; will re-sync forward")
         UpToDateButDifferentBlockHash -> do
           liftIO $ putStrLn "Same slot, different block hash; rolling back with margin"
           let rollbackSlot = max 0 (ck_slot_no blockchainTip - rollbackMargin)
           runAttest pool (rollbackTo networkId ourPolicy rollbackSlot)
           updateLocalTip pool (KupoCheckpoint rollbackSlot "")
+          reportSyncState pool ourPolicy "rolled_back" (KupoCheckpoint rollbackSlot "") (ck_slot_no blockchainTip) Nothing

@@ -24,13 +24,15 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (asks)
 import Data.Text (Text, pack)
 import Palmares.Constants (appVersion)
-import Palmares.DomainTypes.Transfer.QueryResponses (StatusResponse (..))
+import Data.Time (diffUTCTime, getCurrentTime)
+import Palmares.DomainTypes.Transfer.QueryResponses (AttestationStatus (..), StatusResponse (..))
 import Palmares.WebAPI.Envelope (ErrorCode (..))
 import Palmares.WebAPI.ServiceProbe (ServiceProbeStatus, alwaysHealthy, mkProbeStatus)
 import Query.Gov
   ( Freshness (..),
     ReadyInputs (..),
     epochParamsQuery,
+    metricsAsOfEpochQuery,
     readyVerdict,
     syncStatusOf,
   )
@@ -70,6 +72,9 @@ getStatusQuery = do
         Nothing -> throwApi IndexerBehind
         Just params -> do
           net <- asks expectedNetwork
+          attest <- currentAttest
+          amber <- asks amberLag
+          metricsEpoch <- runRead metricsAsOfEpochQuery
           pure
             StatusResponse
               { statusNetwork = net,
@@ -82,11 +87,25 @@ getStatusQuery = do
                 -- and not the quantity compared against the ceiling; both numbers are on this
                 -- response, and their sum is what the probe judged.
                 statusAttestLagSeconds = readyAttestLagSeconds inputs,
+                -- `CS-07`. The same cached row the lag above came from, published whole: the state,
+                -- the moment the projector last reported, and its own readiness. @null@ here is the
+                -- one thing the lag number could never say — this database has no attestation
+                -- pipeline at all.
+                statusAttestation = attest,
+                -- `GV-23`: four numbers `/ready` already decides with and `/status` did not publish,
+                -- so a reader could see the verdict but not the inputs.
+                statusDrepDistrEpoch = freshDrepDistrEpoch f,
+                statusAmberLagSeconds = amber,
+                statusReadyMaxLagSeconds = maxLag,
+                statusMetricsAsOfEpoch = metricsEpoch,
                 statusEpochParams = params
               }
 
 currentFreshness :: QueryAppMonad (Maybe Freshness)
 currentFreshness = asks freshness >>= liftIO . readTVarIO
+
+currentAttest :: QueryAppMonad (Maybe AttestationStatus)
+currentAttest = asks attestLag >>= liftIO . readTVarIO
 
 -- | Gather the configured lag ceiling and the four readiness inputs.
 --
@@ -97,9 +116,12 @@ currentFreshness = asks freshness >>= liftIO . readTVarIO
 readyInputs :: QueryAppMonad (Int, ReadyInputs)
 readyInputs = do
   mf <- currentFreshness
-  attest <- asks attestLag >>= liftIO . readTVarIO
+  attest <- currentAttest
   net <- asks expectedNetwork
   maxLag <- asks readyMaxLag
+  -- The report's AGE, computed here because the verdict stays pure: a projector that died leaves a
+  -- cursor that stops moving, and if db-sync has also stopped there is no lag to notice (`CS-07`).
+  now <- liftIO getCurrentTime
   pure . (maxLag,) $ case mf of
     Nothing ->
       ReadyInputs
@@ -111,7 +133,9 @@ readyInputs = do
           readyExpectedNetwork = net,
           -- No database reading at all, so no evidence about the projector either. `readyDbOk`
           -- already fails this case; claiming a projector lag here would be inventing one.
-          readyAttestLagSeconds = Nothing
+          readyAttestLagSeconds = Nothing,
+          readyAttestState = Nothing,
+          readyAttestReportAgeSeconds = Nothing
         }
     Just f ->
       ReadyInputs
@@ -121,5 +145,8 @@ readyInputs = do
           readyDrepDistrEpoch = maybe (-1) id (freshDrepDistrEpoch f),
           readyNetworkName = maybe "" id (freshNetworkName f),
           readyExpectedNetwork = net,
-          readyAttestLagSeconds = attest
+          readyAttestLagSeconds = attestSyncLagSeconds <$> attest,
+          readyAttestState = attestSyncState <$> attest,
+          readyAttestReportAgeSeconds =
+            (\a -> floor (diffUTCTime now (attestSyncLastSyncAt a))) <$> attest
         }

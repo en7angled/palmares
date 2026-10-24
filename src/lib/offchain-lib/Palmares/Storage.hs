@@ -27,6 +27,7 @@ import Data.Int (Int64)
 import Data.List qualified as L
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Database.Persist
 import Database.Persist.Sql
@@ -95,6 +96,38 @@ ChainCursor
     lastTxId         Text Maybe
     lastOutputIndex  Int  Maybe
     UniqueCursor singleton
+    deriving Show
+
+-- Singleton liveness row for the attestation projector — `CS-07`.
+--
+-- WHY IT IS NOT `ChainCursor`. The cursor is written only after a FULL pass over the window
+-- (`attest-sync` calls `updateLocalTip` after `fetchingMatches` returns), so during a first sync —
+-- or after any wipe — the projection tables fill for hours while the cursor still reads 0 or the
+-- pre-wipe slot. `/ready` was green throughout and `/profiles` answered with confident, partial
+-- pages. The cursor is a position; this row is a REPORT, written on every tick and again after
+-- every window, so the gap between "I have applied up to here" and "the chain is here" is visible
+-- while it is happening rather than afterwards.
+--
+-- `state` is the projector's own verdict and the field a probe reads: `syncing` while it is behind,
+-- `following` once a pass has completed with the cursor at Kupo's tip, `rolled_back` on the tick a
+-- fork was handled, `error` when a tick raised. A reader must not have to infer that from two slot
+-- numbers, because the inference is exactly what was wrong before: equal slots can mean "caught up"
+-- or "has never started".
+--
+-- `lastError` carries the text of whatever stopped the last tick, for the same reason
+-- `AttestDeadLetter` does: the useful failures are the ones nobody predicted.
+AttestSyncState
+    singleton        Bool
+    cursorSlot       Integer
+    cursorHash       Text
+    kupoTipSlot      Integer
+    state            Text
+    lastSyncAt       UTCTime
+    policyHexText    Text
+    schemaVersion    Int
+    serviceVersion   Text
+    lastError        Text Maybe
+    UniqueAttestSyncState singleton
     deriving Show
 
 -- Singleton config row: stored minting policy hex; used only at startup to detect policy change and optionally wipe.
@@ -327,6 +360,32 @@ getCursorValue = fmap entityVal <$> getBy (UniqueCursor True)
 putCursor :: (MonadIO m) => ChainCursor -> SqlPersistT m ()
 putCursor = upsertByUnique (const (UniqueCursor True))
 
+-- | Replace the projector's liveness row — `CS-07`.
+--
+-- Upserted on the singleton key, so it is one row for ever and a tick that writes it twice costs
+-- nothing. Called on every tick and after every fetch window; see 'AttestSyncState' for why the
+-- cursor alone was not enough.
+putAttestSyncState :: (MonadIO m) => AttestSyncState -> SqlPersistT m ()
+putAttestSyncState = upsertByUnique (const (UniqueAttestSyncState True))
+
+-- | The projector's liveness row, or 'Nothing' when this database has no attestation pipeline.
+--
+-- Catalog-guarded exactly as 'attestCursorSlot' is, and for the same reason: query-api runs against
+-- databases where attest-sync has never run, and @information_schema.tables@ lists only what the
+-- current role may see — so a missing @GRANT@ reads as absence rather than as an error. The caller
+-- distinguishes "no pipeline here" from "the pipeline is behind"; collapsing them is the defect
+-- `CS-07` describes.
+attestSyncStateRow :: (MonadIO m) => SqlPersistT m (Maybe AttestSyncState)
+attestSyncStateRow = do
+  tbl <-
+    rawSql
+      "SELECT EXISTS (SELECT 1 FROM information_schema.tables \
+      \WHERE table_name = 'attest_sync_state' AND table_schema = ?)"
+      [toPersistValue attestSchema]
+  case tbl of
+    [Single True] -> fmap entityVal <$> getBy (UniqueAttestSyncState True)
+    _ -> pure Nothing
+
 -- | Record a match the projector could not apply, with the error that stopped it.
 --
 -- Upserted on the same key the match event uses, so re-driving a window that still fails replaces
@@ -440,6 +499,7 @@ parsePolicyHistory = filter (not . Text.null) . map Text.strip . Text.splitOn ",
 chainSyncTableNames :: [Text]
 chainSyncTableNames =
   [ "attest_dead_letter",
+    "attest_sync_state",
     "attestation_projection",
     "chain_cursor",
     "chain_sync_config",

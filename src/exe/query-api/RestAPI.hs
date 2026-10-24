@@ -92,6 +92,7 @@ import Palmares.DomainTypes.Transfer.QueryResponses
     AttestProfileRow,
     AttestationDetailResponse,
     AttestationRow,
+    AttestationStatus,
     DisputeRow,
     CommitteeResponse,
     DashboardPageResponse (..),
@@ -1741,11 +1742,18 @@ apiSwagger =
     -- 1.3.0, MINOR: `AttestationRow` gained `credential`. ADR 0003 stored the column and published
     -- nothing, so a `credential_claim` row was served with its entire content missing; adding an
     -- optional field breaks no 1.2.0 client.
+    -- 1.4.0, MINOR: `/status` gained `attestation` (the projector's own report — state,
+    -- last_sync_at, its own readiness, the policy it follows), plus `drep_distr_epoch`,
+    -- `amber_lag_seconds`, `ready_max_lag_seconds` and `metrics_as_of_epoch` — four numbers `/ready`
+    -- already decided with and the body did not publish (`CS-07`, `GV-23`). Additive: every 1.3.x
+    -- client keeps working, and `attest_lag_seconds` stays beside the new block rather than being
+    -- replaced by it. Three response HEADERS are new too (`X-Attest-Slot`,
+    -- `X-Attest-Lag-Seconds`, `X-Attest-State`), present only where a projector exists.
     -- 1.3.1, PATCH: two descriptions stopped claiming something that was not true. "No second
     -- derivation" was false — the five DRep metrics come from a materialized view, which is one —
     -- and it was false in the direction that mattered: its denominator had drifted from the
     -- published formula (GV-03). No schema, field or status code changed.
-    & info . Data.Swagger.version .~ "1.3.1"
+    & info . Data.Swagger.version .~ "1.4.0"
     & info . Data.Swagger.description
       ?~ "Read-only queries over the Cardano governance record: DReps, governance actions, votes, \
          \delegations, the constitutional committee and treasury withdrawals. Every row comes from \
@@ -1894,7 +1902,7 @@ fullServer = swaggerServer :<|> serviceProbeServer :<|> coreFunctionServer
 -- 'freshnessMiddleware' is applied INSIDE the CORS middleware so the chain-point headers are
 -- present on the response that CORS then decides to expose; the other way round and the exposed
 -- header list would name headers that are not there yet.
-mkWebApp :: CorsConfig -> IO (Maybe Freshness) -> QueryAppContext -> Application
+mkWebApp :: CorsConfig -> IO (Maybe Freshness, Maybe AttestationStatus) -> QueryAppContext -> Application
 mkWebApp corsCfg readFresh ctx =
   mkCorsMiddleware corsCfg $
     freshnessMiddleware readFresh $

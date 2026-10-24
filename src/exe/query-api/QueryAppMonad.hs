@@ -20,6 +20,7 @@ import Control.Exception (SomeException, try)
 import Control.Monad.Reader
 import Data.Text (Text)
 import Database.Persist.Sql (ConnectionPool, SqlPersistT)
+import Palmares.DomainTypes.Transfer.QueryResponses (AttestationStatus)
 import Palmares.WebAPI.Envelope (ErrorCode (..), errorCodeToHttpStatus)
 import Palmares.WebAPI.Errors (mkServantErr)
 import Query.Gov (Freshness, runGovRead)
@@ -37,7 +38,7 @@ data QueryAppContext = QueryAppContext
     -- | How far behind db-sync's tip the ATTESTATION projector is, in seconds, or 'Nothing' when
     -- there is no evidence either way. Fed by the same poller as 'freshness', from a different
     -- service's cursor — nothing in @palmares.sync_state@ says whether @attest-sync@ is alive.
-    attestLag :: TVar (Maybe Int),
+    attestLag :: TVar (Maybe AttestationStatus),
     -- | @PALMARES_NETWORK_NAME@. Compared against @meta.network_name@ by @\/ready@: an instance
     -- pointed at the wrong network would answer every question confidently and wrongly.
     expectedNetwork :: Text,

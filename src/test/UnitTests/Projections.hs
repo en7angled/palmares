@@ -32,7 +32,7 @@ import Database.Persist (Entity (..), Filter, SelectOpt (Asc), getBy, selectList
 import Database.Persist.Sql (ConnectionPool, rawExecute)
 import GeniusYield.Types
 import Palmares.ChainSync.KupoAtlas (AtlasMatch (..), toGYAssetClass)
-import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..))
+import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..), KupoValue (..), SpentAt (..))
 import Palmares.DomainTypes.Core.Types (Attestation (..), AttestationType (CredentialClaim))
 import Palmares.Ingestion
 import Palmares.Onchain.CIP68 (MetadataFields (..), mkCIP68Datum)
@@ -134,7 +134,15 @@ profileDatum claimedId =
     )
 
 attestationDatum :: GYAssetClass -> GYDatum
-attestationDatum claimedId =
+attestationDatum = attestationDatumAccepted True
+
+-- | The same fixture with the accepted flag chosen.
+--
+-- The CS-04 case needs both: an attestation's unaccepted output and its accepted one are two
+-- different UTxOs of the SAME attestation id, and the finding is about which of the two the
+-- registry is left holding after a rollback.
+attestationDatumAccepted :: Bool -> GYAssetClass -> GYDatum
+attestationDatumAccepted accepted claimedId =
   datumFromPlutusData
     ( mkCIP68Datum
         OnchainTypes.OnchainAttestation
@@ -144,7 +152,7 @@ attestationDatum claimedId =
             OnchainTypes.attestationKind = OnchainTypes.Endorsement,
             OnchainTypes.attestationDate = POSIXTime 1700000000000,
             OnchainTypes.attestationPeriod = Nothing,
-            OnchainTypes.attestationIsAccepted = True,
+            OnchainTypes.attestationIsAccepted = accepted,
             -- Any value: the projection drops this field, which is the point of asserting the
             -- projected shape below rather than the datum's.
             OnchainTypes.attestationOracleToken = assetClassToPlutus acOracle,
@@ -322,6 +330,32 @@ credentialOf pool pid =
 applyAll :: ConnectionPool -> [KupoMatch] -> IO ()
 applyAll pool = runAttest pool . mapM_ (putMatchAndProjections testNetworkId ourPolicy)
 
+-- | A match whose snapshot was taken AFTER the output had been spent, at @slot@.
+--
+-- Not contrived: Kupo answers a window query with the UTxO's state as of the reply, so every
+-- output created before a resync and spent before it comes back exactly like this.
+--
+-- The spending transaction id is padded to 64 hex characters for the same reason 'kupoMatch' pads
+-- its own: 'Palmares.ChainSync.KupoAtlas.kupoMatchToAtlasMatch' decodes it, and a short one sends
+-- the match down the conversion-error branch — which produces "no row" for a reason that has
+-- nothing to do with the spend, and would make the cases below pass vacuously.
+spentAtSlot :: Integer -> KupoMatch -> KupoMatch
+spentAtSlot slot km =
+  km {spent_at = Just (SpentAt slot "spenthdr" (Just (T.justifyRight 64 '0' "5be4d")) (Just 0) Nothing)}
+
+-- | The spend slot recorded in every stored snapshot, in no particular order.
+storedSpends :: ConnectionPool -> IO [Maybe Integer]
+storedSpends pool =
+  runAttest pool $
+    map (fmap spent_slot_no . spent_at . onchainMatchEventKupoMatch . entityVal)
+      <$> selectList ([] :: [Filter OnchainMatchEvent]) []
+
+-- | The published accepted flag of an attestation; 'Nothing' means no row at all.
+isAcceptedOf :: ConnectionPool -> GYAssetClass -> IO (Maybe Bool)
+isAcceptedOf pool aid =
+  runAttest pool $
+    fmap (attestationProjectionIsAccepted . entityVal) <$> getBy (UniqueAttestationProjection aid)
+
 -- | Every projection row, as text, order-independent. @show@ of the entity VALUE and not the
 -- 'Entity': a replay re-inserts the rows and the serial keys legitimately change.
 projectionSnapshot :: ConnectionPool -> IO [String]
@@ -463,6 +497,42 @@ replayTests =
         applyAll pool [kupoMatch 700 "1a" attestationsAddress (credentialRecordDatum OnchainTypes.CredentialWithdrawal acWithdrawRecord acProfileA testCredential) (withToken acWithdrawRecord)]
         applyAll pool [kupoMatch 800 "2b" profilesAddress (profileDatum acProfileA) (withToken acProfileA)]
         credentialOf pool acProfileA >>= (@?= Just Nothing),
+    -- __CS-04.__ A raw row is a snapshot, so `spent_at` records what was true when Kupo answered —
+    -- not what is true after a rollback. U1 here is the unaccepted attestation, created at slot
+    -- 1000 and first seen only after its accept at 5000; U2 is the accepted output. Rolling back to
+    -- 4000 deletes U2 and must bring U1 BACK as unaccepted: it was created below the rollback slot,
+    -- so no forward window ever fetches it again, and before this fix the attestation disappeared
+    -- from the registry altogether until somebody accepted it a second time.
+    testCase "a spend above the rollback slot stops being a spend, and the record comes back (CS-04)" $
+      freshDb $ \pool -> do
+        applyAll
+          pool
+          [ spentAtSlot 5000 (kupoMatch 1000 "a1" attestationsAddress (attestationDatumAccepted False acAttestation) (withToken acAttestation)),
+            kupoMatch 5000 "a2" attestationsAddress (attestationDatumAccepted True acAttestation) (withToken acAttestation)
+          ]
+        -- First: there is something to lose. U1 is spent so only U2 projects, and the attestation
+        -- reads accepted.
+        isAcceptedOf pool acAttestation >>= (@?= Just True)
+        runAttest pool (rollbackTo testNetworkId ourPolicy 4000)
+        isAcceptedOf pool acAttestation >>= (@?= Just False)
+        -- And the stored snapshot was corrected, not just the replay: the next rollback reads these
+        -- rows again, so a spend left in place would drop the record on the following tick.
+        storedSpends pool >>= (\spends -> assertBool "no surviving snapshot may keep a spend the rollback undid" (all (== Nothing) spends)),
+    -- The other direction, which the fix must not break: a spend AT OR BELOW the rollback slot is
+    -- still on the chain and must still count.
+    testCase "a spend at or below the rollback slot is left alone (CS-04)" $
+      freshDb $ \pool -> do
+        applyAll
+          pool
+          [ spentAtSlot 3000 (kupoMatch 1000 "a1" attestationsAddress (attestationDatumAccepted False acAttestation) (withToken acAttestation)),
+            kupoMatch 3000 "a2" attestationsAddress (attestationDatumAccepted True acAttestation) (withToken acAttestation)
+          ]
+        runAttest pool (rollbackTo testNetworkId ourPolicy 4000)
+        -- Asserted on the SNAPSHOT and not on is_accepted: both outputs survive this rollback, and
+        -- the accepted one replays last either way, so the published flag cannot tell a preserved
+        -- spend from a cleared one. The column can.
+        storedSpends pool >>= (\spends -> assertBool "a spend at or below the rollback slot must be kept" (Just 3000 `elem` spends))
+        isAcceptedOf pool acAttestation >>= (@?= Just True),
     testCase "a rollback below a projection's slot drops it, and the survivors are rebuilt" $
       freshDb $ \pool -> do
         applyAll pool fixtureMatches

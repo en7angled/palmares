@@ -6,9 +6,12 @@
 -- back with the new projections.
 module UnitTests.ChainSyncReplay (chainSyncReplayTests) where
 
+import ChainSyncLogic (CursorCheck (..), classifyCursor, evaluateChainSyncState)
+import ChainsyncAPI (ChainSyncState (..))
 import Data.Either (isLeft, isRight)
 import Data.Map qualified as Map
 import Data.Text (Text)
+import Palmares.ChainSync.KupoClient (KupoCheckpoint (..))
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import GeniusYield.Types
   ( GYAssetClass (GYLovelace),
@@ -158,5 +161,51 @@ chainSyncReplayTests =
           @?= [(1, 0), (1, 3), (2, 0)],
       valueConversionTests,
       authenticationTests,
-      chainTimeTests
+      chainTimeTests,
+      forkDetectionTests
+    ]
+
+-- | The tip decision and the cursor check. CS-02.
+--
+-- These are pure and were untestable until the test suite took @src\/exe\/attest-sync@ into its
+-- source dirs: the logic lives in an executable, and a cabal test-suite cannot import an
+-- executable's other-modules.
+--
+-- The point of the group is the pair in the middle. @Behind@ is reported for a cursor below the
+-- tip whatever its header says — correct, because that is all a slot comparison can know — so
+-- every short fork arrives at 'ChainSyncLogic.evaluateChainSyncState' disguised as ordinary
+-- lag, and only the cursor check can tell them apart.
+forkDetectionTests :: TestTree
+forkDetectionTests =
+  testGroup
+    "fork detection (CS-02)"
+    [ testCase "the tip comparison alone cannot see a short fork" $
+        -- Same situation, two different chains: our block at slot 100, and a chain whose block at
+        -- 100 is a different one. Both read as Behind, which is why the header check had to be a
+        -- separate question.
+        ( evaluateChainSyncState (KupoCheckpoint 100 "ours") (KupoCheckpoint 140 "tip"),
+          evaluateChainSyncState (KupoCheckpoint 100 "orphan") (KupoCheckpoint 140 "tip")
+        )
+          @?= (Behind False, Behind False),
+      testCase "Kupo returning our own point means the cursor survived" $
+        classifyCursor (KupoCheckpoint 100 "ours") (Just (KupoCheckpoint 100 "ours")) @?= CursorOnChain,
+      testCase "a different header at our own slot is an orphan, and the ancestor is the target" $
+        -- Kupo's non-strict answer at a slot it still has a block for is that block. A different
+        -- header there means our block lost.
+        classifyCursor (KupoCheckpoint 100 "ours") (Just (KupoCheckpoint 100 "theirs"))
+          @?= CursorOrphaned (Just (KupoCheckpoint 100 "theirs")),
+      testCase "an EARLIER point means no block at our slot any more — roll back to it" $
+        -- Measured against a live Kupo: for a slot with no block the endpoint answers with the
+        -- newest earlier block, so this is the shape a rolled-back chain actually produces.
+        classifyCursor (KupoCheckpoint 100 "ours") (Just (KupoCheckpoint 80 "older"))
+          @?= CursorOrphaned (Just (KupoCheckpoint 80 "older")),
+      testCase "no point at all is still an orphan, and leaves the caller to the margin fallback" $
+        classifyCursor (KupoCheckpoint 100 "ours") Nothing @?= CursorOrphaned Nothing,
+      testCase "an empty cursor header is a database with no cursor, never an orphan" $
+        -- getLocalTip answers (0, "") for a fresh database. Calling that orphaned would roll back
+        -- a registry that has indexed nothing, every tick, on whatever Kupo happened to answer.
+        ( classifyCursor (KupoCheckpoint 0 "") Nothing,
+          classifyCursor (KupoCheckpoint 0 "") (Just (KupoCheckpoint 500 "tip"))
+        )
+          @?= (CursorOnChain, CursorOnChain)
     ]

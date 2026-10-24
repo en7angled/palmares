@@ -20,7 +20,7 @@
 module Palmares.Storage where
 
 import Control.Exception (SomeException, try)
-import Control.Monad (foldM, forM_, void)
+import Control.Monad (foldM, forM_, unless, void)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Int (Int64)
@@ -35,7 +35,7 @@ import Palmares.DomainTypes.Core.Types
 import GeniusYield.Types
 import Palmares.Ingestion
 import Palmares.ChainSync.KupoAtlas (kupoMatchToAtlasMatch)
-import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..))
+import Palmares.ChainSync.KupoClient (CreatedAt (..), KupoMatch (..), SpentAt (..))
 
 derivePersistFieldJSON "GYAssetClass"
 
@@ -696,11 +696,38 @@ rollbackTo :: (MonadIO m) => GYNetworkId -> GYMintingPolicyId -> Integer -> SqlP
 rollbackTo networkId ourPolicy slot = do
   -- 1. Discard raw matches strictly beyond the rollback slot (numeric compare; F-02 fixed).
   deleteWhere [OnchainMatchEventCreatedSlot >. slot]
-  -- 2. Wipe all derived projection tables. Every table here must also be rebuilt by step 3, or the
+  -- 2. UN-SPEND what the rollback just un-did. CS-04.
+  --
+  --    A raw row is a SNAPSHOT, taken when Kupo handed it over: a UTxO first seen after it was
+  --    already spent carries `spent_at` for ever, and `projectChainEvent` emits nothing for a spent
+  --    output. So rolling back below the spend deleted the output the spend CREATED and left the
+  --    spent one unprojectable — the record vanished from the registry entirely, and forward sync
+  --    never brought it back because it was created below the rollback slot and no window reaches
+  --    it again. One orphaned accept could erase an attestation until somebody accepted it a
+  --    second time.
+  --
+  --    The clear is written back to the row and not only applied to the replay, because the next
+  --    rollback reads the row again, and because the forward sync's own overlap re-fetch will set
+  --    it anew if the spend really is on the canonical chain.
+  rows <- selectList [] []
+  let unspend e =
+        let km = onchainMatchEventKupoMatch e
+         in case spent_at km of
+              Just sp | spent_slot_no sp > slot -> Just e {onchainMatchEventKupoMatch = km {spent_at = Nothing}}
+              _ -> Nothing
+      cleared = [(key, e') | Entity key e <- rows, Just e' <- [unspend e]]
+  mapM_ (\(key, e') -> update key [OnchainMatchEventKupoMatch =. onchainMatchEventKupoMatch e']) cleared
+  unless (null cleared) $
+    liftIO
+      ( putStrLn
+          ( "Rollback to slot " <> show slot <> ": cleared a spend above it on " <> show (length cleared) <> " raw match(es)"
+          )
+      )
+  -- 3. Wipe all derived projection tables. Every table here must also be rebuilt by step 4, or the
   --    rollback is a deletion: a projection the replay cannot produce again is one this wipe loses.
   deleteWhere ([] :: [Filter ProfileProjection])
   deleteWhere ([] :: [Filter AttestationProjection])
   deleteWhere ([] :: [Filter DisputeProjection])
-  -- 3. Replay surviving raw matches in true chain order.
-  surviving <- selectList [] []
-  mapM_ (projectAndStore networkId ourPolicy . onchainMatchEventKupoMatch) (replayOrder (map entityVal surviving))
+  -- 4. Replay surviving raw matches in true chain order.
+  let surviving = [maybe e id (unspend e) | Entity _ e <- rows]
+  mapM_ (projectAndStore networkId ourPolicy . onchainMatchEventKupoMatch) (replayOrder surviving)

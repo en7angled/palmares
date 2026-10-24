@@ -476,14 +476,19 @@ test-suite test
   import:         common-options
   type:           exitcode-stdio-1.0
 
-  -- src/exe/query-api is load-bearing, not convenience: a cabal test-suite cannot import an
-  -- executable's other-modules, and the schema bootstrap lives at Query/Views.hs by design.
-  hs-source-dirs: src/test, src/exe/query-api
+  -- src/exe/query-api and src/exe/attest-sync are load-bearing, not convenience: a cabal
+  -- test-suite cannot import an executable's other-modules, and two pieces of logic that have to
+  -- be tested live in executables by design — the schema bootstrap at Query/Views.hs, and the
+  -- chain-sync tip/fork decision at ChainSyncLogic.hs. `main-is` resolves against src/test, which
+  -- is first; the two executables' own Main.hs files are not listed and are never compiled here.
+  hs-source-dirs: src/test, src/exe/query-api, src/exe/attest-sync
   main-is:        Main.hs
 
   other-modules:
     PropertyTests
     Test.Fixtures
+    ChainSyncLogic
+    ChainsyncAPI
     Query.Attest
     Query.Common
     Query.Gov

@@ -173,24 +173,45 @@ main = do
     modifyMVar_ metricsVar $ \m -> pure m {smLocalTip = ck_slot_no localTip, smBlockchainTip = ck_slot_no blockchainTip, smChainSyncState = chainSyncState}
     liftIO $ putStrLn ("Local tip      : " <> show (ck_slot_no localTip))
     liftIO $ putStrLn ("Blockchain tip : " <> show (ck_slot_no blockchainTip))
-    case chainSyncState of
-      UpToDate -> do
-        liftIO $ putStrLn "Chain is up to date"
-        liftIO $ putStrLn "Sleeping for 10 seconds"
-        liftIO $ threadDelay 10000000
-      Behind _isWayBehind -> do
-        liftIO $ putStrLn "Chain is behind"
-        liftIO $ putStrLn "Fetching matches"
-        fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool (ck_slot_no localTip) (ck_slot_no blockchainTip) fetchBatchSize
-        updateLocalTip pool blockchainTip
-      Ahead -> do
-        liftIO $ putStrLn "Chain is ahead"
-        let rollbackSlot = max 0 (ck_slot_no blockchainTip - rollbackMargin)
-        runAttest pool (rollbackTo networkId ourPolicy rollbackSlot)
-        updateLocalTip pool (KupoCheckpoint rollbackSlot "")
-        liftIO $ putStrLn ("Rolled back to slot " <> show rollbackSlot <> "; will re-sync forward")
-      UpToDateButDifferentBlockHash -> do
-        liftIO $ putStrLn "Same slot, different block hash; rolling back with margin"
-        let rollbackSlot = max 0 (ck_slot_no blockchainTip - rollbackMargin)
-        runAttest pool (rollbackTo networkId ourPolicy rollbackSlot)
-        updateLocalTip pool (KupoCheckpoint rollbackSlot "")
+
+    -- CS-02: ask whether our cursor's own block is still on the chain, BEFORE trusting the
+    -- slot comparison. A short fork reads as plain `Behind` — local slot below the tip — and that
+    -- path never looks at a header, so the orphaned block's projections stayed and a replacement
+    -- block below our cursor was never fetched again.
+    cursor <- verifyCursor kupoUrl localTip
+    case cursor of
+      CursorOrphaned ancestor -> do
+        -- Kupo's ancestor is a point on the chain it is serving now, so it is a PRECISE target.
+        -- The margin stays as the fallback for the case where Kupo knows nothing at or below our
+        -- slot, which is the shape the old code always assumed.
+        let target = maybe (max 0 (ck_slot_no blockchainTip - rollbackMargin)) ck_slot_no ancestor
+        liftIO $
+          putStrLn
+            ( "FORK: the cursor's block is not on Kupo's chain; rolling back to "
+                <> show target
+                <> maybe " (margin fallback: Kupo has no point at or below the cursor)" (const " (Kupo's newest surviving point)") ancestor
+            )
+        runAttest pool (rollbackTo networkId ourPolicy target)
+        updateLocalTip pool (fromMaybe (KupoCheckpoint target "") ancestor)
+        liftIO $ threadDelay 1000000
+      CursorOnChain -> case chainSyncState of
+        UpToDate -> do
+          liftIO $ putStrLn "Chain is up to date"
+          liftIO $ putStrLn "Sleeping for 10 seconds"
+          liftIO $ threadDelay 10000000
+        Behind _isWayBehind -> do
+          liftIO $ putStrLn "Chain is behind"
+          liftIO $ putStrLn "Fetching matches"
+          fetchingMatches metricsVar kupoUrl matchPattern ourPolicy networkId pool (ck_slot_no localTip) (ck_slot_no blockchainTip) fetchBatchSize
+          updateLocalTip pool blockchainTip
+        Ahead -> do
+          liftIO $ putStrLn "Chain is ahead"
+          let rollbackSlot = max 0 (ck_slot_no blockchainTip - rollbackMargin)
+          runAttest pool (rollbackTo networkId ourPolicy rollbackSlot)
+          updateLocalTip pool (KupoCheckpoint rollbackSlot "")
+          liftIO $ putStrLn ("Rolled back to slot " <> show rollbackSlot <> "; will re-sync forward")
+        UpToDateButDifferentBlockHash -> do
+          liftIO $ putStrLn "Same slot, different block hash; rolling back with margin"
+          let rollbackSlot = max 0 (ck_slot_no blockchainTip - rollbackMargin)
+          runAttest pool (rollbackTo networkId ourPolicy rollbackSlot)
+          updateLocalTip pool (KupoCheckpoint rollbackSlot "")

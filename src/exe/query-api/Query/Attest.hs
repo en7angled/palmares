@@ -554,8 +554,14 @@ resolveLevelOneAnchor entries = case Core.parseLevelOneAnchor entries of
     [txHashHex, ixText] | Right (ix :: Int, "") <- TRead.decimal ixText -> do
       rows <-
         rawSql
+          -- `tw.amount::bigint` and not `tw.amount`: db-sync types lovelace as NUMERIC, which
+          -- persistent cannot decode into an `Integer`, so the raw column made this whole route
+          -- answer 503 — and ONLY for an anchor that resolved, because an unresolved one gets NULL
+          -- and NULL decodes fine. Measured by F1 check 11's step 7: the `unresolved` case passed
+          -- every assertion while the `resolved` case 503'd six times. Every other reader of this
+          -- column in the codebase already casts (`sum(amount)::bigint`); this one did not.
           "SELECT ga.gov_action_id IS NOT NULL, tw.stake_address IS NOT NULL, \
-          \       tw.amount, tw.enacted_epoch, tw.paid_heuristic \
+          \       tw.amount::bigint, tw.enacted_epoch, tw.paid_heuristic \
           \FROM (SELECT 1) one \
           \LEFT JOIN palmares.gov_action ga \
           \       ON ga.tx_hash = decode(?, 'hex') AND ga.index = ? \
